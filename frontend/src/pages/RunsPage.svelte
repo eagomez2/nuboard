@@ -3,6 +3,7 @@
   import RunTable from '../components/RunTable.svelte';
   import ComparePanel from '../components/ComparePanel.svelte';
   import { api } from '../lib/api';
+  import { ask, confirmAction } from '../lib/dialog.svelte';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -23,7 +24,11 @@
   const collectionQuery = (name: string) => `collections has "${name}"`;
 
   async function removeCollection(projectName: string, name: string) {
-    if (!confirm(`Delete the collection "${name}"? The runs themselves are not touched.`)) return;
+    const ok = await confirmAction(`Delete the collection "${name}"?`, 'The runs themselves are not touched.', {
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     await api.saveCollection({ name, project: projectName, delete: true });
     if (query === collectionQuery(name)) router.set({ q: null });
     app.loadCollections();
@@ -33,7 +38,14 @@
   async function saveView() {
     const target = project || app.info?.projects[0]?.name;
     if (!target) return;
-    const name = prompt(`Save the current view in ${target}/views/ as:`, 'my-view');
+    const res = await ask(
+      'Save the current view',
+      [{ label: 'Name', value: 'my-view', hint: `Saved in ${target}/views/` }],
+      {
+        confirm: 'Save',
+      },
+    );
+    const name = res?.[0].trim();
     if (!name) return;
     await fetch('/api/views', {
       method: 'POST',

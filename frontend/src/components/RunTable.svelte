@@ -4,6 +4,7 @@
   import { api, num, type FieldValue, type RunBrief } from '../lib/api';
   import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
+  import { ask } from '../lib/dialog.svelte';
   import { app } from '../lib/state.svelte';
 
   const ROW = 56;
@@ -117,13 +118,23 @@
   // Set one field on every selected run (the column is added if needed)
   async function setFieldOnSelected() {
     const shown = cols.filter((c) => c.startsWith('field:')).map((c) => c.slice(6));
-    const name = fieldName(
-      prompt(`Field to set on ${selected.length} run(s):`, shown[0] ?? fieldNames[0] ?? 'verdict') ?? '',
+    const n = selected.length;
+    const res = await ask(
+      `Set a field on ${n} run${n === 1 ? '' : 's'}`,
+      [
+        { label: 'Field', value: shown[0] ?? fieldNames[0] ?? 'verdict', suggestions: fieldNames },
+        {
+          label: 'Value',
+          placeholder: 'e.g. keep, 4, true',
+          hint: 'Numbers and true/false are stored as such. Empty clears the field.',
+        },
+      ],
+      { confirm: 'Set field' },
     );
+    if (!res) return;
+    const name = fieldName(res[0]);
     if (!name) return;
-    const value = prompt(`Value of "${name}" for ${selected.length} run(s) (empty clears it):`, '');
-    if (value === null) return;
-    await api.annotate(selected, { fields: { [name]: parseField(value) } });
+    await api.annotate(selected, { fields: { [name]: parseField(res[1]) } });
     if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
     app.loadRuns();
   }
@@ -169,8 +180,19 @@
   async function addToCollection() {
     const keys = [...app.selected];
     const existing = [...new Set((app.runs?.runs ?? []).flatMap((r) => r.collections ?? []))];
-    const hint = existing.length ? ` Existing: ${existing.join(', ')}` : '';
-    const name = prompt(`Add ${keys.length} run(s) to the collection:${hint}`, existing[0] ?? 'shortlist');
+    const res = await ask(
+      `Add ${keys.length} run${keys.length === 1 ? '' : 's'} to a collection`,
+      [
+        {
+          label: 'Collection',
+          value: existing[0] ?? 'shortlist',
+          suggestions: existing,
+          hint: existing.length ? `Existing: ${existing.join(', ')}` : 'A new collection is created if needed.',
+        },
+      ],
+      { confirm: 'Add' },
+    );
+    const name = res?.[0].trim();
     if (!name) return;
     await api.saveCollection({ name, add: keys });
     app.loadRuns();

@@ -216,6 +216,16 @@
     else next.add(label);
     hidden = next;
   }
+  const seriesLabels = $derived((focusData?.series ?? []).map((s) => s.label));
+  // show only this series; soloing the one already alone brings all back
+  function soloSeries(label: string) {
+    const alone = !hidden.has(label) && seriesLabels.every((l) => l === label || hidden.has(l));
+    hidden = alone ? new Set() : new Set(seriesLabels.filter((l) => l !== label));
+  }
+  function chipClick(e: MouseEvent, label: string) {
+    if (e.altKey || e.metaKey || e.ctrlKey) soloSeries(label);
+    else toggleSeries(label);
+  }
   const groupOptions = $derived.by(() => {
     const keys = new Map<string, Set<string>>();
     for (const r of runs)
@@ -272,14 +282,27 @@
 
   <section class="controls">
     <div class="legend">
+      {#if seriesLabels.length > 1}
+        <div class="seg showall" role="group" aria-label="Show series">
+          <button aria-pressed={hidden.size === 0} title="Show every series" onclick={() => (hidden = new Set())}
+            >All</button
+          >
+          <button
+            aria-pressed={seriesLabels.every((l) => hidden.has(l))}
+            title="Hide every series, then click chips to add them back"
+            onclick={() => (hidden = new Set(seriesLabels))}>None</button
+          >
+        </div>
+      {/if}
       {#each focusData?.series ?? [] as s, i (s.label)}
         <button
           class="chip legend-chip"
           class:off={hidden.has(s.label)}
-          onclick={() => toggleSeries(s.label)}
+          onclick={(e) => chipClick(e, s.label)}
+          ondblclick={() => soloSeries(s.label)}
           onmouseenter={() => (highlight = s.label)}
           onmouseleave={() => (highlight = null)}
-          title={s.runs.length > 1 ? s.runs.join('\n') : s.runs[0]}
+          title={`${s.runs.length > 1 ? s.runs.join('\n') : s.runs[0]}\n\nClick to hide · double-click or Alt-click to solo`}
         >
           <Marker index={i} color={colorOf(s.label, i)} />
           <span class="lab">{groupBy ? `${groupLabel(groupBy)} ${s.label}` : s.label}</span>
@@ -467,7 +490,8 @@
         </div>
       {:else}
         <p class="faint hint">
-          Hover a chart to inspect a step; click to pin it. Hover a legend chip to highlight a series, click it to hide.
+          Hover a chart to inspect a step; click to pin it. Hover a legend chip to highlight a series, click it to hide,
+          double-click (or Alt-click) to show it alone. All and None show or hide every series.
         </p>
       {/each}
     </aside>
@@ -603,6 +627,9 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .showall {
+    align-self: center;
   }
   .legend-chip {
     height: 32px;

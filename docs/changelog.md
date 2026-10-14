@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3
+
+- Charts: **All** and **None** buttons next to the legend, and double-click
+  (or Alt-click) on a legend chip to solo that series.
+- Save current view, Set field…, Add to collection and deleting a collection
+  now ask in a dialog that follows the nuboard theme instead of the browser's
+  own prompt.
+
 ## 0.4.2
 
 - Custom fields are easier to find and edit: the **+** in **Columns** is

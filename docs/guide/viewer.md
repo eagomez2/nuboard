@@ -105,9 +105,11 @@ are selected, every run matching the query.
   menu). Runs are interpolated onto a shared x grid on the server before
   aggregating, so runs with different logging steps combine correctly.
   Without grouping, each run is one line (up to 60; group to see more).
-- **Legend chips**: hover to highlight a series, click to hide it. Each series
-  has a color and a marker shape, so series stay distinguishable without
-  color.
+- **Legend chips**: hover to highlight a series, click to hide it, and
+  double-click (or Alt-click) to show only that series; soloing it again shows
+  them all. **All** and **None** before the chips show or hide every series, so
+  you can start from None and click the few you want. Each series has a color
+  and a marker shape, so series stay distinguishable without color.
 - **X axis**: step, wall time, relative time since the run started, or active
   time (relative time with pauses longer than five minutes removed). The
   **x by metric** menu plots against any other metric instead, such as

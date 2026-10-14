@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Dialog from './components/Dialog.svelte';
   import Icon from './components/Icon.svelte';
   import QueryBar from './components/QueryBar.svelte';
   import RunsPage from './pages/RunsPage.svelte';
@@ -124,6 +125,8 @@
     {/if}
   </main>
 </div>
+
+<Dialog />
 
 <style>
   .shell {
