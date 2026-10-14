@@ -1,4 +1,4 @@
-"""The ``NAME up`` web viewer (Starlette app)."""
+"""The `NAME up` web viewer (Starlette app)."""
 
 from .app import create_app
 

@@ -6,12 +6,12 @@ import nuboard as nb
 run = nb.init("project", name="baseline", config=cfg)  # also a context manager
 ds = run.use_artifact("dataset:v2")
 run.log({"loss": loss, "lr": lr}, step=step)  # non-blocking
-run.log_image("samples/recon", img, step=step)
-run.log_text("samples/gen", text, step=step)
-run.log_audio("samples/speech", wav, step=step, sample_rate=16000)
-run.log_figure("eval/confusion", fig, step=step)  # Plotly, Altair/Vega-Lite, Bokeh, matplotlib
-run.log_html("eval/graph", html, step=step)
-run.log_artifact("model", "ckpt/", type="checkpoint", metadata={"step": step})
+run.add_image("samples/recon", img, step=step)
+run.add_text("samples/gen", text, step=step)
+run.add_audio("samples/speech", wav, step=step, sample_rate=16000)
+run.add_figure("eval/confusion", fig, step=step)  # Plotly, Altair/Vega-Lite, Bokeh, matplotlib
+run.add_html("eval/graph", html, step=step)
+run.add_artifact("model", "ckpt/", type="checkpoint", metadata={"step": step})
 run.finish()  # also on exit and on crash
 ```
 
@@ -59,7 +59,7 @@ run.log(data, step=None, *, time=None, all_ranks=None)
   (`{"train": {"loss": 1}}` logs `train/loss`). Values may be Python numbers,
   bools, NumPy scalars or 0-d tensors; conversion to float happens on the
   background thread. Strings are skipped with a one-time warning; use
-  `log_text`.
+  `add_text`.
 - `step` defaults to one more than the previous call's step. Pass it
   explicitly when you log several dicts per step.
 - `time` overrides the timestamp (useful when importing data).
@@ -74,11 +74,11 @@ need everything on disk at a given point (rarely needed).
 
 | Method | Accepts |
 | --- | --- |
-| `log_text(key, text, step=None)` | any string |
-| `log_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
-| `log_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
-| `log_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
-| `log_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
+| `add_text(key, text, step=None)` | any string |
+| `add_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
+| `add_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
+| `add_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
+| `add_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
 
 Audio arrays are stored as 16-bit PCM WAV, written with the standard
 library's `wave` module, so logging audio needs nothing beyond NumPy for the
@@ -87,8 +87,8 @@ when size matters (16 kHz mono WAV is 32 KB per second). The sample rate,
 channel count and duration are recorded with each clip.
 
 ```python
-run.log_audio("eval/enhanced", model(noisy)[0], step=epoch, sample_rate=16_000)
-run.log_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_001")
+run.add_audio("eval/enhanced", model(noisy)[0], step=epoch, sample_rate=16_000)
+run.add_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_001")
 ```
 
 Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
@@ -98,7 +98,7 @@ own library, and plain dicts work without any of them, so a Vega-Lite spec
 "layout": {...}}`, as `fig.to_dict()` returns) can be logged directly:
 
 ```python
-run.log_figure(
+run.add_figure(
     "eval/per_class",
     {
         "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
@@ -121,7 +121,7 @@ serialized on the calling thread (they are mutable). Media bytes go to
 ## Artifacts
 
 ```python
-art = run.log_artifact("model", "ckpt/", type="checkpoint", metadata={"step": 1000})
+art = run.add_artifact("model", "ckpt/", type="checkpoint", metadata={"step": 1000})
 art.ref  # "model:v3"
 ds = run.use_artifact("dataset:v2")  # or "dataset", "dataset:latest"
 ds.files  # Path to the files
@@ -129,7 +129,7 @@ ds.manifest  # sha256 and size per file, type, metadata, producing run
 ```
 
 Artifacts live in `<project>/artifacts/<name>/v<N>/`; versions are numbered
-automatically and created atomically. `log_artifact` copies the files on the
+automatically and created atomically. `add_artifact` copies the files on the
 calling thread, so avoid calling it inside a hot loop with large checkpoints.
 The viewer's [Artifacts page](artifacts.md) shows every version with the runs
 that produced and used it.

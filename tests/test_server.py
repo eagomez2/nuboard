@@ -23,8 +23,11 @@ def client(tmp_path):
             ) as run:
                 for s in range(500):
                     run.log({"loss": 1 / (s + 1) + lr * seed}, step=s)
-                run.log_text("note", "hi", step=1)
+
+                run.add_text("note", "hi", step=1)
+
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
     with TestClient(app) as c:
         yield c
 
@@ -134,12 +137,15 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
     with nb.init("sweep", name="bad", capture_env=False) as run:
         for s in range(400):
             run.log({"loss": float("nan") if s >= 300 else 1.0}, step=s)
+
         src = tmp_path / "w.bin"
         src.write_bytes(b"x")
-        run.log_artifact("weights", src)
+        run.add_artifact("weights", src)
+
     with nb.init("sweep", name="user", capture_env=False) as run:
         run.use_artifact("weights:latest")
         run.log({"loss": 1.0}, step=0)
+
     runs = {r["name"]: r for r in client.get("/api/runs").json()["runs"]}
     bad = runs["bad"]
     assert [a["kind"] for a in bad["alerts"]] == ["nonfinite"]
@@ -155,6 +161,7 @@ def test_x_axis_by_another_metric(client):
     with nb.init("sweep", name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
             run.log({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
+
     key = next(r["key"] for r in client.get("/api/runs").json()["runs"] if r["name"] == "tok")
     res = client.get("/api/scalars", params={"runs": key, "metric": "loss", "x": "metric:tokens"})
     table = pa.ipc.open_stream(res.content).read_all()
@@ -176,8 +183,10 @@ def test_assets_are_readable_from_the_figure_sandbox(client):
     from nuboard.server.app import STATIC
 
     assets = sorted((STATIC / "assets").glob("*.js")) if (STATIC / "assets").exists() else []
+
     if not assets:
         pytest.skip("frontend not built")
+
     r = client.get(f"/assets/{assets[0].name}")
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "*"
@@ -187,10 +196,11 @@ def test_audio_supports_byte_ranges(tmp_path):
     import numpy as np
 
     run = nb.init("audio", capture_env=False)
-    run.log_audio("clip", np.zeros(4000), step=0, sample_rate=8000)
-    run.log_image("img", np.zeros((40, 40), "uint8"), step=0)
+    run.add_audio("clip", np.zeros(4000), step=0, sample_rate=8000)
+    run.add_image("img", np.zeros((40, 40), "uint8"), step=0)
     run.finish()
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
     with TestClient(app) as c:
         key = c.get("/api/runs").json()["runs"][0]["key"]
         items = c.get(f"/api/runs/{key}/media").json()["items"]

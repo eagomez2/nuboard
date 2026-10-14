@@ -1,4 +1,4 @@
-"""Compaction of a run's event logs into one ``data.parquet`` (needs PyArrow + NumPy).
+"""Compaction of a run's event logs into one `data.parquet` (needs PyArrow + NumPy).
 
 Layout: rows sorted by metric, zoom level, rank, step; exactly one row group
 per (metric, level); a JSON row-group map in the file's key/value metadata so
@@ -37,10 +37,17 @@ SCHEMA = pa.schema(
 
 
 def compact_run(path: str | os.PathLike[str]) -> Path:
-    """Write ``data.parquet`` for the run at ``path``.
+    """Write `data.parquet` for the run at `path`.
 
-    Also records in ``run.json`` which log bytes the file covers and the run's
-    health alerts (see :mod:`NAME.alerts`).
+    The file is written to a temporary name and then moved into place. Also
+    records in `run.json` which log bytes the file covers and the run's health
+    alerts (see `NAME.alerts`).
+
+    Args:
+        path: The run folder.
+
+    Returns:
+        Path of the written `data.parquet`.
     """
     path = Path(path)
     reader = RunReader(path)
@@ -48,23 +55,29 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     reader.refresh()
     sizes = reader.log_sizes()
     per_metric: dict[str, list[tuple[int, list[tuple[np.ndarray, ...]]]]] = {}
+
     for rank in reader.ranks():
         for metric, (s, t, v) in reader.all_scalars(rank).items():
             per_metric.setdefault(metric, []).append((rank, zoom_levels(s, t, v)))
 
     tables: list[pa.Table] = []
     row_groups: dict[str, list[list[int]]] = {}
+
     for metric in sorted(per_metric):
         ranks = per_metric[metric]
         n_levels = max(len(levels) for _, levels in ranks)
         row_groups[metric] = []
+
         for level in range(n_levels):
             cols: list[list[np.ndarray]] = [[] for _ in range(6)]
+
             for rank, levels in ranks:
                 s, t, v, lo, hi = levels[min(level, len(levels) - 1)]
                 cols[0].append(np.full(len(s), rank, "i4"))
+
                 for i, arr in enumerate((s, t, v, lo, hi), start=1):
                     cols[i].append(arr)
+
             arrays = [np.concatenate(c) for c in cols]
             n = len(arrays[0])
             table = pa.table(
@@ -91,16 +104,20 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     )
     target = path / "data.parquet"
     tmp = path / f".data.parquet.{_fs.random_suffix(4)}.tmp"
+
     with pq.ParquetWriter(tmp, schema, compression="zstd") as writer:
         for table in tables:
             writer.write_table(
                 table.replace_schema_metadata(schema.metadata),
                 row_group_size=max(1, table.num_rows),
             )
+
     os.replace(tmp, target)
     meta = _fs.read_json(path / "run.json", {})
+
     if meta:
         meta["compacted"] = {"bytes": sizes, "time": time.time()}
         meta["alerts"] = check_run(reader)
         _fs.atomic_write_json(path / "run.json", meta)
+
     return target

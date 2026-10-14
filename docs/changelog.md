@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+
+**Breaking: media methods are now `add_*`**
+
+- `run.log_text`, `log_image`, `log_audio`, `log_figure`, `log_html` and
+  `log_artifact` are renamed to `add_text`, `add_image`, `add_audio`,
+  `add_figure`, `add_html` and `add_artifact`, with the same arguments.
+  `run.log({...})` for scalars keeps its name. The on-disk format does not
+  change, so runs logged with older versions open as before.
+
+**Code style**
+
+- Google-style docstrings throughout the package, checked by ruff's
+  `pydocstyle` rules. Inline code in docstrings uses single backticks.
+- A blank line separates every `if`, `for`, `while`, `with`, `try` and `match`
+  block from the statements around it. `scripts/blank_lines.py` applies the
+  rule and a test checks it.
+
+**License**
+
+- nuboard is released under the MIT License (`LICENSE`, linked from the
+  README and the docs).
+
 ## 0.4.3
 
 - Charts: **All** and **None** buttons next to the legend, and double-click

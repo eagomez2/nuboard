@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.4.3-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.5.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -47,11 +47,11 @@ Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.4
+## What's in 0.5
 
 | Area | Included |
 | --- | --- |
-| Python API | `init` (+ resume, fork, ranks), `log`, `log_text`, `log_image`, `log_audio`, `log_figure`, `log_html`, `log_artifact`, `use_artifact`, `finish`, context manager |
+| Python API | `init` (+ resume, fork, ranks), `log`, `add_text`, `add_image`, `add_audio`, `add_figure`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager |
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
 | Runs | query language, stars, notes, archive, custom fields, column chooser, collections, saved views, run details and config/file diffs |
@@ -95,6 +95,10 @@ uv build                                             # wheel with the frontend b
 See [Development](docs/reference/development.md) for the repository layout, the rules for
 the logging side, and how to rename the project (the name lives in three
 places).
+
+## License
+
+nuboard is released under the [MIT License](LICENSE).
 
 ## Requirements
 

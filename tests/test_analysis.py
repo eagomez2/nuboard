@@ -8,6 +8,7 @@ def test_load_scalars_group_by():
         with nb.init("an", config={"lr": lr}, capture_env=False) as run:
             for s in range(10):
                 run.log({"loss": s * lr}, step=s)
+
     project = nb.load("an")
     assert len(project.runs()) == 2
     table = project.scalars("loss", group_by="config.lr")
@@ -23,6 +24,7 @@ def test_load_scalars_group_by():
 def test_set_field_from_python():
     with nb.init("fields", capture_env=False) as run:
         run.log({"loss": 1.0}, step=0)
+
     handle = nb.load("fields").runs()[0]
     handle.set_field("verdict", "keep")
     handle.set_field("score", 4)

@@ -79,9 +79,9 @@
   <div class="card empty">No runs selected. Pick runs on the Runs page and press “Media”.</div>
 {:else if !mediaKeys.length}
   <div class="card empty">
-    These runs logged no images, audio, figures, HTML or text. Use <code>run.log_image</code>,
-    <code>log_audio</code>, <code>log_figure</code>, <code>log_html</code>
-    or <code>log_text</code>.
+    These runs logged no images, audio, figures, HTML or text. Use <code>run.add_image</code>,
+    <code>add_audio</code>, <code>add_figure</code>, <code>add_html</code>
+    or <code>add_text</code>.
   </div>
 {:else}
   <div class="card bar">

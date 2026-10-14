@@ -102,6 +102,10 @@ as `where tags has "sweep" and train/loss.min < 2.4 group by config.optim.lr`.
 Every view is a URL, and views and collections can be saved into the project
 folder and committed to git.
 
+## License
+
+nuboard is free software under the [MIT License](license.md).
+
 ## Guides
 
 - [Installation](installation.md) covers the wheel, building from source and

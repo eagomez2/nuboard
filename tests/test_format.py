@@ -13,6 +13,7 @@ from nuboard.reader import LogFile
 def write_log(path, frames):
     with open(path, "wb") as f:
         f.write(fmt.MAGIC)
+
         for fr in frames:
             f.write(fr)
 
@@ -55,8 +56,10 @@ def test_torn_final_frame_is_ignored_then_completed(tmp_path):
     log = LogFile(p)
     log.update()
     assert list(log.series()["loss"][2]) == [1.0, 2.0]
+
     with open(p, "ab") as f:  # the rest arrives (e.g. a slow network filesystem)
         f.write(tail[len(tail) // 2 :])
+
     assert log.update()
     assert list(log.series()["loss"][2]) == [1.0, 2.0, 3.0]
 
@@ -81,8 +84,10 @@ def test_incremental_reads_only_new_bytes(tmp_path):
     log.update()
     first = log.offset
     assert not log.update()
+
     with open(p, "ab") as f:
         f.write(scalars([0], [1], [1.0]))
+
     assert log.update()
     assert log.offset > first
     assert list(log.series()["x"][0]) == [0, 1]

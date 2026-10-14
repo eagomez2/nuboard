@@ -1,8 +1,9 @@
 """A local, folder-based experiment tracker for ML training.
 
->>> import nuboard as nb
->>> with nb.init("my-project", config={"lr": 1e-3}) as run:
-...     run.log({"loss": 0.5}, step=0)
+Example:
+    >>> import nuboard as nb
+    >>> with nb.init("my-project", config={"lr": 1e-3}) as run:
+    ...     run.log({"loss": 0.5}, step=0)
 """
 
 from __future__ import annotations
@@ -24,7 +25,24 @@ if TYPE_CHECKING:
 
 
 def load(project: str, *, dir: str | None = None) -> Project:
-    """Open a project (or any folder of runs) for analysis. Needs ``NAME[viewer]``."""
+    """Open a project (or any folder of runs) for analysis.
+
+    Needs the `viewer` extra (`NAME[viewer]`), which provides PyArrow and NumPy.
+
+    Args:
+        project: A project name, resolved the same way as in `init`, or the path of an
+            existing folder of runs (a project, or a tree of projects).
+        dir: Root folder holding the projects. Defaults to `$NUBOARD_DIR` or
+            `./experiments`. When given, `project` is always treated as a name.
+
+    Returns:
+        A `Project` covering every run found under the folder.
+
+    Example:
+        >>> import nuboard as nb
+        >>> project = nb.load("my-project")
+        >>> losses = project.scalars("loss", group_by="config.lr")
+    """
     from .analysis import Project
 
     return Project.open(project, dir=dir)

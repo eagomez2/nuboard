@@ -167,7 +167,7 @@
   <div class="card empty">
     <Icon name="artifact" size={28} />
     <p>No artifacts here yet. Log one from a run:</p>
-    <pre class="mono">run.log_artifact("dataset", "data/", type="dataset")
+    <pre class="mono">run.add_artifact("dataset", "data/", type="dataset")
 run.use_artifact("dataset:latest")</pre>
     <p class="faint">Each version is a folder under <code>&lt;project&gt;/artifacts/&lt;name&gt;/v&lt;N&gt;/</code>.</p>
   </div>

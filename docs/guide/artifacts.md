@@ -16,15 +16,15 @@ llm-pretrain/artifacts/
 
 ```python
 with nb.init("llm-pretrain", name="prepare-data") as run:
-    run.log_artifact("fineweb-edu", "data/", type="dataset", metadata={"tokens": "12B"})
+    run.add_artifact("fineweb-edu", "data/", type="dataset", metadata={"tokens": "12B"})
 
 with nb.init("llm-pretrain", name="lr1e-3-s1") as run:
     ds = run.use_artifact("fineweb-edu:latest")  # or "fineweb-edu:v2"
     train(ds.files)
-    run.log_artifact("model", "ckpt/", type="checkpoint")
+    run.add_artifact("model", "ckpt/", type="checkpoint")
 ```
 
-`log_artifact` copies the files, hashes them (SHA-256) and claims the next
+`add_artifact` copies the files, hashes them (SHA-256) and claims the next
 version number atomically, so two runs can publish the same name at once.
 Both calls are recorded in the run's `run.json` (`outputs` and `inputs`),
 which is what the lineage graph is built from.
