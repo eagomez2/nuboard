@@ -1,0 +1,33 @@
+"""A local, folder-based experiment tracker for ML training.
+
+>>> import nuboard as nm
+>>> with nm.init("my-project", config={"lr": 1e-3}) as run:
+...     run.log({"loss": 0.5}, step=0)
+"""
+
+from __future__ import annotations
+
+from importlib import metadata as _metadata
+from typing import TYPE_CHECKING
+
+from ._meta import FORMAT_VERSION, NAME
+from .artifacts import Artifact
+from .run import Run, init
+
+try:
+    __version__ = _metadata.version(NAME)
+except _metadata.PackageNotFoundError:  # pragma: no cover - running from a source tree
+    __version__ = "0.0.0"
+
+if TYPE_CHECKING:
+    from .analysis import Project
+
+
+def load(project: str, *, dir: str | None = None) -> Project:
+    """Open a project (or any folder of runs) for analysis. Needs ``NAME[viewer]``."""
+    from .analysis import Project
+
+    return Project.open(project, dir=dir)
+
+
+__all__ = ["FORMAT_VERSION", "NAME", "Artifact", "Run", "__version__", "init", "load"]

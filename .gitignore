@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+site/
+*.egg-info/
+# built frontend: produced by `pnpm build`, bundled into wheels by hatch_build.py
+src/nuboard/static/
+# local run data
+experiments/
+demo-runs/
+.DS_Store

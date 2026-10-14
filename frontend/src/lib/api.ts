@@ -1,0 +1,209 @@
+import { tableFromIPC } from 'apache-arrow';
+
+export type Num = number | 'nan' | 'inf' | '-inf' | null;
+
+export interface MetricSummary {
+  last: Num;
+  step: number;
+  min: number | null;
+  max: number | null;
+  count: number;
+  nonfinite: number;
+}
+
+export interface RunBrief {
+  key: string;
+  id: string;
+  project: string;
+  path: string;
+  name: string;
+  status: 'running' | 'finished' | 'crashed' | 'killed' | 'lost' | string;
+  created: number | null;
+  started: number | null;
+  ended: number | null;
+  heartbeat: number | null;
+  duration: number | null;
+  config: Record<string, unknown>;
+  tags: string[];
+  notes: string;
+  starred: boolean;
+  archived: boolean;
+  reviewed: boolean;
+  group: string | null;
+  summary: Record<string, MetricSummary>;
+  metric_count: number;
+  nonfinite: string[];
+  commit: string | null;
+  dirty: boolean;
+  host: string | null;
+  world_size: number;
+  fork: { run_id: string; step: number } | null;
+}
+
+export interface QueryInfo {
+  group_by: string | null;
+  agg: string;
+  order_by: string | null;
+  descending: boolean;
+  limit: number | null;
+}
+
+export interface RunsResponse {
+  runs: RunBrief[];
+  total: number;
+  query: QueryInfo;
+  error: string | null;
+  metrics: string[];
+  version: number;
+  elapsed_ms: number;
+}
+
+export interface ProjectInfo {
+  name: string;
+  runs: number;
+  views: string[];
+}
+
+export interface Info {
+  name: string;
+  version: string;
+  root: string;
+  root_display: string;
+  projects: ProjectInfo[];
+}
+
+export interface RunDetail {
+  run: RunBrief & { error: string | null; inputs: unknown[]; outputs: unknown[] };
+  meta: Record<string, any>;
+  files: string[];
+  ranks: number[];
+  media: Record<string, { kind: string; count: number }>;
+}
+
+export interface MediaItem {
+  key: string;
+  step: number;
+  time: number;
+  index?: number;
+  kind: string;
+  mime: string;
+  caption?: string | null;
+  text?: string;
+}
+
+export interface SeriesMeta {
+  label: string;
+  runs: string[];
+  group: unknown;
+  n?: number;
+  last: number | null;
+  nonfinite: boolean;
+}
+
+export interface Series extends SeriesMeta {
+  x: Float64Array;
+  y: Float64Array;
+  lo: Float64Array;
+  hi: Float64Array;
+}
+
+export interface ChartData {
+  metric: string;
+  xKind: string;
+  series: Series[];
+}
+
+async function json<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+const qs = (params: Record<string, string | number | null | undefined>) =>
+  new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== null && v !== undefined && v !== '') as [string, string][],
+  ).toString();
+
+export const api = {
+  info: () => json<Info>('/api/info'),
+  runs: (q: string, project?: string | null, metrics?: string[] | null) =>
+    json<RunsResponse>(`/api/runs?${qs({ q, project, metrics: metrics?.join(',') })}`),
+  run: (key: string) => json<RunDetail>(`/api/runs/${encodeURIComponent(key)}`),
+  file: async (key: string, path: string) => {
+    const res = await fetch(`/api/runs/${encodeURIComponent(key)}/files/${path}`);
+    return res.ok ? res.text() : null;
+  },
+  annotate: (keys: string[], patch: Partial<Pick<RunBrief, 'starred' | 'archived' | 'reviewed' | 'notes' | 'tags'>>) =>
+    json<{ updated: string[] }>('/api/runs/annotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys, patch }),
+    }),
+  metrics: (keys: string[]) =>
+    json<{ metrics: { name: string; runs: number }[] }>(`/api/metrics?runs=${keys.map(encodeURIComponent).join(',')}`),
+  media: (key: string) => json<{ items: MediaItem[] }>(`/api/runs/${encodeURIComponent(key)}/media`),
+  mediaUrl: (key: string, index: number) => `/api/runs/${encodeURIComponent(key)}/media/${index}`,
+
+  async chart(p: {
+    runs: string[];
+    metric: string;
+    x: string;
+    group?: string | null;
+    agg?: string;
+    points: number;
+    xmin?: number | null;
+    xmax?: number | null;
+    signal?: AbortSignal;
+  }): Promise<ChartData> {
+    const url = `/api/scalars?${qs({
+      runs: p.runs.join(','),
+      metric: p.metric,
+      x: p.x,
+      group: p.group,
+      agg: p.agg,
+      points: p.points,
+      xmin: p.xmin,
+      xmax: p.xmax,
+    })}`;
+    const res = await fetch(url, { signal: p.signal });
+    if (!res.ok) throw new Error(await res.text());
+    return decodeChart(new Uint8Array(await res.arrayBuffer()));
+  },
+};
+
+/** Decode the Arrow IPC stream from /api/scalars into per-series typed arrays. */
+export function decodeChart(bytes: Uint8Array): ChartData {
+  const table = tableFromIPC(bytes);
+  const meta = table.schema.metadata;
+  const metas: SeriesMeta[] = JSON.parse(meta.get('series') ?? '[]');
+  const col = (name: string) => table.getChild(name)?.toArray() as Float64Array;
+  const sid = (table.getChild('series')?.toArray() as Int32Array) ?? new Int32Array();
+  const [x, y, lo, hi] = [col('x'), col('y'), col('lo'), col('hi')];
+  const series: Series[] = metas.map((m) => ({
+    ...m,
+    x: new Float64Array(),
+    y: new Float64Array(),
+    lo: new Float64Array(),
+    hi: new Float64Array(),
+  }));
+  let start = 0;
+  for (let i = 1; i <= sid.length; i++) {
+    if (i === sid.length || sid[i] !== sid[start]) {
+      const s = series[sid[start]];
+      if (s) {
+        s.x = x.slice(start, i);
+        s.y = y.slice(start, i);
+        s.lo = lo.slice(start, i);
+        s.hi = hi.slice(start, i);
+      }
+      start = i;
+    }
+  }
+  return { metric: meta.get('metric') ?? '', xKind: meta.get('x') ?? 'step', series };
+}
+
+export function num(v: Num | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number') return v;
+  return v === 'nan' ? NaN : v === 'inf' ? Infinity : -Infinity;
+}

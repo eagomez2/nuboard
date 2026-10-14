@@ -1,0 +1,47 @@
+site_name: nuboard
+site_description: A fast, local, folder-based experiment tracker and viewer for ML training.
+repo_name: nuboard
+docs_dir: docs
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guide:
+      - Logging from Python: guide/logging.md
+      - Using the viewer: guide/viewer.md
+      - Query language: guide/query.md
+      - Analysis API: guide/analysis.md
+      - Distributed training: guide/distributed.md
+  - Reference:
+      - File format: format.md
+      - Architecture: architecture.md
+      - Development: development.md
+  - Roadmap: roadmap.md
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  font: false
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: blue
+      toggle: { icon: material/weather-night, name: Dark theme }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: light blue
+      toggle: { icon: material/weather-sunny, name: Light theme }
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - toc: { permalink: true }
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
