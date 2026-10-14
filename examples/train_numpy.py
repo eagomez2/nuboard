@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-import nuboard as nm
+import nuboard as nb
 
 
 def make_data(rng: np.random.Generator, n: int = 4000, d: int = 20, k: int = 5):
@@ -40,7 +40,7 @@ def train(lr: float, seed: int, epochs: int = 30, batch: int = 64) -> None:
         "batch": batch,
         "model": "softmax-regression",
     }
-    with nm.init(
+    with nb.init(
         "numpy-sweep", name=f"lr{lr:g}-s{seed}", config=config, tags=["example", "sweep"]
     ) as run:
         step = 0

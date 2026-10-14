@@ -12,7 +12,8 @@ the [changelog](changelog.md) for what each version added.
 - **0.2**: health alerts, Sweeps, Timeline and Artifacts pages, custom fields,
   a column chooser and collections.
 - **0.3**: charts against any metric (tokens, epochs) and interactive Plotly,
-  Vega-Lite and Bokeh figures.
+  Vega-Lite and Bokeh figures; compare up to eight runs.
+- **0.4**: audio logging with a waveform and spectrogram player.
 
 ## Next
 
@@ -20,7 +21,8 @@ the [changelog](changelog.md) for what each version added.
    expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
    Alerts already record their rank.
 2. **Media**: three.js point clouds, side-by-side text diffs across steps,
-   audio.
+   notes on audio selections (the player supports them; nuboard does not
+   store them yet).
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.

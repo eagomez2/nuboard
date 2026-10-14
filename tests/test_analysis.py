@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import nuboard as nm
+import nuboard as nb
 
 
 def test_load_scalars_group_by():
     for lr in (0.1, 0.01):
-        with nm.init("an", config={"lr": lr}, capture_env=False) as run:
+        with nb.init("an", config={"lr": lr}, capture_env=False) as run:
             for s in range(10):
                 run.log({"loss": s * lr}, step=s)
-    project = nm.load("an")
+    project = nb.load("an")
     assert len(project.runs()) == 2
     table = project.scalars("loss", group_by="config.lr")
     assert table.num_rows == 20

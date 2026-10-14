@@ -137,6 +137,9 @@ export interface MediaItem {
   kind: string;
   mime: string;
   caption?: string | null;
+  sample_rate?: number;
+  channels?: number;
+  duration?: number | null;
   text?: string;
 }
 

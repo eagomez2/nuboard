@@ -109,3 +109,16 @@ test('media page renders Vega-Lite and Plotly figures', async ({ page }) => {
   const plotly = page.frameLocator('iframe[sandbox]').first();
   await expect(plotly.locator('.main-svg').first()).toBeVisible({ timeout: 15000 });
 });
+
+test('media page plays audio with the waveform and simple players', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mkey=audio%2Fenhanced');
+  const player = page.frameLocator('iframe[src="./audio.html"]').first();
+  await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
+  await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
+  await expect(player.locator('#duration')).toHaveText('0:02.600');
+  await page.getByRole('button', { name: 'simple' }).click();
+  await expect(page).toHaveURL(/player=simple/);
+  const audio = page.locator('audio').first();
+  await expect(audio).toBeVisible();
+  await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
+});

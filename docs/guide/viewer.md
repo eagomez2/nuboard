@@ -155,8 +155,8 @@ runs that produced and used it. See [Artifacts and lineage](artifacts.md).
 
 ## Media page
 
-Shows images, figures, HTML and text logged with `log_image`, `log_figure`,
-`log_html` and `log_text`, for the selected runs (or the query result, up to
+Shows images, audio, figures, HTML and text logged with `log_image`,
+`log_audio`, `log_figure`, `log_html` and `log_text`, for the selected runs (or the query result, up to
 16 runs). Pick a key, then move the step slider; each run shows its latest
 item at or before that step, side by side.
 
@@ -177,3 +177,26 @@ The bundled renderers load only when a figure of that kind is on screen.
 BokehJS has to match the Python Bokeh version, so it cannot be bundled; when
 the CDN is unreachable the figure shows a message and the spec stays
 downloadable.
+
+
+### Audio
+
+Audio has two players, switched with **player** above the grid (the choice is
+remembered):
+
+- **waveform** (default): waveform and spectrogram of every channel, with a
+  minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
+  drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
+  and full screen (`F`). The spectrogram is computed in the browser (Hann
+  window of 1024 samples, levels in dB relative to a full-scale sine on a
+  fixed scale, so clips can be compared by eye). The players of one key
+  follow each other's zoom, scroll, cursor and selection, and starting one
+  pauses the others, so you can listen to the same passage across runs.
+  Space plays and pauses; arrow keys seek.
+- **simple**: the browser's own audio controls, as in TensorBoard.
+
+Each clip shows its caption, duration, sample rate and channels, and a
+download link. The waveform player is a port of the player in
+audioviewer, built on
+[wavesurfer.js](https://wavesurfer.xyz) (BSD-3), bundled with the viewer
+so it works offline.

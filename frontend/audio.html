@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>audio</title>
+  </head>
+  <body>
+    <div id="player" class="player" tabindex="0">
+      <div id="fs-header" class="fs-header" hidden>
+        <span id="fs-title" class="fs-title"></span>
+        <button id="fs-close" class="btn icon" title="Close full screen (Esc)">
+          <svg viewBox="0 0 24 24">
+            <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" />
+          </svg>
+        </button>
+      </div>
+      <div class="toolbar">
+        <button id="play" class="btn icon primary" title="Play / pause (Space)">
+          <svg viewBox="0 0 24 24" class="i-play"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+          <svg viewBox="0 0 24 24" class="i-pause"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /></svg>
+        </button>
+        <span class="time"
+          ><span id="current">0:00.000</span><span class="sep">/</span><span id="duration">0:00.000</span></span
+        >
+        <span class="spacer"></span>
+        <span id="selection" class="selection" hidden>
+          <span id="selection-text"></span>
+          <button id="loop" class="btn small toggle" title="Loop the selection (L)">Loop</button>
+          <button id="zoom-selection" class="btn small" title="Zoom to the selection (Z)">Zoom in</button>
+          <button
+            id="annotate"
+            class="btn small"
+            title="Add a note with the selection's timestamps to the file's notes (N)"
+          >
+            Note
+          </button>
+          <button id="clear-selection" class="btn small icon" title="Clear the selection (Esc)">
+            <svg viewBox="0 0 24 24">
+              <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" />
+            </svg>
+          </button>
+        </span>
+        <select id="rate" class="btn small" title="Playback speed">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+        <span class="zoom">
+          <button id="zoom-out" class="btn small icon" title="Zoom out (−)">
+            <svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z" /></svg>
+          </button>
+          <input id="zoom" type="range" min="0" max="1000" value="0" title="Zoom (Ctrl + wheel)" />
+          <button id="zoom-in" class="btn small icon" title="Zoom in (+)">
+            <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" /></svg>
+          </button>
+          <button id="fit" class="btn small" title="Show the whole file (0)">Fit</button>
+        </span>
+        <button id="fullscreen" class="btn small icon" title="Full screen (F)">
+          <svg viewBox="0 0 24 24" class="i-expand">
+            <path d="M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 0h2v5h-5v-2h3z" />
+          </svg>
+          <svg viewBox="0 0 24 24" class="i-collapse">
+            <path d="M8 5h2v5H5V8h3zm6 0h2v3h3v2h-5zM5 14h5v5H8v-3H5zm9 0h5v2h-3v3h-2z" />
+          </svg>
+        </button>
+      </div>
+      <form id="note-form" class="note-form" hidden>
+        <span id="note-time" class="note-time"></span>
+        <input
+          id="note-text"
+          type="text"
+          placeholder="Note for this selection (Enter to add, Esc to cancel)"
+          autocomplete="off"
+        />
+        <button type="submit" class="btn small toggle on">Add</button>
+        <button id="note-cancel" type="button" class="btn small">Cancel</button>
+      </form>
+      <div id="minimap" class="minimap"></div>
+      <div id="message" class="message" hidden></div>
+      <canvas id="ruler" class="ruler"></canvas>
+      <div id="notes-lane" class="notes-lane" hidden></div>
+      <div id="waveform" class="waveform"></div>
+    </div>
+    <script type="module" src="/src/audio/main.ts"></script>
+  </body>
+</html>

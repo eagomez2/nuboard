@@ -21,9 +21,9 @@ and no database to back up.
 </div>
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
-with nm.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
+with nb.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
         run.log({"train/loss": loss}, step=step)  # a few µs, never blocks training
@@ -31,7 +31,7 @@ with nm.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
 
 ```console
 $ nuboard up experiments
-nuboard serving /home/me/experiments (28 runs) at http://localhost:6070/  (Ctrl+C to stop)
+nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+C to stop)
 ```
 
 ![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-light.png#only-light){ .nb-shot }

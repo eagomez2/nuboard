@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+**Audio**
+
+- `run.log_audio(key, audio, step, sample_rate=..., caption=...)` logs a file
+  path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a NumPy/torch
+  array. Arrays are written as 16-bit WAV with the standard library; sample
+  rate, channels and duration are stored with each clip.
+- The Media page plays audio with a **waveform** player (waveform and
+  spectrogram, zoom, minimap, selection and loop, speed, full screen; the
+  players of a key follow each other and only one plays at a time), ported
+  from audioviewer and built on wavesurfer.js, or with the browser's
+  **simple** player.
+- Audio is served with HTTP Range support, so players can seek in long clips.
+- The demo has a fourth project, `speech-denoise`: three models whose
+  enhanced output gets cleaner over epochs, next to the noisy input and the
+  clean target.
+
+**API**
+
+- The documented import is now `import nuboard as nb` (it was `nm`). Nothing
+  in the package changes; only the examples, docs and tests use the new alias.
+
 ## 0.3.1
 
 - **Compare** takes up to eight runs (it was limited to two). All settings

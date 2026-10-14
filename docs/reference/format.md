@@ -127,7 +127,7 @@ the frame length).
 | `S` | `n:u32, metric_id:u32[n], step:i64[n], time:f64[n], value:f64[n]` | A batch of scalars as four columns. |
 | `H` | `time:f64` | Heartbeat. |
 | `T` | `key_id:u32, step:i64, time:f64, text:utf8` | Text sample. |
-| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `figure`, `html`), plus `caption` for images. |
+| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `audio`, `figure`, `html`), plus `caption` for images and audio, and `sample_rate`, `channels` and `duration` (seconds) for audio when known. |
 | `E` | `time:f64, status:utf8` | End of session, written by `finish()`. |
 
 Readers skip unknown kinds, so new frame kinds can be added without a version
@@ -154,7 +154,7 @@ series and rank 0 is the default.
 
 ## Media pack: `media.r<rank>.pack`
 
-Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), figures (Plotly JSON,
+Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), figures (Plotly JSON,
 Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib) and HTML documents,
 appended back to back with no framing. Only `M` frames give them meaning, so
 bytes after the last indexed entry (from a crash) are harmless.
@@ -162,6 +162,8 @@ bytes after the last indexed entry (from a crash) are harmless.
 | `mime` | Written by |
 | --- | --- |
 | `image/png`, `image/jpeg`, ... | `log_image` (arrays are PNG-encoded with the standard library) |
+| `audio/wav` | `log_audio` with an array (16-bit PCM, standard library `wave`) or a WAV file |
+| `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/mp4`, `audio/webm` | `log_audio` with a file or bytes of that format, stored unchanged |
 | `image/svg+xml` | `log_figure` with a matplotlib figure |
 | `application/vnd.plotly.v1+json` | `log_figure` with a Plotly figure or a figure dict |
 | `application/vnd.vegalite+json` | `log_figure` with an Altair chart or a Vega-Lite dict |

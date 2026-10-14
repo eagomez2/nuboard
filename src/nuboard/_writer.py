@@ -94,7 +94,7 @@ class Writer:
         key: str,
         step: int,
         t: float,
-        producer: Callable[[], tuple[bytes, str]],
+        producer: Callable[[], tuple[Any, ...]],
         meta: dict[str, Any],
     ) -> None:
         self.queue.append((_MEDIA, key, step, t, producer, meta))
@@ -237,12 +237,15 @@ class Writer:
                     else:
                         _, key, step, t, producer, meta = item
                         try:
-                            data_bytes, mime = producer()
+                            produced = producer()
                         except Exception as exc:
                             self._warn_once(key, f"{NAME}: could not encode {key!r}: {exc!r}")
                             continue
+                        # Producers return (bytes, mime) or (bytes, mime, extra meta)
+                        data_bytes, mime = produced[0], produced[1]
+                        extra = produced[2] if len(produced) > 2 else {}
                         offset = self._append_pack(data_bytes)
-                        meta = {"mime": mime, **meta}
+                        meta = {"mime": mime, **meta, **extra}
                         out.append(
                             fmt.media_frame(
                                 self._id(key, out),

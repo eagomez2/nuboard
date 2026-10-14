@@ -483,7 +483,7 @@
       {#if !rows.length}
         <div class="empty">
           {#if app.loading}Loading…{:else if app.runs?.total === 0}No runs found in this folder yet. Log one with <code
-              >nm.init(…)</code
+              >nb.init(…)</code
             >
             or run <code>nuboard demo</code>.{:else}No runs match.{/if}
         </div>

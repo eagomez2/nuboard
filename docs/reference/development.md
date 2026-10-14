@@ -14,7 +14,7 @@ src/nuboard/            Python package (the name lives here and in pyproject.tom
   compact.py alerts.py  Parquet compaction (PyArrow), health checks (NumPy)
   catalog.py query.py   run discovery, SQLite cache, query language
   collection.py         collections of runs (stdlib only)
-  analysis.py           nm.load(...) → Arrow tables
+  analysis.py           nb.load(...) → Arrow tables
   server/               Starlette app and data access
   static/               built frontend (generated, not in git)
   cli.py demo.py        command line and demo data
