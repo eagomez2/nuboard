@@ -143,9 +143,37 @@ test('custom fields: add a column, edit a cell, set a field on selected runs', a
   const boxes = page.locator('.body .row input[type=checkbox]');
   await boxes.nth(1).check();
   await boxes.nth(2).check();
-  const answers = ['grade', 'B'];
-  page.on('dialog', (d) => d.accept(answers.shift()));
   await page.getByRole('button', { name: 'Set field…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Set a field on 2 runs' });
+  await dlg.getByLabel('Field').fill('grade');
+  await dlg.getByLabel('Value').fill('B');
+  await dlg.getByRole('button', { name: 'Set field' }).click();
+  await expect(dlg).toBeHidden();
   await expect(page.getByTitle('Edit grade').nth(1)).toHaveText('B');
   await expect(page.getByTitle('Edit grade').nth(2)).toHaveText('B');
+});
+
+test('chart legend: solo a series, then All and None', async ({ page }) => {
+  await page.goto('/#/charts?q=where%20tags%20has%20sweep%20group%20by%20config.optim.lr');
+  const chips = page.locator('.legend-chip');
+  await expect(chips).toHaveCount(4);
+  await chips.nth(1).dblclick();
+  await expect(page.locator('.legend-chip.off')).toHaveCount(3);
+  await expect(chips.nth(1)).not.toHaveClass(/off/);
+  await chips.nth(1).click({ modifiers: ['Alt'] }); // soloing it again brings all back
+  await expect(page.locator('.legend-chip.off')).toHaveCount(0);
+  await page.getByRole('button', { name: 'None', exact: true }).click();
+  await expect(page.locator('.legend-chip.off')).toHaveCount(4);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.locator('.legend-chip.off')).toHaveCount(0);
+});
+
+test('save view asks in a themed dialog', async ({ page }) => {
+  await page.goto('/#/runs');
+  await page.getByRole('button', { name: /save (current )?view/i }).click();
+  const dlg = page.getByRole('dialog', { name: 'Save the current view' });
+  await expect(dlg).toBeVisible();
+  await expect(dlg.getByLabel('Name')).toHaveValue('my-view');
+  await page.keyboard.press('Escape');
+  await expect(dlg).toBeHidden();
 });
