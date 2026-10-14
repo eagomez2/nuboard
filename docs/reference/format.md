@@ -161,14 +161,14 @@ bytes after the last indexed entry (from a crash) are harmless.
 
 | `mime` | Written by |
 | --- | --- |
-| `image/png`, `image/jpeg`, ... | `log_image` (arrays are PNG-encoded with the standard library) |
-| `audio/wav` | `log_audio` with an array (16-bit PCM, standard library `wave`) or a WAV file |
-| `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/mp4`, `audio/webm` | `log_audio` with a file or bytes of that format, stored unchanged |
-| `image/svg+xml` | `log_figure` with a matplotlib figure |
-| `application/vnd.plotly.v1+json` | `log_figure` with a Plotly figure or a figure dict |
-| `application/vnd.vegalite+json` | `log_figure` with an Altair chart or a Vega-Lite dict |
-| `application/vnd.bokeh+json` | `log_figure` with a Bokeh figure |
-| `text/html` | `log_html` (the viewer renders it in a sandboxed iframe) |
+| `image/png`, `image/jpeg`, ... | `add_image` (arrays are PNG-encoded with the standard library) |
+| `audio/wav` | `add_audio` with an array (16-bit PCM, standard library `wave`) or a WAV file |
+| `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/mp4`, `audio/webm` | `add_audio` with a file or bytes of that format, stored unchanged |
+| `image/svg+xml` | `add_figure` with a matplotlib figure |
+| `application/vnd.plotly.v1+json` | `add_figure` with a Plotly figure or a figure dict |
+| `application/vnd.vegalite+json` | `add_figure` with an Altair chart or a Vega-Lite dict |
+| `application/vnd.bokeh+json` | `add_figure` with a Bokeh figure |
+| `text/html` | `add_html` (the viewer renders it in a sandboxed iframe) |
 
 ## Compacted scalars: `data.parquet`
 

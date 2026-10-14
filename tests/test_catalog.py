@@ -9,8 +9,10 @@ from nuboard.catalog import SCHEMA_VERSION, Catalog, find_runs
 
 def test_find_runs_any_folder_shape(tmp_path):
     root = tmp_path / "exp"
+
     for project in ("a", "team/b"):
         nb.init(project, capture_env=False).finish()
+
     nested = {p for p, _ in find_runs(root)}
     assert nested == {"a", "team/b"}
     assert [p for p, _ in find_runs(root / "a")] == ["a"]
@@ -60,10 +62,12 @@ def test_5000_runs_list_quickly(tmp_path):
             },
         }
     )
+
     for i in range(5000):
         d = root / f"20250101-0000_r{i}_aaaaaa"
         d.mkdir(parents=True)
         (d / "run.json").write_text(base)
+
     cat = Catalog(tmp_path / "many", cache=tmp_path / "cache")
     cat.refresh()
     t0 = time.perf_counter()

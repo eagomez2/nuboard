@@ -21,6 +21,7 @@ src/nuboard/            Python package (the name lives here and in pyproject.tom
 frontend/               Svelte 5 + TypeScript + Vite + Tailwind v4 + uPlot
 tests/                  pytest
 benchmarks/bench.py     performance checks
+scripts/blank_lines.py  blank-line-around-blocks formatter (see Code style)
 docs/                   this site (mkdocs)
 examples/               runnable examples
 hatch_build.py          wheel build hook that builds and bundles the frontend
@@ -45,11 +46,35 @@ uv run nuboard up demo-runs           # terminal 1 (port 6070)
 cd frontend && pnpm dev                  # terminal 2, open http://localhost:5173
 ```
 
+## Code style
+
+- [PEP 8](https://peps.python.org/pep-0008/), formatted by `ruff format` with
+  100-character lines.
+- Google-style docstrings (`Args:`, `Returns:`, `Raises:`, `Yields:`) on every
+  module, class and function, checked by ruff's `pydocstyle` rules. Constructor
+  arguments are documented on the class. Inline code uses single backticks.
+- A blank line separates every `if`, `for`, `while`, `with`, `try` and `match`
+  block from the statements before and after it:
+
+    ```python
+    if config is None:
+        return {}
+
+    if isinstance(config, Mapping):
+        return dict(config)
+
+    to_dict = getattr(config, "to_dict", None)
+    ```
+
+  `python scripts/blank_lines.py src tests` adds the missing ones, and
+  `tests/test_style.py` fails if any are missing.
+
 ## Checks
 
 ```bash
 uv run pytest                   # Python tests (crash safety, resume, format, server, …)
 uv run ruff check . && uv run ruff format --check .
+python scripts/blank_lines.py --check src tests scripts examples benchmarks
 uv run pyright
 uv run python benchmarks/bench.py
 

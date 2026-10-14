@@ -164,8 +164,8 @@ runs that produced and used it. See [Artifacts and lineage](artifacts.md).
 
 ## Media page
 
-Shows images, audio, figures, HTML and text logged with `log_image`,
-`log_audio`, `log_figure`, `log_html` and `log_text`, for the selected runs (or the query result, up to
+Shows images, audio, figures, HTML and text logged with `add_image`,
+`add_audio`, `add_figure`, `add_html` and `add_text`, for the selected runs (or the query result, up to
 16 runs). Pick a key, then move the step slider; each run shows its latest
 item at or before that step, side by side.
 

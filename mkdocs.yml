@@ -1,7 +1,7 @@
 site_name: nuboard
 site_description: Experiment tracking that lives in a folder. A fast, local tracker and viewer for ML training.
 docs_dir: docs
-copyright: Copyright &copy; 2026 Esteban Gómez
+copyright: Copyright &copy; 2026 Esteban Gómez · <a href="license/">MIT License</a>
 nav:
   - About: index.md
   - Installation: installation.md
@@ -22,6 +22,7 @@ nav:
   - Changelog:
       - Changelog: changelog.md
       - Roadmap: roadmap.md
+      - License: license.md
 theme:
   name: material
   logo: assets/logo.svg
