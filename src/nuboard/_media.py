@@ -102,4 +102,6 @@ def figure_bytes(fig: Any) -> tuple[bytes, str]:
         return buf.getvalue(), "image/svg+xml"
     if isinstance(fig, dict) and "$schema" in fig and "vega" in str(fig["$schema"]):
         return json.dumps(fig).encode("utf-8"), "application/vnd.vegalite+json"
+    if isinstance(fig, dict) and isinstance(fig.get("data"), list):  # Plotly figure dict
+        return json.dumps(fig).encode("utf-8"), "application/vnd.plotly.v1+json"
     raise TypeError(f"unsupported figure type {type(fig).__name__}")

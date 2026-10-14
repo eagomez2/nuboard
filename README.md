@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.2.0-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.3.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 3 projects, 28 runs, one live run
 ```
 
@@ -47,7 +47,7 @@ Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.2
+## What's in 0.3
 
 | Area | Included |
 | --- | --- |
@@ -55,15 +55,15 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
 | Analysis | `nm.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
 | Runs | query language, stars, notes, archive, custom fields, column chooser, collections, saved views, run details and config/file diffs |
-| Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip |
+| Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any metric (tokens, epochs) |
+| Media | images, text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures |
 | Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
 | Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per metric and rank |
 | CLI | `nuboard up`, `demo`, `ls`, `compact` |
 
-Not yet: multi-GPU rank bands, interactive Plotly/Vega/Bokeh rendering,
-TensorBoard import. See the [roadmap](docs/roadmap.md) and the
+Not yet: multi-GPU rank bands, TensorBoard import. See the [roadmap](docs/roadmap.md) and the
 [changelog](docs/changelog.md).
 
 ## Documentation

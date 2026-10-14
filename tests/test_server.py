@@ -149,3 +149,35 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
     assert client.get("/api/runs", params={"q": "alerts > 0"}).json()["runs"][0]["name"] == "bad"
     art = client.get("/api/artifacts").json()["artifacts"]
     assert art[0]["producers"] == [bad["key"]] and art[0]["consumers"] == [runs["user"]["key"]]
+
+
+def test_x_axis_by_another_metric(client):
+    with nm.init("sweep", name="tok", capture_env=False) as run:
+        for s in range(0, 2000, 2):
+            run.log({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
+    key = next(r["key"] for r in client.get("/api/runs").json()["runs"] if r["name"] == "tok")
+    res = client.get("/api/scalars", params={"runs": key, "metric": "loss", "x": "metric:tokens"})
+    table = pa.ipc.open_stream(res.content).read_all()
+    assert table.schema.metadata[b"x"] == b"metric:tokens"
+    xs = table.column("x").to_pylist()
+    assert xs[0] == 0 and xs[-1] == 1998 * 512.0
+    zoomed = client.get(
+        "/api/scalars",
+        params={"runs": key, "metric": "loss", "x": "metric:tokens", "xmin": 51200, "xmax": 102400},
+    )
+    zx = pa.ipc.open_stream(zoomed.content).read_all().column("x").to_pylist()
+    assert zx[0] <= 51200 and 102400 <= zx[-1] <= 103424 and len(zx) > 50
+    # a metric the run does not have gives no series instead of an error
+    none = client.get("/api/scalars", params={"runs": key, "metric": "loss", "x": "metric:nope"})
+    assert pa.ipc.open_stream(none.content).read_all().num_rows == 0
+
+
+def test_assets_are_readable_from_the_figure_sandbox(client):
+    from nuboard.server.app import STATIC
+
+    assets = sorted((STATIC / "assets").glob("*.js")) if (STATIC / "assets").exists() else []
+    if not assets:
+        pytest.skip("frontend not built")
+    r = client.get(f"/assets/{assets[0].name}")
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "*"

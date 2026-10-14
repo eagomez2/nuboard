@@ -11,20 +11,22 @@ the [changelog](changelog.md) for what each version added.
   catalog, query language, CLI, and the Runs, Charts and Media pages.
 - **0.2**: health alerts, Sweeps, Timeline and Artifacts pages, custom fields,
   a column chooser and collections.
+- **0.3**: charts against any metric (tokens, epochs) and interactive Plotly,
+  Vega-Lite and Bokeh figures.
 
 ## Next
 
 1. **Multi-GPU view**: rank-0 line with min/mean/max bands across ranks,
    expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
    Alerts already record their rank.
-2. **Media**: interactive Plotly / Vega-Lite / Bokeh renderers (lazy-loaded),
-   three.js point clouds, side-by-side text diffs across steps, audio.
+2. **Media**: three.js point clouds, side-by-side text diffs across steps,
+   audio.
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
 5. **TensorBoard import** (tfevents → run folders).
-6. Charts: x-axis by any metric (e.g. tokens), Web Workers for decoding and
-   smoothing, WebGL for very large scatters.
+6. Charts: Web Workers for decoding and smoothing, WebGL for very large
+   scatters.
 7. Runs table: TanStack Virtual, Bits UI menus and comboboxes (0.2 uses
    native controls and `prompt()` for collection names).
 8. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
@@ -32,6 +34,8 @@ the [changelog](changelog.md) for what each version added.
 ## Known limitations
 
 - Only one rank is plotted at a time (rank 0).
+- Bokeh figures need `cdn.bokeh.org` when viewed; Plotly and Vega-Lite work
+  offline.
 - Smoothing is applied to the downsampled series the server sends (about
   one to two points per pixel), not to every raw point.
 - The run list sends the whole filtered list to the browser; at tens of

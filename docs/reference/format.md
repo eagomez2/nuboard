@@ -163,7 +163,7 @@ bytes after the last indexed entry (from a crash) are harmless.
 | --- | --- |
 | `image/png`, `image/jpeg`, ... | `log_image` (arrays are PNG-encoded with the standard library) |
 | `image/svg+xml` | `log_figure` with a matplotlib figure |
-| `application/vnd.plotly.v1+json` | `log_figure` with a Plotly figure |
+| `application/vnd.plotly.v1+json` | `log_figure` with a Plotly figure or a figure dict |
 | `application/vnd.vegalite+json` | `log_figure` with an Altair chart or a Vega-Lite dict |
 | `application/vnd.bokeh+json` | `log_figure` with a Bokeh figure |
 | `text/html` | `log_html` (the viewer renders it in a sandboxed iframe) |

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FigureFrame from '../components/FigureFrame.svelte';
   import { api, type MediaItem } from '../lib/api';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -97,13 +98,11 @@
         {:else if it.mime.startsWith('image/')}
           <img src={api.mediaUrl(r.key, it.index!)} alt={it.caption ?? it.key} />
           {#if it.caption}<div class="faint cap">{it.caption}</div>{/if}
+        {:else if /plotly|vega|bokeh/.test(it.mime)}
+          <FigureFrame url={api.mediaUrl(r.key, it.index!)} mime={it.mime} title="{r.name} {it.key}" />
         {:else}
           <div class="none">
             <a href={api.mediaUrl(r.key, it.index!)} download>{it.mime}</a>
-            <p class="faint">
-              Interactive {it.mime.includes('plotly') ? 'Plotly' : it.mime.includes('vega') ? 'Vega-Lite' : 'Bokeh'} rendering
-              is on the roadmap; the spec is stored and downloadable.
-            </p>
           </div>
         {/if}
       </figure>

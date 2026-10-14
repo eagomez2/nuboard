@@ -100,7 +100,12 @@ are selected, every run matching the query.
   has a color and a marker shape, so series stay distinguishable without
   color.
 - **X axis**: step, wall time, relative time since the run started, or active
-  time (relative time with pauses longer than five minutes removed).
+  time (relative time with pauses longer than five minutes removed). The
+  **x by metric** menu plots against any other metric instead, such as
+  `train/tokens` or `epoch`; counter-like metrics are listed first. The x
+  metric is matched to each point by step (interpolated when the two were
+  logged at different steps), and zooming works as usual when the x metric
+  only grows. The choice is kept in the URL as `x=metric:<name>`.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
 - **Robust y**: clips the y-axis to the 1st–99th percentile so a single spike
@@ -156,5 +161,17 @@ item at or before that step, side by side.
 Logged HTML runs in a sandboxed iframe (`sandbox="allow-scripts"`, no
 same-origin access) and is served with a matching `Content-Security-Policy`.
 Matplotlib figures are stored as SVG and shown as images. Plotly, Vega-Lite
-and Bokeh specs are stored and downloadable; rendering them interactively is
-on the [roadmap](../roadmap.md).
+and Bokeh figures are interactive (hover, zoom, pan, export), each in its own
+sandboxed iframe, and follow the light or dark theme. Every figure also has a
+**download spec** link for the raw JSON.
+
+| Library | Rendered with | Network |
+| --- | --- | --- |
+| Plotly | plotly.js 4, bundled with the viewer | none |
+| Altair / Vega-Lite | Vega 6, Vega-Lite 6 and vega-embed, bundled | none |
+| Bokeh | BokehJS from `cdn.bokeh.org`, for the exact version that wrote the figure | needed when viewing |
+
+The bundled renderers load only when a figure of that kind is on screen.
+BokehJS has to match the Python Bokeh version, so it cannot be bundled; when
+the CDN is unreachable the figure shows a message and the spec stays
+downloadable.

@@ -307,7 +307,65 @@ def _vit_runs(root: Path, base: float) -> None:
                         "samples/augmented", img, step=epoch, caption=f"{aug} epoch {epoch}"
                     )
                 run.log_html("eval/report", _report_html(aug, epoch, acc), step=epoch)
+                per_class = _per_class(rng, acc)
+                run.log_figure("eval/per_class", _vega_per_class(per_class, epoch), step=epoch)
+                run.log_figure("eval/confusion", _plotly_confusion(rng, per_class), step=epoch)
         run.finish(_ended=t)
+
+
+_CLASSES = ["plane", "car", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+
+
+def _per_class(rng: random.Random, acc: float) -> list[float]:
+    hard = {"cat": -0.12, "dog": -0.09, "bird": -0.05}
+    return [min(0.99, acc + hard.get(c, 0.03) + rng.gauss(0, 0.015)) for c in _CLASSES]
+
+
+def _vega_per_class(per_class: list[float], epoch: int) -> dict[str, Any]:
+    """A Vega-Lite spec as a plain dict, as altair's ``to_dict()`` would produce."""
+    return {
+        "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+        "title": f"Per-class accuracy, epoch {epoch}",
+        "width": "container",
+        "height": 260,
+        "data": {"values": [{"class": c, "acc": round(a, 4)} for c, a in zip(_CLASSES, per_class)]},
+        "mark": {"type": "bar", "cornerRadiusEnd": 3, "tooltip": True},
+        "encoding": {
+            "x": {"field": "class", "type": "nominal", "sort": "-y", "title": None},
+            "y": {"field": "acc", "type": "quantitative", "scale": {"zero": False}},
+            "color": {"value": "#0072b2"},
+        },
+    }
+
+
+def _plotly_confusion(rng: random.Random, per_class: list[float]) -> dict[str, Any]:
+    """A Plotly figure as a plain dict, as ``fig.to_dict()`` would produce."""
+    rows = []
+    for i, a in enumerate(per_class):
+        rest = [rng.random() ** 3 for _ in _CLASSES]
+        rest[i] = 0.0
+        if _CLASSES[i] in ("cat", "dog"):  # cats and dogs get confused with each other
+            rest[_CLASSES.index("dog" if _CLASSES[i] == "cat" else "cat")] += 4.0
+        total = sum(rest)
+        rows.append([round(a if j == i else (1 - a) * r / total, 4) for j, r in enumerate(rest)])
+    return {
+        "data": [
+            {
+                "type": "heatmap",
+                "z": rows,
+                "x": _CLASSES,
+                "y": _CLASSES,
+                "colorscale": [[0, "rgba(0,114,178,0.04)"], [1, "#0072b2"]],
+                "hovertemplate": "true %{y}<br>predicted %{x}<br>%{z:.3f}<extra></extra>",
+            }
+        ],
+        "layout": {
+            "title": {"text": "Confusion matrix"},
+            "height": 460,
+            "xaxis": {"title": {"text": "predicted"}},
+            "yaxis": {"title": {"text": "true"}, "autorange": "reversed"},
+        },
+    }
 
 
 def _report_html(aug: str, epoch: int, acc: float) -> str:

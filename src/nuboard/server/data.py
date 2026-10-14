@@ -101,6 +101,8 @@ class Store:
         xmin: float | None,
         xmax: float | None,
     ) -> tuple[np.ndarray, ...] | None:
+        if x_kind.startswith("metric:"):
+            return self._series_against(key, metric, x_kind[7:], rank, points, xmin, xmax)
         reader = self.fresh_reader(key)
         record = self.catalog.get(key)
         if reader is None or record is None:
@@ -139,6 +141,58 @@ class Store:
             i1 = int(np.searchsorted(x, xmax, "right")) + 1 if xmax is not None else len(x)
             sl = slice(max(i0, 0), min(i1, len(x)))
             x, v, lo, hi = x[sl], v[sl], lo[sl], hi[sl]
+        return x, v, lo, hi
+
+    def _series_against(
+        self,
+        key: str,
+        metric: str,
+        x_metric: str,
+        rank: int,
+        points: int,
+        xmin: float | None,
+        xmax: float | None,
+    ) -> tuple[np.ndarray, ...] | None:
+        """``metric`` with another metric (e.g. tokens seen) as x, matched by step.
+
+        The x metric is interpolated at each step of ``metric``. When it only
+        grows (tokens, epochs, samples), a zoom range in its units is turned into
+        a step range, so zooming still loads finer data.
+        """
+        reader = self.fresh_reader(key)
+        if reader is None:
+            return None
+        xs, _, xv = reader.scalars(x_metric, rank)
+        ok = np.isfinite(xv)
+        xs, xv = xs[ok], xv[ok]
+        if len(xs) == 0:
+            return None
+        if np.any(np.diff(xs) < 0):
+            order = np.argsort(xs, kind="stable")
+            xs, xv = xs[order], xv[order]
+        xs_f = xs.astype("f8")
+        increasing = bool(np.all(np.diff(xv) >= 0))
+        smin = smax = None
+        if increasing:
+            if xmin is not None:
+                smin = float(np.interp(xmin, xv, xs_f))
+            if xmax is not None:
+                smax = float(np.interp(xmax, xv, xs_f))
+        data = self.raw_series(key, metric, "step", rank, points, smin, smax)
+        if data is None:
+            return None
+        steps, v, lo, hi = data
+        x = np.interp(steps, xs_f, xv, left=np.nan, right=np.nan)
+        keep = np.isfinite(x)
+        if not increasing:  # e.g. a learning rate: plot as a curve ordered by x
+            if xmin is not None:
+                keep &= x >= xmin
+            if xmax is not None:
+                keep &= x <= xmax
+        x, v, lo, hi = x[keep], v[keep], lo[keep], hi[keep]
+        if not increasing:
+            order = np.argsort(x, kind="stable")
+            x, v, lo, hi = x[order], v[order], lo[order], hi[order]
         return x, v, lo, hi
 
     def chart(
