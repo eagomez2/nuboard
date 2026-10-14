@@ -105,10 +105,27 @@
     const next = cols.includes(c) ? cols.filter((x) => x !== c) : [...cols, c];
     router.set({ cols: next.join(',') || null });
   }
+  const fieldName = (text: string) => text.trim().replace(/[,\s]+/g, '_');
   function addField() {
-    const name = newField.trim().replace(/[,\s]+/g, '_');
-    if (name && !cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
+    const name = fieldName(newField);
+    if (!name) return;
+    if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
     newField = '';
+    menu = false; // show the new column, whose cells are now editable
+  }
+
+  // Set one field on every selected run (the column is added if needed)
+  async function setFieldOnSelected() {
+    const shown = cols.filter((c) => c.startsWith('field:')).map((c) => c.slice(6));
+    const name = fieldName(
+      prompt(`Field to set on ${selected.length} run(s):`, shown[0] ?? fieldNames[0] ?? 'verdict') ?? '',
+    );
+    if (!name) return;
+    const value = prompt(`Value of "${name}" for ${selected.length} run(s) (empty clears it):`, '');
+    if (value === null) return;
+    await api.annotate(selected, { fields: { [name]: parseField(value) } });
+    if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
+    app.loadRuns();
   }
   function colLabel(c: string) {
     const [kind, ...rest] = c.split(':');
@@ -127,22 +144,21 @@
     fieldEdit = { key: r.key, field };
     fieldDraft = r.fields?.[field] === undefined ? '' : String(r.fields[field]);
   }
+  // numbers and booleans are stored as such so queries like `score > 3` work
+  function parseField(raw: string): FieldValue | null {
+    const text = raw.trim();
+    if (text === '') return null;
+    if (text === 'true' || text === 'false') return text === 'true';
+    return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text) ? Number(text) : text;
+  }
+
   async function saveField() {
     const edit = fieldEdit;
     if (!edit) return;
     fieldEdit = null;
     const r = app.runByKey(edit.key);
     if (!r) return;
-    const text = fieldDraft.trim();
-    // numbers and booleans are stored as such so queries like `score > 3` work
-    const value: FieldValue | null =
-      text === ''
-        ? null
-        : text === 'true' || text === 'false'
-          ? text === 'true'
-          : /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text)
-            ? Number(text)
-            : text;
+    const value = parseField(fieldDraft);
     if (value === (r.fields?.[edit.field] ?? null)) return;
     const fields = { ...(r.fields ?? {}) };
     if (value === null) delete fields[edit.field];
@@ -263,9 +279,15 @@
               addField();
             }}
           >
-            <input class="input" placeholder="New field, e.g. verdict" bind:value={newField} />
-            <button class="btn" aria-label="Add field"><Icon name="plus" size={14} /></button>
+            <input class="input" placeholder="Field name, e.g. verdict" bind:value={newField} />
+            <button class="btn" aria-label="Add field" disabled={!fieldName(newField)}
+              ><Icon name="plus" size={14} /></button
+            >
           </form>
+          <p class="fieldhint">
+            Type a name and press + to add a column. Then click a cell in a ✎ column to edit it (Enter saves, Esc
+            cancels, empty clears), or select runs and use <b>Set field…</b>.
+          </p>
           <div class="label">Metrics (last value)</div>
           {#each metrics as m (m)}
             <label class="opt"
@@ -321,6 +343,7 @@
       >
         <Icon name="check" size={15} /> Mark reviewed
       </button>
+      <button class="btn" onclick={setFieldOnSelected}>Set field…</button>
       <button class="btn" onclick={addToCollection}>
         <Icon name="collection" size={15} /> Add to collection…
       </button>
@@ -623,6 +646,13 @@
     align-items: center;
     font-size: 12.5px;
     padding: 3px 0;
+  }
+  .fieldhint {
+    margin: 2px 0 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--muted);
+    max-width: 280px;
   }
   .newfield {
     display: flex;

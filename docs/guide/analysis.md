@@ -18,6 +18,9 @@ for r in runs:
 for r in project.runs('collections has "shortlist"'):
     print(r.name, r.fields.get("verdict"), r.collections, [a["message"] for a in r.alerts()])
 
+# write a custom field (None removes it); a running viewer picks it up
+project.runs("where config.optim.lr = 1e-3")[0].set_field("verdict", "keep")
+
 # one metric across runs, long format: run_id, name, step, time, value, config.optim.lr
 table = project.scalars("train/loss", group_by="config.optim.lr", query="where tags has sweep")
 df = table.to_pandas()

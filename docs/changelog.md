@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Custom fields are easier to find and edit: the **+** in **Columns** is
+  disabled until a name is typed (before, it silently did nothing), adding a
+  field closes the menu to show the new column, and the menu explains how to
+  edit cells.
+- **Set field…** in the selection bar sets one field on all selected runs.
+- `RunHandle.set_field(name, value)` writes a custom field from Python.
+
 ## 0.4.1
 
 - Spectrogram options for the waveform player on the Media page: colormap
