@@ -35,7 +35,7 @@ browser's local storage.
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  **Add to collection…**, open them in **Media**, **Compare** two of them, or
+  **Add to collection…**, open them in **Media**, **Compare** up to eight of them, or
   **Plot selected**.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
@@ -70,15 +70,17 @@ listing run ids, so it can be committed and survives moving the folder.
 
 ### Run details and compare
 
-Click a run name to open its details below the table: every setting (config,
+Click a run name to open its details above the table: every setting (config,
 git commit, host, Python, GPUs, world size, fork origin, artifacts used and
 produced, last value of every metric) and the files saved by `init`. A crashed
 run shows its traceback.
 
-With two runs selected, **Compare** shows the same tabs side by side:
-**all settings** highlights rows that differ, and each file tab (`config.json`,
-`requirements.txt`, `git.patch`, `command.txt`) shows a line diff. **only
-changes** hides identical lines.
+With two to eight runs selected, **Compare** shows the same tabs side by side:
+**all settings** has a column per run and highlights rows where any run
+differs. Each file tab (`config.json`, `requirements.txt`, `git.patch`,
+`command.txt`) shows a line diff between two of the runs; with more than two,
+pick which two from the **diff … against …** menus. **only changes** hides
+identical rows and lines.
 
 ## Charts page
 

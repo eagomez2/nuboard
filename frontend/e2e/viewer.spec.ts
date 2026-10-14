@@ -21,6 +21,18 @@ test('compare two runs shows a config diff', async ({ page }) => {
   await expect(page.locator('.line.del').first()).toBeVisible();
 });
 
+test('compare opens on screen and takes more than two runs', async ({ page }) => {
+  await page.goto('/#/runs?project=llm-pretrain');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  for (const i of [0, 1, 2, 3]) await boxes.nth(i).check();
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await expect(page.getByRole('heading', { name: /Compare 4 runs/ })).toBeInViewport();
+  await expect(page.locator('.srow.head .run')).toHaveCount(4);
+  await page.getByRole('button', { name: 'config.json' }).click();
+  await page.getByRole('combobox', { name: 'Right run' }).selectOption({ index: 3 });
+  await expect(page).toHaveURL(/pair=0(,|%2C)3/);
+});
+
 test('charts render grouped bands, a legend and small multiples', async ({ page }) => {
   await page.goto('/#/charts?q=where%20tags%20has%20sweep%20group%20by%20config.optim.lr');
   await expect(page.locator('.legend-chip')).toHaveCount(4);

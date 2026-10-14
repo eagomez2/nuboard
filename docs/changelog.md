@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1
+
+- **Compare** takes up to eight runs (it was limited to two). All settings
+  shows a column per run and highlights rows where any run differs; file tabs
+  diff any two of the compared runs.
+- The run details and compare panel now open above the runs table and scroll
+  into view, instead of appearing below a long table where they were easy to
+  miss.
+
 ## 0.3.0
 
 **Charts**
