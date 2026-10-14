@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import RunTable from '../components/RunTable.svelte';
   import ComparePanel from '../components/ComparePanel.svelte';
+  import { api } from '../lib/api';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -16,6 +17,17 @@
     const page = state.page ?? 'charts';
     history.pushState(null, '', `#/${page}?${new URLSearchParams(state.params ?? {}).toString()}`);
     dispatchEvent(new HashChangeEvent('hashchange'));
+  }
+
+  const query = $derived(router.get('q'));
+  const collectionQuery = (name: string) => `collections has "${name}"`;
+
+  async function removeCollection(projectName: string, name: string) {
+    if (!confirm(`Delete the collection "${name}"? The runs themselves are not touched.`)) return;
+    await api.saveCollection({ name, project: projectName, delete: true });
+    if (query === collectionQuery(name)) router.set({ q: null });
+    app.loadCollections();
+    app.loadRuns();
   }
 
   async function saveView() {
@@ -50,6 +62,22 @@
         <span class="grow">{p.name}</span>
         <span class="count">{p.runs}</span>
       </button>
+      {#each app.collections.filter((c) => c.project === p.name) as c (c.name)}
+        <div class="item coll" class:on={project === p.name && query === collectionQuery(c.name)}>
+          <button
+            class="collbtn"
+            title={c.description || `Collection: ${c.runs.length} runs (collections/${c.name}.json)`}
+            onclick={() => router.set({ project: p.name, q: collectionQuery(c.name), sel: null })}
+          >
+            <Icon name="collection" size={15} />
+            <span class="grow">{c.name}</span>
+            <span class="count">{c.runs.length}</span>
+          </button>
+          <button class="del" aria-label="Delete collection {c.name}" onclick={() => removeCollection(p.name, c.name)}
+            >×</button
+          >
+        </div>
+      {/each}
       {#each p.views as v (v)}
         <button class="item view" onclick={() => openView(p.name, v)} title="Saved view (views/{v})">
           <Icon name="file" size={15} />
@@ -59,9 +87,11 @@
     {/each}
     <button class="btn save" onclick={saveView}>Save current view…</button>
     <p class="hint">
-      Each run is its own folder. Stars, notes and review marks are written to the run's
-      <code>annotations.json</code>, so they travel with the folder. Saved views go to
-      <code>&lt;project&gt;/views/</code> and can be committed to git.
+      Each run is its own folder. Stars, notes, review marks and custom fields are written to the run's <code
+        >annotations.json</code
+      >, so they travel with the folder. Collections and saved views go to <code>&lt;project&gt;/collections/</code> and
+      <code>&lt;project&gt;/views/</code>
+      and can be committed to git.
     </p>
   </aside>
 
@@ -113,6 +143,32 @@
   }
   .proj {
     padding-left: 22px;
+  }
+  .coll {
+    padding: 0 0 0 40px;
+    font-size: 13px;
+  }
+  .collbtn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    background: none;
+    color: inherit;
+    padding: 6px 0;
+    text-align: left;
+  }
+  .del {
+    border: 0;
+    background: none;
+    color: var(--faint);
+    padding: 0 8px;
+    visibility: hidden;
+  }
+  .coll:hover .del {
+    visibility: visible;
   }
   .view {
     padding-left: 40px;

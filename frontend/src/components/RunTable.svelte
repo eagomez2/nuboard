@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import Status from './Status.svelte';
-  import { api, num, type RunBrief } from '../lib/api';
+  import { api, num, type FieldValue, type RunBrief } from '../lib/api';
   import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -11,6 +11,10 @@
   let viewport = $state(600);
   let editing = $state<string | null>(null);
   let noteDraft = $state('');
+  let fieldEdit = $state<{ key: string; field: string } | null>(null);
+  let fieldDraft = $state('');
+  let menu = $state(false);
+  let newField = $state('');
 
   const find = $derived(router.get('find').toLowerCase());
   const showArchived = $derived(router.get('archived') === '1');
@@ -75,6 +79,90 @@
       .map(([k]) => k)
       .slice(0, 8);
   });
+
+  // Extra columns picked in the Columns menu: field:<name>, config:<key>, metric:<name>.
+  const cols = $derived(router.list('cols'));
+  const fieldNames = $derived.by(() => {
+    const names = new Set<string>();
+    for (const r of app.runs?.runs ?? []) for (const k of Object.keys(r.fields ?? {})) names.add(k);
+    for (const c of cols) if (c.startsWith('field:')) names.add(c.slice(6));
+    return [...names].sort();
+  });
+  const configKeys = $derived.by(() => {
+    const keys = new Set<string>();
+    for (const r of (app.runs?.runs ?? []).slice(0, 2000)) for (const k of Object.keys(r.config)) keys.add(k);
+    return [...keys].sort();
+  });
+  const template = $derived(
+    `30px 26px 96px minmax(220px, 2.2fr)` +
+      cols.map((c) => (c.startsWith('field:') ? ' 120px' : ' 100px')).join('') +
+      ` minmax(180px, 2fr) 170px 84px 80px 76px minmax(120px, 1.2fr)`,
+  );
+  const width = $derived(1120 + cols.length * 120);
+
+  function toggleCol(c: string) {
+    const next = cols.includes(c) ? cols.filter((x) => x !== c) : [...cols, c];
+    router.set({ cols: next.join(',') || null });
+  }
+  function addField() {
+    const name = newField.trim().replace(/[,\s]+/g, '_');
+    if (name && !cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
+    newField = '';
+  }
+  function colLabel(c: string) {
+    const [kind, ...rest] = c.split(':');
+    const name = rest.join(':');
+    return kind === 'config' ? short(name) : name;
+  }
+  function cell(r: RunBrief, c: string): string {
+    const [kind, ...rest] = c.split(':');
+    const name = rest.join(':');
+    if (kind === 'field') return r.fields?.[name] === undefined ? '' : String(r.fields[name]);
+    if (kind === 'config') return name in r.config ? fmtValue(r.config[name]) : '';
+    const s = r.summary[name];
+    return s ? fmtNum(num(s.last)) : '';
+  }
+  function startField(r: RunBrief, field: string) {
+    fieldEdit = { key: r.key, field };
+    fieldDraft = r.fields?.[field] === undefined ? '' : String(r.fields[field]);
+  }
+  async function saveField() {
+    const edit = fieldEdit;
+    if (!edit) return;
+    fieldEdit = null;
+    const r = app.runByKey(edit.key);
+    if (!r) return;
+    const text = fieldDraft.trim();
+    // numbers and booleans are stored as such so queries like `score > 3` work
+    const value: FieldValue | null =
+      text === ''
+        ? null
+        : text === 'true' || text === 'false'
+          ? text === 'true'
+          : /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text)
+            ? Number(text)
+            : text;
+    if (value === (r.fields?.[edit.field] ?? null)) return;
+    const fields = { ...(r.fields ?? {}) };
+    if (value === null) delete fields[edit.field];
+    else fields[edit.field] = value;
+    r.fields = fields;
+    await api.annotate([r.key], { fields: { [edit.field]: value } });
+  }
+  async function addToCollection() {
+    const keys = [...app.selected];
+    const existing = [...new Set((app.runs?.runs ?? []).flatMap((r) => r.collections ?? []))];
+    const hint = existing.length ? ` Existing: ${existing.join(', ')}` : '';
+    const name = prompt(`Add ${keys.length} run(s) to the collection:${hint}`, existing[0] ?? 'shortlist');
+    if (!name) return;
+    await api.saveCollection({ name, add: keys });
+    app.loadRuns();
+    app.loadCollections();
+  }
+  function openAlert(r: RunBrief) {
+    const first = r.alerts[0];
+    router.go('charts', { sel: r.key, metric: first?.metric ?? null });
+  }
 
   const start = $derived(Math.max(0, Math.floor(scrollTop / ROW) - 8));
   const end = $derived(Math.min(rows.length, Math.ceil((scrollTop + viewport) / ROW) + 8));
@@ -154,6 +242,54 @@
       ></button>
       show archived
     </label>
+    <div class="colmenu">
+      <button class="btn" aria-expanded={menu} onclick={() => (menu = !menu)}>
+        <Icon name="columns" size={15} /> Columns{cols.length ? ` (${cols.length})` : ''}
+      </button>
+      {#if menu}
+        <div class="card pop" role="dialog" aria-label="Columns">
+          <div class="label">Custom fields</div>
+          {#each fieldNames as f (f)}
+            <label class="opt"
+              ><input type="checkbox" checked={cols.includes(`field:${f}`)} onchange={() => toggleCol(`field:${f}`)} />
+              <span class="mono">{f}</span></label
+            >
+          {/each}
+          <form
+            class="newfield"
+            onsubmit={(e) => {
+              e.preventDefault();
+              addField();
+            }}
+          >
+            <input class="input" placeholder="New field, e.g. verdict" bind:value={newField} />
+            <button class="btn" aria-label="Add field"><Icon name="plus" size={14} /></button>
+          </form>
+          <div class="label">Metrics (last value)</div>
+          {#each metrics as m (m)}
+            <label class="opt"
+              ><input
+                type="checkbox"
+                checked={cols.includes(`metric:${m}`)}
+                onchange={() => toggleCol(`metric:${m}`)}
+              />
+              <span class="mono">{m}</span></label
+            >
+          {/each}
+          <div class="label">Config</div>
+          {#each configKeys as k (k)}
+            <label class="opt"
+              ><input
+                type="checkbox"
+                checked={cols.includes(`config:${k}`)}
+                onchange={() => toggleCol(`config:${k}`)}
+              />
+              <span class="mono">{k}</span></label
+            >
+          {/each}
+        </div>
+      {/if}
+    </div>
     <button
       class="btn"
       disabled={selected.length < 1 || selected.length > 2}
@@ -183,17 +319,29 @@
       >
         <Icon name="check" size={15} /> Mark reviewed
       </button>
+      <button class="btn" onclick={addToCollection}>
+        <Icon name="collection" size={15} /> Add to collection…
+      </button>
       <button class="btn" onclick={() => router.go('media', { sel: selected.join(',') })}>Media</button>
       <button class="btn btn-ghost" onclick={() => app.selected.clear()}>Clear selection</button>
     </div>
   {/if}
 
-  <div class="table" role="table" aria-rowcount={rows.length}>
+  <div class="table" role="table" aria-rowcount={rows.length} style="--cols:{template}; --width:{width}px">
     <div class="row head" role="row">
       <span><input type="checkbox" checked={allSelected} onchange={toggleAll} aria-label="Select all" /></span>
       <span title="Starred">★</span>
       <button class="h" onclick={() => sortBy('status')}>Status{arrow('status')}</button>
       <button class="h" onclick={() => sortBy('name')}>Run{arrow('name')}</button>
+      {#each cols as c (c)}
+        <span class="h colh" class:right={!c.startsWith('field:')} title={c}
+          >{#if c.startsWith('field:')}<span class="fieldmark">✎</span>{/if}{colLabel(c)}<button
+            class="x"
+            aria-label="Hide column {c}"
+            onclick={() => toggleCol(c)}>×</button
+          ></span
+        >
+      {/each}
       <span class="h">Config</span>
       <button class="h right" onclick={() => sortBy('result')}>Result ({resultMode}){arrow('result')}</button>
       <button class="h" onclick={() => sortBy('started')}>Started{arrow('started')}</button>
@@ -236,10 +384,51 @@
             </span>
             <span><Status status={r.status} /></span>
             <span class="run">
-              <button class="name mono" onclick={() => router.set({ cmp: r.key })} title="Show details">{r.name}</button
-              >
+              <span class="nameline">
+                <button class="name mono" onclick={() => router.set({ cmp: r.key })} title="Show details"
+                  >{r.name}</button
+                >
+                {#if r.alerts?.length}
+                  <button
+                    class="alertbadge"
+                    class:err={r.alerts.some((a) => a.severity === 'error')}
+                    title={r.alerts.map((a) => a.message).join('\n')}
+                    aria-label="{r.alerts.length} health alert(s)"
+                    onclick={() => openAlert(r)}
+                  >
+                    <Icon name="alert" size={13} />{r.alerts.length}
+                  </button>
+                {/if}
+                {#each r.collections ?? [] as c (c)}<span class="chip coll" title="Collection">{c}</span>{/each}
+              </span>
               <span class="path mono" title={r.path}>{multiProject ? '' : ''}{r.path}/</span>
             </span>
+            {#each cols as c (c)}
+              {#if c.startsWith('field:')}
+                {@const f = c.slice(6)}
+                <span class="fieldcell">
+                  {#if fieldEdit?.key === r.key && fieldEdit.field === f}
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input
+                      class="input note"
+                      bind:value={fieldDraft}
+                      autofocus
+                      onblur={saveField}
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') saveField();
+                        if (e.key === 'Escape') fieldEdit = null;
+                      }}
+                    />
+                  {:else}
+                    <button class="notebtn" class:faint={!cell(r, c)} onclick={() => startField(r, f)} title="Edit {f}"
+                      >{cell(r, c) || '—'}</button
+                    >
+                  {/if}
+                </span>
+              {:else}
+                <span class="mono right muted cellv">{cell(r, c) || '—'}</span>
+              {/if}
+            {/each}
             <span
               class="config mono"
               title={Object.entries(r.config)
@@ -352,15 +541,12 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 30px 26px 96px minmax(220px, 2.2fr) minmax(180px, 2fr) 170px 84px 80px 76px minmax(
-        120px,
-        1.2fr
-      );
+    grid-template-columns: var(--cols);
     align-items: center;
     gap: 10px;
     padding: 0 14px;
     height: 56px;
-    min-width: 1120px;
+    min-width: var(--width);
     border-bottom: 1px solid var(--border);
   }
   .body .row {
@@ -407,7 +593,108 @@
     max-height: max(360px, calc(100vh - 290px));
     overflow-y: auto;
     position: relative;
-    min-width: 1120px;
+    min-width: var(--width);
+  }
+  .colmenu {
+    position: relative;
+  }
+  .pop {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 5;
+    width: 300px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    box-shadow: var(--lift);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .pop .label {
+    margin: 8px 0 4px;
+  }
+  .opt {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12.5px;
+    padding: 3px 0;
+  }
+  .newfield {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0;
+  }
+  .newfield .input {
+    flex: 1;
+    height: 30px;
+  }
+  .colh {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--mono);
+  }
+  .colh .x {
+    border: 0;
+    background: none;
+    color: var(--faint);
+    padding: 0 2px;
+    font-size: 14px;
+  }
+  .fieldmark {
+    color: var(--accent);
+  }
+  .cellv {
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fieldcell {
+    min-width: 0;
+  }
+  .nameline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .nameline .name {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .nameline .chip {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .alertbadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: 0;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font: 600 11px var(--mono);
+    color: var(--warn);
+    background: var(--warn-bg);
+  }
+  .alertbadge.err {
+    color: var(--err);
+    background: var(--err-bg);
+  }
+  .coll {
+    font-size: 11px;
+    color: var(--accent);
   }
   .run {
     display: flex;

@@ -1,21 +1,27 @@
 site_name: nuboard
-site_description: A fast, local, folder-based experiment tracker and viewer for ML training.
-repo_name: nuboard
+site_description: Experiment tracking that lives in a folder. A fast, local tracker and viewer for ML training.
 docs_dir: docs
+copyright: Copyright &copy; 2026 Esteban Gómez
 nav:
-  - Home: index.md
-  - Getting started: getting-started.md
-  - Guide:
+  - About: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Guides:
       - Logging from Python: guide/logging.md
       - Using the viewer: guide/viewer.md
-      - Query language: guide/query.md
+      - Sweeps: guide/sweeps.md
+      - Health alerts: guide/alerts.md
+      - Artifacts and lineage: guide/artifacts.md
       - Analysis API: guide/analysis.md
       - Distributed training: guide/distributed.md
   - Reference:
-      - File format: format.md
-      - Architecture: architecture.md
-      - Development: development.md
-  - Roadmap: roadmap.md
+      - Query language: reference/query.md
+      - File format: reference/format.md
+      - Architecture: reference/architecture.md
+      - Development: reference/development.md
+  - Changelog:
+      - Changelog: changelog.md
+      - Roadmap: roadmap.md
 theme:
   name: material
   logo: assets/logo.svg
@@ -24,24 +30,36 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue grey
-      accent: blue
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-night, name: Dark theme }
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue grey
-      accent: light blue
+      primary: custom
+      accent: custom
       toggle: { icon: material/weather-sunny, name: Light theme }
   features:
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.top
+    - navigation.footer
     - content.code.copy
+    - content.tabs.link
     - search.highlight
+    - search.suggest
+extra_css:
+  - stylesheets/extra.css
 markdown_extensions:
   - admonition
   - tables
   - attr_list
+  - md_in_html
   - toc: { permalink: true }
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.tabbed: { alternate_style: true }
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg

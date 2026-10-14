@@ -5,6 +5,9 @@
   import RunsPage from './pages/RunsPage.svelte';
   import ChartsPage from './pages/ChartsPage.svelte';
   import MediaPage from './pages/MediaPage.svelte';
+  import TimelinePage from './pages/TimelinePage.svelte';
+  import SweepsPage from './pages/SweepsPage.svelte';
+  import ArtifactsPage from './pages/ArtifactsPage.svelte';
   import { NAME } from './lib/brand';
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
@@ -14,10 +17,22 @@
     { page: 'runs', icon: 'runs', label: 'Runs' },
     { page: 'charts', icon: 'charts', label: 'Charts' },
     { page: 'media', icon: 'media', label: 'Media' },
+    { page: 'sweeps', icon: 'sweep', label: 'Sweeps' },
+    { page: 'timeline', icon: 'timeline', label: 'Timeline' },
+    { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
   ];
+  const titles: Record<Page, string> = {
+    runs: 'All runs',
+    charts: 'Charts',
+    media: 'Media',
+    sweeps: 'Sweeps',
+    timeline: 'Timeline',
+    artifacts: 'Artifacts',
+  };
 
   onMount(() => {
     app.loadInfo();
+    app.loadCollections();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const off = onLive('runs', () => {
       clearTimeout(timer);
@@ -38,7 +53,7 @@
 
   const project = $derived(router.get('project'));
   const title = $derived(
-    project || (router.page === 'runs' ? 'All runs' : router.page === 'charts' ? 'Charts' : 'Media'),
+    project ? (router.page === 'runs' ? project : `${project} · ${titles[router.page]}`) : titles[router.page],
   );
   const subtitle = $derived.by(() => {
     const r = app.runs;
@@ -98,6 +113,12 @@
       <RunsPage />
     {:else if router.page === 'charts'}
       <ChartsPage />
+    {:else if router.page === 'sweeps'}
+      <SweepsPage />
+    {:else if router.page === 'timeline'}
+      <TimelinePage />
+    {:else if router.page === 'artifacts'}
+      <ArtifactsPage />
     {:else}
       <MediaPage />
     {/if}

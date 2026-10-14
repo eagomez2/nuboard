@@ -7,8 +7,10 @@ Examples::
     train/loss.min < 2.5 order by train/loss.min limit 10
 
 Fields: ``name status project tags notes starred archived reviewed group host
-commit created started ended duration id``, ``config.<dotted.key>`` (or a bare
-top-level config key such as ``lr``), and ``<metric>.<last|min|max|count|step>``.
+commit created started ended duration id collections alerts``,
+``config.<dotted.key>`` (or a bare top-level config key such as ``lr``),
+``fields.<name>`` for custom fields (or the bare name), and
+``<metric>.<last|min|max|count|step>``. ``alerts`` is the number of health alerts.
 """
 
 from __future__ import annotations
@@ -62,6 +64,8 @@ _TOP = {
     "id",
     "path",
     "world_size",
+    "collections",
+    "fields",
 }
 _STATS = {"last", "min", "max", "count", "step", "nonfinite"}
 AGGS = {
@@ -132,8 +136,12 @@ def _sort_key(v: Any) -> tuple[int, Any]:
 
 def resolve(run: dict[str, Any], name: str) -> Any:
     """Value of field ``name`` for a catalog record (None if absent)."""
+    if name == "alerts":
+        return len(run.get("alerts") or [])
     if name in _TOP:
         return run.get(name)
+    if name.startswith("fields."):
+        return (run.get("fields") or {}).get(name[7:])
     if name.startswith("config."):
         return _dig(run.get("config") or {}, name[7:])
     if name.startswith("summary."):
@@ -148,7 +156,10 @@ def resolve(run: dict[str, Any], name: str) -> Any:
     config = run.get("config") or {}
     if name in config:
         return config[name]
-    return _dig(config, name)
+    found = _dig(config, name)
+    if found is None:
+        found = (run.get("fields") or {}).get(name)
+    return found
 
 
 def _dig(obj: Any, dotted: str) -> Any:

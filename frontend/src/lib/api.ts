@@ -11,6 +11,52 @@ export interface MetricSummary {
   nonfinite: number;
 }
 
+export interface Alert {
+  kind: 'nonfinite' | 'spike' | 'drop' | string;
+  metric: string;
+  rank: number;
+  step: number;
+  end_step?: number;
+  severity: 'error' | 'warning' | string;
+  message: string;
+  value?: number;
+  baseline?: number;
+  count?: number;
+}
+
+export type FieldValue = string | number | boolean;
+
+export interface Collection {
+  name: string;
+  project: string;
+  runs: string[];
+  description?: string;
+  created?: number;
+  updated?: number;
+}
+
+export interface ArtifactFile {
+  path: string;
+  size: number;
+  sha256: string;
+}
+
+export interface ArtifactVersion {
+  project: string;
+  name: string;
+  version: number;
+  size: number;
+  producers: string[];
+  consumers: string[];
+  manifest: {
+    type?: string | null;
+    metadata?: Record<string, unknown>;
+    files?: ArtifactFile[];
+    created?: number;
+    producer_run?: string | null;
+  };
+}
+
 export interface RunBrief {
   key: string;
   id: string;
@@ -38,6 +84,9 @@ export interface RunBrief {
   host: string | null;
   world_size: number;
   fork: { run_id: string; step: number } | null;
+  fields: Record<string, FieldValue>;
+  collections: string[];
+  alerts: Alert[];
 }
 
 export interface QueryInfo {
@@ -133,7 +182,12 @@ export const api = {
     const res = await fetch(`/api/runs/${encodeURIComponent(key)}/files/${path}`);
     return res.ok ? res.text() : null;
   },
-  annotate: (keys: string[], patch: Partial<Pick<RunBrief, 'starred' | 'archived' | 'reviewed' | 'notes' | 'tags'>>) =>
+  annotate: (
+    keys: string[],
+    patch: Partial<Pick<RunBrief, 'starred' | 'archived' | 'reviewed' | 'notes' | 'tags'>> & {
+      fields?: Record<string, FieldValue | null>;
+    },
+  ) =>
     json<{ updated: string[] }>('/api/runs/annotate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -142,6 +196,16 @@ export const api = {
   metrics: (keys: string[]) =>
     json<{ metrics: { name: string; runs: number }[] }>(`/api/metrics?runs=${keys.map(encodeURIComponent).join(',')}`),
   media: (key: string) => json<{ items: MediaItem[] }>(`/api/runs/${encodeURIComponent(key)}/media`),
+  alerts: (keys: string[]) =>
+    json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),
+  artifacts: (project?: string | null) => json<{ artifacts: ArtifactVersion[] }>(`/api/artifacts?${qs({ project })}`),
+  collections: (project?: string | null) => json<{ collections: Collection[] }>(`/api/collections?${qs({ project })}`),
+  saveCollection: (body: { name: string; add?: string[]; remove?: string[]; project?: string; delete?: boolean }) =>
+    json<{ collections: Collection[] }>('/api/collections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   mediaUrl: (key: string, index: number) => `/api/runs/${encodeURIComponent(key)}/media/${index}`,
 
   async chart(p: {

@@ -3,7 +3,8 @@
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
-  import { api, type ChartData } from '../lib/api';
+  import { api, type Alert, type ChartData } from '../lib/api';
+  import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
   import { defaultMetric, fmtAgo, fmtDuration, fmtNum, lowerIsBetter } from '../lib/format';
   import { onLive } from '../lib/live';
@@ -110,6 +111,44 @@
       }, wait);
     });
   });
+
+  // ---- health alerts (stored at compaction, computed live for running runs) ----
+  let alerts = $state<{ key: string; name: string; alert: Alert }[]>([]);
+  $effect(() => {
+    const keys = runs.slice(0, 200).map((r) => r.key);
+    void tick;
+    if (!keys.length) {
+      alerts = [];
+      return;
+    }
+    api
+      .alerts(keys)
+      .then((res) => {
+        alerts = Object.entries(res.alerts).flatMap(([key, list]) =>
+          list.map((alert) => ({ key, name: app.runByKey(key)?.name ?? key, alert })),
+        );
+      })
+      .catch(() => (alerts = []));
+  });
+  const regions = $derived(
+    xKind !== 'step'
+      ? []
+      : alerts
+          .filter((a) => a.alert.metric === focus && a.alert.kind !== 'nonfinite' && runKeys.includes(a.key))
+          .map((a) => ({
+            x0: a.alert.step,
+            x1: a.alert.end_step ?? a.alert.step,
+            label: `${a.alert.kind} · ${a.name}`,
+          })),
+  );
+  function showAlert(a: { key: string; alert: Alert }) {
+    const span = Math.max((a.alert.end_step ?? a.alert.step) - a.alert.step, 200);
+    router.set({
+      metric: a.alert.metric,
+      x: null,
+      zoom: `${Math.max(0, a.alert.step - 3 * span)}~${(a.alert.end_step ?? a.alert.step) + 3 * span}`,
+    });
+  }
 
   // ---- derived summaries ----
   const lower = $derived(lowerIsBetter(focus));
@@ -354,7 +393,27 @@
         }}
         onPin={() => (pinned = !pinned)}
         onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
+        {regions}
       />
+      {#if alerts.length}
+        <div class="alerts" aria-label="Health alerts">
+          <span class="label">Alerts</span>
+          {#each alerts.slice(0, 12) as a, i (i)}
+            <button
+              class="alert"
+              class:err={a.alert.severity === 'error'}
+              title="{a.name}{a.alert.rank ? ` · rank ${a.alert.rank}` : ''}: {a.alert.message}"
+              onclick={() => showAlert(a)}
+            >
+              <Icon name="alert" size={13} />
+              <span class="mono">{a.name}</span>
+              <span>{a.alert.message}</span>
+              {#if a.alert.rank}<span class="mono faint">rank {a.alert.rank}</span>{/if}
+            </button>
+          {/each}
+          {#if alerts.length > 12}<span class="faint">+{alerts.length - 12} more</span>{/if}
+        </div>
+      {/if}
     </div>
     <aside class="card inspector">
       <div class="ih">
@@ -426,6 +485,37 @@
 {/if}
 
 <style>
+  .alerts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .alerts .label {
+    margin-right: 4px;
+  }
+  .alert {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 8px;
+    padding: 4px 9px;
+    font-size: 12.5px;
+    color: var(--warn);
+    background: var(--warn-bg);
+    max-width: 100%;
+    text-align: left;
+  }
+  .alert.err {
+    color: var(--err);
+    background: var(--err-bg);
+  }
+  .alert .mono {
+    font-weight: 600;
+  }
   .empty {
     padding: 40px;
     text-align: center;

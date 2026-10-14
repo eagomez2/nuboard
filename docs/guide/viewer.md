@@ -11,20 +11,21 @@ bookmark a view, send the link to yourself on another machine, or save it as a
 view file. Per-viewer preferences (theme, default smoothing) live in your
 browser's local storage.
 
-![Runs page](../assets/runs-dark.png)
+![Runs page](../assets/runs-light.png#only-light){ .nb-shot }
+![Runs page](../assets/runs-dark.png#only-dark){ .nb-shot }
 
 ## Header
 
 - **Folder chip**: the served folder; click it to go back to all runs.
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
-  [query language](query.md).
+  [query language](../reference/query.md).
 - **Theme toggle**: light and dark themes; the default follows your system.
 
 ## Runs page
 
 - **Workspace** (left): every project found under the folder, with run counts,
-  and the saved views of each project. **Save current view…** writes the
+  its collections and its saved views. **Save current view…** writes the
   current URL state to `<project>/views/<name>.json`, which you can commit.
 - **Table**: status, star, name and folder, the config keys that differ between
   the listed runs, a result column, start time, duration, reviewed mark and
@@ -33,12 +34,39 @@ browser's local storage.
   header to sort. The list is virtualized, so thousands of runs scroll
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
-- **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**, open
-  them in **Media**, **Compare** two of them, or **Plot selected**.
+- **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
+  **Add to collection…**, open them in **Media**, **Compare** two of them, or
+  **Plot selected**.
+- **Alerts**: a warning badge next to a run name counts its
+  [health alerts](alerts.md). Hover it to read them; click it to open the
+  run's chart.
+- **Columns**: add columns for any metric (last value), any config key, or
+  a custom field. The chosen columns are part of the URL.
 - **Notes**: click a notes cell to edit it in place.
-- Stars, notes, review marks and archive flags are written to the run's own
-  `annotations.json`, so they move with the run folder. Archived runs are
-  hidden unless **show archived** is on.
+- Stars, notes, review marks, archive flags and custom fields are written to
+  the run's own `annotations.json`, so they move with the run folder.
+  Archived runs are hidden unless **show archived** is on.
+
+### Custom fields
+
+Custom fields are your own columns: a verdict, an owner, a score. Open
+**Columns**, type a name under **Custom fields** and press **+**; then click a
+cell to edit it. Numbers and `true`/`false` are stored as such, so queries
+like `score > 3` and `verdict = keep` work; clear a cell to remove the value.
+Fields can also be used as sweep parameters. From Python they are
+`run.fields` in the [analysis API](analysis.md).
+
+### Collections
+
+A collection is a named, hand-picked set of runs, such as a shortlist or the
+runs behind a paper figure. Select runs and press **Add to collection…**;
+type an existing name to add to it. Collections are listed under their
+project in the workspace; click one to filter to it (the query becomes
+`collections has "shortlist"`), or hover it and press × to delete it (the
+runs are not touched).
+
+Each collection is a small JSON file, `<project>/collections/<name>.json`,
+listing run ids, so it can be committed and survives moving the folder.
 
 ### Run details and compare
 
@@ -54,7 +82,8 @@ changes** hides identical lines.
 
 ## Charts page
 
-![Charts page](../assets/charts-dark.png)
+![Charts page](../assets/charts-light.png#only-light){ .nb-shot }
+![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
 The Charts page plots the selected runs (from **Plot selected**) or, if none
 are selected, every run matching the query.
@@ -90,6 +119,32 @@ are selected, every run matching the query.
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
   Server-Sent Events and the charts refresh about every two seconds.
+
+- **Alerts strip**: under the focused chart, the
+  [health alerts](alerts.md) of the runs in view. Click one to jump to it;
+  spikes and drops are shaded on the chart.
+
+## Sweeps page
+
+Parallel coordinates over the parameters that vary between runs, with brushing
+on every axis, a scatter per parameter and a best-runs table. See
+[Sweeps](sweeps.md).
+
+## Timeline page
+
+![Timeline page](../assets/timeline-light.png){ .nb-shot }
+
+Every run as a bar from start to end, grouped by project, colored by status,
+project or group. **Packed** puts runs that never overlap on the same row, so
+the chart shows how many ran at once; the summary line gives the peak and the
+total run time. Crashed runs end in ✕, runs with alerts have a dot, and
+diamonds mark artifact versions a run produced. Drag to zoom into a time
+range, double-click to reset, click a bar to open the run.
+
+## Artifacts page
+
+Every artifact version with its files, metadata and a lineage graph of the
+runs that produced and used it. See [Artifacts and lineage](artifacts.md).
 
 ## Media page
 

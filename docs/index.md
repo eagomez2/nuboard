@@ -1,39 +1,114 @@
-# nuboard
+---
+hide:
+  - navigation
+  - toc
+---
 
-**A fast, local experiment tracker for ML training.** Log from Python with
-three calls, keep every run as a self-contained folder, and look at thousands
-of runs in a browser viewer that ships inside the wheel.
+<div class="nb-hero" markdown>
 
-![Charts page, grouped by learning rate](assets/charts-light.png)
+![nuboard](assets/logo.svg){ .nb-logo }
 
-- **Easy from Python.** `init`, `log`, `finish`. No configuration, no account,
-  no server. Config, git commit and diff, installed packages, GPUs, command line
-  and rank are recorded automatically.
-- **Folder-contained.** Every run is one folder you can copy, rsync, zip or
-  delete. No database server; the viewer's catalog is a disposable cache.
-- **Never slows training.** `log()` appends to an in-memory queue (a few µs
-  for a 50-metric dict); a background thread writes compact binary frames.
-  The logging side uses only the Python standard library.
-- **Fast viewer.** `nuboard up <dir>` opens any folder of projects. Runs
-  table with a query language, grouped line charts with mean ± std bands,
-  smoothing, zoom, linked crosshair, live updates, config diffs, and media.
+# Experiment tracking that lives in a folder
 
-## Where to go next
+`nuboard` logs your training runs with three Python calls, keeps every run as
+a plain folder on disk, and opens thousands of them in a fast viewer that runs
+on your own machine. There is no account to create, no server to keep running
+and no database to back up.
 
-| I want to… | Read |
-| --- | --- |
-| install it and see the demo | [Getting started](getting-started.md) |
-| log from my training script | [Logging from Python](guide/logging.md) |
-| find, compare and plot runs | [Using the viewer](guide/viewer.md) and [Query language](guide/query.md) |
-| load runs into pandas/Arrow | [Analysis API](guide/analysis.md) |
-| use it with torchrun / SLURM | [Distributed training](guide/distributed.md) |
-| know exactly what is on disk | [File format](format.md) |
-| understand or change the code | [Architecture](architecture.md) and [Development](development.md) |
-| see what is not built yet | [Roadmap](roadmap.md) |
+[Quickstart](quickstart.md){ .md-button .md-button--primary }
+[Guides](guide/logging.md){ .md-button }
 
-## Status
+</div>
 
-Version 0.1 is a first working version: the log format, Python API, reader,
-Parquet compaction, analysis API, catalog and the viewer's Runs, Charts and
-Media pages are implemented and tested. Sweep views, health alerts, artifact
-lineage pages and TensorBoard import are on the [roadmap](roadmap.md).
+```python
+import nuboard as nm
+
+with nm.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
+    for step in range(10_000):
+        loss = train_step()
+        run.log({"train/loss": loss}, step=step)  # a few µs, never blocks training
+```
+
+```console
+$ nuboard up experiments
+nuboard serving /home/me/experiments (28 runs) at http://localhost:6070/  (Ctrl+C to stop)
+```
+
+![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-light.png#only-light){ .nb-shot }
+![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-dark.png#only-dark){ .nb-shot }
+
+<div class="grid cards" markdown>
+
+-   :material-language-python:{ .lg .middle } __Three calls to log__
+
+    ---
+
+    `init`, `log`, `finish`. Config, git commit and diff, installed packages,
+    GPUs, command line and rank are recorded for you. The logging side uses
+    only the Python standard library.
+
+-   :material-folder-outline:{ .lg .middle } __One folder per run__
+
+    ---
+
+    A run is a folder you can copy, rsync, zip or delete. Stars, notes and
+    custom fields live next to the data in `annotations.json`, so they move
+    with it.
+
+-   :material-chart-bell-curve-cumulative:{ .lg .middle } __Grouped charts__
+
+    ---
+
+    One line per learning rate with mean ± std bands over seeds, smoothing,
+    zoom that loads finer data, a linked crosshair and live updates while
+    runs train.
+
+-   :material-tune-variant:{ .lg .middle } __Sweeps__
+
+    ---
+
+    Parallel coordinates with brushing, objective-vs-parameter scatters and
+    a rank correlation per parameter show which settings matter.
+
+-   :material-alert-outline:{ .lg .middle } __Health alerts__
+
+    ---
+
+    NaN and Inf values, loss and gradient spikes and throughput drops are
+    found per run and rank and shown in the runs table and under charts.
+
+-   :material-graph-outline:{ .lg .middle } __Artifacts and lineage__
+
+    ---
+
+    Versioned datasets and checkpoints with a lineage graph: which run
+    produced a version, and which runs used it.
+
+</div>
+
+## About nuboard
+
+nuboard is a local alternative to TensorBoard and hosted experiment trackers
+for people who train models on their own machines or clusters. Each run writes
+an append-only binary log from a background thread, so a crash loses at most
+the last second of data. When a run finishes, the log is compacted into a
+Parquet file with precomputed zoom levels, and the run's health alerts are
+recorded next to it.
+
+`nuboard up` points the viewer at any folder: a single run, a project, or a
+tree of many projects. It finds every run, keeps a small SQLite cache of their
+metadata outside the folder, and filters them with a short query language such
+as `where tags has "sweep" and train/loss.min < 2.4 group by config.optim.lr`.
+Every view is a URL, and views and collections can be saved into the project
+folder and committed to git.
+
+## Guides
+
+- [Installation](installation.md) covers the wheel, building from source and
+  the optional viewer dependencies.
+- [Quickstart](quickstart.md) runs the demo and logs a first run.
+- [Logging from Python](guide/logging.md), [Using the viewer](guide/viewer.md),
+  [Sweeps](guide/sweeps.md), [Health alerts](guide/alerts.md) and
+  [Artifacts](guide/artifacts.md) explain each part in depth.
+- The [Reference](reference/query.md) documents the query language, the
+  [file format](reference/format.md) and the [architecture](reference/architecture.md).

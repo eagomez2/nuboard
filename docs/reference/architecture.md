@@ -37,7 +37,7 @@ environment.
   drains, writes an end frame, fsyncs and marks the status. Compaction runs
   afterwards if PyArrow is importable.
 
-## Reading (`reader.py`, `compact.py`, `series.py`)
+## Reading (`reader.py`, `compact.py`, `series.py`, `alerts.py`)
 
 - `LogFile` keeps a byte offset per log file and decodes only the bytes
   appended since the last call. Frames are walked with `struct`; scalar
@@ -51,14 +51,22 @@ environment.
   transforms (step, wall time, relative, active time), and group aggregation
   (interpolate each run onto a shared grid of about one or two points per
   pixel, then mean/std/min/max/median per grid point, ignoring NaN).
+- `alerts.py` runs the health checks on at most 2,000 buckets per metric:
+  first non-finite value, spikes against a trailing median and MAD, and
+  sustained drops below a fraction of the median. `compact_run` stores the
+  result in `run.json`; the server computes it live for running runs and
+  caches it by log size.
 
-## Viewer server (`catalog.py`, `query.py`, `server/`)
+## Viewer server (`catalog.py`, `query.py`, `collection.py`, `server/`)
 
 - `Catalog` walks the folder for `*/runs/*/run.json` (string-based
   `os.scandir`, no pathlib in the hot loop), stats `run.json` and the run
   folder (annotations are replaced atomically, which bumps the folder's
   mtime), and re-reads only what changed. Records are cached in SQLite on
   local disk so a restart does not re-read thousands of `run.json` files.
+- `collection.py` reads and writes `<project>/collections/*.json`; the
+  catalog attaches each run's collections to its record on every list, with
+  the membership cached on the files' mtimes.
 - `query.py` is a small recursive-descent parser for the query language;
   filtering and ordering run in Python over catalog records.
 - `server/data.py` keeps an LRU of `RunReader`s, picks a Parquet zoom level
@@ -76,11 +84,13 @@ Svelte 5 with runes and strict TypeScript, built by Vite into
 `src/nuboard/static/` so the wheel ships it.
 
 - `lib/router.svelte.ts`: all view state in the URL hash.
-- `lib/state.svelte.ts`: info, run list and selection.
+- `lib/state.svelte.ts`: info, run list, collections and selection.
+- `lib/sweep.ts`: axes, scales and parameter importance for Sweeps.
 - `lib/api.ts`: fetch helpers; Arrow decoding with `apache-arrow`.
 - `components/LineChart.svelte`: uPlot with joined x arrays, bands,
   smoothing, robust y range, NaN markers, drag-to-zoom and cursor sync.
-- `pages/`: Runs, Charts, Media. Styling uses Tailwind v4 with the design
+- `pages/`: Runs, Charts, Media, Sweeps, Timeline, Artifacts. The new pages
+  draw plain SVG; no chart library beyond uPlot is needed. Styling uses Tailwind v4 with the design
   tokens of the Studio mockup (Okabe–Ito based, light and dark).
 
 ## Performance

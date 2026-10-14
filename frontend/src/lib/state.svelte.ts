@@ -1,10 +1,11 @@
 import { SvelteSet } from 'svelte/reactivity';
-import { api, type Info, type RunBrief, type RunsResponse } from './api';
+import { api, type Collection, type Info, type RunBrief, type RunsResponse } from './api';
 import { prefs, router } from './router.svelte';
 
 class AppState {
   info = $state<Info | null>(null);
   runs = $state<RunsResponse | null>(null);
+  collections = $state<Collection[]>([]);
   loading = $state(false);
   error = $state<string | null>(null);
   selected = new SvelteSet<string>();
@@ -37,6 +38,14 @@ class AppState {
       this.info = await api.info();
     } catch (e) {
       this.error = String(e);
+    }
+  }
+
+  async loadCollections() {
+    try {
+      this.collections = (await api.collections()).collections;
+    } catch {
+      /* older server or no projects yet */
     }
   }
 
