@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 
+from ..alerts import check_run
 from ..catalog import Catalog
 from ..query import resolve
 from ..reader import RunReader
@@ -28,6 +29,7 @@ class Store:
         self._readers: collections.OrderedDict[str, RunReader] = collections.OrderedDict()
         self._lock = threading.Lock()
         self._log_bytes: dict[str, int] = {}
+        self._alerts: dict[str, tuple[Any, list[dict[str, Any]]]] = {}
 
     def reader(self, key: str) -> RunReader | None:
         with self._lock:
@@ -70,6 +72,23 @@ class Store:
                 self._log_bytes[row["key"]] = total
                 grown.add(row["key"])
         return grown
+
+    def alerts(self, key: str) -> list[dict[str, Any]]:
+        """Health alerts: stored at compaction, else computed and cached per log size."""
+        record = self.catalog.get(key)
+        if record is None:
+            return []
+        if record["status"] != "running" and record.get("compacted"):
+            return record.get("alerts") or []
+        reader = self.fresh_reader(key)
+        if reader is None:
+            return []
+        state = (tuple(sorted(reader.log_sizes().items())), reader.parquet is not None)
+        cached = self._alerts.get(key)
+        if cached is None or cached[0] != state:
+            with reader.lock:
+                cached = self._alerts[key] = (state, check_run(reader))
+        return cached[1]
 
     # -- series ----------------------------------------------------------------
     def raw_series(

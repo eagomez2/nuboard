@@ -1,0 +1,77 @@
+/* Brand colors from the viewer (Okabe-Ito blue); a plain header like the app. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #0072b2;
+  --md-primary-fg-color--light: #56b4e9;
+  --md-primary-fg-color--dark: #005a8c;
+  --md-accent-fg-color: #0072b2;
+  --md-typeset-a-color: #0072b2;
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #56b4e9;
+  --md-primary-fg-color--light: #9ad0f0;
+  --md-primary-fg-color--dark: #0072b2;
+  --md-accent-fg-color: #9ad0f0;
+  --md-typeset-a-color: #56b4e9;
+  --md-default-bg-color: #0e1218;
+  --md-code-bg-color: #151a22;
+}
+.md-header,
+.md-tabs {
+  background-color: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+}
+.md-header {
+  box-shadow: none;
+}
+.md-search__form {
+  background-color: var(--md-default-fg-color--lightest);
+}
+.md-tabs {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset .md-button--primary {
+  color: #fff;
+}
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  color: #0e1218;
+}
+/* Landing page: centered hero, product-style cards and screenshots. */
+.nb-hero {
+  text-align: center;
+  max-width: 46rem;
+  margin: 1.5rem auto 2rem;
+}
+.nb-hero h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0.6rem 0 0.8rem;
+  color: var(--md-typeset-color);
+}
+.nb-hero p {
+  font-size: 0.86rem;
+  color: var(--md-default-fg-color--light);
+}
+.nb-logo {
+  width: 72px;
+  border-radius: 16px;
+}
+.nb-hero .md-button {
+  margin: 0.3rem 0.2rem;
+}
+.md-typeset img.nb-shot,
+.md-typeset .nb-figure img {
+  border-radius: 10px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  box-shadow: 0 10px 30px -18px rgba(16, 24, 40, 0.45);
+}
+.md-typeset .grid.cards > ul > li {
+  border-radius: 10px;
+}
+.md-typeset .grid.cards .lg {
+  color: var(--md-accent-fg-color);
+}
+.nb-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}

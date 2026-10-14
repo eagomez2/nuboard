@@ -18,7 +18,7 @@ path.
     runs/
       <YYYYMMDD-HHMM>_<name>_<rand6>/     one run (the folder name is the run id)
         run.json                          metadata, rewritten atomically
-        annotations.json                  viewer-owned: star, notes, tags, archived, reviewed
+        annotations.json                  viewer-owned: star, notes, tags, archived, reviewed, fields
         events.r<rank>.s<session>.log     append-only event log, one per rank and session
         media.r<rank>.pack                images, figures and HTML appended back to back
         data.parquet                      compacted scalars (written at finish, optional)
@@ -30,6 +30,7 @@ path.
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
       files/...                           the artifact's files
+    collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -72,6 +73,7 @@ ignore keys they do not know.
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
 | `exit` | object/null | `{code, error}`; `error` holds the last 4,000 characters of the traceback. |
 | `compacted` | object | Written after compaction: `{bytes: {log file: size}, time}`. |
+| `alerts` | list | Written after compaction: the run's [health alerts](../guide/alerts.md), see below. |
 
 A run whose `status` is `running` but whose `heartbeat` is older than 120 s is
 shown as **lost** (the process died without running its exit handlers, e.g.
@@ -81,8 +83,27 @@ shown as **lost** (the process died without running its exit handlers, e.g.
 
 Owned by the viewer, written atomically: `starred` (bool), `archived` (bool),
 `reviewed` (bool), `notes` (str, overrides `run.json` notes in the viewer),
-`tags` (list, merged with `run.json` tags). Keeping these inside the run folder
-means they travel with the run.
+`tags` (list, merged with `run.json` tags), `fields` (object of custom fields:
+string, number or boolean values). Keeping these inside the run folder means
+they travel with the run.
+
+### `alerts` in `run.json`
+
+Each alert is an object:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `kind` | str | `nonfinite`, `spike` or `drop`. |
+| `metric`, `rank` | str, int | Where it happened. |
+| `step` | int | First step of the problem. |
+| `end_step` | int | Last step (`spike` and `drop`). |
+| `severity` | str | `error` (non-finite) or `warning`. |
+| `message` | str | A readable one-line description. |
+| `value`, `baseline` | float | Peak or lowest value, and what it was compared with (`spike`, `drop`). |
+| `count` | int | Number of non-finite values (`nonfinite`). |
+
+The list is recomputed whenever the run is compacted. Readers treat a missing
+key as "not checked yet", not as "healthy".
 
 ## Event log: `events.r<rank>.s<session>.log`
 
@@ -190,6 +211,17 @@ renaming it into place, so a version is either complete or absent.
 Runs record what they used and produced in `run.json` (`inputs`, `outputs`).
 Artifacts are per project, so a run folder copied alone keeps its record of
 which artifact versions it used but not the artifact files.
+
+## Collections: `collections/<name>.json`
+
+```json
+{"name": "shortlist", "runs": ["20261014-1045_lr1e-3-s1_ei9ssn", "…"],
+ "description": "Candidates for the 7B run", "created": 1791980000.0, "updated": 1791981000.0}
+```
+
+`runs` holds run ids (folder names) of the same project, in the order they
+were added. Ids of runs that no longer exist are ignored. Written atomically;
+deleting the file deletes the collection.
 
 ## Saved views: `views/*.json`
 

@@ -30,8 +30,11 @@ eval/acc exists
 | `tags`, `notes`, `starred`, `archived`, `reviewed` | from `init` and the viewer |
 | `created`, `started`, `ended`, `duration` | Unix seconds / seconds |
 | `host`, `commit`, `world_size` | environment |
+| `collections` | the collections a run belongs to: `collections has "shortlist"` |
+| `alerts` | number of [health alerts](../guide/alerts.md): `alerts > 0` |
+| `fields.<name>` | a custom field set in the viewer, e.g. `fields.verdict = keep` |
 | `config.<dotted.key>` | any config value, e.g. `config.optim.lr` |
-| `<key>` | a top-level config key, e.g. `lr` (when no other field matches) |
+| `<key>` | a top-level config key, e.g. `lr`, or else a custom field, e.g. `verdict` (when no other field matches) |
 | `<metric>.<stat>` | summary of a metric: `last`, `min`, `max`, `count`, `step`, `nonfinite`, e.g. `train/loss.min` |
 | `<metric>` | shorthand for `<metric>.last` |
 

@@ -1,43 +1,33 @@
 # Roadmap
 
-What 0.1 covers, measured against the project brief, and what comes next.
+What is built, measured against the project brief, and what comes next. See
+the [changelog](changelog.md) for what each version added.
 
-## Done in 0.1
+## Done
 
-- Log format (frames, CRC, torn-frame tolerance, incremental reads),
-  documented in [File format](format.md).
-- Python API: `init` (config, git commit and diff, packages, GPUs, command line,
-  rank), `log`, `log_text`, `log_image`, `log_figure`, `log_html`,
-  `log_artifact`, `use_artifact`, `finish`, context manager, crash and exit
-  handling, resume (`must`/`auto`, later session wins), fork, rank-0-only
-  logging with `all_ranks`.
-- Compaction to Parquet with zoom levels and a row-group map.
-- Analysis API returning Arrow tables (`nm.load(...).scalars(..., group_by=...)`).
-- SQLite catalog cache, query language, `nuboard up | demo | ls | compact`.
-- Viewer: Runs table (query, filter, sort, star, archive, review, notes,
-  saved views), run details and two-run compare with config/file diffs,
-  Charts (grouping with bands, x-axis choice, debiased EMA with raw, robust y,
-  log y, linked crosshair, inspector, zoom with finer data, NaN markers, live
-  updates over SSE), Media (images, SVG figures, sandboxed HTML, text with a
-  step slider). Light and dark themes.
+- **0.1**: log format, Python API (init with config, git, packages, GPUs,
+  command line and rank; log, media, artifacts, resume, fork, rank-0-only
+  logging), Parquet compaction with zoom levels, Arrow analysis API, SQLite
+  catalog, query language, CLI, and the Runs, Charts and Media pages.
+- **0.2**: health alerts, Sweeps, Timeline and Artifacts pages, custom fields,
+  a column chooser and collections.
 
 ## Next
 
 1. **Multi-GPU view**: rank-0 line with min/mean/max bands across ranks,
    expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
+   Alerts already record their rank.
 2. **Media**: interactive Plotly / Vega-Lite / Bokeh renderers (lazy-loaded),
    three.js point clouds, side-by-side text diffs across steps, audio.
-3. **Sweep views**: parallel coordinates, final metric vs hyperparameter,
-   distribution heatmaps (regl/WebGL).
-4. **Health alerts**: NaN/Inf, loss and grad-norm spikes, throughput drops,
-   with run and rank, plus the alerts strip under charts.
-5. **Artifact lineage pages**, a timeline view, collections.
-6. **TensorBoard import** (tfevents → run folders).
-7. Charts: x-axis by any metric (e.g. tokens), Web Workers for decoding and
+3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
+   for thousands of runs.
+4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
+5. **TensorBoard import** (tfevents → run folders).
+6. Charts: x-axis by any metric (e.g. tokens), Web Workers for decoding and
    smoothing, WebGL for very large scatters.
-8. Runs table: editable custom fields, column chooser, TanStack Virtual,
-   Bits UI menus and comboboxes (0.1 uses native controls).
-9. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
+7. Runs table: TanStack Virtual, Bits UI menus and comboboxes (0.2 uses
+   native controls and `prompt()` for collection names).
+8. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
 
 ## Known limitations
 

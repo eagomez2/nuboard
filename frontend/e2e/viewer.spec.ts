@@ -25,6 +25,7 @@ test('charts render grouped bands, a legend and small multiples', async ({ page 
   await page.goto('/#/charts?q=where%20tags%20has%20sweep%20group%20by%20config.optim.lr');
   await expect(page.locator('.legend-chip')).toHaveCount(4);
   await expect(page.locator('.main canvas')).toBeVisible();
+  await page.locator('.small').first().scrollIntoViewIfNeeded(); // small charts load on scroll
   await expect(page.locator('.small canvas').first()).toBeVisible();
   await page.getByRole('button', { name: 'wall time' }).click();
   await expect(page).toHaveURL(/x=time/);
@@ -33,4 +34,49 @@ test('charts render grouped bands, a legend and small multiples', async ({ page 
 test('media page shows logged images', async ({ page }) => {
   await page.goto('/#/media?project=vit-ablations&mkey=samples%2Faugmented');
   await expect(page.locator('figure img').first()).toBeVisible();
+});
+
+test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
+  await page.goto('/#/runs?project=llm-pretrain&cols=field:verdict');
+  await expect(page.getByRole('button', { name: /health alert/ }).first()).toBeVisible();
+  await page
+    .getByRole('button', { name: /shortlist/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/q=collections\+has/);
+  await expect(page.locator('.body .row')).toHaveCount(3);
+  const cell = page.locator('.body .row').first().locator('.fieldcell button');
+  await cell.click();
+  const input = page.locator('.fieldcell input');
+  await input.fill('e2e-checked');
+  await input.press('Enter');
+  await page.getByLabel('Run query').fill('verdict = e2e-checked');
+  await page.getByLabel('Run query').press('Enter');
+  await expect(page.locator('.body .row')).toHaveCount(1);
+});
+
+test('sweeps page draws parallel coordinates and filters by brushing', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=optim.lr');
+  await expect(page.locator('.pc .axis')).toHaveCount(2);
+  const before = await page.locator('.pc path.line:not(.dim)').count();
+  expect(before).toBeGreaterThan(10);
+  const hit = page.locator('.pc .hit').first();
+  const box = (await hit.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.3, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator('.pc path.line.dim').first()).toBeAttached();
+  expect(await page.locator('.pc path.line:not(.dim)').count()).toBeLessThan(before);
+});
+
+test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {
+  await page.goto('/#/timeline?project=llm-pretrain');
+  await expect(page.locator('g.bar').first()).toBeVisible();
+  expect(await page.locator('g.bar').count()).toBeGreaterThan(12);
+  await page.goto('/#/artifacts?project=llm-pretrain');
+  await expect(page.getByRole('heading', { name: 'fineweb-edu:v2' })).toBeVisible();
+  await expect(page.locator('g.node.run')).toHaveCount(14);
+  await page.locator('g.node.artifact', { hasText: 'model:v1' }).click();
+  await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });

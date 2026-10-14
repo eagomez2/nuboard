@@ -94,3 +94,58 @@ def test_views_round_trip(client):
     assert r.json()["saved"] == "lr-bands.json"
     view = client.get("/api/views/sweep/lr-bands.json").json()
     assert view == {"page": "charts", "params": {"q": "group by lr"}}
+
+
+def test_custom_fields_and_query(client):
+    keys = [r["key"] for r in client.get("/api/runs").json()["runs"]]
+    res = client.post(
+        "/api/runs/annotate",
+        json={"keys": keys[:2], "patch": {"fields": {"verdict": "keep", "score": 7}}},
+    )
+    assert res.json()["updated"] == keys[:2]
+    found = client.get("/api/runs", params={"q": "verdict = keep"}).json()["runs"]
+    assert {r["key"] for r in found} == set(keys[:2])
+    assert found[0]["fields"] == {"verdict": "keep", "score": 7}
+    client.post("/api/runs/annotate", json={"keys": keys[:1], "patch": {"fields": {"score": None}}})
+    assert client.get(f"/api/runs/{keys[0]}").json()["run"]["fields"] == {"verdict": "keep"}
+    assert (
+        client.get("/api/runs", params={"q": "fields.score > 5"}).json()["runs"][0]["key"]
+        == keys[1]
+    )
+
+
+def test_collections(client, tmp_path):
+    runs = client.get("/api/runs").json()["runs"]
+    keys = [r["key"] for r in runs]
+    res = client.post("/api/collections", json={"name": "best", "add": keys[:3]}).json()
+    assert len(res["collections"][0]["runs"]) == 3
+    client.post("/api/collections", json={"name": "best", "remove": keys[:1]})
+    listed = client.get("/api/collections").json()["collections"]
+    assert listed[0]["name"] == "best" and len(listed[0]["runs"]) == 2
+    assert (tmp_path / "exp" / "sweep" / "collections" / "best.json").exists()
+    hits = client.get("/api/runs", params={"q": 'collections has "best"'}).json()["runs"]
+    assert {r["key"] for r in hits} == set(keys[1:3])
+    client.post("/api/collections", json={"name": "best", "project": "sweep", "delete": True})
+    assert client.get("/api/collections").json()["collections"] == []
+    assert client.get("/api/runs", params={"q": "collections has best"}).json()["runs"] == []
+
+
+def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
+    with nm.init("sweep", name="bad", capture_env=False) as run:
+        for s in range(400):
+            run.log({"loss": float("nan") if s >= 300 else 1.0}, step=s)
+        src = tmp_path / "w.bin"
+        src.write_bytes(b"x")
+        run.log_artifact("weights", src)
+    with nm.init("sweep", name="user", capture_env=False) as run:
+        run.use_artifact("weights:latest")
+        run.log({"loss": 1.0}, step=0)
+    runs = {r["name"]: r for r in client.get("/api/runs").json()["runs"]}
+    bad = runs["bad"]
+    assert [a["kind"] for a in bad["alerts"]] == ["nonfinite"]
+    assert bad["alerts"][0]["step"] == 300
+    got = client.get("/api/alerts", params={"runs": bad["key"]}).json()["alerts"]
+    assert got[bad["key"]][0]["metric"] == "loss"
+    assert client.get("/api/runs", params={"q": "alerts > 0"}).json()["runs"][0]["name"] == "bad"
+    art = client.get("/api/artifacts").json()["artifacts"]
+    assert art[0]["producers"] == [bad["key"]] and art[0]["consumers"] == [runs["user"]["key"]]

@@ -19,10 +19,19 @@ from typing import Any
 
 from . import _fs
 from ._meta import ENV_PREFIX, NAME
+from .collection import attach
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
-_SKIP_DIRS = {"artifacts", "views", "node_modules", "__pycache__", "files", "site-packages"}
+_SKIP_DIRS = {
+    "artifacts",
+    "views",
+    "collections",
+    "node_modules",
+    "__pycache__",
+    "files",
+    "site-packages",
+}
 
 
 def find_runs(root: Path, max_depth: int = 8) -> Iterator[tuple[str, Path]]:
@@ -143,6 +152,9 @@ def make_record(
         "inputs": meta.get("inputs") or [],
         "outputs": meta.get("outputs") or [],
         "error": (meta.get("exit") or {}).get("error"),
+        "fields": ann.get("fields") or {},
+        "alerts": meta.get("alerts") or [],
+        "compacted": bool(meta.get("compacted")),
     }
 
 
@@ -258,8 +270,16 @@ class Catalog:
 
     # -- access -----------------------------------------------------------------
     def runs(self) -> list[dict[str, Any]]:
+        """Every run record, with ``collections`` filled from the project folders."""
         with self.lock:
-            return list(self._rows.values())
+            rows = list(self._rows.values())
+            pairs = []
+            for row in rows:
+                path = self.path_of(row["key"])
+                if path is not None:
+                    pairs.append((row, path))
+            attach(pairs)
+            return rows
 
     def get(self, key: str) -> dict[str, Any] | None:
         return self._rows.get(key)

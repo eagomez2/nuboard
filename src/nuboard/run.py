@@ -479,7 +479,7 @@ class Run:
             if self._meta.get("sessions"):
                 self._meta["sessions"][-1]["ended"] = now
             self._save_meta()
-        if self._compact and self.dist.world_size == 1 and status == "finished":
+        if self._compact and self.dist.world_size == 1 and status != "running":
             try:
                 from .compact import compact_run
             except ImportError:

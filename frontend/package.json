@@ -1,7 +1,7 @@
 {
   "name": "nuboard-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -35,11 +35,5 @@
     "@fontsource-variable/geist-mono": "^5.3.0",
     "apache-arrow": "^21.2.0",
     "uplot": "^1.6.32"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "@tailwindcss/oxide"
-    ]
   }
 }

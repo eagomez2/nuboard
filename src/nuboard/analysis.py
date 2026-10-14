@@ -12,6 +12,7 @@ import pyarrow as pa
 
 from . import _fs
 from .catalog import find_runs, make_record
+from .collection import attach
 from .query import parse, resolve
 from .reader import RunReader
 from .run import project_dir
@@ -39,6 +40,23 @@ class RunHandle:
     @property
     def summary(self) -> dict[str, Any]:
         return self.record["summary"]
+
+    @property
+    def fields(self) -> dict[str, Any]:
+        """Custom fields set in the viewer (``annotations.json``)."""
+        return self.record.get("fields") or {}
+
+    @property
+    def collections(self) -> list[str]:
+        return self.record.get("collections") or []
+
+    def alerts(self) -> list[dict[str, Any]]:
+        """Health alerts: the ones stored at compaction, else computed from the logs."""
+        if self.record.get("compacted") and self.record["status"] != "running":
+            return self.record.get("alerts") or []
+        from .alerts import check_run
+
+        return check_run(self.reader())
 
     def reader(self) -> RunReader:
         return RunReader(self.path)
@@ -102,6 +120,7 @@ class Project:
                     else "."
                 )
                 self._runs.append(RunHandle(make_record(path.name, project, rel, meta, ann), path))
+            attach((h.record, h.path) for h in self._runs)
         if not query:
             return list(self._runs)
         by_record = {id(h.record): h for h in self._runs}

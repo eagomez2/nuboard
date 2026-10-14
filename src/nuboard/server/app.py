@@ -33,6 +33,7 @@ from .. import __version__, _fs
 from .._meta import FORMAT_VERSION, NAME
 from ..artifacts import list_artifacts
 from ..catalog import Catalog
+from ..collection import delete_collection, list_collections, save_collection
 from ..query import QueryError, parse
 from .data import Store, path_inside
 
@@ -43,6 +44,7 @@ ANNOTATION_FIELDS = {
     "reviewed": bool,
     "notes": str,
     "tags": list,
+    "fields": dict,
 }
 TEXT_LIMIT = 2_000_000
 
@@ -93,7 +95,7 @@ def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
     out = {
         k: v
         for k, v in record.items()
-        if k not in ("config", "summary", "inputs", "outputs", "error")
+        if k not in ("config", "summary", "inputs", "outputs", "error", "compacted")
     }
     out["config"] = _flat_config(record.get("config") or {})
     summary = record.get("summary") or {}
@@ -282,11 +284,20 @@ def create_app(
         keys = body.get("keys") or (
             [request.path_params["key"]] if "key" in request.path_params else []
         )
-        patch = {
+        raw: dict[str, Any] = dict(body.get("patch") or {})
+        fields_raw = raw.pop("fields", None)
+        patch: dict[str, Any] = {
             k: ANNOTATION_FIELDS[k](v) if k != "tags" else [str(t) for t in v]
-            for k, v in (body.get("patch") or {}).items()
+            for k, v in raw.items()
             if k in ANNOTATION_FIELDS
         }
+        fields_patch: dict[str, Any] = {}
+        if isinstance(fields_raw, dict):  # merged key by key; null removes a field
+            fields_patch = {
+                str(k)[:64]: v
+                for k, v in fields_raw.items()
+                if v is None or isinstance(v, (str, int, float, bool))
+            }
 
         def write() -> list[str]:
             done = []
@@ -296,6 +307,14 @@ def create_app(
                     continue
                 ann = _fs.read_json(path / "annotations.json", {}) or {}
                 ann.update(patch)
+                if fields_patch:
+                    fields = dict(ann.get("fields") or {})
+                    for k, v in fields_patch.items():
+                        if v is None or v == "":
+                            fields.pop(k, None)
+                        else:
+                            fields[k] = v
+                    ann["fields"] = fields
                 _fs.atomic_write_json(path / "annotations.json", ann)
                 done.append(key)
             catalog.refresh(full=True)
@@ -392,19 +411,96 @@ def create_app(
         )
 
     def artifacts(request: Request) -> Response:
+        """Artifact versions with the runs that produced and used them."""
+        rows = catalog.runs()
+        users: dict[tuple[str, str, int], list[str]] = {}
+        makers: dict[tuple[str, str, int], list[str]] = {}
+        by_id: dict[tuple[str, str], str] = {}
+        for r in rows:
+            by_id[(r["project"], r["id"])] = r["key"]
+            for ref in r.get("inputs") or []:
+                k = (r["project"], ref.get("artifact"), ref.get("version"))
+                users.setdefault(k, []).append(r["key"])
+            for ref in r.get("outputs") or []:
+                k = (r["project"], ref.get("artifact"), ref.get("version"))
+                makers.setdefault(k, []).append(r["key"])
         out = []
+        want = request.query_params.get("project")
         for p in catalog.projects():
-            pdir = catalog.root if p["name"] == catalog.root.name else catalog.root / p["name"]
+            if want and p["name"] != want:
+                continue
+            pdir = project_dir(p["name"])
+            if pdir is None:
+                continue
             for a in list_artifacts(pdir):
+                k = (p["name"], a.name, a.version)
+                producer = makers.get(k) or []
+                pid = a.manifest.get("producer_run")
+                if not producer and pid and (p["name"], pid) in by_id:
+                    producer = [by_id[(p["name"], pid)]]
                 out.append(
                     {
                         "project": p["name"],
                         "name": a.name,
                         "version": a.version,
                         "manifest": a.manifest,
+                        "producers": producer,
+                        "consumers": users.get(k, []),
+                        "size": sum(int(f.get("size") or 0) for f in a.manifest.get("files") or []),
                     }
                 )
         return JSON({"artifacts": out})
+
+    def alerts(request: Request) -> Response:
+        keys = [k for k in request.query_params.get("runs", "").split(",") if k]
+        return JSON({"alerts": {k: store.alerts(k) for k in keys if catalog.get(k)}})
+
+    def collections(request: Request) -> Response:
+        out = []
+        want = request.query_params.get("project")
+        for p in catalog.projects():
+            if want and p["name"] != want:
+                continue
+            pdir = project_dir(p["name"])
+            if pdir is not None:
+                out += [{**c, "project": p["name"]} for c in list_collections(pdir)]
+        return JSON({"collections": out})
+
+    async def collection_save(request: Request) -> Response:
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+        body = await request.json()
+        name = str(body.get("name") or "").strip()
+        if not name:
+            return JSON({"error": "a collection needs a name"}, status_code=400)
+        # run keys are grouped by project; each project keeps its own collection file
+        per_project: dict[str, tuple[list[str], list[str]]] = {}
+        for field, slot in (("add", 0), ("remove", 1)):
+            for key in body.get(field) or []:
+                record = catalog.get(str(key))
+                if record is not None:
+                    per_project.setdefault(record["project"], ([], []))[slot].append(record["id"])
+        if body.get("project"):
+            per_project.setdefault(str(body["project"]), ([], []))
+        if not per_project:
+            return JSON({"error": "no known runs or project"}, status_code=400)
+        saved = []
+        for project, (add, remove) in per_project.items():
+            pdir = project_dir(project)
+            if pdir is None:
+                continue
+            if body.get("delete"):
+                delete_collection(pdir, name)
+                continue
+            saved.append(
+                {
+                    **save_collection(
+                        pdir, name, add=add, remove=remove, description=body.get("description")
+                    ),
+                    "project": project,
+                }
+            )
+        return JSON({"collections": saved})
 
     def project_dir(name: str) -> Path | None:
         if name == catalog.root.name and any(p["name"] == name for p in catalog.projects()):
@@ -497,6 +593,9 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/artifacts", artifacts),
+        Route("/api/alerts", alerts),
+        Route("/api/collections", collections),
+        Route("/api/collections", collection_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),
         Route("/api/views/{project:path}/{name}", view_get),
         Route("/api/stream", stream),

@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 
 from . import _fs
 from ._meta import FORMAT_VERSION
+from .alerts import check_run
 from .reader import RunReader
 from .series import zoom_levels
 
@@ -36,7 +37,11 @@ SCHEMA = pa.schema(
 
 
 def compact_run(path: str | os.PathLike[str]) -> Path:
-    """Write ``data.parquet`` for the run at ``path`` and record which log bytes it covers."""
+    """Write ``data.parquet`` for the run at ``path``.
+
+    Also records in ``run.json`` which log bytes the file covers and the run's
+    health alerts (see :mod:`NAME.alerts`).
+    """
     path = Path(path)
     reader = RunReader(path)
     reader._parquet_checked = True  # always decode the logs themselves
@@ -96,5 +101,6 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     meta = _fs.read_json(path / "run.json", {})
     if meta:
         meta["compacted"] = {"bytes": sizes, "time": time.time()}
+        meta["alerts"] = check_run(reader)
         _fs.atomic_write_json(path / "run.json", meta)
     return target

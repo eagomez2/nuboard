@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import _fs
+from .collection import save_collection
 from .run import init
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
@@ -47,6 +49,7 @@ def llm_point(
     *,
     diverge_at: int | None = None,
     dip_at: int | None = None,
+    spike_at: int | None = None,
 ) -> dict[str, float]:
     final = LLM_LRS.get(lr, 2.5) + 0.004 * (seed - 2)
     tau = 2600 * (1e-3 / lr) ** 0.45
@@ -60,6 +63,9 @@ def llm_point(
     util = 93 + rng.gauss(0, 1.2)
     if dip_at is not None and dip_at <= step < dip_at + 900:
         tps, util = 261_000 + rng.gauss(0, 4000), 62 + rng.gauss(0, 2)
+    if spike_at is not None and spike_at <= step < spike_at + 40:  # one bad batch
+        loss += 1.4 * math.exp(-(step - spike_at) / 15)
+        grad += 4.0 * math.exp(-(step - spike_at) / 15)
     if diverge_at is not None and step >= diverge_at - 400:
         grad *= 1 + (step - diverge_at + 400) / 60
         loss += (step - diverge_at + 400) / 600
@@ -85,15 +91,15 @@ def _llm_runs(root: Path, base: float) -> None:
         capture_env=False,
         config={"source": "fineweb-edu", "shards": 64},
         tags=["data"],
-        _started=base - 3 * 3600,
+        _started=base - 4.8 * 3600,
     ) as prep:
-        prep.log({"data/tokens_b": 10.2}, step=0, time=base - 3 * 3600 + 30)
+        prep.log({"data/tokens_b": 10.2}, step=0, time=base - 4.8 * 3600 + 30)
         prep.log_artifact("fineweb-edu", data, type="dataset", metadata={"tokens": "10B"})
         (data / "train.txt").write_text("fineweb-edu sample shard v2\n" * 120, encoding="utf-8")
         prep.log_artifact(
             "fineweb-edu", data, type="dataset", metadata={"tokens": "12B", "dedup": True}
         )
-        prep.finish(_ended=base - 3 * 3600 + 120)
+        prep.finish(_ended=base - 4.8 * 3600 + 120)
 
     order = [
         (1e-4, 1),
@@ -109,9 +115,10 @@ def _llm_runs(root: Path, base: float) -> None:
         (3e-4, 2),
         (3e-4, 3),
     ]
+    runs: dict[str, str] = {}
     for i, (lr, seed) in enumerate(order):
         rng = random.Random(f"{lr}-{seed}")
-        started = base - 2.6 * 3600 + i * 600
+        started = base - 4.6 * 3600 + i * 600
         name = f"lr{lr:.0e}".replace("e-0", "e-") + f"-s{seed}"
         crashed = lr == 3e-3 and seed == 2
         run = init(
@@ -136,6 +143,7 @@ def _llm_runs(root: Path, base: float) -> None:
                 rng,
                 diverge_at=18_400 if crashed else None,
                 dip_at=18_000 if (lr == 1e-3 and seed == 1) else None,
+                spike_at=9_000 if (lr == 3e-4 and seed == 3) else None,
             )
             run.log(point, step=step, time=t)
             if step % 500 == 0:
@@ -164,6 +172,52 @@ def _llm_runs(root: Path, base: float) -> None:
                     "model", ckpt, type="checkpoint", metadata={"step": last, "eval/loss": 2.37}
                 )
             run.finish(_ended=t)
+        runs[name] = run.id
+
+    # downstream of the checkpoint: an evaluation run that writes a report artifact
+    with init(
+        "llm-pretrain",
+        name="eval-mmlu",
+        dir=root,
+        capture_env=False,
+        config={"model": "model:v1", "benchmark": "mmlu", "shots": 5},
+        tags=["eval"],
+        _started=base - 600,
+    ) as ev:
+        ev.use_artifact("model:latest")
+        rng = random.Random("eval")
+        for i, subject in enumerate(("stem", "humanities", "social", "other")):
+            ev.log(
+                {f"eval/mmlu_{subject}": 0.41 + rng.random() * 0.08}, step=i, time=base - 600 + i
+            )
+        report = Path(tempfile.mkdtemp())
+        (report / "mmlu.json").write_text('{"accuracy": 0.447}', encoding="utf-8")
+        ev.log_artifact("eval-report", report, type="report", metadata={"mmlu": 0.447})
+        ev.finish(_ended=base - 300)
+
+    # a hand-picked collection and a few custom fields, as a reviewer would leave them
+    project = root / "llm-pretrain"
+    save_collection(
+        project,
+        "shortlist",
+        add=[runs["lr1e-3-s1"], runs["lr1e-3-s2"], runs["lr3e-4-s1"]],
+        description="Candidates for the 7B run",
+    )
+    save_collection(
+        project, "paper-figures", add=[runs[f"lr{x}-s1"] for x in ("1e-4", "3e-4", "1e-3")]
+    )
+    verdicts = {
+        "lr1e-3-s1": "keep",
+        "lr1e-3-s2": "keep",
+        "lr3e-3-s2": "diverged",
+        "lr1e-4-s1": "too slow",
+    }
+    for path in (project / "runs").iterdir():
+        meta = _fs.read_json(path / "run.json", {})
+        if meta.get("name") in verdicts:
+            ann = _fs.read_json(path / "annotations.json", {}) or {}
+            ann["fields"] = {"verdict": verdicts[meta["name"]], "owner": "esteban"}
+            _fs.atomic_write_json(path / "annotations.json", ann)
 
 
 _WORDS = (

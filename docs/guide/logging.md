@@ -96,12 +96,15 @@ ds.manifest  # sha256 and size per file, type, metadata, producing run
 Artifacts live in `<project>/artifacts/<name>/v<N>/`; versions are numbered
 automatically and created atomically. `log_artifact` copies the files on the
 calling thread, so avoid calling it inside a hot loop with large checkpoints.
+The viewer's [Artifacts page](artifacts.md) shows every version with the runs
+that produced and used it.
 
 ## Finishing, crashes and exit
 
 - `run.finish()` flushes, writes an end frame, fsyncs, sets `status` to
   `finished` and (with PyArrow installed) compacts the logs to
-  `data.parquet`. It is idempotent.
+  `data.parquet` and records the run's [health alerts](alerts.md).
+  It is idempotent. Crashed and killed runs are compacted the same way.
 - It is also called at interpreter exit (`atexit`).
 - An uncaught exception marks the run `crashed` and stores the traceback in
   `run.json` → `exit.error`; `KeyboardInterrupt` marks it `killed`. The same

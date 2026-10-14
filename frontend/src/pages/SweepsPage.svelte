@@ -1,0 +1,548 @@
+<script lang="ts">
+  import { num, type RunBrief } from '../lib/api';
+  import { defaultMetric, fmtAxis, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { router } from '../lib/router.svelte';
+  import { app } from '../lib/state.svelte';
+  import { axisTicks, importance, makeAxis, norm, type Axis, type Value } from '../lib/sweep';
+
+  const H = 380;
+  const TOP = 46;
+  const BOTTOM = 30;
+  const PAD = 70;
+
+  let width = $state(900);
+  let hover = $state<string | null>(null);
+  // Brushes per axis key, as [lo, hi] in normalized axis units (0 = bottom).
+  let brushes = $state<Record<string, [number, number]>>({});
+  let drag = $state<{ key: string; y0: number; y1: number } | null>(null);
+
+  const runs = $derived(app.visibleRuns().filter((r) => r.metric_count > 0));
+  const metrics = $derived(app.runs?.metrics ?? []);
+  const metric = $derived.by(() => {
+    const m = router.get('metric');
+    return m && metrics.includes(m) ? m : defaultMetric(metrics);
+  });
+  const stat = $derived(router.get('stat', 'best'));
+  const lower = $derived(lowerIsBetter(metric));
+
+  function value(r: RunBrief): number | null {
+    const s = r.summary[metric];
+    if (!s) return null;
+    const v = stat === 'last' ? num(s.last) : lower ? s.min : s.max;
+    return v !== null && Number.isFinite(v) ? v : null;
+  }
+
+  // Parameters: config keys whose values differ between runs, plus custom fields.
+  const candidates = $derived.by(() => {
+    const seen = new Map<string, Set<string>>();
+    const add = (k: string, v: unknown) => {
+      if (!seen.has(k)) seen.set(k, new Set());
+      seen.get(k)!.add(JSON.stringify(v ?? null));
+    };
+    for (const r of runs) {
+      for (const [k, v] of Object.entries(r.config)) add(k, v);
+      for (const [k, v] of Object.entries(r.fields ?? {})) add(`fields.${k}`, v);
+    }
+    return [...seen.entries()].filter(([, s]) => s.size > 1 && s.size <= Math.max(runs.length, 2)).map(([k]) => k);
+  });
+  const params = $derived.by(() => {
+    const chosen = router.list('params').filter((p) => candidates.includes(p));
+    if (chosen.length) return chosen;
+    return candidates.filter((k) => !/seed/i.test(k)).slice(0, 6);
+  });
+  const get = (r: RunBrief, key: string): Value =>
+    key.startsWith('fields.') ? r.fields?.[key.slice(7)] : (r.config[key] as Value);
+
+  const values = $derived(runs.map(value));
+  const axes = $derived.by((): Axis[] => {
+    const list = params.map((p) =>
+      makeAxis(
+        p,
+        runs.map((r) => get(r, p)),
+      ),
+    );
+    const m = makeAxis(metric, values);
+    return [...list, { ...m, key: `metric:${metric}` }];
+  });
+  const scores = $derived(
+    new Map(
+      params.map((p) => [
+        p,
+        importance(
+          runs.map((r) => get(r, p)),
+          values,
+        ),
+      ]),
+    ),
+  );
+
+  const plotW = $derived(Math.max(320, width - 2 * PAD));
+  const xOf = (i: number) => PAD + (axes.length <= 1 ? plotW / 2 : (i / (axes.length - 1)) * plotW);
+  const h = H - TOP - BOTTOM;
+  // The metric axis is flipped for lower-is-better metrics so the best runs are always on top.
+  const pos = (axis: Axis, v: Value): number | null => {
+    const n = norm(axis, v);
+    if (n === null) return null;
+    return axis.key.startsWith('metric:') && lower ? 1 - n : n;
+  };
+  const yOf = (n: number) => TOP + (1 - n) * h;
+
+  const metricAxis = $derived(axes[axes.length - 1]);
+  const goodness = (v: number | null) => (v === null ? null : pos(metricAxis, v));
+  const colorOf = (g: number | null) =>
+    g === null ? 'var(--faint)' : `color-mix(in oklab, var(--s1) ${Math.round(g * 100)}%, var(--s2))`;
+
+  const lines = $derived(
+    runs.map((r, i) => {
+      const pts = axes.map((a, k) => {
+        const v = k === axes.length - 1 ? values[i] : get(r, a.key);
+        const n = pos(a, v);
+        return { x: xOf(k), n };
+      });
+      const inBrush = axes.every((a, k) => {
+        const b = brushes[a.key];
+        const n = pts[k].n;
+        return !b || (n !== null && n >= b[0] && n <= b[1]);
+      });
+      const d = pts.map((p, k) => `${k ? 'L' : 'M'}${p.x.toFixed(1)},${yOf(p.n ?? -0.06).toFixed(1)}`).join('');
+      return { run: r, d, keep: inBrush, g: goodness(values[i]), missing: values[i] === null };
+    }),
+  );
+  const kept = $derived(lines.filter((l) => l.keep));
+  const ranked = $derived(
+    kept.filter((l) => !l.missing).sort((a, b) => (lower ? 1 : -1) * ((value(a.run) ?? 0) - (value(b.run) ?? 0))),
+  );
+
+  function brushStart(e: PointerEvent, key: string) {
+    const y = (e.currentTarget as SVGElement).ownerSVGElement!.getBoundingClientRect().top;
+    const n = 1 - (e.clientY - y - TOP) / h;
+    drag = { key, y0: n, y1: n };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+  function brushMove(e: PointerEvent) {
+    if (!drag) return;
+    const y = (e.currentTarget as SVGElement).ownerSVGElement!.getBoundingClientRect().top;
+    drag = { ...drag, y1: Math.min(1, Math.max(0, 1 - (e.clientY - y - TOP) / h)) };
+  }
+  function brushEnd() {
+    if (!drag) return;
+    const { key, y0, y1 } = drag;
+    drag = null;
+    const next = { ...brushes };
+    if (Math.abs(y1 - y0) < 0.02) delete next[key];
+    else next[key] = [Math.min(y0, y1), Math.max(y0, y1)];
+    brushes = next;
+  }
+  function toggleParam(p: string) {
+    const next = params.includes(p) ? params.filter((x) => x !== p) : [...params, p];
+    router.set({ params: next.join(',') || null });
+  }
+  const label = (key: string) => (key.startsWith('metric:') ? key.slice(7) : key);
+  const short = (key: string) => label(key).split('.').slice(-2).join('.');
+  const fmt = (v: number) => fmtAxis(v);
+</script>
+
+<div class="card panel">
+  <div class="toolbar">
+    <span class="label">Objective</span>
+    <select
+      class="input mono metric"
+      value={metric}
+      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value })}
+      aria-label="Metric"
+    >
+      {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
+    </select>
+    <div class="seg" role="group" aria-label="Statistic">
+      <button aria-pressed={stat === 'best'} onclick={() => router.set({ stat: null })}>best</button>
+      <button aria-pressed={stat === 'last'} onclick={() => router.set({ stat: 'last' })}>last</button>
+    </div>
+    <span class="muted">{lower ? 'lower is better' : 'higher is better'} · {kept.length} of {runs.length} runs</span>
+    <span class="grow"></span>
+    {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}
+    <button
+      class="btn btn-primary"
+      disabled={!ranked.length}
+      onclick={() => router.go('charts', { sel: ranked.map((l) => l.run.key).join(','), metric })}
+    >
+      Plot {ranked.length} runs
+    </button>
+  </div>
+
+  {#if !runs.length || !metric}
+    <div class="empty">No runs with metrics to compare. Pick a project or loosen the query.</div>
+  {:else}
+    <div class="params">
+      <span class="label">Parameters</span>
+      {#each candidates as p (p)}
+        {@const score = scores.get(p)}
+        <button class="chip param" aria-pressed={params.includes(p)} onclick={() => toggleParam(p)} title={p}>
+          <span class="mono">{short(p)}</span>
+          {#if params.includes(p) && score !== null && score !== undefined}
+            <span class="imp" title="Rank correlation with {metric}"><span style="width:{score * 100}%"></span></span>
+          {/if}
+        </button>
+      {:else}
+        <span class="faint">All runs share the same config; there is nothing to sweep over.</span>
+      {/each}
+    </div>
+
+    <div class="pc" bind:clientWidth={width}>
+      <svg {width} height={H} role="img" aria-label="Parallel coordinates of {runs.length} runs">
+        {#each lines.filter((l) => !l.keep) as l (l.run.key)}
+          <path class="line dim" d={l.d} />
+        {/each}
+        {#each kept as l (l.run.key)}
+          <path
+            class="line"
+            class:missing={l.missing}
+            class:hl={hover === l.run.key}
+            d={l.d}
+            style="stroke:{colorOf(l.g)}"
+            role="button"
+            tabindex="-1"
+            onpointerenter={() => (hover = l.run.key)}
+            onpointerleave={() => (hover = null)}
+            onclick={() => router.go('runs', { cmp: l.run.key })}
+            onkeydown={() => {}}><title>{l.run.name}: {fmtNum(value(l.run))}</title></path
+          >
+        {/each}
+        {#each axes as a, k (a.key)}
+          {@const x = xOf(k)}
+          {@const isMetric = k === axes.length - 1}
+          <g class="axis" class:metricaxis={isMetric}>
+            <line x1={x} x2={x} y1={TOP} y2={TOP + h} />
+            <text class="title mono" {x} y={TOP - 26} text-anchor="middle">{short(a.key)}</text>
+            <text class="sub" {x} y={TOP - 12} text-anchor="middle"
+              >{isMetric
+                ? `${stat} · best on top`
+                : a.numeric
+                  ? a.log
+                    ? 'log scale'
+                    : 'linear'
+                  : `${a.categories.length} values`}</text
+            >
+            {#each axisTicks(a, fmt) as [n, text] (text + n)}
+              {@const yy = yOf(isMetric && lower ? 1 - n : n)}
+              {@const side = isMetric ? 1 : -1}
+              <line class="tickmark" x1={x + side * 4} x2={x} y1={yy} y2={yy} />
+              <text class="tick mono" x={x + side * 7} y={yy + 4} text-anchor={isMetric ? 'start' : 'end'}>{text}</text>
+            {/each}
+            {#if brushes[a.key]}
+              {@const b = brushes[a.key]}
+              <rect class="brush" x={x - 9} y={yOf(b[1])} width="18" height={yOf(b[0]) - yOf(b[1])} rx="3" />
+            {/if}
+            {#if drag?.key === a.key}
+              <rect
+                class="brush live"
+                x={x - 9}
+                y={yOf(Math.max(drag.y0, drag.y1))}
+                width="18"
+                height={Math.abs(drag.y1 - drag.y0) * h}
+                rx="3"
+              />
+            {/if}
+            <rect
+              class="hit"
+              x={x - 14}
+              y={TOP - 4}
+              width="28"
+              height={h + 8}
+              role="slider"
+              aria-label="Filter {label(a.key)}"
+              aria-valuenow={0}
+              tabindex="-1"
+              onpointerdown={(e) => brushStart(e, a.key)}
+              onpointermove={brushMove}
+              onpointerup={brushEnd}
+            />
+          </g>
+        {/each}
+        <text class="sub" x={xOf(axes.length - 1)} y={TOP + h + 22} text-anchor="middle">missing / NaN</text>
+      </svg>
+      <p class="hint">
+        Drag along an axis to keep only the runs in that range; click an axis to clear its filter. Line color goes from
+        orange (worst) to blue (best). The bars next to each parameter show its rank correlation with the objective.
+      </p>
+    </div>
+  {/if}
+</div>
+
+{#if runs.length && metric && params.length}
+  <section class="grid">
+    {#each params as p (p)}
+      {@const a = axes[params.indexOf(p)]}
+      <div class="card scatter">
+        <div class="sh">
+          <span class="mono">{short(p)}</span>
+          {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint"
+              >correlation {fmtNum(scores.get(p)!, 2)}</span
+            >{/if}
+        </div>
+        <svg viewBox="0 0 300 190" role="img" aria-label="{metric} against {p}">
+          <line class="frame" x1="40" x2="290" y1="160" y2="160" />
+          <line class="frame" x1="40" x2="40" y1="10" y2="160" />
+          {#each axisTicks(a, fmt) as [n, text] (text + n)}
+            <text class="tick mono" x={46 + n * 230} y="176" text-anchor="middle">{text}</text>
+          {/each}
+          {#each axisTicks(metricAxis, fmt).filter((_, i, all) => i === 0 || i === all.length - 1 || all.length <= 3) as [n, text] (text + n)}
+            {@const yy = 160 - (lower ? 1 - n : n) * 150}
+            <text class="tick mono" x="36" y={yy + 3} text-anchor="end">{text}</text>
+          {/each}
+          {#each lines as l, i (l.run.key)}
+            {@const xn = norm(a, get(l.run, p))}
+            {@const g = l.g}
+            {#if xn !== null && g !== null}
+              {@const jitter = a.numeric ? 0 : (((i * 37) % 11) - 5) * 1.6}
+              <circle
+                cx={46 + xn * 230 + jitter}
+                cy={160 - g * 150}
+                r={hover === l.run.key ? 5 : 3.5}
+                class:dim={!l.keep}
+                style="fill:{l.keep ? colorOf(g) : 'var(--border)'}"
+                role="button"
+                tabindex="-1"
+                onpointerenter={() => (hover = l.run.key)}
+                onpointerleave={() => (hover = null)}
+                onclick={() => router.go('runs', { cmp: l.run.key })}
+                onkeydown={() => {}}
+                ><title>{l.run.name}: {fmtValue(get(l.run, p))} → {fmtNum(value(l.run))}</title></circle
+              >
+            {/if}
+          {/each}
+        </svg>
+      </div>
+    {/each}
+  </section>
+
+  <section class="card best">
+    <div class="sh"><span class="label">Best runs</span><span class="faint">{metric} ({stat}), filtered</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Run</th>
+          {#each params as p (p)}<th class="mono">{short(p)}</th>{/each}
+          <th class="right mono">{metric}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each ranked.slice(0, 10) as l, i (l.run.key)}
+          <tr
+            class:hl={hover === l.run.key}
+            onpointerenter={() => (hover = l.run.key)}
+            onpointerleave={() => (hover = null)}
+          >
+            <td class="faint">{i + 1}</td>
+            <td
+              ><button class="link mono" onclick={() => router.go('runs', { cmp: l.run.key })}>{l.run.name}</button></td
+            >
+            {#each params as p (p)}<td class="mono">{fmtValue(get(l.run, p))}</td>{/each}
+            <td class="right mono">{fmtNum(value(l.run))}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </section>
+{/if}
+
+<style>
+  .panel {
+    overflow: hidden;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .metric {
+    max-width: 240px;
+    font-size: 12.5px;
+  }
+  .grow {
+    flex: 1;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .faint {
+    color: var(--faint);
+  }
+  .params {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    padding: 12px 14px 4px;
+  }
+  .params .label {
+    margin-right: 6px;
+  }
+  .param {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .param[aria-pressed='true'] {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent);
+  }
+  .imp {
+    width: 34px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+    display: inline-block;
+  }
+  .imp span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+  }
+  .pc {
+    width: 100%;
+    overflow: hidden;
+    user-select: none;
+  }
+  svg {
+    display: block;
+  }
+  .line {
+    fill: none;
+    stroke-width: 1.6;
+    opacity: 0.85;
+    cursor: pointer;
+  }
+  .line.dim {
+    stroke: var(--border);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .line.missing {
+    stroke-dasharray: 4 4;
+  }
+  .line.hl {
+    stroke-width: 3.5;
+    opacity: 1;
+  }
+  .axis line {
+    stroke: var(--muted);
+  }
+  .axis .tickmark {
+    stroke: var(--muted);
+  }
+  .title {
+    fill: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .metricaxis .title {
+    fill: var(--accent);
+  }
+  .sub {
+    fill: var(--faint);
+    font-size: 11px;
+  }
+  .tick {
+    fill: var(--muted);
+    font-size: 10.5px;
+  }
+  .hit {
+    fill: transparent;
+    cursor: ns-resize;
+  }
+  .brush {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .brush.live {
+    opacity: 0.5;
+  }
+  .hint {
+    color: var(--faint);
+    font-size: 12.5px;
+    margin: 0;
+    padding: 4px 14px 14px;
+  }
+  .empty {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+  .scatter {
+    padding: 12px 12px 6px;
+  }
+  .sh {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    padding-bottom: 6px;
+  }
+  .frame {
+    stroke: var(--border);
+  }
+  circle {
+    cursor: pointer;
+    stroke: var(--panel);
+    stroke-width: 1;
+  }
+  circle.dim {
+    opacity: 0.5;
+  }
+  .best {
+    padding: 14px;
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 11.5px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr.hl td {
+    background: var(--panel-2);
+  }
+  .right {
+    text-align: right;
+  }
+  .link {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+</style>

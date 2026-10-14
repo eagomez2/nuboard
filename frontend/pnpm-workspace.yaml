@@ -1,0 +1,8 @@
+# Packages allowed to run install scripts. pnpm 10 reads onlyBuiltDependencies;
+# pnpm 11 reads allowBuilds.
+onlyBuiltDependencies:
+  - esbuild
+  - "@tailwindcss/oxide"
+allowBuilds:
+  esbuild: true
+  "@tailwindcss/oxide": true

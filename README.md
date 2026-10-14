@@ -2,7 +2,7 @@
 
 <h1 align="center">nuboard</h1>
 
-<p align="center"><b>A fast, local experiment tracker for ML training.</b><br>
+<p align="center"><b>Experiment tracking that lives in a folder.</b><br>
 Log from Python with three calls. Every run is a folder. View thousands of runs in your browser.</p>
 
 ![Charts page: a learning-rate sweep grouped by lr, mean ± std over three seeds](docs/assets/charts-light.png)
@@ -38,27 +38,33 @@ nuboard up experiments        # http://localhost:6070
 ## Quick start
 
 ```bash
-pip install "nuboard[viewer]"            # or the wheel next to this repo: pip install "nuboard-0.1.0-py3-none-any.whl[viewer]"
-nuboard demo demo-runs --up --open    # 3 projects, ~27 runs, one live run
+# nuboard is not on PyPI yet: install the wheel that ships next to this repository
+uv tool install "nuboard-0.2.0-py3-none-any.whl[viewer]"
+nuboard demo demo-runs --up --open    # 3 projects, 28 runs, one live run
 ```
 
 Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
-open the Charts page. The [getting started guide](docs/getting-started.md) has
-a tour.
+open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
+[installation](docs/installation.md) covers building from source.
 
-## What's in 0.1
+## What's in 0.2
 
 | Area | Included |
 | --- | --- |
 | Python API | `init` (+ resume, fork, ranks), `log`, `log_text`, `log_image`, `log_figure`, `log_html`, `log_artifact`, `use_artifact`, `finish`, context manager |
-| Storage | documented [log format](docs/format.md), Parquet compaction with zoom levels, versioned artifacts |
-| Analysis | `nm.load("project").scalars("loss", group_by="config.lr")` → Arrow tables |
-| Viewer | Runs table with a query language, stars, notes, archive, saved views; run details and config/file diffs; grouped line charts with bands, smoothing, zoom, linked crosshair, inspector and live updates; media with a step slider; light and dark themes |
+| Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
+| Analysis | `nm.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
+| Runs | query language, stars, notes, archive, custom fields, column chooser, collections, saved views, run details and config/file diffs |
+| Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip |
+| Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
+| Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
+| Artifacts | versions, files, metadata and a lineage graph |
+| Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per metric and rank |
 | CLI | `nuboard up`, `demo`, `ls`, `compact` |
 
-Not yet: multi-GPU rank bands, sweep views, health alerts, artifact lineage
-pages, interactive Plotly/Vega/Bokeh rendering, TensorBoard import. See the
-[roadmap](docs/roadmap.md).
+Not yet: multi-GPU rank bands, interactive Plotly/Vega/Bokeh rendering,
+TensorBoard import. See the [roadmap](docs/roadmap.md) and the
+[changelog](docs/changelog.md).
 
 ## Documentation
 
@@ -68,12 +74,13 @@ The docs are a [MkDocs](https://www.mkdocs.org/) site in `docs/`:
 uv run mkdocs serve    # http://localhost:8000
 ```
 
-- [Getting started](docs/getting-started.md): install, demo, first run, CLI
-- [Logging from Python](docs/guide/logging.md)
-- [Using the viewer](docs/guide/viewer.md) and the [query language](docs/guide/query.md)
-- [Analysis API](docs/guide/analysis.md)
-- [Distributed training](docs/guide/distributed.md)
-- [File format](docs/format.md), [Architecture](docs/architecture.md), [Development](docs/development.md)
+- [Installation](docs/installation.md) and [Quickstart](docs/quickstart.md)
+- [Logging from Python](docs/guide/logging.md), [Using the viewer](docs/guide/viewer.md),
+  [Sweeps](docs/guide/sweeps.md), [Health alerts](docs/guide/alerts.md),
+  [Artifacts and lineage](docs/guide/artifacts.md), [Analysis API](docs/guide/analysis.md),
+  [Distributed training](docs/guide/distributed.md)
+- Reference: [query language](docs/reference/query.md), [file format](docs/reference/format.md),
+  [architecture](docs/reference/architecture.md), [development](docs/reference/development.md)
 
 ## Development
 
@@ -85,12 +92,13 @@ uv run pytest && uv run ruff check . && uv run pyright
 uv build                                             # wheel with the frontend bundled
 ```
 
-See [Development](docs/development.md) for the repository layout, the rules for
+See [Development](docs/reference/development.md) for the repository layout, the rules for
 the logging side, and how to rename the project (the name lives in three
 places).
 
 ## Requirements
 
 Python 3.10+ on Linux, macOS or Windows. The viewer extra adds NumPy, PyArrow,
-Starlette and uvicorn. Building the frontend from source needs Node 20+ and
-pnpm; installing a wheel does not.
+Starlette and uvicorn; the 0.2 features add no dependencies. Building the
+frontend from source needs Node 20+ and pnpm (`brew install pnpm` on macOS);
+installing a wheel does not.

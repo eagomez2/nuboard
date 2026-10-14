@@ -14,6 +14,10 @@ runs = project.runs('where tags has "sweep" and status = finished')
 for r in runs:
     print(r.id, r.config["optim"]["lr"], r.summary["train/loss"]["min"])
 
+# custom fields, collections and health alerts set in the viewer
+for r in project.runs('collections has "shortlist"'):
+    print(r.name, r.fields.get("verdict"), r.collections, [a["message"] for a in r.alerts()])
+
 # one metric across runs, long format: run_id, name, step, time, value, config.optim.lr
 table = project.scalars("train/loss", group_by="config.optim.lr", query="where tags has sweep")
 df = table.to_pandas()
@@ -26,6 +30,15 @@ summary = project.summary().to_pandas()
 run = project.run("20261013-0720_lr3e-4-s1_x5bq2k")
 run.scalars()  # metric, step, time, value
 run.scalars("train/loss")
+```
+
+Collections can be edited from Python too:
+
+```python
+from nuboard.collection import list_collections, save_collection
+
+save_collection("experiments/llm-pretrain", "shortlist", add=[r.id for r in runs[:3]])
+list_collections("experiments/llm-pretrain")  # [{"name": "shortlist", "runs": [...], ...}]
 ```
 
 ## Lower-level reader

@@ -30,6 +30,7 @@
     onCursor,
     onZoom,
     onPin,
+    regions = [],
   }: {
     data: ChartData | null;
     smoothing?: number;
@@ -46,6 +47,8 @@
     onCursor?: (x: number | null, values: CursorValue[]) => void;
     onZoom?: (range: [number, number] | null) => void;
     onPin?: () => void;
+    /** Shaded x ranges, e.g. health alerts: a spike or a throughput drop. */
+    regions?: { x0: number; x1: number; label: string }[];
   } = $props();
 
   let el: HTMLDivElement;
@@ -228,6 +231,32 @@
         ],
         draw: [
           (u) => {
+            if (!regions.length) return;
+            const ctx = u.ctx;
+            ctx.save();
+            const warn = cssVar('--warn');
+            const dpr = devicePixelRatio;
+            for (const r of regions) {
+              let a = Math.round(u.valToPos(r.x0, 'x', true));
+              let b = Math.round(u.valToPos(r.x1, 'x', true));
+              const left = u.bbox.left;
+              const right = left + u.bbox.width;
+              if (b < left || a > right) continue;
+              a = Math.max(a, left);
+              b = Math.min(Math.max(b, a + 3 * dpr), right);
+              ctx.fillStyle = withAlpha(warn, 0.12);
+              ctx.fillRect(a, u.bbox.top, b - a, u.bbox.height);
+              ctx.fillStyle = warn;
+              ctx.fillRect(a, u.bbox.top + u.bbox.height - 3 * dpr, b - a, 3 * dpr);
+              if (!compact) {
+                ctx.font = `${11 * dpr}px ${cssVar('--mono') || 'monospace'}`;
+                ctx.textAlign = 'left';
+                ctx.fillText(r.label, a + 4 * dpr, u.bbox.top + u.bbox.height - 8 * dpr);
+              }
+            }
+            ctx.restore();
+          },
+          (u) => {
             if (!nanMarks.length) return;
             const ctx = u.ctx;
             ctx.save();
@@ -264,7 +293,19 @@
 
   $effect(() => {
     // Rebuild when anything that changes series styling or data changes.
-    void [data, smoothing, showRaw, robust, logY, height, hidden.size, [...hidden].join('|'), highlight, themeVersion];
+    void [
+      data,
+      smoothing,
+      showRaw,
+      robust,
+      logY,
+      height,
+      hidden.size,
+      [...hidden].join('|'),
+      highlight,
+      themeVersion,
+      regions,
+    ];
     schedule();
   });
 
