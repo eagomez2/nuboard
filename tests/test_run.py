@@ -223,6 +223,17 @@ def test_matplotlib_figure():
     assert b"<svg" in r.read_media(r.media()[0])
 
 
+def test_figure_spec_dicts():
+    from nuboard._media import figure_bytes
+
+    vega = {"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "bar"}
+    plotly = {"data": [{"type": "bar", "y": [1, 2]}], "layout": {}}
+    assert figure_bytes(vega)[1] == "application/vnd.vegalite+json"
+    assert figure_bytes(plotly)[1] == "application/vnd.plotly.v1+json"
+    with pytest.raises(TypeError):
+        figure_bytes({"mark": "bar"})
+
+
 def test_artifacts():
     src_dir = os.path.join(os.environ["NUBOARD_DIR"], "..", "data")
     os.makedirs(src_dir)

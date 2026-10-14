@@ -192,10 +192,18 @@
     }));
   });
 
+  // Any metric can be the x axis (matched by step); counters like tokens or epochs come first.
+  const xMetric = $derived(xKind.startsWith('metric:') ? xKind.slice(7) : null);
+  const xCandidates = $derived.by(() => {
+    const counter = (m: string) => /token|epoch|sample|example|seen|images|flop|step|iter/i.test(m);
+    return [...metrics.filter(counter), ...metrics.filter((m) => !counter(m))];
+  });
+
   function fmtX(x: number | null) {
     if (x === null) return '—';
     if (xKind === 'time') return new Date(x * 1000).toLocaleTimeString();
     if (xKind === 'relative' || xKind === 'active') return fmtDuration(x);
+    if (xMetric) return `${xMetric} ${fmtNum(x)}`;
     return `step ${Math.round(x).toLocaleString()}`;
   }
   function setSmooth(v: number) {
@@ -313,6 +321,20 @@
           >
         {/each}
       </div>
+      <select
+        class="input sm mono xmetric"
+        class:on={xMetric !== null}
+        value={xMetric ?? ''}
+        onchange={(e) => {
+          const v = (e.currentTarget as HTMLSelectElement).value;
+          router.set({ x: v ? `metric:${v}` : null, zoom: null });
+        }}
+        aria-label="X axis metric"
+        title="Plot against another metric, matched by step"
+      >
+        <option value="">x by metric…</option>
+        {#each xCandidates as m (m)}<option value={m}>x = {m}</option>{/each}
+      </select>
       <label class="smooth"
         >smooth
         <input
@@ -485,6 +507,14 @@
 {/if}
 
 <style>
+  .xmetric {
+    max-width: 210px;
+    font-size: 12.5px;
+  }
+  .xmetric.on {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
   .alerts {
     display: flex;
     flex-wrap: wrap;

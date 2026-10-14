@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.0
+
+**Charts**
+
+- **X axis by any metric**: plot every chart against another metric, such as
+  `train/tokens` or `epoch`, from the new **x by metric** menu
+  (`x=metric:<name>` in the URL). Points are matched by step, with the x metric
+  interpolated where it was logged at other steps. Zoom maps back to a step
+  range when the x metric only grows, so finer data still loads on zoom.
+
+**Media**
+
+- **Interactive figures**: Plotly, Vega-Lite (Altair) and Bokeh figures render
+  interactively on the Media page, each in a sandboxed iframe that follows the
+  theme. Plotly and Vega are bundled and load on demand; Bokeh loads BokehJS
+  for the figure's exact version from `cdn.bokeh.org`.
+- `log_figure` accepts Plotly figure dicts (`{"data": [...], "layout": ...}`)
+  without Plotly installed.
+
+**Other**
+
+- The demo logs a Vega-Lite per-class accuracy chart and a Plotly confusion
+  matrix in the ViT ablations.
+- Built assets are served with `Access-Control-Allow-Origin: *` so the
+  sandboxed figure frame can load them.
+
 ## 0.2.0
 
 **New pages**

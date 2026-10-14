@@ -602,7 +602,7 @@ def create_app(
         Route("/", index),
     ]
     if (STATIC / "assets").exists():
-        routes.append(Mount("/assets", StaticFiles(directory=STATIC / "assets")))
+        routes.append(Mount("/assets", _SharedAssets(directory=STATIC / "assets")))
     routes.append(Route("/{path:path}", static_file))
     middleware = [Middleware(GZipMiddleware, minimum_size=2048)]
     if allowed_hosts:
@@ -615,6 +615,15 @@ def create_app(
     )
     app.state.store = store
     return app
+
+
+class _SharedAssets(StaticFiles):
+    """Built JS/CSS, readable from the sandboxed figure frame (opaque origin)."""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
 
 
 class _NotFound(Exception):

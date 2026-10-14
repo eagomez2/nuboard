@@ -1,7 +1,7 @@
 {
   "name": "nuboard-frontend",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,6 +34,10 @@
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "apache-arrow": "^21.2.0",
-    "uplot": "^1.6.32"
+    "plotly.js-dist-min": "^4.1.2",
+    "uplot": "^1.6.32",
+    "vega": "^6.4.0",
+    "vega-embed": "^7.3.0",
+    "vega-lite": "^6.5.0"
   }
 }

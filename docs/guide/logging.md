@@ -75,8 +75,30 @@ need everything on disk at a given point (rarely needed).
 | --- | --- |
 | `log_text(key, text, step=None)` | any string |
 | `log_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
-| `log_figure(key, fig, step=None)` | Plotly figure, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
+| `log_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
 | `log_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
+
+Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
+these libraries is needed by nuboard itself: a figure is serialized with its
+own library, and plain dicts work without any of them, so a Vega-Lite spec
+(a dict with a `$schema`) or a Plotly figure dict (`{"data": [...],
+"layout": {...}}`, as `fig.to_dict()` returns) can be logged directly:
+
+```python
+run.log_figure(
+    "eval/per_class",
+    {
+        "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+        "data": {"values": [{"cls": "cat", "acc": 0.71}, {"cls": "dog", "acc": 0.74}]},
+        "mark": "bar",
+        "encoding": {
+            "x": {"field": "cls", "type": "nominal"},
+            "y": {"field": "acc", "type": "quantitative"},
+        },
+    },
+    step=step,
+)
+```
 
 `step` defaults to the last step passed to `log`. Arrays are copied on the
 calling thread and PNG-encoded on the background thread; figures are

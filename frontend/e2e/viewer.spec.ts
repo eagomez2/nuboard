@@ -80,3 +80,20 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await page.locator('g.node.artifact', { hasText: 'model:v1' }).click();
   await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });
+
+test('charts can use another metric as the x axis', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain');
+  await page.locator('select.xmetric').selectOption('train/tokens');
+  await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
+  await expect(page.locator('select.xmetric')).toHaveClass(/\bon\b/);
+  await expect(page.locator('.u-over').first()).toBeVisible();
+});
+
+test('media page renders Vega-Lite and Plotly figures', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mkey=eval%2Fper_class');
+  const vega = page.frameLocator('iframe[sandbox]').first();
+  await expect(vega.locator('svg.marks')).toBeVisible({ timeout: 15000 });
+  await page.goto('/#/media?project=vit-ablations&mkey=eval%2Fconfusion');
+  const plotly = page.frameLocator('iframe[sandbox]').first();
+  await expect(plotly.locator('.main-svg').first()).toBeVisible({ timeout: 15000 });
+});
