@@ -16,6 +16,7 @@
     duration,
     group,
     header,
+    options,
   }: {
     url: string;
     title: string;
@@ -24,6 +25,8 @@
     duration?: number;
     group: string;
     header: { label?: string; name?: string; tags?: string[] };
+    /** Spectrogram colormap, frequency scale and window (see MediaPage's options). */
+    options: { colormap: string; scale: string; fftSize: number; spectrogram: boolean };
   } = $props();
 
   let frame = $state<HTMLIFrameElement | null>(null);
@@ -53,11 +56,11 @@
       duration: duration ?? 0,
       group,
       link: true,
-      scale: 'linear',
-      fftSize: 1024,
-      colormap: 'theme',
+      scale: options.scale,
+      fftSize: options.fftSize,
+      colormap: options.colormap,
       waveHeight: 72,
-      spectrogramHeight: 140,
+      spectrogramHeight: options.spectrogram ? 140 : 0,
       normalize: false,
       notes: false,
       annotations: [],
@@ -80,9 +83,9 @@
     return () => window.removeEventListener('message', onMessage);
   });
 
-  // a new clip (step slider) or theme re-renders the player
+  // a new clip (step slider), theme or option re-renders the player
   $effect(() => {
-    void [url, app.theme, app.themeVersion];
+    void [url, app.theme, app.themeVersion, options.colormap, options.scale, options.fftSize, options.spectrogram];
     send();
   });
 </script>

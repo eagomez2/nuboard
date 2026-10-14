@@ -192,7 +192,13 @@ remembered):
   fixed scale, so clips can be compared by eye). The players of one key
   follow each other's zoom, scroll, cursor and selection, and starting one
   pauses the others, so you can listen to the same passage across runs.
-  Space plays and pauses; arrow keys seek.
+  Space plays and pauses; arrow keys seek. Next to the player switch,
+  **colors** picks the spectrogram colormap (theme, viridis, magma or gray),
+  **frequency** its scale (linear, log or mel), **window** the FFT size (256
+  to 4096 samples; the hop is a quarter of it), and **spectrogram** hides it
+  to show only waveforms. The choices are remembered in the browser and kept
+  in the URL (`cmap`, `fscale`, `fft`, `spec`), so a shared link shows the
+  same view.
 - **simple**: the browser's own audio controls, as in TensorBoard.
 
 Each clip shows its caption, duration, sample rate and channels, and a

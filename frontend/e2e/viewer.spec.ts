@@ -116,6 +116,11 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
   await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
   await expect(player.locator('#duration')).toHaveText('0:02.600');
+  await page.getByRole('combobox', { name: 'Spectrogram colors' }).selectOption('magma');
+  await page.getByRole('combobox', { name: 'Frequency scale' }).selectOption('mel');
+  await expect(page).toHaveURL(/cmap=magma/);
+  await expect(page).toHaveURL(/fscale=mel/);
+  await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
   await page.getByRole('button', { name: 'simple' }).click();
   await expect(page).toHaveURL(/player=simple/);
   const audio = page.locator('audio').first();

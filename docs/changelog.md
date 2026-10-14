@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+- Spectrogram options for the waveform player on the Media page: colormap
+  (theme, viridis, magma, gray), frequency scale (linear, log, mel), FFT window
+  (256 to 4096) and a switch to hide the spectrogram. They are remembered per
+  browser and kept in the URL.
+
 ## 0.4.0
 
 **Audio**

@@ -54,6 +54,21 @@
     router.set({ player: p === 'wave' ? null : p });
   }
 
+  // Spectrogram options of the waveform player, remembered per browser and kept in the URL
+  const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1' };
+  type AudioOpt = keyof typeof AUDIO_DEFAULTS;
+  const opt = (k: AudioOpt) => router.get(k, prefs.get(k, AUDIO_DEFAULTS[k]));
+  function setOpt(k: AudioOpt, v: string) {
+    prefs.set(k, v);
+    router.set({ [k]: v === AUDIO_DEFAULTS[k] ? null : v });
+  }
+  const audioOptions = $derived({
+    colormap: opt('cmap'),
+    scale: opt('fscale'),
+    fftSize: Number(opt('fft')) || 1024,
+    spectrogram: opt('spec') !== '0',
+  });
+
   function at(runKey: string): MediaItem | null {
     const list = (items[runKey] ?? []).filter((i) => i.key === key && i.step <= step);
     return list.length ? list[list.length - 1] : null;
@@ -85,11 +100,61 @@
           <button aria-pressed={player === 'simple'} onclick={() => setPlayer('simple')}>simple</button>
         </div>
         {#if player === 'wave'}
-          <span class="faint hint"
-            >players follow each other's zoom, scroll and selection · space plays · drag to select · ctrl + wheel zooms</span
+          <label class="opt"
+            ><span class="faint">colors</span>
+            <select
+              class="input sm"
+              aria-label="Spectrogram colors"
+              value={audioOptions.colormap}
+              onchange={(e) => setOpt('cmap', e.currentTarget.value)}
+            >
+              <option value="theme">theme</option>
+              <option value="viridis">viridis</option>
+              <option value="magma">magma</option>
+              <option value="gray">gray</option>
+            </select></label
+          >
+          <label class="opt"
+            ><span class="faint">frequency</span>
+            <select
+              class="input sm"
+              aria-label="Frequency scale"
+              value={audioOptions.scale}
+              onchange={(e) => setOpt('fscale', e.currentTarget.value)}
+            >
+              <option value="linear">linear</option>
+              <option value="logarithmic">log</option>
+              <option value="mel">mel</option>
+            </select></label
+          >
+          <label class="opt"
+            ><span class="faint">window</span>
+            <select
+              class="input sm mono"
+              aria-label="FFT window"
+              value={String(audioOptions.fftSize)}
+              onchange={(e) => setOpt('fft', e.currentTarget.value)}
+            >
+              {#each [256, 512, 1024, 2048, 4096] as n (n)}<option value={String(n)}>{n}</option>{/each}
+            </select></label
+          >
+          <label class="opt"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={audioOptions.spectrogram}
+              aria-label="Spectrogram"
+              onclick={() => setOpt('spec', audioOptions.spectrogram ? '0' : '1')}
+            ></button>
+            <span class="faint">spectrogram</span></label
           >
         {/if}
       </div>
+      {#if player === 'wave'}
+        <span class="faint hint"
+          >players follow each other's zoom, scroll and selection · space plays · drag to select · ctrl + wheel zooms</span
+        >
+      {/if}
     {/if}
     {#if steps.length > 1}
       <label class="slider">
@@ -130,6 +195,7 @@
               channels={it.channels}
               duration={it.duration ?? undefined}
               group={`${key}`}
+              options={audioOptions}
               header={{ label: r.name, name: `${it.key} · step ${it.step}`, tags: it.caption ? [it.caption] : [] }}
             />
           {:else}
@@ -235,7 +301,15 @@
     gap: 10px;
     font-size: 13px;
   }
-  .players .hint {
+  .players {
+    flex-wrap: wrap;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hint {
     font-size: 12px;
   }
   .cell {
