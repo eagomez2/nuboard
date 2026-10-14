@@ -15,10 +15,10 @@ llm-pretrain/artifacts/
 ## Logging and using them
 
 ```python
-with nm.init("llm-pretrain", name="prepare-data") as run:
+with nb.init("llm-pretrain", name="prepare-data") as run:
     run.log_artifact("fineweb-edu", "data/", type="dataset", metadata={"tokens": "12B"})
 
-with nm.init("llm-pretrain", name="lr1e-3-s1") as run:
+with nb.init("llm-pretrain", name="lr1e-3-s1") as run:
     ds = run.use_artifact("fineweb-edu:latest")  # or "fineweb-edu:v2"
     train(ds.files)
     run.log_artifact("model", "ckpt/", type="checkpoint")

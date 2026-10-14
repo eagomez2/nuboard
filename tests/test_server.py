@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 from starlette.testclient import TestClient
 
-import nuboard as nm
+import nuboard as nb
 from nuboard.server import create_app
 
 
@@ -14,7 +14,7 @@ from nuboard.server import create_app
 def client(tmp_path):
     for lr in (1e-3, 1e-4):
         for seed in (1, 2):
-            with nm.init(
+            with nb.init(
                 "sweep",
                 name=f"lr{lr}-s{seed}",
                 config={"lr": lr, "seed": seed},
@@ -131,13 +131,13 @@ def test_collections(client, tmp_path):
 
 
 def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
-    with nm.init("sweep", name="bad", capture_env=False) as run:
+    with nb.init("sweep", name="bad", capture_env=False) as run:
         for s in range(400):
             run.log({"loss": float("nan") if s >= 300 else 1.0}, step=s)
         src = tmp_path / "w.bin"
         src.write_bytes(b"x")
         run.log_artifact("weights", src)
-    with nm.init("sweep", name="user", capture_env=False) as run:
+    with nb.init("sweep", name="user", capture_env=False) as run:
         run.use_artifact("weights:latest")
         run.log({"loss": 1.0}, step=0)
     runs = {r["name"]: r for r in client.get("/api/runs").json()["runs"]}
@@ -152,7 +152,7 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
 
 
 def test_x_axis_by_another_metric(client):
-    with nm.init("sweep", name="tok", capture_env=False) as run:
+    with nb.init("sweep", name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
             run.log({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
     key = next(r["key"] for r in client.get("/api/runs").json()["runs"] if r["name"] == "tok")
@@ -181,3 +181,31 @@ def test_assets_are_readable_from_the_figure_sandbox(client):
     r = client.get(f"/assets/{assets[0].name}")
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "*"
+
+
+def test_audio_supports_byte_ranges(tmp_path):
+    import numpy as np
+
+    run = nb.init("audio", capture_env=False)
+    run.log_audio("clip", np.zeros(4000), step=0, sample_rate=8000)
+    run.log_image("img", np.zeros((40, 40), "uint8"), step=0)
+    run.finish()
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    with TestClient(app) as c:
+        key = c.get("/api/runs").json()["runs"][0]["key"]
+        items = c.get(f"/api/runs/{key}/media").json()["items"]
+        audio = next(i for i in items if i["key"] == "clip")
+        assert audio["duration"] == 0.5 and audio["kind"] == "audio"
+        url = f"/api/runs/{key}/media/{audio['index']}"
+        full = c.get(url, headers={"Accept-Encoding": "gzip"})
+        assert full.headers["accept-ranges"] == "bytes"
+        assert full.headers["content-encoding"] != "gzip"
+        assert full.headers["content-type"] == "audio/wav"
+        assert len(full.content) == 44 + 8000  # header + 4000 16-bit samples
+        part = c.get(url, headers={"Range": "bytes=0-11"})
+        assert part.status_code == 206
+        assert part.content == full.content[:12]
+        assert part.headers["content-range"] == f"bytes 0-11/{len(full.content)}"
+        tail = c.get(url, headers={"Range": "bytes=-4"})
+        assert tail.content == full.content[-4:]
+        assert c.get(url, headers={"Range": "bytes=99999-"}).status_code == 416

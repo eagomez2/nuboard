@@ -389,6 +389,33 @@ class Run:
             key, step, lambda: image_bytes(image), {"kind": "image", "caption": caption}
         )
 
+    def log_audio(
+        self,
+        key: str,
+        audio: Any,
+        step: int | None = None,
+        *,
+        sample_rate: int | None = None,
+        caption: str | None = None,
+    ) -> None:
+        """Log audio: a file path (wav, flac, mp3, ogg, opus, m4a), encoded bytes,
+        or a (samples,) / (channels, samples) array with ``sample_rate``.
+
+        Arrays are stored as 16-bit WAV; files and bytes are stored as they are.
+        """
+        from ._media import audio_bytes
+
+        if hasattr(audio, "detach"):
+            audio = audio.detach().cpu()
+        if hasattr(audio, "copy") and not isinstance(audio, (bytes, str)):
+            audio = audio.copy()  # the caller may mutate its buffer after we return
+        self._put_media(
+            key,
+            step,
+            lambda: audio_bytes(audio, sample_rate),
+            {"kind": "audio", "caption": caption},
+        )
+
     def log_figure(self, key: str, figure: Any, step: int | None = None) -> None:
         """Log a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure."""
         from ._media import figure_bytes

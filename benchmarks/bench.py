@@ -11,7 +11,7 @@ import tempfile
 import time
 from pathlib import Path
 
-import nuboard as nm
+import nuboard as nb
 from nuboard.catalog import Catalog
 from nuboard.reader import RunReader
 
@@ -20,7 +20,7 @@ def main() -> None:
     root = Path(tempfile.mkdtemp())
     data = {f"metric_{i:02d}": float(i) for i in range(50)}
 
-    run = nm.init("bench", dir=root, capture_env=False, compact=False)
+    run = nb.init("bench", dir=root, capture_env=False, compact=False)
     n = 20_000
     t0 = time.perf_counter()
     for step in range(n):
@@ -33,7 +33,7 @@ def main() -> None:
         f"  final flush of {n * 50 / 1e6:.1f}M points:      {time.perf_counter() - t1:6.2f} s (background)"
     )
 
-    run = nm.init("bench", name="million", dir=root, capture_env=False, compact=False)
+    run = nb.init("bench", name="million", dir=root, capture_env=False, compact=False)
     for step in range(100_000):
         run.log({f"m{i}": step * 0.5 + i for i in range(10)}, step=step)
     run.finish()

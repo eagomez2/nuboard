@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: '../src/nuboard/static',
     emptyOutDir: true,
     chunkSizeWarningLimit: 5000, // Plotly is one big lazy chunk, loaded only for Plotly figures
-    rollupOptions: { input: { main: 'index.html', figure: 'figure.html' } },
+    rollupOptions: { input: { main: 'index.html', figure: 'figure.html', audio: 'audio.html' } },
   },
   server: {
     proxy: { '/api': { target: 'http://127.0.0.1:6070', changeOrigin: false } },

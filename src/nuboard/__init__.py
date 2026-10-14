@@ -1,7 +1,7 @@
 """A local, folder-based experiment tracker for ML training.
 
->>> import nuboard as nm
->>> with nm.init("my-project", config={"lr": 1e-3}) as run:
+>>> import nuboard as nb
+>>> with nb.init("my-project", config={"lr": 1e-3}) as run:
 ...     run.log({"loss": 0.5}, step=0)
 """
 

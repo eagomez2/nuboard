@@ -1,23 +1,24 @@
 # Logging from Python
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
-run = nm.init("project", name="baseline", config=cfg)  # also a context manager
+run = nb.init("project", name="baseline", config=cfg)  # also a context manager
 ds = run.use_artifact("dataset:v2")
 run.log({"loss": loss, "lr": lr}, step=step)  # non-blocking
 run.log_image("samples/recon", img, step=step)
 run.log_text("samples/gen", text, step=step)
+run.log_audio("samples/speech", wav, step=step, sample_rate=16000)
 run.log_figure("eval/confusion", fig, step=step)  # Plotly, Altair/Vega-Lite, Bokeh, matplotlib
 run.log_html("eval/graph", html, step=step)
 run.log_artifact("model", "ckpt/", type="checkpoint", metadata={"step": step})
 run.finish()  # also on exit and on crash
 ```
 
-## `nm.init`
+## `nb.init`
 
 ```python
-nm.init(
+nb.init(
     project=None,           # folder name (may be nested: "team/llm"); default "default"
     *,
     name=None,              # short run name, part of the run id
@@ -69,14 +70,26 @@ background thread wakes every `flush_interval` seconds, encodes the batch into
 one columnar frame and appends it to the event log. Call `run.flush()` if you
 need everything on disk at a given point (rarely needed).
 
-## Text, images, figures, HTML
+## Text, images, audio, figures, HTML
 
 | Method | Accepts |
 | --- | --- |
 | `log_text(key, text, step=None)` | any string |
 | `log_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
+| `log_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
 | `log_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
 | `log_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
+
+Audio arrays are stored as 16-bit PCM WAV, written with the standard
+library's `wave` module, so logging audio needs nothing beyond NumPy for the
+array itself. Files and bytes are stored as they are: log a FLAC or Opus file
+when size matters (16 kHz mono WAV is 32 KB per second). The sample rate,
+channel count and duration are recorded with each clip.
+
+```python
+run.log_audio("eval/enhanced", model(noisy)[0], step=epoch, sample_rate=16_000)
+run.log_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_001")
+```
 
 Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
 these libraries is needed by nuboard itself: a figure is serialized with its
@@ -139,11 +152,11 @@ that produced and used it.
 
 ```python
 # continue the same run (new session file; later session wins on overlapping steps)
-run = nm.init("project", run_id="20261013-0720_baseline_x5bq2k", resume="must")
-run = nm.init("project", run_id=my_id, resume="auto")  # create it if missing
+run = nb.init("project", run_id="20261013-0720_baseline_x5bq2k", resume="must")
+run = nb.init("project", run_id=my_id, resume="auto")  # create it if missing
 
 # start a new run whose history is a copy of another run's up to step 5000
-run = nm.init("project", name="lower-lr", fork_from=("20261013-0720_baseline_x5bq2k", 5000))
+run = nb.init("project", name="lower-lr", fork_from=("20261013-0720_baseline_x5bq2k", 5000))
 ```
 
 A resumed run writes `events.r0.s1.log`, `s2`, … next to the earlier

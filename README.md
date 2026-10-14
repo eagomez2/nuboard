@@ -8,9 +8,9 @@ Log from Python with three calls. Every run is a folder. View thousands of runs 
 ![Charts page: a learning-rate sweep grouped by lr, mean ± std over three seeds](docs/assets/charts-light.png)
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
-with nm.init("my-project", name="baseline", config={"lr": 3e-4}) as run:
+with nb.init("my-project", name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
         run.log({"train/loss": loss}, step=step)  # ~3 µs, never blocks training
@@ -39,24 +39,24 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.3.1-py3-none-any.whl[viewer]"
-nuboard demo demo-runs --up --open    # 3 projects, 28 runs, one live run
+uv tool install "nuboard-0.4.0-py3-none-any.whl[viewer]"
+nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
 Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.3
+## What's in 0.4
 
 | Area | Included |
 | --- | --- |
-| Python API | `init` (+ resume, fork, ranks), `log`, `log_text`, `log_image`, `log_figure`, `log_html`, `log_artifact`, `use_artifact`, `finish`, context manager |
+| Python API | `init` (+ resume, fork, ranks), `log`, `log_text`, `log_image`, `log_audio`, `log_figure`, `log_html`, `log_artifact`, `use_artifact`, `finish`, context manager |
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
-| Analysis | `nm.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
+| Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
 | Runs | query language, stars, notes, archive, custom fields, column chooser, collections, saved views, run details and config/file diffs |
 | Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any metric (tokens, epochs) |
-| Media | images, text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures |
+| Media | images, audio (waveform + spectrogram player, or the browser's player), text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures |
 | Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |

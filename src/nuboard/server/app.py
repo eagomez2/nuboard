@@ -406,8 +406,25 @@ def create_app(
         headers = {"Cache-Control": "max-age=31536000, immutable"}
         if entry.meta.get("mime") == "text/html":  # rendered only inside a sandboxed iframe
             headers["Content-Security-Policy"] = "sandbox allow-scripts"
+        data = reader.read_media(entry)
+        if not str(entry.meta.get("mime", "")).startswith(("audio/", "video/")):
+            return Response(data, media_type=entry.meta.get("mime"), headers=headers)
+        # Players seek with Range requests. Already-compressed media skips gzip
+        # (which would also break byte ranges) by declaring its own encoding.
+        headers.update({"Accept-Ranges": "bytes", "Content-Encoding": "identity"})
+        span = _byte_range(request.headers.get("range"), len(data))
+        if span is None:
+            return Response(data, media_type=entry.meta.get("mime"), headers=headers)
+        if isinstance(span, str):  # "invalid"
+            headers["Content-Range"] = f"bytes */{len(data)}"
+            return Response(b"", status_code=416, headers=headers)
+        start, end = span
+        headers["Content-Range"] = f"bytes {start}-{end}/{len(data)}"
         return Response(
-            reader.read_media(entry), media_type=entry.meta.get("mime"), headers=headers
+            data[start : end + 1],
+            status_code=206,
+            media_type=entry.meta.get("mime"),
+            headers=headers,
         )
 
     def artifacts(request: Request) -> Response:
@@ -615,6 +632,28 @@ def create_app(
     )
     app.state.store = store
     return app
+
+
+def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
+    """Parse a single ``bytes=a-b`` / ``bytes=a-`` / ``bytes=-n`` range.
+
+    Returns (start, end) inclusive, None to send everything (no or unsupported
+    header), or "invalid" when the range cannot be satisfied.
+    """
+    if not header or not header.startswith("bytes=") or "," in header:
+        return None
+    first, _, last = header[6:].strip().partition("-")
+    try:
+        if first:
+            start = int(first)
+            end = int(last) if last else size - 1
+        else:
+            start, end = max(0, size - int(last)), size - 1
+    except ValueError:
+        return None
+    if start >= size or start > end:
+        return "invalid"
+    return start, min(end, size - 1)
 
 
 class _SharedAssets(StaticFiles):

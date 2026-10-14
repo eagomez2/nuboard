@@ -44,9 +44,9 @@ milliseconds and a single-step spike still shows through the bucket maximum.
 From Python:
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
-for run in nm.load("llm-pretrain").runs("alerts > 0"):
+for run in nb.load("llm-pretrain").runs("alerts > 0"):
     for alert in run.alerts():
         print(run.name, alert["kind"], alert["message"])
 ```

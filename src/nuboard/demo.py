@@ -1,4 +1,4 @@
-"""Synthetic demo workspace: three projects, ~26 runs, media, artifacts and a live run."""
+"""Synthetic demo workspace: four projects, ~26 runs, media, artifacts and a live run."""
 
 from __future__ import annotations
 
@@ -379,6 +379,114 @@ def _report_html(aug: str, epoch: int, acc: float) -> str:
     )
 
 
+SPEECH_RATE = 16_000
+
+
+def _speech(rng: Any) -> Any:
+    """About 2.5 s of a speech-like signal: voiced syllables with moving formants."""
+    import numpy as np
+
+    sr = SPEECH_RATE
+    out = np.zeros(int(2.6 * sr))
+    t0 = 0.15
+    for _ in range(7):
+        dur = rng.uniform(0.18, 0.32)
+        n = int(dur * sr)
+        t = np.arange(n) / sr
+        f0 = rng.uniform(110, 190) * (1 + 0.12 * np.sin(2 * np.pi * t / dur))
+        phase = 2 * np.pi * np.cumsum(f0) / sr
+        f1, f2 = rng.uniform(300, 800), rng.uniform(900, 2400)
+        syl = np.zeros(n)
+        for h in range(1, 30):
+            fh = h * f0.mean()
+            if fh > 4000:
+                break
+            gain = np.exp(-(((fh - f1) / 160) ** 2)) + 0.6 * np.exp(-(((fh - f2) / 260) ** 2))
+            syl += (gain + 0.02) / h**0.5 * np.sin(h * phase)
+        syl *= np.hanning(n)
+        start = int(t0 * sr)
+        out[start : start + n] += syl[: len(out) - start]
+        t0 += dur + rng.uniform(0.02, 0.12)
+    return 0.6 * out / np.abs(out).max()
+
+
+def _noise(rng: Any, n: int) -> Any:
+    """Café-like noise: pink noise (falling 3 dB per octave) plus a mains hum."""
+    import numpy as np
+
+    spectrum = np.fft.rfft(rng.normal(0, 1, n))
+    f = np.fft.rfftfreq(n, 1 / SPEECH_RATE)
+    spectrum /= np.sqrt(np.maximum(f, 40.0))
+    pink = np.fft.irfft(spectrum, n)
+    t = np.arange(n) / SPEECH_RATE
+    hum = sum(np.sin(2 * np.pi * 50 * k * t) / k for k in (1, 2, 3))
+    return 0.08 * pink / pink.std() + 0.02 * hum
+
+
+def _speech_runs(root: Path, base: float) -> None:
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        return
+    models = {"unet-l1": (0.30, 0.020), "unet-sisdr": (0.16, 0.012), "convtasnet": (0.10, 0.006)}
+    rng = np.random.default_rng(7)
+    clean = _speech(rng)
+    noise = _noise(rng, len(clean))
+    noisy = np.clip(clean + noise, -1, 1)
+    for i, (model, (floor, artifacts)) in enumerate(models.items()):
+        prng = random.Random(model)
+        started = base - 30 * 3600 + i * 2400
+        run = init(
+            "speech-denoise",
+            name=model,
+            dir=root,
+            capture_env=False,
+            config={
+                "model": model.split("-")[0],
+                "loss": model.split("-")[1] if "-" in model else "si-sdr",
+                "sample_rate": SPEECH_RATE,
+                "lr": 3e-4,
+                "epochs": 30,
+            },
+            tags=["audio", "enhancement"],
+            _started=started,
+        )
+        run.log_audio("audio/noisy", noisy, step=0, sample_rate=SPEECH_RATE, caption="input")
+        run.log_audio("audio/clean", clean, step=0, sample_rate=SPEECH_RATE, caption="target")
+        t = started
+        for epoch in range(31):
+            t = started + epoch * 70
+            left = floor + (1 - floor) * math.exp(-epoch / 7)  # residual noise gain
+            run.log(
+                {
+                    "train/loss": 0.4 * left + prng.gauss(0, 0.006),
+                    "val/si_sdr": 5 + 14 * (1 - left) - 40 * artifacts + prng.gauss(0, 0.2),
+                    "val/pesq": 1.4 + 2.4 * (1 - left) + prng.gauss(0, 0.03),
+                },
+                step=epoch,
+                time=t,
+            )
+            if epoch % 10 == 0:
+                erng = np.random.default_rng(epoch * 31 + i)
+                # sparse "musical noise": short tonal blips a real model leaves behind
+                blips = np.zeros(len(clean))
+                for _ in range(int(12 * (1 - epoch / 40))):
+                    at, n = erng.integers(0, len(clean) - 800), 800
+                    f = erng.uniform(1500, 5000)
+                    blips[at : at + n] += np.hanning(n) * np.sin(
+                        2 * np.pi * f * np.arange(n) / SPEECH_RATE
+                    )
+                out = clean + left * noise + artifacts * 6 * blips
+                run.log_audio(
+                    "audio/enhanced",
+                    np.clip(out, -1, 1),
+                    step=epoch,
+                    sample_rate=SPEECH_RATE,
+                    caption=f"epoch {epoch}",
+                )
+        run.finish(_ended=t)
+
+
 def _ppo_runs(root: Path, base: float) -> None:
     for i, (env, seed) in enumerate((e, s) for e in ("Pong", "Breakout") for s in (0, 1, 2)):
         rng = random.Random(f"{env}{seed}")
@@ -431,6 +539,7 @@ def generate(root: str | Path, *, quiet: bool = False) -> Path:
         ("llm-pretrain", _llm_runs),
         ("vit-ablations", _vit_runs),
         ("ppo-atari", _ppo_runs),
+        ("speech-denoise", _speech_runs),
     ):
         t0 = time.perf_counter()
         fn(root, base)

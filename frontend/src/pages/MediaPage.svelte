@@ -1,7 +1,8 @@
 <script lang="ts">
+  import AudioFrame from '../components/AudioFrame.svelte';
   import FigureFrame from '../components/FigureFrame.svelte';
   import { api, type MediaItem } from '../lib/api';
-  import { router } from '../lib/router.svelte';
+  import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
   const MAX_RUNS = 16;
@@ -45,6 +46,14 @@
   );
   const step = $derived(steps[stepIdx === -1 ? steps.length - 1 : stepIdx]);
 
+  const kind = $derived(mediaKeys.find(([k]) => k === key)?.[1].kind);
+  // Waveform player (default) or the browser's own audio controls
+  const player = $derived(router.get('player', prefs.get('player', 'wave')));
+  function setPlayer(p: string) {
+    prefs.set('player', p);
+    router.set({ player: p === 'wave' ? null : p });
+  }
+
   function at(runKey: string): MediaItem | null {
     const list = (items[runKey] ?? []).filter((i) => i.key === key && i.step <= step);
     return list.length ? list[list.length - 1] : null;
@@ -55,8 +64,8 @@
   <div class="card empty">No runs selected. Pick runs on the Runs page and press “Media”.</div>
 {:else if !mediaKeys.length}
   <div class="card empty">
-    These runs logged no images, figures, HTML or text. Use <code>run.log_image</code>, <code>log_figure</code>,
-    <code>log_html</code>
+    These runs logged no images, audio, figures, HTML or text. Use <code>run.log_image</code>,
+    <code>log_audio</code>, <code>log_figure</code>, <code>log_html</code>
     or <code>log_text</code>.
   </div>
 {:else}
@@ -68,6 +77,20 @@
         >
       {/each}
     </div>
+    {#if kind === 'audio'}
+      <div class="players">
+        <span class="faint">player</span>
+        <div class="seg">
+          <button aria-pressed={player === 'wave'} onclick={() => setPlayer('wave')}>waveform</button>
+          <button aria-pressed={player === 'simple'} onclick={() => setPlayer('simple')}>simple</button>
+        </div>
+        {#if player === 'wave'}
+          <span class="faint hint"
+            >players follow each other's zoom, scroll and selection · space plays · drag to select · ctrl + wheel zooms</span
+          >
+        {/if}
+      </div>
+    {/if}
     {#if steps.length > 1}
       <label class="slider">
         <span class="mono">step {step?.toLocaleString()}</span>
@@ -82,7 +105,7 @@
       </label>
     {/if}
   </div>
-  <div class="grid" class:wide={mediaKeys.find(([k]) => k === key)?.[1].kind !== 'image'}>
+  <div class="grid" class:wide={kind !== 'image'} class:audio={kind === 'audio' && player === 'wave'}>
     {#each runs as r (r.key)}
       {@const it = at(r.key)}
       <figure class="card cell">
@@ -98,6 +121,34 @@
         {:else if it.mime.startsWith('image/')}
           <img src={api.mediaUrl(r.key, it.index!)} alt={it.caption ?? it.key} />
           {#if it.caption}<div class="faint cap">{it.caption}</div>{/if}
+        {:else if it.kind === 'audio' || it.mime.startsWith('audio/')}
+          {#if player === 'wave'}
+            <AudioFrame
+              url={api.mediaUrl(r.key, it.index!)}
+              title="{r.name} {it.key}"
+              sampleRate={it.sample_rate}
+              channels={it.channels}
+              duration={it.duration ?? undefined}
+              group={`${key}`}
+              header={{ label: r.name, name: `${it.key} · step ${it.step}`, tags: it.caption ? [it.caption] : [] }}
+            />
+          {:else}
+            <audio controls preload="metadata" src={api.mediaUrl(r.key, it.index!)}></audio>
+          {/if}
+          <div class="faint cap mono">
+            {[
+              it.caption,
+              it.duration != null ? `${it.duration.toFixed(2)} s` : null,
+              it.sample_rate ? `${it.sample_rate / 1000} kHz` : null,
+              it.channels ? (it.channels === 1 ? 'mono' : `${it.channels} ch`) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            ·
+            <a href={api.mediaUrl(r.key, it.index!)} download="{r.name}-{it.key.replaceAll('/', '_')}-{it.step}"
+              >download</a
+            >
+          </div>
         {:else if /plotly|vega|bokeh/.test(it.mime)}
           <FigureFrame url={api.mediaUrl(r.key, it.index!)} mime={it.mime} title="{r.name} {it.key}" />
         {:else}
@@ -168,6 +219,24 @@
   }
   .grid.wide {
     grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  }
+  .grid.audio {
+    grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+  }
+  audio {
+    width: 100%;
+  }
+  .cap a {
+    color: var(--accent);
+  }
+  .players {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .players .hint {
+    font-size: 12px;
   }
   .cell {
     margin: 0;

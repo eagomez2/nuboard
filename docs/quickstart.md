@@ -7,7 +7,7 @@ hide:
 
 ## Run the demo
 
-The demo writes three projects with 28 runs and serves them while a live run
+The demo writes four projects with 31 runs and serves them while a live run
 keeps logging:
 
 - **llm-pretrain**: a learning-rate sweep with three seeds per rate, one run
@@ -49,10 +49,10 @@ demo only writes the folder; view it later with `nuboard up demo-runs`.
 ## Log your first run
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
 config = {"lr": 3e-4, "batch_size": 64}
-with nm.init("my-project", name="baseline", config=config) as run:
+with nb.init("my-project", name="baseline", config=config) as run:
     for step in range(1000):
         loss = train_step()  # your code
         run.log({"train/loss": loss, "lr": config["lr"]}, step=step)

@@ -12,7 +12,7 @@ every rank (gradient norms, throughput, memory), pass `all_ranks=True` to that
 call, or to `init` to make it the default:
 
 ```python
-run = nm.init("llm", name="ddp", config=cfg)  # every rank
+run = nb.init("llm", name="ddp", config=cfg)  # every rank
 run.log({"train/loss": loss}, step=step)  # rank 0 only
 run.log({"sys/tokens_per_sec": tps}, step=step, all_ranks=True)
 ```
@@ -46,7 +46,7 @@ Pass the run id (for example saved next to your checkpoint, or derived from
 the job id) and `resume="auto"`:
 
 ```python
-run = nm.init("llm", run_id=saved_run_id, resume="auto")
+run = nb.init("llm", run_id=saved_run_id, resume="auto")
 ```
 
 Each restart writes a new session file. Points from earlier sessions at steps

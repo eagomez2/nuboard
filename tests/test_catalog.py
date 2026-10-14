@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import time
 
-import nuboard as nm
+import nuboard as nb
 from nuboard.catalog import SCHEMA_VERSION, Catalog, find_runs
 
 
 def test_find_runs_any_folder_shape(tmp_path):
     root = tmp_path / "exp"
     for project in ("a", "team/b"):
-        nm.init(project, capture_env=False).finish()
+        nb.init(project, capture_env=False).finish()
     nested = {p for p, _ in find_runs(root)}
     assert nested == {"a", "team/b"}
     assert [p for p, _ in find_runs(root / "a")] == ["a"]
@@ -20,7 +20,7 @@ def test_find_runs_any_folder_shape(tmp_path):
 
 
 def test_refresh_detects_changes_and_rebuilds_cache(tmp_path):
-    run = nm.init("a", capture_env=False)
+    run = nb.init("a", capture_env=False)
     run.log({"x": 1}, step=0)
     run.finish()
     cat = Catalog(tmp_path / "exp", cache=tmp_path / "cache")

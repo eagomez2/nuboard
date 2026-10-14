@@ -1,7 +1,8 @@
-"""Conversion of images, figures and HTML into bytes for the media pack.
+"""Conversion of images, audio, figures and HTML into bytes for the media pack.
 
-Standard library only: arrays are PNG-encoded with ``zlib``; figure libraries
-are used only if the object passed in already comes from them.
+Standard library only: image arrays are PNG-encoded with ``zlib`` and audio
+arrays WAV-encoded with ``wave``; figure libraries are used only if the object
+passed in already comes from them.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import io
 import json
 import os
 import struct
+import wave
 import zlib
 from typing import Any
 
@@ -105,3 +107,111 @@ def figure_bytes(fig: Any) -> tuple[bytes, str]:
     if isinstance(fig, dict) and isinstance(fig.get("data"), list):  # Plotly figure dict
         return json.dumps(fig).encode("utf-8"), "application/vnd.plotly.v1+json"
     raise TypeError(f"unsupported figure type {type(fig).__name__}")
+
+
+# -- audio ------------------------------------------------------------------------
+
+_AUDIO_EXT = {
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".webm": "audio/webm",
+}
+
+
+def array_to_wav(arr: Any, sample_rate: int) -> tuple[bytes, dict[str, Any]]:
+    """Encode a mono (N,) or multichannel (C, N) / (N, C) array as 16-bit PCM WAV.
+
+    Floats are taken as [-1, 1] and clipped; integer arrays are taken as int16
+    samples (int32 is scaled down). The shorter axis is the channel axis.
+    """
+    if hasattr(arr, "detach"):  # torch tensor
+        arr = arr.detach().cpu().numpy()
+    import numpy as np  # arrays only come from code that already has NumPy
+
+    a = np.asarray(arr)
+    if a.ndim == 1:
+        a = a[:, None]
+    elif a.ndim == 2:
+        if a.shape[0] < a.shape[1]:
+            a = a.T  # (C, N) -> (N, C)
+    else:
+        raise ValueError(f"cannot interpret array of shape {a.shape} as audio")
+    if a.shape[1] > 16:
+        raise ValueError(f"{a.shape[1]} channels; expected (samples,) or (channels, samples)")
+    if a.dtype.kind == "f":
+        pcm = (np.clip(np.nan_to_num(a), -1.0, 1.0) * 32767.0).round().astype("<i2")
+    elif a.dtype.itemsize >= 4:
+        pcm = (a >> (8 * a.dtype.itemsize - 16)).astype("<i2")
+    else:
+        pcm = a.astype("<i2")
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(pcm.shape[1])
+        w.setsampwidth(2)
+        w.setframerate(int(sample_rate))
+        w.writeframes(np.ascontiguousarray(pcm).tobytes())
+    info = {
+        "sample_rate": int(sample_rate),
+        "channels": int(pcm.shape[1]),
+        "duration": round(pcm.shape[0] / sample_rate, 6),
+    }
+    return buf.getvalue(), info
+
+
+def audio_bytes(audio: Any, sample_rate: int | None) -> tuple[bytes, str, dict[str, Any]]:
+    """Return (bytes, mime type, info) for an audio file path, encoded bytes or an array."""
+    if isinstance(audio, (str, os.PathLike)):
+        path = os.fspath(audio)
+        with open(path, "rb") as f:
+            data = f.read()
+        mime = _sniff_audio(data) or _AUDIO_EXT.get(os.path.splitext(path)[1].lower())
+        if mime is None:
+            raise ValueError(f"unrecognized audio file {path!r}")
+        return data, mime, _wav_info(data) if mime == "audio/wav" else {}
+    if isinstance(audio, (bytes, bytearray, memoryview)):
+        data = bytes(audio)
+        mime = _sniff_audio(data)
+        if mime is None:
+            raise ValueError("unrecognized audio bytes; pass a file path or an array")
+        return data, mime, _wav_info(data) if mime == "audio/wav" else {}
+    if hasattr(audio, "shape"):
+        if not sample_rate:
+            raise ValueError("sample_rate is required when logging an array")
+        data, info = array_to_wav(audio, sample_rate)
+        return data, "audio/wav", info
+    raise TypeError(f"unsupported audio type {type(audio).__name__}")
+
+
+def _sniff_audio(data: bytes) -> str | None:
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "audio/wav"
+    if data[:4] == b"fLaC":
+        return "audio/flac"
+    if data[:4] == b"OggS":
+        return "audio/ogg"
+    if data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+        return "audio/mpeg"
+    if data[4:8] == b"ftyp":
+        return "audio/mp4"
+    if data[:4] == b"\x1aE\xdf\xa3":
+        return "audio/webm"
+    return None
+
+
+def _wav_info(data: bytes) -> dict[str, Any]:
+    try:
+        with wave.open(io.BytesIO(data)) as w:
+            rate, frames = w.getframerate(), w.getnframes()
+            return {
+                "sample_rate": rate,
+                "channels": w.getnchannels(),
+                "duration": round(frames / rate, 6) if rate else None,
+            }
+    except (wave.Error, EOFError):  # e.g. float WAV, which `wave` does not read
+        return {}

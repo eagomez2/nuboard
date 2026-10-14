@@ -4,11 +4,11 @@ The analysis API returns Apache Arrow tables, which convert to pandas or
 Polars in one call. It needs the viewer extra (`pip install "nuboard[viewer]"`).
 
 ```python
-import nuboard as nm
+import nuboard as nb
 
-project = nm.load("llm-pretrain")  # a project name (under $NUBOARD_DIR / ./experiments)
-project = nm.load("~/exp/llm-pretrain")  # or any folder path
-project = nm.load("llm-pretrain", dir="~/exp")
+project = nb.load("llm-pretrain")  # a project name (under $NUBOARD_DIR / ./experiments)
+project = nb.load("~/exp/llm-pretrain")  # or any folder path
+project = nb.load("llm-pretrain", dir="~/exp")
 
 runs = project.runs('where tags has "sweep" and status = finished')
 for r in runs:
