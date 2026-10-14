@@ -127,3 +127,25 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect(audio).toBeVisible();
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
 });
+
+test('custom fields: add a column, edit a cell, set a field on selected runs', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.getByRole('button', { name: /Columns/ }).click();
+  const add = page.getByRole('button', { name: 'Add field' });
+  await expect(add).toBeDisabled();
+  await page.getByPlaceholder('Field name, e.g. verdict').fill('grade');
+  await add.click();
+  await expect(page).toHaveURL(/cols=field(:|%3A)grade/);
+  await page.getByTitle('Edit grade').first().click();
+  await page.keyboard.type('A');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTitle('Edit grade').first()).toHaveText('A');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(1).check();
+  await boxes.nth(2).check();
+  const answers = ['grade', 'B'];
+  page.on('dialog', (d) => d.accept(answers.shift()));
+  await page.getByRole('button', { name: 'Set field…' }).click();
+  await expect(page.getByTitle('Edit grade').nth(1)).toHaveText('B');
+  await expect(page.getByTitle('Edit grade').nth(2)).toHaveText('B');
+});

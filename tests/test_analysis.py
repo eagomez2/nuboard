@@ -18,3 +18,16 @@ def test_load_scalars_group_by():
     assert set(summary.column_names) >= {"run_id", "config.lr", "loss"}
     one = project.runs()[0].scalars()
     assert one.column_names == ["metric", "step", "time", "value"]
+
+
+def test_set_field_from_python():
+    with nb.init("fields", capture_env=False) as run:
+        run.log({"loss": 1.0}, step=0)
+    handle = nb.load("fields").runs()[0]
+    handle.set_field("verdict", "keep")
+    handle.set_field("score", 4)
+    assert handle.fields == {"verdict": "keep", "score": 4}
+    again = nb.load("fields")
+    assert again.runs("where fields.verdict = keep")[0].fields["score"] == 4
+    again.runs()[0].set_field("verdict", None)
+    assert nb.load("fields").runs()[0].fields == {"score": 4}

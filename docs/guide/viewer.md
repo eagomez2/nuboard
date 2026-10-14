@@ -49,12 +49,19 @@ browser's local storage.
 
 ### Custom fields
 
-Custom fields are your own columns: a verdict, an owner, a score. Open
-**Columns**, type a name under **Custom fields** and press **+**; then click a
-cell to edit it. Numbers and `true`/`false` are stored as such, so queries
-like `score > 3` and `verdict = keep` work; clear a cell to remove the value.
-Fields can also be used as sweep parameters. From Python they are
-`run.fields` in the [analysis API](analysis.md).
+Custom fields are your own columns: a verdict, an owner, a score.
+
+1. Open **Columns**, type a name under **Custom fields** and press **+** (or
+   Enter). The column appears next to **Run**, marked ✎. Fields that already
+   have values on some run are listed there to show or hide.
+2. Click a cell in that column to edit it: Enter saves, Esc cancels, and an
+   empty value removes the field from that run.
+3. To set the same value on many runs, select them and press **Set field…**.
+
+Numbers and `true`/`false` are stored as such, so queries like `score > 3`
+and `verdict = keep` work. Fields can also be used as sweep parameters. From
+Python, read them as `run.fields` and write them with
+`run.set_field("verdict", "keep")` in the [analysis API](analysis.md).
 
 ### Collections
 

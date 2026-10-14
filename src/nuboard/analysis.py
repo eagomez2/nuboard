@@ -46,6 +46,22 @@ class RunHandle:
         """Custom fields set in the viewer (``annotations.json``)."""
         return self.record.get("fields") or {}
 
+    def set_field(self, name: str, value: Any) -> None:
+        """Set a custom field (``None`` or ``""`` removes it), as the viewer does.
+
+        Written to the run's ``annotations.json``; a running viewer picks it up.
+        """
+        path = self.path / "annotations.json"
+        ann = _fs.read_json(path, {}) or {}
+        fields = dict(ann.get("fields") or {})
+        if value is None or value == "":
+            fields.pop(name, None)
+        else:
+            fields[name] = value
+        ann["fields"] = fields
+        _fs.atomic_write_json(path, ann)
+        self.record["fields"] = fields
+
     @property
     def collections(self) -> list[str]:
         return self.record.get("collections") or []
