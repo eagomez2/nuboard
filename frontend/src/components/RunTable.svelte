@@ -7,6 +7,7 @@
   import { app } from '../lib/state.svelte';
 
   const ROW = 56;
+  const MAX_COMPARE = 8;
   let scrollTop = $state(0);
   let viewport = $state(600);
   let editing = $state<string | null>(null);
@@ -292,8 +293,9 @@
     </div>
     <button
       class="btn"
-      disabled={selected.length < 1 || selected.length > 2}
-      onclick={() => router.set({ cmp: selected.slice(0, 2).join(',') })}
+      disabled={selected.length < 1 || selected.length > MAX_COMPARE}
+      title={selected.length > MAX_COMPARE ? `Compare up to ${MAX_COMPARE} runs at a time` : undefined}
+      onclick={() => router.set({ cmp: selected.join(','), pair: null })}
     >
       Compare
     </button>

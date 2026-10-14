@@ -13,7 +13,33 @@
 
   const tab = $derived(router.get('tab', 'settings'));
   const onlyChanges = $derived(router.get('changes') === '1');
-  const pair = $derived(details.length === 2);
+  const multi = $derived(details.length >= 2);
+  // File diffs are pairwise: which two of the compared runs (indices into keys).
+  const pairIdx = $derived.by(() => {
+    const [a, b] = router.list('pair').map(Number);
+    const n = details.length;
+    const ok = (i: number) => Number.isInteger(i) && i >= 0 && i < n;
+    return ok(a) && ok(b) && a !== b ? [a, b] : [0, 1];
+  });
+  const pair = $derived(multi ? pairIdx.map((i) => details[i]) : []);
+  const pairTexts = $derived(multi && texts.length === details.length ? pairIdx.map((i) => texts[i]) : []);
+  const COLORS = [
+    'var(--s1)',
+    'var(--s2)',
+    'var(--s3)',
+    'var(--s4)',
+    'var(--s5)',
+    'var(--s6)',
+    'var(--s7)',
+    'var(--s8)',
+  ];
+
+  let panel = $state<HTMLDivElement | null>(null);
+  // Opening a comparison from far down the table should not happen off screen.
+  $effect(() => {
+    if (keys.join() && panel && panel.getBoundingClientRect().top < 0)
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 
   $effect(() => {
     const ks = keys;
@@ -71,12 +97,12 @@
       .map((k) => ({
         k,
         vals: maps.map((m) => fmtValue(m[k])),
-        diff: pair && fmtValue(maps[0][k]) !== fmtValue(maps[1][k]),
       }))
+      .map((row) => ({ ...row, diff: multi && new Set(row.vals).size > 1 }))
       .filter((r) => !onlyChanges || r.diff);
   });
 
-  const diffRows = $derived(pair && texts.length === 2 ? sideBySide(texts[0] ?? '', texts[1] ?? '') : []);
+  const diffRows = $derived(pairTexts.length === 2 ? sideBySide(pairTexts[0] ?? '', pairTexts[1] ?? '') : []);
   const shownDiff = $derived(
     onlyChanges
       ? diffRows.filter(
@@ -85,15 +111,31 @@
       : diffRows,
   );
   const changed = $derived(diffRows.filter((r) => r.kind !== 'same').length);
+  // Fixed minimum widths keep every row's columns aligned; wide comparisons scroll sideways.
+  const cols = $derived(`minmax(180px, 1fr) repeat(${details.length}, minmax(170px, 1.6fr))`);
+  const rowWidth = $derived(`${180 + details.length * 182}px`);
+
+  function setPair(side: 0 | 1, e: Event) {
+    const next = [...pairIdx];
+    next[side] = Number((e.currentTarget as HTMLSelectElement).value);
+    if (next[0] === next[1]) next[1 - side] = pairIdx[side];
+    router.set({ pair: next.join(',') });
+  }
+
   const errorText = $derived(details.map((d) => d.run.error).find(Boolean));
 </script>
 
-<div class="card cmp">
+<div class="card cmp" bind:this={panel}>
   <div class="top">
-    <h2>{pair ? 'Compare' : 'Run'} <span class="mono">{details.map((d) => d.run.name).join(' · ')}</span></h2>
+    <h2>
+      {multi ? `Compare ${details.length} runs` : 'Run'}
+      {#if !multi}<span class="mono">{details.map((d) => d.run.name).join(' · ')}</span>{/if}
+    </h2>
     {#if details.length === 1}<Status status={details[0].run.status} />{/if}
-    <button class="btn btn-ghost close" aria-label="Close" onclick={() => router.set({ cmp: null, tab: null })}
-      ><Icon name="x" size={16} /></button
+    <button
+      class="btn btn-ghost close"
+      aria-label="Close"
+      onclick={() => router.set({ cmp: null, tab: null, pair: null })}><Icon name="x" size={16} /></button
     >
   </div>
 
@@ -108,7 +150,7 @@
     {#each files as f (f)}
       <button class="tab mono" aria-pressed={tab === f} onclick={() => router.set({ tab: f })}>{f}</button>
     {/each}
-    {#if pair}
+    {#if multi}
       <label class="only">
         <button
           class="switch"
@@ -124,12 +166,18 @@
 
   {#if tab === 'settings'}
     <div class="settings mono">
+      {#if multi}
+        <div class="srow head" style="grid-template-columns: {cols}; min-width: {rowWidth}">
+          <span class="k">run</span>
+          {#each details as d, i (d.run.key)}
+            <span class="v run" title={d.run.name}
+              ><i style="background:{COLORS[i % COLORS.length]}"></i>{d.run.name}</span
+            >
+          {/each}
+        </div>
+      {/if}
       {#each settingRows as row (row.k)}
-        <div
-          class="srow"
-          class:diff={row.diff}
-          style="grid-template-columns: minmax(180px, 1fr) repeat({details.length}, minmax(0, 1.6fr))"
-        >
+        <div class="srow" class:diff={row.diff} style="grid-template-columns: {cols}; min-width: {rowWidth}">
           <span class="k">{row.k}</span>
           {#each row.vals as v, i (i)}<span class="v" title={v}>{v}</span>{/each}
         </div>
@@ -137,14 +185,24 @@
     </div>
   {:else if loadingFile}
     <p class="muted">Loading…</p>
-  {:else if pair}
+  {:else if multi}
     <p class="muted small">
       <span class="mono">files/{tab}</span> · {changed} changed line{changed === 1 ? '' : 's'} · saved by init into each run
       folder
+      {#if details.length > 2}
+        · diff
+        <select class="input sm mono" aria-label="Left run" value={pairIdx[0]} onchange={(e) => setPair(0, e)}>
+          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+        </select>
+        against
+        <select class="input sm mono" aria-label="Right run" value={pairIdx[1]} onchange={(e) => setPair(1, e)}>
+          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+        </select>
+      {/if}
     </p>
     <div class="diff mono">
-      <div class="dh"><b>{details[0].run.name}</b><span>{details[0].run.path}/files/{tab}</span></div>
-      <div class="dh"><b>{details[1].run.name}</b><span>{details[1].run.path}/files/{tab}</span></div>
+      <div class="dh"><b>{pair[0].run.name}</b><span>{pair[0].run.path}/files/{tab}</span></div>
+      <div class="dh"><b>{pair[1].run.name}</b><span>{pair[1].run.path}/files/{tab}</span></div>
       {#each shownDiff as r, i (i)}
         <div class="line {r.kind === 'same' ? '' : r.kind === 'add' ? 'none' : 'del'}">
           <span class="ln">{r.ln ?? ''}</span><span class="tx"
@@ -237,6 +295,24 @@
   }
   .srow:last-child {
     border-bottom: 0;
+  }
+  .srow.head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel-2);
+    font-weight: 600;
+  }
+  .run {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .run i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: none;
   }
   .srow.diff {
     background: var(--diff-del);

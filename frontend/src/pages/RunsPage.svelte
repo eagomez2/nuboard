@@ -96,10 +96,10 @@
   </aside>
 
   <section class="main">
-    <RunTable />
     {#if compare.length}
       <ComparePanel keys={compare} />
     {/if}
+    <RunTable />
   </section>
 </div>
 
