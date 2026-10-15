@@ -334,6 +334,12 @@ class _Parser:
         if self.peek("word"):
             return self.take()
 
+        nxt = self.t[self.i + 1] if self.i + 1 < len(self.t) else None
+
+        if self.peek("kw", "group") and nxt != ("kw", "by"):  # the `group` field itself
+            self.take()
+            return "group"
+
         raise QueryError("expected a field name")
 
     def query(self, text: str) -> Query:
