@@ -113,6 +113,7 @@ nuboard is free software under the [MIT License](license.md).
 - [Quickstart](quickstart.md) runs the demo and logs a first run.
 - [Logging from Python](guide/logging.md), [Using the viewer](guide/viewer.md),
   [Sweeps](guide/sweeps.md), [Health alerts](guide/alerts.md) and
-  [Artifacts](guide/artifacts.md) explain each part in depth.
+  [Artifacts](guide/artifacts.md) explain each part in depth, and
+  [Importing from TensorBoard](guide/tensorboard.md) brings old logs in.
 - The [Reference](reference/query.md) documents the query language, the
   [file format](reference/format.md) and the [architecture](reference/architecture.md).

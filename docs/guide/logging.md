@@ -80,6 +80,10 @@ need everything on disk at a given point (rarely needed).
 | `add_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
 | `add_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
 
+Every method also takes a keyword-only `time=` (a Unix timestamp) to override
+when the item was logged, as `run.log` does; the TensorBoard importer uses it to
+keep the original wall times.
+
 Audio arrays are stored as 16-bit PCM WAV, written with the standard
 library's `wave` module, so logging audio needs nothing beyond NumPy for the
 array itself. Files and bytes are stored as they are: log a FLAC or Opus file

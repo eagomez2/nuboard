@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0
+
+**TensorBoard import**
+
+- `nuboard import-tensorboard LOGDIR` imports TensorBoard logs as runs: every folder of
+  `events.out.tfevents.*` files under `LOGDIR` becomes a run, named after its
+  path, with its parent path as the group. Scalars, images, audio, text and
+  HParams hyperparameters (stored as the run's config) are imported with their
+  original steps and wall times. Histograms, graphs and other plugins are
+  skipped and counted. Logs from TensorFlow 1 and 2, PyTorch's `SummaryWriter`
+  and tensorboardX are supported, and importing the same folder again skips
+  the runs already imported.
+- The event files are decoded with the standard library, so the importer needs
+  neither TensorFlow nor TensorBoard, and adds no dependency.
+- From Python: `nuboard.tensorboard.import_logdir(logdir, project, dir=..., tags=...)`.
+- `add_text`, `add_image`, `add_audio`, `add_figure` and `add_html` take a
+  keyword-only `time=` timestamp, like `run.log`.
+
+**Fixes**
+
+- Queries can use the `group` field (`where group = "fit/run1"`,
+  `group by group`); before, `group` was only read as the start of `group by`.
+
 ## 0.5.0
 
 **Breaking: media methods are now `add_*`**

@@ -67,3 +67,9 @@ def test_group_and_agg():
 def test_errors(bad):
     with pytest.raises(QueryError):
         parse(bad)
+
+
+def test_group_is_also_a_field():
+    q = parse('where group = "fit/run1" group by group')
+    assert q.where == ("cmp", "=", "group", "fit/run1")
+    assert q.group_by == "group"

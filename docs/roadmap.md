@@ -26,7 +26,8 @@ the [changelog](changelog.md) for what each version added.
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
-5. **TensorBoard import** (tfevents → run folders).
+5. ~~**TensorBoard import**~~: done in 0.6 (`nuboard import-tensorboard`). Next:
+   histograms, once nuboard can show distributions.
 6. Charts: Web Workers for decoding and smoothing, WebGL for very large
    scatters.
 7. Runs table: TanStack Virtual, Bits UI menus and comboboxes (0.2 uses

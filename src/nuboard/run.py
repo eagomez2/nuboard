@@ -530,7 +530,13 @@ class Run:
             writer.queue.append((0, step, _now() if time is None else time, dict(data)))
 
     def add_text(
-        self, key: str, text: str, step: int | None = None, *, all_ranks: bool = False
+        self,
+        key: str,
+        text: str,
+        step: int | None = None,
+        *,
+        time: float | None = None,
+        all_ranks: bool = False,
     ) -> None:
         """Log a string, such as generated samples or notes.
 
@@ -540,6 +546,7 @@ class Run:
             key: Name the text is logged under.
             text: The text; other values are converted with `str`.
             step: Training step. Defaults to the step of the latest `log` call.
+            time: Unix timestamp of the item. Defaults to now.
             all_ranks: Log from every rank, not only rank 0.
         """
 
@@ -549,7 +556,7 @@ class Run:
         writer = self._ensure_writer()
 
         if writer is not None:
-            writer.put_text(key, self._step(step), _now(), str(text))
+            writer.put_text(key, self._step(step), _now() if time is None else time, str(text))
 
     def add_image(
         self,
@@ -558,6 +565,7 @@ class Run:
         step: int | None = None,
         *,
         caption: str | None = None,
+        time: float | None = None,
     ) -> None:
         """Log an image.
 
@@ -571,6 +579,7 @@ class Run:
                 CxHxW array or tensor (uint8, or float in [0, 1]).
             step: Training step. Defaults to the step of the latest `log` call.
             caption: Optional caption shown in the viewer.
+            time: Unix timestamp of the item. Defaults to now.
 
         Example:
             >>> import numpy as np
@@ -585,7 +594,7 @@ class Run:
             image = image.copy()  # the caller may mutate its buffer after we return
 
         self._put_media(
-            key, step, lambda: image_bytes(image), {"kind": "image", "caption": caption}
+            key, step, lambda: image_bytes(image), {"kind": "image", "caption": caption}, time
         )
 
     def add_audio(
@@ -596,6 +605,7 @@ class Run:
         *,
         sample_rate: int | None = None,
         caption: str | None = None,
+        time: float | None = None,
     ) -> None:
         """Log audio.
 
@@ -610,6 +620,7 @@ class Run:
             step: Training step. Defaults to the step of the latest `log` call.
             sample_rate: Sample rate in Hz; required for arrays.
             caption: Optional caption shown in the viewer.
+            time: Unix timestamp of the item. Defaults to now.
         """
         from ._media import audio_bytes
 
@@ -624,9 +635,12 @@ class Run:
             step,
             lambda: audio_bytes(audio, sample_rate),
             {"kind": "audio", "caption": caption},
+            time,
         )
 
-    def add_figure(self, key: str, figure: Any, step: int | None = None) -> None:
+    def add_figure(
+        self, key: str, figure: Any, step: int | None = None, *, time: float | None = None
+    ) -> None:
         """Log a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure.
 
         The figure is serialized immediately, since figures are mutable. Plotly,
@@ -637,6 +651,7 @@ class Run:
             key: Name the figure is logged under.
             figure: The figure, or a Plotly or Vega-Lite spec as a dict.
             step: Training step. Defaults to the step of the latest `log` call.
+            time: Unix timestamp of the item. Defaults to now.
 
         Raises:
             TypeError: If the figure type is not supported.
@@ -644,9 +659,11 @@ class Run:
         from ._media import figure_bytes
 
         data, mime = figure_bytes(figure)  # serialize now: figures are mutable
-        self._put_media(key, step, lambda: (data, mime), {"kind": "figure"})
+        self._put_media(key, step, lambda: (data, mime), {"kind": "figure"}, time)
 
-    def add_html(self, key: str, html: str, step: int | None = None) -> None:
+    def add_html(
+        self, key: str, html: str, step: int | None = None, *, time: float | None = None
+    ) -> None:
         """Log an HTML document; the viewer renders it in a sandboxed iframe.
 
         Only rank 0 logs media.
@@ -655,11 +672,19 @@ class Run:
             key: Name the document is logged under.
             html: The HTML source.
             step: Training step. Defaults to the step of the latest `log` call.
+            time: Unix timestamp of the item. Defaults to now.
         """
         data = html.encode("utf-8")
-        self._put_media(key, step, lambda: (data, "text/html"), {"kind": "html"})
+        self._put_media(key, step, lambda: (data, "text/html"), {"kind": "html"}, time)
 
-    def _put_media(self, key: str, step: int | None, producer: Any, meta: dict[str, Any]) -> None:
+    def _put_media(
+        self,
+        key: str,
+        step: int | None,
+        producer: Any,
+        meta: dict[str, Any],
+        time: float | None = None,
+    ) -> None:
         """Queue a media item; `producer` returns its encoded bytes on the writer thread."""
 
         if not self.dist.is_main:
@@ -668,7 +693,9 @@ class Run:
         writer = self._ensure_writer()
 
         if writer is not None:
-            writer.put_media(key, self._step(step), _now(), producer, meta)
+            writer.put_media(
+                key, self._step(step), _now() if time is None else time, producer, meta
+            )
 
     def _step(self, step: int | None) -> int:
         """Return `step`, or the step of the latest `log` call when it is None."""

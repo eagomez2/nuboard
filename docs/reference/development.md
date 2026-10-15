@@ -14,12 +14,13 @@ src/nuboard/            Python package (the name lives here and in pyproject.tom
   compact.py alerts.py  Parquet compaction (PyArrow), health checks (NumPy)
   catalog.py query.py   run discovery, SQLite cache, query language
   collection.py         collections of runs (stdlib only)
+  tensorboard.py        TensorBoard event-file import (stdlib only)
   analysis.py           nb.load(...) → Arrow tables
   server/               Starlette app and data access
   static/               built frontend (generated, not in git)
   cli.py demo.py        command line and demo data
 frontend/               Svelte 5 + TypeScript + Vite + Tailwind v4 + uPlot
-tests/                  pytest
+tests/                  pytest (tests/data: TensorBoard logs from real writers)
 benchmarks/bench.py     performance checks
 scripts/blank_lines.py  blank-line-around-blocks formatter (see Code style)
 docs/                   this site (mkdocs)

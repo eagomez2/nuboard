@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.5.0-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.6.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -47,7 +47,7 @@ Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.5
+## What's in 0.6
 
 | Area | Included |
 | --- | --- |
@@ -61,9 +61,9 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
 | Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per metric and rank |
-| CLI | `nuboard up`, `demo`, `ls`, `compact` |
+| CLI | `nuboard up`, `demo`, `ls`, `compact`, `import-tensorboard` (TensorBoard logs to runs) |
 
-Not yet: multi-GPU rank bands, TensorBoard import. See the [roadmap](docs/roadmap.md) and the
+Not yet: multi-GPU rank bands, histograms. See the [roadmap](docs/roadmap.md) and the
 [changelog](docs/changelog.md).
 
 ## Documentation
@@ -78,7 +78,8 @@ uv run mkdocs serve    # http://localhost:8000
 - [Logging from Python](docs/guide/logging.md), [Using the viewer](docs/guide/viewer.md),
   [Sweeps](docs/guide/sweeps.md), [Health alerts](docs/guide/alerts.md),
   [Artifacts and lineage](docs/guide/artifacts.md), [Analysis API](docs/guide/analysis.md),
-  [Distributed training](docs/guide/distributed.md)
+  [Distributed training](docs/guide/distributed.md),
+  [Importing from TensorBoard](docs/guide/tensorboard.md)
 - Reference: [query language](docs/reference/query.md), [file format](docs/reference/format.md),
   [architecture](docs/reference/architecture.md), [development](docs/reference/development.md)
 

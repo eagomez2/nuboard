@@ -106,13 +106,50 @@ def up(
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
+def _import_tensorboard(
+    logdir: str, project: str | None, directory: str | None, tags: list[str] | None
+) -> None:
+    """Import TensorBoard logs and print one line per run.
+
+    Raises:
+        SystemExit: If `logdir` is missing or holds no event files.
+    """
+    from .tensorboard import import_logdir
+
+    try:
+        results = import_logdir(logdir, project, dir=directory, tags=tags)
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from None
+
+    for r in results:
+        if r.skipped:
+            print(f"skipped   {r.name} (already imported as {r.run_id})")
+            continue
+
+        parts = [f"{r.scalars} scalars", f"{r.media} media"]
+
+        if r.hparams:
+            parts.append(f"{r.hparams} hparams")
+
+        if r.ignored:
+            parts.append("skipped " + ", ".join(f"{n} {k}" for k, n in sorted(r.ignored.items())))
+
+        print(f"imported  {r.name}: {', '.join(parts)}")
+
+    new = [r for r in results if not r.skipped]
+
+    if new:
+        root = new[0].path.parent.parent
+        print(f"{len(new)} run(s) imported into {root}. View them with: {NAME} up {root.parent}")
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the command line interface.
 
     Subcommands: `up` (start the viewer), `demo` (write a demo workspace and
     optionally serve it with a live run), `compact` (write `data.parquet` for
-    finished runs), `ls` (list runs, optionally filtered by a query) and
-    `version`.
+    finished runs), `ls` (list runs, optionally filtered by a query),
+    `import-tensorboard` (import TensorBoard logs) and `version`.
 
     Args:
         argv: Command line arguments without the program name. Defaults to
@@ -147,6 +184,27 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("ls", help="list runs, optionally filtered by a query")
     p.add_argument("dir", nargs="?", default=None)
     p.add_argument("-q", "--query", default="")
+
+    p = sub.add_parser(
+        "import-tensorboard",
+        help="import TensorBoard logs (events.out.tfevents.*) as runs",
+        description="Import every folder of TensorBoard event files under LOGDIR as a run. "
+        "Scalars, images, audio, text and hyperparameters are kept; histograms and other "
+        "plugins are skipped. Runs imported before are left unchanged.",
+    )
+    p.add_argument("logdir", help="the folder you would pass to tensorboard --logdir")
+    p.add_argument("-p", "--project", help="project to import into (default: LOGDIR's name)")
+    p.add_argument(
+        "--dir",
+        default=None,
+        help=f"root folder for projects (default: ${ENV_PREFIX}_DIR or ./{DEFAULT_ROOT})",
+    )
+    p.add_argument(
+        "--tag",
+        action="append",
+        dest="tags",
+        help="tag for the imported runs; repeat for several (default: tensorboard)",
+    )
 
     sub.add_parser("version", help="print the version")
 
@@ -210,6 +268,8 @@ def main(argv: list[str] | None = None) -> None:
 
         for r in parse(args.query).apply(records):
             print(f"{r['status']:<9} {r['project']:<20} {r['id']}")
+    elif args.cmd == "import-tensorboard":
+        _import_tensorboard(args.logdir, args.project, args.dir, args.tags)
     elif args.cmd == "version":
         from . import __version__
 
