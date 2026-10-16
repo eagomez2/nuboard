@@ -18,6 +18,28 @@
   let fieldEdit = $state<{ key: string; field: string } | null>(null);
   let fieldDraft = $state('');
   let menu = $state(false);
+  // The Columns menu is fixed to the window, under its button, so a short table cannot clip it
+  let menuButton = $state<HTMLButtonElement | null>(null);
+  let menuPos = $state({ top: 0, right: 0, maxHeight: 420 });
+  function placeMenu() {
+    if (!menuButton) return;
+    const r = menuButton.getBoundingClientRect();
+    menuPos = {
+      top: r.bottom + 6,
+      right: Math.max(8, window.innerWidth - r.right),
+      maxHeight: Math.max(160, Math.min(420, window.innerHeight - r.bottom - 18)),
+    };
+  }
+  $effect(() => {
+    if (!menu) return;
+    placeMenu();
+    window.addEventListener('scroll', placeMenu, true);
+    window.addEventListener('resize', placeMenu);
+    return () => {
+      window.removeEventListener('scroll', placeMenu, true);
+      window.removeEventListener('resize', placeMenu);
+    };
+  });
   let newField = $state('');
 
   // Property definitions of the listed projects, so edits in the table keep their types
@@ -323,11 +345,16 @@
       show archived
     </label>
     <div class="colmenu">
-      <button class="btn" aria-expanded={menu} onclick={() => (menu = !menu)}>
+      <button class="btn" bind:this={menuButton} aria-expanded={menu} onclick={() => (menu = !menu)}>
         <Icon name="columns" size={15} /> Columns{cols.length ? ` (${cols.length})` : ''}
       </button>
       {#if menu}
-        <div class="card pop" role="dialog" aria-label="Columns">
+        <div
+          class="card pop"
+          role="dialog"
+          aria-label="Columns"
+          style="top:{menuPos.top}px;right:{menuPos.right}px;max-height:{menuPos.maxHeight}px"
+        >
           <div class="label">Custom fields</div>
           {#each fieldNames as f (f)}
             <label class="opt"
@@ -717,12 +744,9 @@
     position: relative;
   }
   .pop {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    z-index: 5;
+    position: fixed;
+    z-index: 30;
     width: 300px;
-    max-height: 420px;
     overflow-y: auto;
     padding: 10px 12px;
     box-shadow: var(--lift);
