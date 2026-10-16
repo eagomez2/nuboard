@@ -2,10 +2,11 @@
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
   import { api, type ReportInfo } from '../lib/api';
+  import { DISPLAY_NAME } from '../lib/brand';
   import { ask, confirmAction } from '../lib/dialog.svelte';
-  import { downloadReportHtml } from '../lib/exporthtml';
+  import { defaultFooter, downloadReportHtml, type ExportTheme } from '../lib/exporthtml';
   import { fmtAgo } from '../lib/format';
-  import { router } from '../lib/router.svelte';
+  import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
   let list = $state<ReportInfo[]>([]);
@@ -108,10 +109,32 @@
   async function exportHtml() {
     const r = current;
     if (!r) return;
+    const res = await ask(
+      'Export as HTML',
+      [
+        {
+          label: 'Theme',
+          value: prefs.get('exportTheme', 'switch'),
+          options: [
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+            { value: 'switch', label: 'Switchable' },
+          ],
+          hint: 'Switchable follows the reader’s system theme and has a button to change it.',
+        },
+        { label: 'Footer', value: defaultFooter(r.project) },
+        { label: `${DISPLAY_NAME} logo in the footer and the tab`, value: prefs.get('exportLogo', '1'), toggle: true },
+      ],
+      { confirm: 'Export', message: 'One self-contained file that opens offline.' },
+    );
+    if (!res) return;
+    const theme = (['light', 'dark', 'switch'].includes(res[0]) ? res[0] : 'switch') as ExportTheme;
+    prefs.set('exportTheme', theme);
+    prefs.set('exportLogo', res[2]);
     exporting = true;
     try {
       await save();
-      await downloadReportHtml(r.project, r.name, r.title, text);
+      await downloadReportHtml(r.project, r.name, r.title, text, { theme, footer: res[1], logo: res[2] === '1' });
     } finally {
       exporting = false;
     }

@@ -80,6 +80,14 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
   cdn.bokeh.org once, while exporting, for the figure's exact version and
   embedded too; if it cannot be reached, the figure is left out with a note.
+  Before exporting you pick the **theme** (light, dark, or switchable: it
+  follows the reader's system theme and has a button to flip it), edit the
+  **footer** (by default "Exported with NuBoard from …"; empty removes it),
+  and choose whether the NuBoard **logo** appears in the footer and as the
+  tab icon. Figures and charts saved from the Charts page follow the theme:
+  the charts are drawn live in the file from their data at export time (the
+  snapshot is used only if the data cannot be loaded). Sweeps and Timeline
+  snapshots are images and keep the colors they were taken with.
 - **Print** prints the rendered report, or saves it as a PDF, without the
   viewer's menus.
 

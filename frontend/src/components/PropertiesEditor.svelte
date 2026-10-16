@@ -61,6 +61,16 @@
     app.loadRuns();
   }
 
+  const TYPE_LABELS: Record<FieldType, string> = {
+    text: 'Text',
+    number: 'Number',
+    choice: 'Choice (one of a list)',
+    tags: 'Tags (several of a list)',
+    bool: 'Yes / no',
+    date: 'Date',
+    link: 'Link',
+  };
+
   async function addProperty() {
     const res = await ask(
       'Add a property',
@@ -69,8 +79,8 @@
         {
           label: 'Type',
           value: 'text',
-          suggestions: [...FIELD_TYPES],
-          hint: 'text, number, choice, tags, bool, date or link',
+          options: FIELD_TYPES.map((t) => ({ value: t, label: TYPE_LABELS[t] })),
+          hint: 'Choice and tags take a list of options; numbers can have a unit.',
         },
         { label: 'Options or unit', placeholder: 'choice/tags: a, b, c · number: unit such as ms' },
         { label: 'Description', placeholder: 'optional' },
