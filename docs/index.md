@@ -6,7 +6,7 @@ hide:
 
 <div class="nb-hero" markdown>
 
-![nuboard](assets/logo.svg){ .nb-logo }
+![NuBoard](assets/logo.svg){ .nb-logo }
 
 # Experiment tracking that lives in a folder
 
@@ -86,9 +86,9 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
 
 </div>
 
-## About nuboard
+## About NuBoard
 
-nuboard is a local alternative to TensorBoard and hosted experiment trackers
+NuBoard is a local alternative to TensorBoard and hosted experiment trackers
 for people who train models on their own machines or clusters. Each run writes
 an append-only binary log from a background thread, so a crash loses at most
 the last second of data. When a run finishes, the log is compacted into a
@@ -104,7 +104,7 @@ folder and committed to git.
 
 ## License
 
-nuboard is free software under the [MIT License](license.md).
+NuBoard is free software under the [MIT License](license.md).
 
 ## Guides
 

@@ -5,7 +5,7 @@ hide:
 
 # Installation
 
-nuboard needs **Python 3.10 or newer** on Linux, macOS or Windows. It comes in
+NuBoard needs **Python 3.10 or newer** on Linux, macOS or Windows. It comes in
 two parts, so a training environment only gets what it needs:
 
 | Install | Adds | Use it for |
@@ -15,27 +15,27 @@ two parts, so a training environment only gets what it needs:
 
 ## From the wheel
 
-nuboard is not on PyPI yet. Each release ships a wheel with the viewer already
+The `nuboard` package is not on PyPI yet. Each release ships a wheel with the viewer already
 built inside it, so installing it needs no Node.js:
 
 === "uv"
 
     ```bash
-    uv tool install "nuboard-0.8.1-py3-none-any.whl[viewer]"  # the nuboard command
-    uv pip install nuboard-0.8.1-py3-none-any.whl             # logging only
+    uv tool install "nuboard-0.8.2-py3-none-any.whl[viewer]"  # the nuboard command
+    uv pip install nuboard-0.8.2-py3-none-any.whl             # logging only
     ```
 
 === "pip"
 
     ```bash
-    pip install "nuboard-0.8.1-py3-none-any.whl[viewer]"
-    pip install nuboard-0.8.1-py3-none-any.whl                 # logging only
+    pip install "nuboard-0.8.2-py3-none-any.whl[viewer]"
+    pip install nuboard-0.8.2-py3-none-any.whl                 # logging only
     ```
 
 To try it without installing anything, run the demo straight from the wheel:
 
 ```bash
-uv run --with "nuboard-0.8.1-py3-none-any.whl[viewer]" nuboard demo demo-runs --up --open
+uv run --with "nuboard-0.8.2-py3-none-any.whl[viewer]" nuboard demo demo-runs --up --open
 ```
 
 ## From source
@@ -75,9 +75,9 @@ uv run nuboard demo demo-runs --up --open
 
 ```console
 $ nuboard version
-nuboard 0.8.1
+nuboard 0.8.2
 $ python -c "import nuboard; print(nuboard.__version__)"
-0.8.1
+0.8.2
 ```
 
 Next, the [Quickstart](quickstart.md) runs the demo and logs a first run.

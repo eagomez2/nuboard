@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/assets/logo.svg" width="72" alt=""></p>
 
-<h1 align="center">nuboard</h1>
+<h1 align="center">NuBoard</h1>
 
 <p align="center"><b>Experiment tracking that lives in a folder.</b><br>
 Log from Python with three calls. Every run is a folder. View thousands of runs in your browser.</p>
@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.8.1-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.8.2-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -100,7 +100,7 @@ places).
 
 ## License
 
-nuboard is released under the [MIT License](LICENSE).
+NuBoard is released under the [MIT License](LICENSE).
 
 ## Requirements
 

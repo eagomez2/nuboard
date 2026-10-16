@@ -278,8 +278,7 @@ figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;fon
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
 .nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
-footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;display:flex;align-items:center;justify-content:center;gap:8px}
-footer svg{width:18px;height:18px;flex:none}
+footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;text-align:center}
 .nbtheme{position:fixed;top:14px;right:14px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer}
 .nbtheme:hover{color:var(--text)}.nbtheme svg{width:18px;height:18px}
 :root[data-theme=dark] .nbtheme .sun,:root:not([data-theme=dark]) .nbtheme .moon{display:none}
@@ -297,7 +296,7 @@ onclick="const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dar
 
 export type ExportTheme = 'light' | 'dark' | 'switch';
 
-/** How a report is exported: its theme, the footer text, and whether the logo is shown. */
+/** How a report is exported: its theme, the footer text, and whether the logo is the tab icon. */
 export interface ExportOptions {
   theme: ExportTheme;
   footer: string;
@@ -305,8 +304,9 @@ export interface ExportOptions {
 }
 
 /** The footer a report gets unless it is changed when exporting. */
-export function defaultFooter(project: string): string {
-  return `Exported with ${DISPLAY_NAME} from ${project}/reports on ${new Date().toLocaleString()}`;
+export function defaultFooter(project: string, version = ''): string {
+  const name = version ? `${DISPLAY_NAME} ${version}` : DISPLAY_NAME;
+  return `Exported with ${name} from ${project}/reports on ${new Date().toLocaleString()}`;
 }
 
 /** Build the standalone HTML of a report. */
@@ -370,10 +370,7 @@ export async function reportHtml(
   const icon = opts.logo
     ? `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">`
     : '';
-  const footer =
-    opts.footer.trim() || opts.logo
-      ? `<footer>${opts.logo ? LOGO.replace('<svg', '<svg aria-hidden="true"') : ''}${opts.footer.trim() ? `<span>${esc(opts.footer.trim())}</span>` : ''}</footer>`
-      : '';
+  const footer = opts.footer.trim() ? `<footer>${esc(opts.footer.trim())}</footer>` : '';
   return `<!doctype html>
 <html lang="en"${switchable ? '' : ` data-theme="${opts.theme}"`}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}</style></head>

@@ -113,7 +113,7 @@ run.add_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_00
 ```
 
 Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
-these libraries is needed by nuboard itself: a figure is serialized with its
+these libraries is needed by NuBoard itself: a figure is serialized with its
 own library, and plain dicts work without any of them, so a Vega-Lite spec
 (a dict with a `$schema`) or a Plotly figure dict (`{"data": [...],
 "layout": {...}}`, as `fig.to_dict()` returns) can be logged directly:

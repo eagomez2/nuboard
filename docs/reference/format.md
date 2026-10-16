@@ -1,6 +1,6 @@
 # File format
 
-This page is the specification of what nuboard writes to disk. It is updated
+This page is the specification of what NuBoard writes to disk. It is updated
 with every format change. The current run folder format is **version 1**
 (`format_version` in `run.json`); the event log format is **version 1**
 (the last two bytes of the log's magic).
