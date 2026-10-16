@@ -3,10 +3,12 @@
   import NotesEditor from './NotesEditor.svelte';
   import PropertiesEditor from './PropertiesEditor.svelte';
   import Status from './Status.svelte';
+  import TagPills from './TagPills.svelte';
   import { api, num, type RunDetail } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
   import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
   import { router } from '../lib/router.svelte';
+  import { app } from '../lib/state.svelte';
 
   let { keys }: { keys: string[] } = $props();
   let details = $state<RunDetail[]>([]);
@@ -124,15 +126,21 @@
     router.set({ pair: next.join(',') });
   }
 
+  // The run list holds tags edited since this panel loaded
+  const tags = $derived(details.length === 1 ? (app.runByKey(details[0].run.key)?.tags ?? details[0].run.tags) : []);
+
   const errorText = $derived(details.map((d) => d.run.error).find(Boolean));
 </script>
 
 <div class="card cmp" bind:this={panel}>
   <div class="top">
-    <h2>
-      {multi ? `Compare ${details.length} runs` : 'Run'}
-      {#if !multi}<span class="mono">{details.map((d) => d.run.name).join(' · ')}</span>{/if}
-    </h2>
+    <div class="title">
+      <h2>
+        {multi ? `Compare ${details.length} runs` : 'Run'}
+        {#if !multi}<span class="mono">{details.map((d) => d.run.name).join(' · ')}</span>{/if}
+      </h2>
+      {#if tags.length}<div class="runtags"><TagPills {tags} /></div>{/if}
+    </div>
     {#if details.length === 1}<Status status={details[0].run.status} />{/if}
     <button
       class="btn btn-ghost close"
@@ -241,7 +249,7 @@
   }
   .top {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 14px;
   }
   h2 {
@@ -251,6 +259,15 @@
   }
   h2 .mono {
     font-size: 15px;
+  }
+  .title {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+  .runtags :global(.pills) {
+    flex-wrap: wrap;
   }
   .close {
     margin-left: auto;

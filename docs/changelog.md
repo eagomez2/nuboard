@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+- The run details panel (click a run name) shows the run's tags under its name,
+  and updates when they are edited.
+- Roadmap: dropped the finished TensorBoard import item and the old Runs table
+  item (TanStack Virtual, Bits UI).
+
 ## 0.9.0
 
 **Media**
