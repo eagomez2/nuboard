@@ -14,14 +14,25 @@ import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
 import { ema, robustRange } from './smooth';
 import LOGO from '../../public/logo.svg?raw';
+import AUDIO_PAGE from '../../audio.html?raw';
+import PLAYER_CSS from '../audio/player.css?raw';
 import UPLOT_CSS from '../../node_modules/uplot/dist/uPlot.min.css?raw';
 
 type Lib = 'plotly' | 'vega' | 'bokeh' | 'uplot';
 
 // The UMD builds the viewer already ships, loaded as text only when a report is exported.
-const VENDOR: Record<'plotly' | 'vega' | 'uplot', () => Promise<string[]>> = {
+const VENDOR: Record<'plotly' | 'vega' | 'uplot' | 'player', () => Promise<string[]>> = {
   uplot: async () => [(await import('../../node_modules/uplot/dist/uPlot.iife.min.js?raw')).default],
   plotly: async () => [(await import('../../node_modules/plotly.js-dist-min/plotly.min.js?raw')).default],
+  // the waveform player: wavesurfer.js and its plugins, then the player itself
+  player: async () =>
+    Promise.all([
+      import('../../node_modules/wavesurfer.js/dist/wavesurfer.min.js?raw').then((m) => m.default),
+      import('../../node_modules/wavesurfer.js/dist/plugins/regions.min.js?raw').then((m) => m.default),
+      import('../../node_modules/wavesurfer.js/dist/plugins/hover.min.js?raw').then((m) => m.default),
+      import('../../node_modules/wavesurfer.js/dist/plugins/minimap.min.js?raw').then((m) => m.default),
+      import('../audio/player.js?raw').then((m) => m.default),
+    ]),
   vega: async () =>
     Promise.all([
       import('../../node_modules/vega/build/vega.min.js?raw').then((m) => m.default),
@@ -59,12 +70,26 @@ interface Needs {
   notes?: boolean;
   /** A point cloud is embedded, so its renderer is added. */
   points?: boolean;
+  /** Audio is drawn with the waveform player, so the player is embedded once. */
+  wave?: boolean;
 }
+
+/** How audio is exported: the waveform and spectrogram player, or the browser's own. */
+export type AudioPlayer = 'wave' | 'simple';
 
 /** `m:ss.s` for a time in seconds, as the audio player shows it. */
 function clock(t: number): string {
   const m = Math.floor(t / 60);
   return `${m}:${(t - m * 60).toFixed(1).padStart(4, '0')}`;
+}
+
+/** An audio item's notes as a plain list, under a waveform player that also draws them. */
+function notesList(notes: AudioNote[]): string {
+  if (!notes.length) return '';
+  const rows = notes
+    .map((n) => `<li><span class="nbtime">${clock(n.start)} – ${clock(n.end)}</span> ${esc(n.text)}</li>`)
+    .join('');
+  return `<ol class="nbnotes">${rows}</ol>`;
 }
 
 /** An audio item's notes, each playing its section when clicked. */
@@ -89,6 +114,24 @@ var bg=function(){return getComputedStyle(document.documentElement).getPropertyV
 var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg(),box.dataset.axes?JSON.parse(box.dataset.axes):null);
 new MutationObserver(function(){v.setBackground(bg())}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 });`;
+
+// Puts the waveform player in each audio frame: the player's page and scripts are stored once in
+// #nbplayer, and the frame's own data goes in before them as NB_AUDIO_EMBED. The frames follow
+// the page's light or dark theme.
+const WAVE_JS = `(function(){
+var P=JSON.parse(document.getElementById('nbplayer').textContent);
+var v=function(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()};
+var theme=function(){return{base:document.documentElement.dataset.theme==='dark'?'dark':'light',textColor:v('--text'),backgroundColor:v('--panel'),secondaryBackgroundColor:v('--code'),primaryColor:v('--link'),font:'system-ui,-apple-system,"Segoe UI",sans-serif',fontMono:'ui-monospace,Menlo,monospace'}};
+var end='</'+'script>';
+var frames=[];
+document.querySelectorAll('.nbwave').forEach(function(box){
+var f=box.querySelector('iframe'),boot=JSON.stringify({args:JSON.parse(box.dataset.args),theme:theme()}).replace(/</g,'\\u003c');
+f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+P.css+'</style></head><body>'+P.body+'<script>window.NB_AUDIO_EMBED='+boot+end+P.js.map(function(j){return '<script>'+j+end}).join('')+'</body></html>';
+frames.push(f);
+});
+var follow=function(){var t=theme();frames.forEach(function(f){try{f.contentWindow.nbAudioTheme&&f.contentWindow.nbAudioTheme(t)}catch(e){}})};
+document.addEventListener('nbtheme',follow);
+})();`;
 
 // Clicking a note plays its section of the audio just above it.
 const NOTES_JS = `document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.nbnote');if(!b)return;var a=b.closest('figure').querySelector('audio');if(!a)return;var end=+b.dataset.end;a.currentTime=+b.dataset.start;a.play();a.ontimeupdate=function(){if(a.currentTime>=end){a.pause();a.ontimeupdate=null}}});`;
@@ -280,7 +323,13 @@ document.addEventListener('nbtheme', () => { nbDraw(); nbCharts(); });
 let nbResize = 0;
 addEventListener('resize', () => { clearTimeout(nbResize); nbResize = setTimeout(nbCharts, 150); });`;
 
-async function mediaHtml(project: string, ref: string, caption: string, needs: Needs): Promise<string> {
+async function mediaHtml(
+  project: string,
+  ref: string,
+  caption: string,
+  needs: Needs,
+  player: AudioPlayer = 'simple',
+): Promise<string> {
   let found: { run: string; run_name: string; item: MediaItem };
   try {
     found = await api.mediaRef(project, ref);
@@ -293,7 +342,28 @@ async function mediaHtml(project: string, ref: string, caption: string, needs: N
   let body: string;
   if (item.kind === 'text') body = `<pre>${esc(item.text ?? '')}</pre>`;
   else if (item.mime.startsWith('image/')) body = `<img src="${await dataUrl(url)}" alt="${esc(caption)}">`;
-  else if (item.kind === 'audio' || item.mime.startsWith('audio/'))
+  else if ((item.kind === 'audio' || item.mime.startsWith('audio/')) && player === 'wave') {
+    // drawn by the waveform player, which the script at the end puts in the frame
+    needs.wave = true;
+    const args = {
+      url: await dataUrl(url),
+      sampleRate: item.sample_rate ?? 0,
+      channels: item.channels ?? 1,
+      duration: item.duration ?? 0,
+      group: `export-${ref}`,
+      link: false,
+      scale: 'linear',
+      fftSize: 1024,
+      colormap: 'theme',
+      waveHeight: 72,
+      spectrogramHeight: 140,
+      normalize: false,
+      notes: false,
+      annotations: item.notes ?? [],
+      header: {},
+    };
+    body = `<div class="nbwave" data-args="${esc(JSON.stringify(args))}"><iframe title="${esc(item.key)}"></iframe></div>${notesList(item.notes ?? [])}`;
+  } else if (item.kind === 'audio' || item.mime.startsWith('audio/'))
     body = `<audio controls src="${await dataUrl(url)}"></audio>${notesHtml(item.notes ?? [], needs)}`;
   else if (item.mime === TABLE_MIME) {
     const table = (await (await fetch(url)).json()) as TableData;
@@ -354,7 +424,7 @@ blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid var(--border);co
 img{max-width:100%;border-radius:8px}figure{margin:1.2em 0}.nbtable{overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px}.nbtable table{margin:0;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}.nbtable th{position:sticky;top:0;background:var(--panel);text-align:left}.nbtable .n{text-align:right;white-space:nowrap}.nbtable td small{color:var(--muted);margin-left:6px;font-size:11px}.nbtable .m{color:var(--faint)}.nbmore{color:var(--faint);font-size:12px}
 .nbpr svg{display:block;max-width:100%;height:auto}.nbpr small{color:var(--faint);font-size:12px}
 .nbpoints canvas{display:block;width:100%;height:420px;border-radius:8px;background:var(--code)}.nbpoints small{color:var(--faint);font-size:12px}
-.nbnotes{margin:6px 0 0;padding-left:1.4em;font-size:13.5px}.nbnote{font:12px ui-monospace,Menlo,monospace;color:var(--link);background:var(--code);border:1px solid var(--border);border-radius:6px;padding:1px 6px;cursor:pointer;margin-right:4px}
+.nbnotes{margin:6px 0 0;padding-left:1.4em;font-size:13.5px}.nbtime{font:12px ui-monospace,Menlo,monospace;color:var(--muted);margin-right:4px}.nbwave iframe{display:block;width:100%;height:300px;border:0;background:transparent}.nbnote{font:12px ui-monospace,Menlo,monospace;color:var(--link);background:var(--code);border:1px solid var(--border);border-radius:6px;padding:1px 6px;cursor:pointer;margin-right:4px}
 figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
 figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
 .nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
@@ -384,6 +454,16 @@ export interface ExportOptions {
   theme: ExportTheme;
   footer: string;
   logo: boolean;
+  /** How audio is drawn; the waveform player unless set. */
+  audioPlayer?: AudioPlayer;
+}
+
+/** Whether a report embeds any audio, so the export can offer a choice of player. */
+export async function reportHasAudio(project: string, text: string): Promise<boolean> {
+  const doc = new DOMParser().parseFromString(renderMarkdown(text, ''), 'text/html');
+  const refs = [...doc.querySelectorAll<HTMLElement>('.nb-embed')].map((el) => el.dataset.ref ?? '');
+  const items = await Promise.all(refs.map((ref) => api.mediaRef(project, ref).catch(() => null)));
+  return items.some((f) => f && (f.item.kind === 'audio' || f.item.mime.startsWith('audio/')));
 }
 
 /** The footer a report gets unless it is changed when exporting. */
@@ -422,7 +502,9 @@ export async function reportHtml(
   const needs: Needs = { libs: new Set() };
   const jobs: Promise<void>[] = [];
   for (const el of main.querySelectorAll<HTMLElement>('.nb-embed'))
-    jobs.push(swap(el, mediaHtml(project, el.dataset.ref ?? '', el.dataset.caption ?? '', needs)));
+    jobs.push(
+      swap(el, mediaHtml(project, el.dataset.ref ?? '', el.dataset.caption ?? '', needs, opts.audioPlayer ?? 'wave')),
+    );
   for (const el of main.querySelectorAll<HTMLElement>('.nb-chart')) {
     const { spec = '', caption = '', src = '' } = el.dataset;
     jobs.push(
@@ -449,7 +531,15 @@ export async function reportHtml(
   if (needs.libs.size) scripts.push(DRAW);
   if (needs.notes) scripts.push(NOTES_JS);
   if (needs.points) scripts.push(POINTS_JS);
-  const tail = scripts.map((js) => `<script>${scriptSafe(js)}</script>`).join('\n');
+  let player = '';
+  if (needs.wave) {
+    const page = new DOMParser().parseFromString(AUDIO_PAGE, 'text/html');
+    page.querySelectorAll('script').forEach((el) => el.remove());
+    const source = { css: PLAYER_CSS, body: page.body.innerHTML, js: (await VENDOR.player()).map(scriptSafe) };
+    player = `<script type="application/json" id="nbplayer">${JSON.stringify(source).replace(/</g, '\\u003c')}</script>`;
+    scripts.push(WAVE_JS);
+  }
+  const tail = player + scripts.map((js) => `<script>${scriptSafe(js)}</script>`).join('\n');
   const switchable = opts.theme === 'switch';
   const theme = switchable ? `<script>${THEME_START}</script>` : '';
   const icon = opts.logo

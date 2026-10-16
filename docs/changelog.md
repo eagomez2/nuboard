@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1
+
+- HTML export draws audio with the viewer's waveform and spectrogram player,
+  embedded once in the file and working offline, with notes on its lane and
+  the page's light or dark theme. When a report has audio, the export dialog
+  offers **Audio player**: Waveform (default) or Simple, the browser's own
+  player as before.
+
 ## 0.10.0
 
 **Media**

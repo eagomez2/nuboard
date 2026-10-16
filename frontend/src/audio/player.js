@@ -93,7 +93,20 @@
     'streamlit:setComponentValue': 'nb-audio:note',
   };
 
+  // NOTE: An HTML export sets `NB_AUDIO_EMBED` ({args, theme}) before this
+  // script: there is no viewer to talk to, so the player renders those args
+  // itself and sizes its frame directly (the frame is same-origin)
+  const embed = window.NB_AUDIO_EMBED;
+
   function send(type, data) {
+    if (embed) {
+      if (type === 'streamlit:setFrameHeight' && window.frameElement) {
+        window.frameElement.style.height = data.height + 'px';
+      }
+
+      return;
+    }
+
     window.parent.postMessage({ type: MESSAGE[type] || type, ...data }, window.location.origin);
   }
 
@@ -1643,4 +1656,10 @@
 
   const visibilityTimer = window.setInterval(checkVisible, 400);
   new IntersectionObserver(checkVisible, { rootMargin: '300px' }).observe(el.player);
+
+  if (embed) {
+    onRender(embed.args, embed.theme);
+    // the export calls this when its light/dark toggle changes
+    window.nbAudioTheme = (theme) => onRender(embed.args, theme);
+  }
 })();

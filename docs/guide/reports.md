@@ -84,7 +84,12 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   follows the reader's system theme and has a button to flip it), edit the
   **footer** (by default "Exported with NuBoard 0.8.2 from …", naming the
   version that exported it; empty removes it), and choose whether the
-  NuBoard **logo** is the browser tab icon. Figures and charts saved from the Charts page follow the theme:
+  NuBoard **logo** is the browser tab icon. When the report has audio you also
+  pick the **audio player**: **Waveform** (the default) embeds the viewer's
+  waveform and spectrogram player once (about 200 KB), with zoom, loops and
+  the notes drawn on their lane, following the page's theme; **Simple** uses
+  the browser's own player, with the notes listed below as buttons that play
+  their section. Figures and charts saved from the Charts page follow the theme:
   the charts are drawn live in the file from their data at export time (the
   snapshot is used only if the data cannot be loaded). Sweeps and Timeline
   snapshots are images and keep the colors they were taken with.
