@@ -4,7 +4,13 @@
   import { api, type ReportInfo } from '../lib/api';
   import { DISPLAY_NAME } from '../lib/brand';
   import { ask, confirmAction } from '../lib/dialog.svelte';
-  import { defaultFooter, downloadReportHtml, type ExportTheme } from '../lib/exporthtml';
+  import {
+    defaultFooter,
+    downloadReportHtml,
+    reportHasAudio,
+    type AudioPlayer,
+    type ExportTheme,
+  } from '../lib/exporthtml';
   import { fmtAgo } from '../lib/format';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -109,6 +115,8 @@
   async function exportHtml() {
     const r = current;
     if (!r) return;
+    // the player choice is only asked when the report has audio
+    const audio = await reportHasAudio(r.project, text).catch(() => false);
     const res = await ask(
       'Export as HTML',
       [
@@ -124,6 +132,19 @@
         },
         { label: 'Footer', value: defaultFooter(r.project, app.info?.version) },
         { label: `${DISPLAY_NAME} logo as the tab icon`, value: prefs.get('exportLogo', '1'), toggle: true },
+        ...(audio
+          ? [
+              {
+                label: 'Audio player',
+                value: prefs.get('exportPlayer', 'wave'),
+                options: [
+                  { value: 'wave', label: 'Waveform' },
+                  { value: 'simple', label: 'Simple' },
+                ],
+                hint: 'Waveform has the spectrogram, zoom and notes, as in the viewer; Simple is the browser’s own player, with a smaller file.',
+              },
+            ]
+          : []),
       ],
       { confirm: 'Export', message: 'One self-contained file that opens offline.' },
     );
@@ -131,10 +152,17 @@
     const theme = (['light', 'dark', 'switch'].includes(res[0]) ? res[0] : 'switch') as ExportTheme;
     prefs.set('exportTheme', theme);
     prefs.set('exportLogo', res[2]);
+    const audioPlayer: AudioPlayer = res[3] === 'simple' ? 'simple' : 'wave';
+    if (audio) prefs.set('exportPlayer', audioPlayer);
     exporting = true;
     try {
       await save();
-      await downloadReportHtml(r.project, r.name, r.title, text, { theme, footer: res[1], logo: res[2] === '1' });
+      await downloadReportHtml(r.project, r.name, r.title, text, {
+        theme,
+        footer: res[1],
+        logo: res[2] === '1',
+        audioPlayer,
+      });
     } finally {
       exporting = false;
     }

@@ -573,18 +573,36 @@ test('tables compare steps, sort, filter and open a row', async ({ page }) => {
   await expect(card.locator('.detail iframe[src="./audio.html"]')).toBeVisible();
 });
 
-test('a report with a table and audio notes exports them', async ({ page, browser }) => {
+test('a report with a table and audio notes exports them, with either audio player', async ({ page, browser }) => {
   await page.goto('/#/reports?rproject=speech-denoise&report=listening-notes');
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export as HTML' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
-  const path = test.info().outputPath('listening-notes.html');
-  await (await download).saveAs(path);
+  const exportAs = async (player: 'Waveform' | 'Simple', name: string) => {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export as HTML' }).click();
+    const dlg = page.getByRole('dialog');
+    await dlg.getByRole('button', { name: player, exact: true }).click();
+    await dlg.getByRole('button', { name: 'Export', exact: true }).click();
+    const path = test.info().outputPath(name);
+    await (await download).saveAs(path);
+    return path;
+  };
   const ctx = await browser.newContext({ offline: true });
+  await ctx.route(/^https?:/, (r) => r.abort());
   const off = await ctx.newPage();
-  await off.goto('file://' + path);
+
+  // the waveform player, drawn offline, with the notes on its lane and listed below
+  await off.goto('file://' + (await exportAs('Waveform', 'listening-notes.html')));
   await expect(off.locator('.nbtable tbody tr')).toHaveCount(40);
   await expect(off.getByText('Colors show the change since step 20.')).toBeVisible();
+  const player = off.frameLocator('.nbwave iframe').first();
+  await expect(player.locator('#waveform canvas').first()).toBeVisible();
+  await expect(player.locator('#notes-lane')).toBeVisible();
+  await expect.poll(async () => (await off.locator('.nbwave iframe').first().boundingBox())!.height).toBeGreaterThan(200);
+  await expect(off.locator('.nbnotes li')).toHaveCount(2);
+  await expect(off.locator('audio')).toHaveCount(0);
+
+  // the browser's player, whose notes play their section
+  await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));
+  await expect(off.locator('.nbwave')).toHaveCount(0);
   await expect(off.locator('.nbnote')).toHaveCount(2);
   await expect(off.getByText('tonal blip (musical noise)')).toBeVisible();
   await ctx.close();
