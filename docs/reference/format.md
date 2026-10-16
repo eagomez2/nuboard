@@ -280,6 +280,10 @@ button that reopens that page with those parameters.
 `YYYY-MM-DD` string) or `link`. `options` is used by `choice` and `tags`,
 `unit` by `number`; `description` is optional. The values live in each run's
 `annotations.json` `fields`; a value without a definition is shown as text.
+A value must fit its definition: a number for `number`, `true`/`false` for
+`bool`, one of `options` for `choice`, a list drawn from `options` for `tags`
+(any value when `options` is empty), `YYYY-MM-DD` for `date` and an `http(s)`
+address for `link`. The viewer and `Run.set_field` refuse values that do not.
 
 ## The catalog cache
 

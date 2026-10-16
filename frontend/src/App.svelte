@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import About from './components/About.svelte';
   import Dialog from './components/Dialog.svelte';
   import ReportToast from './components/ReportToast.svelte';
   import Icon from './components/Icon.svelte';
@@ -16,6 +17,7 @@
   import { router, type Page } from './lib/router.svelte';
   import { app } from './lib/state.svelte';
 
+  let about = $state(false);
   const nav: { page: Page; icon: string; label: string }[] = [
     { page: 'runs', icon: 'runs', label: 'Runs' },
     { page: 'charts', icon: 'charts', label: 'Charts' },
@@ -87,7 +89,11 @@
         <Icon name={item.icon} size={20} />
       </button>
     {/each}
+    <button class="about-btn" title="About {NAME}" aria-label="About {NAME}" onclick={() => (about = true)}>
+      <Icon name="info" size={17} />
+    </button>
   </nav>
+  <About bind:open={about} />
 
   <main class="page">
     <header>
@@ -179,6 +185,15 @@
     background: rgba(255, 255, 255, 0.13);
     color: #fff;
   }
+  .rail .about-btn {
+    margin-top: auto;
+    width: 34px;
+    height: 34px;
+    opacity: 0.6;
+  }
+  .rail .about-btn:hover {
+    opacity: 1;
+  }
   .page {
     padding: 18px 24px 40px;
     display: flex;
@@ -238,6 +253,9 @@
     }
     .logo {
       margin: 0 10px 0 0;
+    }
+    .rail .about-btn {
+      margin: 0 0 0 auto;
     }
     .page {
       padding: 14px 16px 32px;

@@ -104,7 +104,7 @@
         {/if}
       {/each}
       <div class="actions">
-        <button type="button" class="btn" onclick={() => dialog.close(null)}>Cancel</button>
+        {#if !req.notice}<button type="button" class="btn" onclick={() => dialog.close(null)}>Cancel</button>{/if}
         <button type="submit" class="btn btn-primary confirm" class:danger={req.danger}>{req.confirm}</button>
       </div>
     </form>

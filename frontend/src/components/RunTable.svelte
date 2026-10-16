@@ -1,10 +1,12 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import Status from './Status.svelte';
-  import { api, num, type FieldValue, type RunBrief } from '../lib/api';
+  import TagPills from './TagPills.svelte';
+  import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
+  import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
   import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
-  import { ask } from '../lib/dialog.svelte';
+  import { ask, notice } from '../lib/dialog.svelte';
   import { app } from '../lib/state.svelte';
 
   const ROW = 56;
@@ -18,6 +20,24 @@
   let menu = $state(false);
   let newField = $state('');
 
+  // Property definitions of the listed projects, so edits in the table keep their types
+  let defs = $state<Record<string, FieldDef[]>>({});
+  $effect(() => {
+    for (const p of new Set((app.runs?.runs ?? []).map((r) => r.project)))
+      if (!(p in defs)) {
+        defs[p] = [];
+        api.fields(p).then((res) => (defs[p] = res.fields));
+      }
+  });
+  const defOf = (r: RunBrief, name: string) => defs[r.project]?.find((d) => d.name === name);
+  /** Parse a value typed in the table for `name` on `r`'s project; a string is a problem to show. */
+  function typedValue(r: RunBrief, name: string, raw: string): { value: FieldValue | null } | string {
+    const d = defOf(r, name);
+    if (!d) return { value: parseField(raw) };
+    return fieldProblem(raw, d) ?? { value: parseFieldValue(raw, d.type) };
+  }
+  const errText = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^\d+ /, '');
+
   const find = $derived(router.get('find').toLowerCase());
   const showArchived = $derived(router.get('archived') === '1');
   const resultMode = $derived(router.get('res', 'best'));
@@ -28,7 +48,6 @@
     return defaultMetric(metrics);
   });
   const lower = $derived(lowerIsBetter(metric));
-  const multiProject = $derived(new Set((app.runs?.runs ?? []).map((r) => r.project)).size > 1);
 
   function result(r: RunBrief): number | null {
     const s = r.summary[metric];
@@ -134,7 +153,14 @@
     if (!res) return;
     const name = fieldName(res[0]);
     if (!name) return;
-    await api.annotate(selected, { fields: { [name]: parseField(res[1]) } });
+    const first = app.runByKey(selected[0]);
+    const typed = first ? typedValue(first, name, res[1]) : { value: parseField(res[1]) };
+    if (typeof typed === 'string') return notice('Not saved', typed);
+    try {
+      await api.annotate(selected, { fields: { [name]: typed.value } });
+    } catch (e) {
+      return notice('Not saved', errText(e));
+    }
     if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
     app.loadRuns();
   }
@@ -146,14 +172,14 @@
   function cell(r: RunBrief, c: string): string {
     const [kind, ...rest] = c.split(':');
     const name = rest.join(':');
-    if (kind === 'field') return r.fields?.[name] === undefined ? '' : String(r.fields[name]);
+    if (kind === 'field') return fieldText(r.fields?.[name]);
     if (kind === 'config') return name in r.config ? fmtValue(r.config[name]) : '';
     const s = r.summary[name];
     return s ? fmtNum(num(s.last)) : '';
   }
   function startField(r: RunBrief, field: string) {
     fieldEdit = { key: r.key, field };
-    fieldDraft = r.fields?.[field] === undefined ? '' : String(r.fields[field]);
+    fieldDraft = fieldText(r.fields?.[field], defOf(r, field)?.type);
   }
   // numbers and booleans are stored as such so queries like `score > 3` work
   function parseField(raw: string): FieldValue | null {
@@ -169,13 +195,21 @@
     fieldEdit = null;
     const r = app.runByKey(edit.key);
     if (!r) return;
-    const value = parseField(fieldDraft);
-    if (value === (r.fields?.[edit.field] ?? null)) return;
-    const fields = { ...(r.fields ?? {}) };
+    const typed = typedValue(r, edit.field, fieldDraft);
+    if (typeof typed === 'string') return notice('Not saved', typed);
+    const value = typed.value;
+    const before = r.fields ?? {};
+    if (JSON.stringify(value) === JSON.stringify(before[edit.field] ?? null)) return;
+    const fields = { ...before };
     if (value === null) delete fields[edit.field];
     else fields[edit.field] = value;
     r.fields = fields;
-    await api.annotate([r.key], { fields: { [edit.field]: value } });
+    try {
+      await api.annotate([r.key], { fields: { [edit.field]: value } });
+    } catch (e) {
+      r.fields = before;
+      notice('Not saved', errText(e));
+    }
   }
   async function addToCollection() {
     const keys = [...app.selected];
@@ -455,13 +489,35 @@
                 {/if}
                 {#each r.collections ?? [] as c (c)}<span class="chip coll" title="Collection">{c}</span>{/each}
               </span>
-              <span class="path mono" title={r.path}>{multiProject ? '' : ''}{r.path}/</span>
+              <span class="subline">
+                {#if r.tags.length}<TagPills tags={r.tags} max={3} />{/if}
+                <span class="path mono" title={r.path}>{r.path}/</span>
+              </span>
             </span>
             {#each cols as c (c)}
               {#if c.startsWith('field:')}
                 {@const f = c.slice(6)}
+                {@const fd = defOf(r, f)}
                 <span class="fieldcell">
-                  {#if fieldEdit?.key === r.key && fieldEdit.field === f}
+                  {#if fieldEdit?.key === r.key && fieldEdit.field === f && (fd?.type === 'choice' || fd?.type === 'bool')}
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <select
+                      class="input note"
+                      bind:value={fieldDraft}
+                      autofocus
+                      onchange={saveField}
+                      onblur={() => (fieldEdit = null)}
+                      onkeydown={(e) => e.key === 'Escape' && (fieldEdit = null)}
+                    >
+                      <option value="">—</option>
+                      {#if fd.type === 'bool'}
+                        <option value="true">yes</option>
+                        <option value="false">no</option>
+                      {:else}
+                        {#each fd.options ?? [] as o (o)}<option value={o}>{o}</option>{/each}
+                      {/if}
+                    </select>
+                  {:else if fieldEdit?.key === r.key && fieldEdit.field === f}
                     <!-- svelte-ignore a11y_autofocus -->
                     <input
                       class="input note"
@@ -474,8 +530,15 @@
                       }}
                     />
                   {:else}
+                    {@const v = r.fields?.[f]}
                     <button class="notebtn" class:faint={!cell(r, c)} onclick={() => startField(r, f)} title="Edit {f}"
-                      >{cell(r, c) || '—'}</button
+                      >{#if Array.isArray(v) && v.length}<TagPills
+                          tags={v}
+                          max={3}
+                        />{:else if fd?.type === 'choice' && typeof v === 'string'}<TagPills tags={[v]} />{:else}{cell(
+                          r,
+                          c,
+                        ) || '—'}{/if}</button
                     >
                   {/if}
                 </span>
@@ -491,9 +554,6 @@
             >
               {#each varying.filter((k) => k in r.config) as k (k)}<span>{short(k)}={fmtValue(r.config[k])}</span
                 >{/each}
-              {#if r.tags.length}<span class="tags"
-                  >{#each r.tags.slice(0, 3) as t (t)}<span class="chip">{t}</span>{/each}</span
-                >{/if}
             </span>
             <span class="result mono right">
               {#if value !== null}
@@ -779,7 +839,24 @@
     color: var(--accent);
     text-decoration: underline;
   }
+  .subline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .subline :global(.pills) {
+    flex: none;
+    max-width: 70%;
+  }
+  .subline :global(.tagpill) {
+    flex: none;
+    height: 17px;
+    font-size: 11px;
+    padding: 0 6px;
+  }
   .path {
+    min-width: 0;
     font-size: 11.5px;
     color: var(--faint);
     overflow: hidden;
@@ -794,10 +871,6 @@
     overflow: hidden;
     white-space: nowrap;
     align-items: center;
-  }
-  .tags {
-    display: inline-flex;
-    gap: 4px;
   }
   .result {
     display: flex;

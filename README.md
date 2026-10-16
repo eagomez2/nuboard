@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.8.2-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.8.3-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 

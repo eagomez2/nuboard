@@ -82,6 +82,9 @@
   </button>
   {#if error}
     <p class="err">{error}</p>
+  {:else if !data}
+    <!-- loads when scrolled near the viewport -->
+    <div class="loading">Loading…</div>
   {:else}
     <LineChart
       {data}
@@ -99,6 +102,13 @@
 </div>
 
 <style>
+  .loading {
+    height: 150px;
+    display: grid;
+    place-items: center;
+    color: var(--faint);
+    font-size: 12px;
+  }
   .small {
     padding: 10px 12px 6px;
     min-width: 0;

@@ -23,3 +23,10 @@ export function withAlpha(color: string, alpha: number): string {
   }
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
 }
+
+/** The style that tints a `.tagpill` with a series color picked from the tag's text, so a tag keeps its color. */
+export function tagStyle(tag: string): string {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) | 0;
+  return `--tc: var(${VARS[Math.abs(h) % VARS.length]})`;
+}

@@ -7,6 +7,7 @@ import pytest
 
 from nuboard.reports import (
     MediaRef,
+    check_field,
     clean_fields,
     parse_ref,
     read_fields,
@@ -79,3 +80,32 @@ def test_fields_are_validated(tmp_path):
     assert read_fields(tmp_path) == []
     save_fields(tmp_path, out)
     assert read_fields(tmp_path) == out
+
+
+def test_values_must_fit_their_property():
+    choice = {"name": "verdict", "type": "choice", "options": ["keep", "drop"]}
+    tags = {"name": "split", "type": "tags", "options": ["train", "val"]}
+    check_field(choice, "keep")
+    check_field(tags, ["train", "val"])
+    check_field({"name": "gpu", "type": "number"}, 7.5)
+    check_field({"name": "day", "type": "date"}, "2026-10-16")
+    check_field({"name": "paper", "type": "link"}, "https://arxiv.org/abs/1")
+    check_field(choice, None)  # clearing is always allowed
+
+    with pytest.raises(ValueError, match="one of: keep, drop"):
+        check_field(choice, "maybe")
+
+    with pytest.raises(ValueError, match="takes tags from"):
+        check_field(tags, ["train", "test"])
+
+    with pytest.raises(ValueError, match="not a number"):
+        check_field({"name": "gpu", "type": "number"}, "lots")
+
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        check_field({"name": "day", "type": "date"}, "yesterday")
+
+    with pytest.raises(ValueError, match="http"):
+        check_field({"name": "paper", "type": "link"}, "arxiv")
+
+    with pytest.raises(ValueError, match="yes/no"):
+        check_field({"name": "ok", "type": "bool"}, "maybe")

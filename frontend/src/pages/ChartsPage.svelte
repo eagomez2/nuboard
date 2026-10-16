@@ -19,6 +19,7 @@
   const xKind = $derived(router.get('x', 'step'));
   const smoothing = $derived(Number(router.get('smooth', String(prefs.get('smooth', 0.6)))));
   const showRaw = $derived(router.get('raw', '1') === '1');
+  const showDots = $derived(router.get('dots', '1') === '1');
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
   const zoom = $derived.by((): [number, number] | null => {
@@ -264,9 +265,20 @@
   const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 14) / (330 + 14))));
   let gridPages = $state<Record<string, number>>({});
 
+  // Regex filter of the All metrics grid (as in TensorBoard); an invalid pattern matches as plain text.
+  const metricFind = $derived(router.get('cfind'));
+  const metricRe = $derived.by(() => {
+    if (!metricFind) return null;
+    try {
+      return new RegExp(metricFind, 'i');
+    } catch {
+      return new RegExp(metricFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+  });
+  const shownMetrics = $derived(metricRe ? metrics.filter((m) => metricRe.test(m)) : metrics);
   const sections = $derived.by(() => {
     const map = new Map<string, string[]>();
-    for (const m of metrics) {
+    for (const m of shownMetrics) {
       const p = m.includes('/') ? m.split('/')[0] : 'other';
       if (!map.has(p)) map.set(p, []);
       map.get(p)!.push(m);
@@ -512,14 +524,25 @@
           onclick={() => router.set({ raw: showRaw ? '0' : null })}
         ></button>raw</label
       >
-      <label class="tg" title="Clip the y-axis to the 1st–99th percentile so spikes don't flatten the curves"
+      <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
+        ><button
+          class="switch"
+          role="switch"
+          aria-checked={showDots}
+          aria-label="Points"
+          onclick={() => router.set({ dots: showDots ? '0' : null })}
+        ></button>points</label
+      >
+      <label
+        class="tg"
+        title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
         ><button
           class="switch"
           role="switch"
           aria-checked={robust}
-          aria-label="Robust y range"
+          aria-label="Ignore outliers"
           onclick={() => router.set({ robust: robust ? '0' : null })}
-        ></button>robust y</label
+        ></button>ignore outliers</label
       >
       <label class="tg"
         ><button
@@ -589,6 +612,8 @@
         onPin={() => (pinned = !pinned)}
         onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
         {regions}
+        markers={showDots}
+        {pinned}
       />
       {#if alerts.length}
         <div class="alerts" aria-label="Health alerts">
@@ -650,6 +675,14 @@
   <section class="all">
     <div class="all-head">
       <h3>All metrics <span class="faint">click one to bring it into focus</span></h3>
+      <input
+        class="input sm mono cfind"
+        placeholder="Filter metrics (regex)"
+        aria-label="Filter metrics"
+        value={metricFind}
+        oninput={(e) => router.set({ cfind: e.currentTarget.value || null })}
+      />
+      {#if metricFind}<span class="faint small">{shownMetrics.length} of {metrics.length}</span>{/if}
       <span class="label">Grid</span>
       <label class="opt"
         ><span class="faint">columns</span>
@@ -676,6 +709,7 @@
         </select></label
       >
     </div>
+    {#if metricFind && !shownMetrics.length}<p class="faint">No metric matches “{metricFind}”.</p>{/if}
     {#each sections as [prefix, list] (prefix)}
       {@const size = gridRows ? perRow * gridRows : list.length}
       {@const pageCount = Math.max(1, Math.ceil(list.length / size))}
@@ -1067,6 +1101,12 @@
     gap: 12px;
     flex-wrap: wrap;
     margin: 8px 0 10px;
+  }
+  .cfind {
+    width: 220px;
+  }
+  .all-head .small {
+    font-size: 12px;
   }
   .all-head h3 {
     margin: 0 auto 0 0;

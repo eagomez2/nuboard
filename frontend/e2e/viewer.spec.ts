@@ -46,6 +46,9 @@ test('charts render grouped bands, a legend and small multiples', async ({ page 
 test('media page shows logged images', async ({ page }) => {
   await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples%2Faugmented%24');
   await expect(page.locator('figure img').first()).toBeVisible();
+  await expect(page.getByText(/^1 of \d+$/)).toBeVisible();
+  await page.getByLabel('Filter keys').fill('^nothing-here$');
+  await expect(page.getByText('No key matches')).toBeVisible();
 });
 
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
@@ -234,6 +237,41 @@ test('run details show Markdown notes and typed properties', async ({ page }) =>
   await dlg.getByLabel('Options or unit').fill('train, val, test');
   await dlg.getByRole('button', { name: 'Add property' }).click();
   await expect(page.locator('#prop-split')).toBeVisible();
+  // values stay inside their type: a choice is a menu, tags are toggled pills, numbers are checked
+  await page.locator('#prop-split').selectOption('val');
+  const topics = page.getByRole('group', { name: 'topics' });
+  await topics.getByRole('button', { name: 'baseline' }).click();
+  await expect(topics.getByRole('button', { name: 'baseline' })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#prop-gpu_hours').fill('lots');
+  await expect(page.getByRole('alert')).toContainText('gpu_hours needs a number');
+  await expect(page.getByRole('button', { name: /Save \d change/ })).toBeDisabled();
+  await page.locator('#prop-gpu_hours').fill('8');
+  await page.getByRole('button', { name: 'Save 3 changes' }).click();
+  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  // removing a property removes its definition and its values
+  await page.getByRole('button', { name: 'Remove property split' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('#prop-split')).toHaveCount(0);
+});
+
+test('the server refuses a value outside a property', async ({ request }) => {
+  const runs = (await (await request.get('/api/runs?project=vit-ablations')).json()).runs;
+  const res = await request.post('/api/runs/annotate', {
+    data: { keys: [runs[0].key], patch: { fields: { verdict: 'maybe' } } },
+  });
+  expect(res.status()).toBe(400);
+  expect(await res.text()).toContain('verdict must be one of');
+});
+
+test('all metrics can be filtered with a regex, and run tags are pills', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  await page.getByRole('textbox', { name: 'Filter metrics' }).fill('^val/');
+  await expect(page).toHaveURL(/cfind=%5Eval%2F/);
+  await expect(page.locator('.sect-head .label')).toHaveText(['val']);
+  await expect(page.getByRole('switch', { name: 'Ignore outliers' })).toBeVisible();
+  await page.goto('/#/runs?project=vit-ablations');
+  await expect(page.locator('.run .tagpill').first()).toBeVisible();
+  await expect(page.locator('.config .tagpill')).toHaveCount(0);
 });
 
 test('charts grid pages small charts, and the main chart goes full screen', async ({ page }) => {
@@ -388,4 +426,22 @@ test('a saved chart is drawn live in the exported HTML and follows its theme', a
   await expect(off.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(off.locator('.nbplot canvas')).toBeVisible();
   await ctx.close();
+});
+
+test('about window and chart points', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  await page.getByRole('button', { name: 'About NuBoard' }).click();
+  const about = page.getByRole('dialog', { name: 'NuBoard' });
+  await expect(about).toContainText(/version \d+\.\d+\.\d+/);
+  await expect(about).toContainText('MIT License');
+  await expect(about.getByRole('link', { name: 'Documentation' })).toBeVisible();
+  await about.getByRole('button', { name: 'Close' }).click();
+  await expect(about).toBeHidden();
+  const chart = page.locator('.main .chart').first();
+  const box = (await chart.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(chart.locator('.nb-dot').first()).toBeVisible();
+  await page.getByRole('switch', { name: 'Points' }).click();
+  await expect(page).toHaveURL(/dots=0/);
+  await expect(chart.locator('.nb-dot')).toHaveCount(0);
 });
