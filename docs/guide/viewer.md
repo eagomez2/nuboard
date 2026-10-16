@@ -215,7 +215,7 @@ preview side by side. See [Reports](reports.md).
 ## Media page
 
 Shows images, audio, figures, point clouds, HTML and text logged with
-`add_image`, `add_audio`, `add_figure`, `add_pr_curve`, `add_table`,
+`add_image`, `add_audio`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`,
 `add_point_cloud`, `add_html` and `add_text`, for the selected runs (or
 the query result, up to 48 runs). Each key is a collapsible section with a card
 per run; every card has its own step slider, as in TensorBoard, so one run can
@@ -302,11 +302,27 @@ a chart above the cards overlays every run's curve at the chosen step, as
 TensorBoard does. Hover a curve for the threshold, precision, recall and the
 TP, FP, TN and FN counts there.
 
+### Distributions
+
+Distributions (`add_histogram`) are listed with the figures. Each card draws
+its run's histogram at the chosen step, filled in the run's color, with the
+step logged before it as a dashed outline, so you see how it moved. The y axis
+is density, so steps and runs with different ranges or bin counts compare
+fairly. Hover for the bin under the pointer and its share of the values.
+**over steps** switches the card to TensorBoard's distributions view: the
+median as a line and bands holding 68%, 86% and all of the values at every
+logged step (up to 150, sampled evenly), with the chosen step marked. A chart
+above the cards overlays every run's histogram at the chosen step. In an HTML
+export a distribution is drawn as a picture with the step before it.
+
 ### Point clouds
 
 Point clouds are drawn in a view you can rotate (drag), pan (shift-drag or
 right-drag), zoom (click the view, then scroll) and reset (double-click),
-colored by their logged colors or else by height. Each card has its step
+colored by their logged colors or else by height. **axes** under the view
+draws the x, y and z axes from the cloud's lowest corner, with round values
+along them; they start shown when the cloud was logged with `axes`, labeled
+with its names. Each card has its step
 slider, so you can watch a cloud change over training; the zoomed view draws
 it larger. The renderer is a few hundred lines of plain canvas code, so it
 needs no WebGL and works the same in an HTML export.

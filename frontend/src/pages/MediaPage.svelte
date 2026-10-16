@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HistChart from '../components/HistChart.svelte';
   import Icon from '../components/Icon.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import MediaView from '../components/MediaView.svelte';
@@ -7,7 +8,7 @@
   import { seriesVar } from '../lib/colors';
   import { appendToReport, askReport } from '../lib/reports.svelte';
   import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
-  import { MEDIA_KINDS, PR_MIME, embedLine, kindOf, type MediaKind } from '../lib/media';
+  import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -184,7 +185,7 @@
     for (const it of list) if (it.step <= target) found = it;
     return found;
   }
-  // PR curves of every run under one key, overlaid on one chart above the cards
+  // PR curves or distributions of every run under one key, overlaid on one chart above the cards
   function prOverlay(cards: { run: RunBrief; items: MediaItem[] }[]) {
     return cards.flatMap((c) => {
       const it = shownItem(c.items, targetFor(c.run.key), mode === 'best');
@@ -549,6 +550,11 @@
           <div class="prall">
             <span class="faint small">All runs on one chart</span>
             <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
+          </div>
+        {:else if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === HIST_MIME}
+          <div class="prall">
+            <span class="faint small">All runs on one chart</span>
+            <HistChart curves={prOverlay(cards)} height={260} label="Distributions of {s.title} for all runs" />
           </div>
         {/if}
         {#if open}

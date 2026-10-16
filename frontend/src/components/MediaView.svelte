@@ -1,12 +1,13 @@
 <script lang="ts">
   import AudioFrame from './AudioFrame.svelte';
   import FigureFrame from './FigureFrame.svelte';
+  import HistView from './HistView.svelte';
   import PointsView from './PointsView.svelte';
   import PrChart from './PrChart.svelte';
   import TableView from './TableView.svelte';
   import { api, type AudioNote, type MediaItem } from '../lib/api';
   import { notice } from '../lib/dialog.svelte';
-  import { POINTS_MIME, PR_MIME, TABLE_MIME, type AudioOptions } from '../lib/media';
+  import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, type AudioOptions } from '../lib/media';
 
   // One logged item (image, audio, figure, HTML or text) of a run.
   let {
@@ -118,12 +119,16 @@
     height={tall ? 460 : 220}
     label="Precision-recall curve of {runName} {item.key} at step {item.step}"
   />
+{:else if item.mime === HIST_MIME}
+  <HistView {runKey} {runName} {item} {color} height={tall ? 420 : 220} />
+  {#if item.caption}<div class="faint cap">{item.caption}</div>{/if}
 {:else if item.mime === POINTS_MIME}
   {#key url}
     <PointsView
       {url}
       count={item.points ?? 0}
       colors={!!item.colors}
+      axes={item.axes}
       title="{runName} {item.key}"
       height={tall ? 560 : 260}
     />

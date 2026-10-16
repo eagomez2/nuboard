@@ -15,7 +15,7 @@ import threading
 import time
 import traceback
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
@@ -713,6 +713,7 @@ class Run:
         step: int | None = None,
         *,
         colors: Any = None,
+        axes: bool | Sequence[str] = False,
         caption: str | None = None,
         time: float | None = None,
     ) -> None:
@@ -723,19 +724,37 @@ class Run:
         copied, so the caller may reuse its buffer right away. Only rank 0 logs
         media.
 
+        The viewer can always show x, y and z axes with their values; `axes`
+        shows them from the start and can name them.
+
         Args:
             key: Name the point cloud is logged under.
             points: An (N, 3) array, tensor or sequence of x, y, z positions.
             step: Training step. Defaults to the step of the latest `log` call.
             colors: Optional (N, 3) RGB colors, uint8 or floats in [0, 1].
+            axes: True to show the axes, or their three names (such as
+                `("x (m)", "y (m)", "z (m)")`) to show them with those labels.
             caption: Optional caption shown in the viewer.
             time: Unix timestamp of the item. Defaults to now.
 
+        Raises:
+            ValueError: If `axes` names are not three strings.
+
         Example:
             >>> import numpy as np
-            >>> run.add_point_cloud("scan", np.random.rand(1000, 3), step=10)
+            >>> run.add_point_cloud("scan", np.random.rand(1000, 3), step=10, axes=True)
         """
         from ._media import points_bytes
+
+        names: list[str] | None = None
+
+        if axes is True:
+            names = ["x", "y", "z"]
+        elif axes:
+            names = [str(a) for a in axes]
+
+            if isinstance(axes, str) or len(names) != 3:
+                raise ValueError("axes takes True or three names, such as ('x', 'y', 'z')")
 
         if hasattr(points, "detach"):
             points = points.detach().cpu()
@@ -752,7 +771,7 @@ class Run:
             key,
             step,
             lambda: points_bytes(points, colors),
-            {"kind": "points", "caption": caption},
+            {"kind": "points", "caption": caption, **({"axes": names} if names else {})},
             time,
         )
 
@@ -797,6 +816,60 @@ class Run:
             step,
             lambda: pr_curve_bytes(y, p, num_thresholds, w),
             {"kind": "pr"},
+            time,
+        )
+
+    def add_histogram(
+        self,
+        key: str,
+        values: Any,
+        step: int | None = None,
+        *,
+        bins: int | Sequence[float] = 50,
+        range: tuple[float, float] | None = None,
+        weights: Any = None,
+        time: float | None = None,
+    ) -> None:
+        """Log the distribution of some values, such as a layer's weights or gradients.
+
+        Only the bin counts and the values' min, max, mean and standard
+        deviation are stored, so a million weights take a few hundred bytes.
+        The viewer shows it with the figures: the histogram at the chosen step
+        next to the previous one, how it moves over steps, and every run on one
+        chart. Arrays and tensors are binned with NumPy on the writer thread;
+        NaN and infinite values are counted but not binned. Only rank 0 logs
+        media.
+
+        Args:
+            key: Name the distribution is logged under.
+            values: An array, tensor or sequence of numbers, of any shape.
+            step: Training step. Defaults to the step of the latest `log` call.
+            bins: Number of equal-width bins, or their edges.
+            range: The `(low, high)` the bins span; values outside are counted
+                as `outside`. Defaults to the values' min and max.
+            weights: Optional weight per value, of the same shape as `values`.
+            time: Unix timestamp of the item. Defaults to now.
+
+        Example:
+            >>> for name, p in model.named_parameters():
+            ...     run.add_histogram(f"weights/{name}", p, step=epoch)
+        """
+        from ._media import histogram_bytes
+
+        def copy(x: Any) -> Any:
+            if x is None:
+                return None
+
+            x = _copied(x)
+            return x.clone() if hasattr(x, "clone") else x if hasattr(x, "__array__") else list(x)
+
+        v, w = copy(values), copy(weights)
+        edges = bins if isinstance(bins, int) else list(bins)
+        self._put_media(
+            key,
+            step,
+            lambda: histogram_bytes(v, edges, range, w),
+            {"kind": "histogram"},
             time,
         )
 

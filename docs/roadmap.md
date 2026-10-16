@@ -21,6 +21,8 @@ the [changelog](changelog.md) for what each version added.
 - **0.8**: HTML export of reports, full screen and report snapshots for
   Sweeps and Timeline, run chips on the Media page.
 - **0.9**: tables compared across steps, PR curves, point clouds and audio notes.
+- **0.10**: distributions (histograms) over steps, imported from TensorBoard too;
+  axes on point clouds.
 
 ## Next
 

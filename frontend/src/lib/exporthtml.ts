@@ -5,9 +5,10 @@
 import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
-import { POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
+import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
 import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
+import { fmtTick, histSvg, type HistData, type HistSeries } from './hist';
 import { mountPoints } from './points';
 import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
@@ -85,7 +86,7 @@ document.querySelectorAll('.nbpoints').forEach(function(box){
 var c=box.querySelector('canvas'),s=box.querySelector('script'),bin=atob(s.textContent.trim()),u=new Uint8Array(bin.length);
 for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
 var bg=function(){return getComputedStyle(document.documentElement).getPropertyValue('--code').trim()};
-var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg());
+var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg(),box.dataset.axes?JSON.parse(box.dataset.axes):null);
 new MutationObserver(function(){v.setBackground(bg())}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 });`;
 
@@ -308,10 +309,29 @@ async function mediaHtml(project: string, ref: string, caption: string, needs: N
     const data = (await (await fetch(url)).json()) as PRData;
     const curve = prSvg([{ name: found.run_name, color: 'var(--s1)', data }], 640, 300);
     body = `<div class="nbpr">${curve}<small>AP ${prArea(data).toFixed(3)}</small></div>`;
+  } else if (item.mime === HIST_MIME) {
+    // the step against the one logged before it, as the viewer shows it
+    const data = (await (await fetch(url)).json()) as HistData;
+    const { items } = await api.media(found.run);
+    const prev = items
+      .filter((m) => m.key === item.key && m.mime === HIST_MIME && m.step < item.step && m.index !== undefined)
+      .pop();
+    const series: HistSeries[] = [{ name: `step ${item.step}`, color: 'var(--s1)', data, fill: true }];
+    if (prev) {
+      const old = (await (await fetch(api.mediaUrl(found.run, prev.index!))).json()) as HistData;
+      series.push({ name: `step ${prev.step}`, color: 'var(--faint)', data: old, dashed: true });
+    }
+    const stats = [
+      data.mean != null ? `mean ${fmtTick(data.mean)}` : '',
+      data.std != null ? `std ${fmtTick(data.std)}` : '',
+      `n ${data.count.toLocaleString()}`,
+      prev ? `dashed: step ${prev.step}` : '',
+    ].filter(Boolean);
+    body = `<div class="nbpr">${histSvg(series, 640, 280)}<small>${esc(stats.join(' · '))}</small></div>`;
   } else if (item.mime === POINTS_MIME) {
     needs.points = true;
     const base64 = (await dataUrl(url)).replace(/^data:[^,]*,/, '');
-    body = `<div class="nbpoints" data-count="${item.points ?? 0}" data-colors="${item.colors ? 1 : 0}"><canvas aria-label="${esc(item.key)}"></canvas><script type="application/octet-stream">${base64}</script><small>${(item.points ?? 0).toLocaleString()} points · drag to rotate, shift-drag to pan, click then scroll to zoom, double-click to reset</small></div>`;
+    body = `<div class="nbpoints" data-count="${item.points ?? 0}" data-colors="${item.colors ? 1 : 0}"${item.axes ? ` data-axes="${esc(JSON.stringify(item.axes))}"` : ''}><canvas aria-label="${esc(item.key)}"></canvas><script type="application/octet-stream">${base64}</script><small>${(item.points ?? 0).toLocaleString()} points · drag to rotate, shift-drag to pan, click then scroll to zoom, double-click to reset</small></div>`;
   } else if (item.mime === 'text/html') body = frame(await (await fetch(url)).text(), item.key, 360);
   else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;

@@ -27,8 +27,7 @@ def test_imports_tf2_pytorch_and_tensorboardx_logs(tmp_path):
         "torch/run_a/cmp_a",
         "torch/run_a/cmp_b",
     ]
-    assert results[1].ignored == {"histograms": 1}
-    assert results[3].ignored == {"histograms": 1}
+    assert not any(r.ignored for r in results)  # histograms are imported too
 
     runs = _runs(tmp_path)
     tf_train = runs["tf2-lr0.01-train"]
@@ -45,14 +44,31 @@ def test_imports_tf2_pytorch_and_tensorboardx_logs(tmp_path):
     assert list(acc) == [0, 1, 2, 3, 4]
 
     media = {(m.key, m.meta["mime"]) for m in reader.media()}
-    assert media == {("samples/0", "image/png"), ("samples/1", "image/png"), ("tone", "audio/wav")}
+    assert media == {
+        ("samples/0", "image/png"),
+        ("samples/1", "image/png"),
+        ("tone", "audio/wav"),
+        ("weights", "application/x-nuboard-histogram+json"),
+    }
+
+    # TF2's histogram tensor (left, right, count per bucket) is re-binned evenly
+    (weights,) = [m for m in reader.media() if m.key == "weights"]
+    data = json.loads(reader.read_media(weights))
+    assert len(data["counts"]) == 50 and sum(data["counts"]) == pytest.approx(100)
+    assert data["edges"][0] == data["min"] and data["edges"][-1] == data["max"]
     assert [t.text for t in reader.texts("note")] == ["hello **tf**"]
 
     # PyTorch's add_hparams sub-folder is folded into its run
     torch_run = runs["torch-run_a"]
     assert torch_run.config == {"lr": 0.1, "bs": 32, "opt": "sgd"}
     assert set(torch_run.summary) == {"train/loss", "hparam/acc"}
-    assert {m.key for m in torch_run.reader().media()} == {"img", "snd"}
+    assert {m.key for m in torch_run.reader().media()} == {"img", "snd", "h"}
+
+    # PyTorch writes TF1 HistogramProtos, which carry the sum and sum of squares
+    (h,) = [m for m in torch_run.reader().media() if m.key == "h"]
+    data = json.loads(torch_run.reader().read_media(h))
+    assert data["count"] == 50 and sum(data["counts"]) == pytest.approx(50)
+    assert data["min"] < data["mean"] < data["max"] and data["std"] > 0
     assert [t.text for t in torch_run.reader().texts()] == ["torch text"]
     assert [t.text for t in torch_run.reader().texts("txt")] == ["torch text"]
     assert len(runs) == 6
@@ -139,7 +155,7 @@ def test_cli_import_tensorboard(tmp_path, capsys):
     )
     out = capsys.readouterr().out
 
-    assert "imported  lr0.01/train: 10 scalars, 4 media, 4 hparams, skipped 1 histograms" in out
+    assert "imported  lr0.01/train: 10 scalars, 5 media, 4 hparams\n" in out
     assert "2 run(s) imported" in out
     assert all(h.record["tags"] == ["keras"] for h in _runs(tmp_path).values())
 

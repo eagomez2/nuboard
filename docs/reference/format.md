@@ -161,7 +161,7 @@ series and rank 0 is the default.
 ## Media pack: `media.r<rank>.pack`
 
 Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), figures (Plotly JSON,
-Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib), PR curves, tables, point clouds and HTML documents,
+Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib), PR curves, distributions, tables, point clouds and HTML documents,
 appended back to back with no framing. Only `M` frames give them meaning, so
 bytes after the last indexed entry (from a crash) are harmless.
 
@@ -175,8 +175,9 @@ bytes after the last indexed entry (from a crash) are harmless.
 | `application/vnd.vegalite+json` | `add_figure` with an Altair chart or a Vega-Lite dict |
 | `application/vnd.bokeh+json` | `add_figure` with a Bokeh figure |
 | `application/x-nuboard-pr+json` | `add_pr_curve`: `{thresholds, tp, fp, tn, fn, precision, recall}`, one value per threshold (thresholds evenly spaced from 0 to 1); the frame's `thresholds` and `positives` give the count of thresholds and positives |
+| `application/x-nuboard-histogram+json` | `add_histogram`: `{edges, counts, count}` with `edges` one longer than `counts` (every bin includes its left edge, the last also its right edge), and optionally `min`, `max`, `mean`, `std` of the finite values, `outside` (finite values outside the edges) and `nonfinite` (NaN and infinite values, not binned); `count` includes both. The frame's `bins` and `count` give the counts |
 | `application/x-nuboard-table+json` | `add_table`: `{columns: [{name, type}], id, rows}`; `type` is `number`, `bool`, `text`, `audio` or `image`, `id` names the column that matches rows across steps, and each row is a list of cells in column order. A media cell is `{"$cell": "<key>#<row>/<column>"}`, the key of a media item logged at the same step with `kind` `cell` (not listed on its own in the viewer). The frame's `rows` and `columns` give the counts |
-| `application/x-nuboard-points` | `add_point_cloud`: N x 3 little-endian float32 x, y, z, then N x 3 RGB bytes when the frame's `colors` is true; `points` holds N |
+| `application/x-nuboard-points` | `add_point_cloud`: N x 3 little-endian float32 x, y, z, then N x 3 RGB bytes when the frame's `colors` is true; `points` holds N, and `axes`, when present, the three axis names the viewer starts showing |
 | `text/html` | `add_html` (the viewer renders it in a sandboxed iframe) |
 
 ## Compacted scalars: `data.parquet`

@@ -396,6 +396,37 @@ def _embeddings(seed: int, epoch: int, gain: float) -> tuple[Any, Any] | None:
     return points, colors
 
 
+def _distributions(seed: int, epoch: int, gain: float) -> dict[str, Any]:
+    """Return values for the `vit-ablations` histograms of one epoch.
+
+    Attention weights spread out from their initialization, gradients shrink
+    as the loss falls, and the logits of correct and wrong classes split into
+    two modes, further apart for stronger augmentations.
+    """
+
+    progress = 1 - math.exp(-epoch / 30)
+
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        rng = random.Random(f"{seed}-{epoch}-{gain}")
+        weights = [rng.gauss(0, 0.02 + 0.03 * progress) for _ in range(4000)]
+        return {"params/attn.qkv.weight": weights}
+
+    rng = np.random.default_rng([seed, epoch, round(gain * 1000)])
+    weights = rng.normal(0, 0.02 + 0.03 * progress, 20000)
+    weights += rng.laplace(0, 0.01 * progress, 20000)
+    grads = rng.standard_t(8, 20000) * 0.01 * (0.15 + 0.85 * math.exp(-epoch / 20))
+    split = (1.5 + 60 * gain) * progress
+    correct = rng.random(5000) < 0.62 + gain + 0.18 * progress
+    logits = np.where(correct, rng.normal(split, 1.0, 5000), rng.normal(-split * 0.6, 1.0, 5000))
+    return {
+        "params/attn.qkv.weight": weights,
+        "grads/attn.qkv.weight": grads,
+        "eval/logit_margin": logits,
+    }
+
+
 def _pr_samples(rng: random.Random, acc: float, hard: float) -> tuple[list[int], list[float]]:
     """Return labels and scores for one class: 10% positives, separated more as `acc` rises."""
     labels = [int(rng.random() < 0.1) for _ in range(1000)]
@@ -452,6 +483,10 @@ def _vit_runs(root: Path, base: float) -> None:
             )
             curves.setdefault(f"{aug}-s{seed}", []).append(acc)
 
+            if epoch % 5 == 0:
+                for key, values in _distributions(seed, epoch, gains[aug]).items():
+                    run.add_histogram(key, values, step=epoch)
+
             if epoch % 20 == 0:
                 img = _pattern(seed, epoch, aug)
 
@@ -468,6 +503,7 @@ def _vit_runs(root: Path, base: float) -> None:
                         emb[0],
                         step=epoch,
                         colors=emb[1],
+                        axes=("feature 1", "feature 2", "feature 3"),
                         caption=f"{aug} epoch {epoch}, 10 classes",
                     )
 
@@ -631,6 +667,9 @@ def _vit_notes(project: Path, ids: dict[str, str], curves: dict[str, list[float]
         f"![CutMix embeddings at epoch 100](media:{ids['cutmix-s0']}/eval/embeddings@100)\n\n"
         "## Precision and recall\n\n"
         f"![Cat, CutMix at epoch 100](media:{ids['cutmix-s0']}/eval/pr/cat@100)\n\n"
+        "## Distributions\n\n"
+        "Logit margins split into two modes as the model learns; dashed is epoch 95.\n\n"
+        f"![Logit margins, CutMix at epoch 100](media:{ids['cutmix-s0']}/eval/logit_margin@100)\n\n"
         "## Errors\n\n"
         f"![CutMix confusion](media:{ids['cutmix-s0']}/eval/confusion@100)\n\n"
         "| run | val/acc |\n|---|---|\n| none-s0 | 0.80 |\n| cutmix-s0 | 0.83 |\n",

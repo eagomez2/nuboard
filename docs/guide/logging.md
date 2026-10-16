@@ -87,7 +87,7 @@ background thread wakes every `flush_interval` seconds, encodes the batch into
 one columnar frame and appends it to the event log. Call `run.flush()` if you
 need everything on disk at a given point (rarely needed).
 
-## Text, images, audio, figures, PR curves, tables, point clouds, HTML
+## Text, images, audio, figures, PR curves, distributions, tables, point clouds, HTML
 
 | Method | Accepts |
 | --- | --- |
@@ -96,8 +96,9 @@ need everything on disk at a given point (rarely needed).
 | `add_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
 | `add_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
 | `add_pr_curve(key, labels, predictions, step=None, num_thresholds=201, weights=None)` | labels (bool or 0/1) and scores in [0, 1], as arrays, tensors or lists |
+| `add_histogram(key, values, step=None, bins=50, range=None, weights=None)` | numbers of any shape, as an array, tensor or list; `bins` is a count or the bin edges |
 | `add_table(key, rows, step=None, row_id=None)` | a list of dicts (one per row), a dict of column lists, or a pandas DataFrame; cells are numbers, booleans, strings, None, `nb.Audio(...)` or `nb.Image(...)` |
-| `add_point_cloud(key, points, step=None, colors=None, caption=None)` | an `(N, 3)` array, tensor or list of x, y, z positions, with optional `(N, 3)` RGB colors (uint8, or float in [0, 1]) |
+| `add_point_cloud(key, points, step=None, colors=None, axes=False, caption=None)` | an `(N, 3)` array, tensor or list of x, y, z positions, with optional `(N, 3)` RGB colors (uint8, or float in [0, 1]); `axes=True` or three names shows the axes |
 | `add_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
 
 Every method also takes a keyword-only `time=` (a Unix timestamp) to override
@@ -124,6 +125,18 @@ for c, name in enumerate(classes):
     run.add_pr_curve(f"eval/pr/{name}", labels == c, probs[:, c], step=epoch)
 ```
 
+Distributions (`add_histogram`, as in TensorBoard) store only the bin counts
+and the values' min, max, mean and standard deviation, so a layer with
+millions of weights takes a few hundred bytes per step. Arrays and tensors are
+binned with NumPy on the writer thread; NaN and infinite values are counted
+but not binned. Log weights, gradients or activations every few epochs:
+
+```python
+for name, p in model.named_parameters():
+    run.add_histogram(f"weights/{name}", p, step=epoch)
+    run.add_histogram(f"grads/{name}", p.grad, step=epoch)
+```
+
 Tables hold per-example results, such as one row per test file with its
 scores. Log the same table at each eval: the viewer matches rows across steps
 by `row_id` (the first column by default) and colors each cell by how it
@@ -148,9 +161,12 @@ embeddings work too: reduce them to three dimensions first (PCA, UMAP) and
 color the points by class.
 
 ```python
-run.add_point_cloud("lidar/scan", scan[:, :3], step=step)
+run.add_point_cloud("lidar/scan", scan[:, :3], step=step, axes=("x (m)", "y (m)", "z (m)"))
 run.add_point_cloud("eval/embeddings", pca3, step=epoch, colors=palette[labels])
 ```
+
+The viewer can show x, y and z axes with round values along them on any cloud;
+`axes=True` shows them from the start, and three names label them.
 
 Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
 these libraries is needed by NuBoard itself: a figure is serialized with its

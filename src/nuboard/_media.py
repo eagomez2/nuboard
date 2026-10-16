@@ -9,8 +9,11 @@ passed in already comes from them.
 from __future__ import annotations
 
 import array
+import bisect
 import io
+import itertools
 import json
+import math
 import os
 import struct
 import sys
@@ -569,6 +572,255 @@ def pr_curve_bytes(
     fn = [tp[0] - v for v in tp]
     tn = [fp[0] - v for v in fp]
     return pr_curve_json({"tp": tp, "fp": fp, "tn": tn, "fn": fn})
+
+
+#: MIME type of distributions in the media pack (see `histogram_json`)
+HISTOGRAM_MIME = "application/x-nuboard-histogram+json"
+
+
+def _number(v: float | None) -> float | None:
+    """Return `v` rounded for JSON, or None when it is missing or not finite."""
+    return None if v is None or not math.isfinite(v) else float(f"{v:.7g}")
+
+
+def histogram_json(
+    edges: list[float],
+    counts: list[float],
+    *,
+    stats: dict[str, float | None] | None = None,
+    outside: float = 0.0,
+    nonfinite: float = 0.0,
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Encode a histogram as the stored JSON.
+
+    Args:
+        edges: Bin edges, one more than `counts`, increasing.
+        counts: Count (or total weight) per bin.
+        stats: Optional `min`, `max`, `mean` and `std` of the values; missing
+            ones are left out.
+        outside: Count of finite values outside the edges.
+        nonfinite: Count of NaN and infinite values, which are not binned.
+
+    Returns:
+        The JSON bytes, the MIME type and the `bins` and `count` metadata.
+
+    Raises:
+        ValueError: If the lengths do not match or there are no bins.
+    """
+
+    if not counts or len(edges) != len(counts) + 1:
+        raise ValueError("a histogram needs at least one bin and one more edge than bins")
+
+    data: dict[str, Any] = {
+        "edges": [_number(float(e)) for e in edges],
+        "counts": [float(f"{float(c):.7g}") for c in counts],
+    }
+    total = float(f"{sum(data['counts']) + outside:.7g}")
+
+    for name, value in (stats or {}).items():
+        if _number(value) is not None:
+            data[name] = _number(value)
+
+    data["count"] = total
+
+    if outside:
+        data["outside"] = outside
+
+    if nonfinite:
+        data["nonfinite"] = nonfinite
+
+    meta = {"bins": len(counts), "count": total}
+    return json.dumps(data, separators=(",", ":")).encode("utf-8"), HISTOGRAM_MIME, meta
+
+
+def _edges(lo: float, hi: float, bins: int) -> list[float]:
+    """Return `bins + 1` evenly spaced edges from `lo` to `hi` (widened when equal)."""
+
+    if bins < 1:
+        raise ValueError("bins must be at least 1")
+
+    if lo == hi:
+        lo, hi = lo - 0.5, hi + 0.5
+
+    return [lo + (hi - lo) * i / bins for i in range(bins)] + [hi]
+
+
+def _bin_edges(
+    bins: int | Any, span: tuple[float, float] | None, stats: dict[str, float | None]
+) -> list[float]:
+    """Return the edges for `bins` (a count or edges) over `span` or the values' range."""
+
+    if isinstance(bins, int):
+        lo, hi = span or (stats.get("min") or 0.0, stats.get("max") or 0.0)
+        return _edges(float(lo), float(hi), bins)
+
+    edges = [float(e) for e in bins]
+
+    if len(edges) < 2 or any(b <= a for a, b in itertools.pairwise(edges)):
+        raise ValueError("bin edges must be increasing")
+
+    return edges
+
+
+def histogram_bytes(
+    values: Any, bins: int | Any = 50, range: tuple[float, float] | None = None, weights: Any = None
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Bin values into a histogram, with their min, max, mean and standard deviation.
+
+    NumPy arrays and tensors are binned with NumPy; other sequences in pure
+    Python. NaN and infinite values are counted but not binned, and finite
+    values outside `range` are counted as `outside`.
+
+    Args:
+        values: The values, as an array, tensor or sequence of any shape.
+        bins: Number of equal-width bins, or a sequence of increasing edges.
+        range: The `(low, high)` the bins span. Defaults to the values' range.
+        weights: Optional weight per value, of the same shape.
+
+    Returns:
+        The JSON bytes, the MIME type and metadata (see `histogram_json`).
+
+    Raises:
+        ValueError: If `weights` does not match `values` or the edges are not
+            increasing.
+    """
+
+    if hasattr(values, "detach"):
+        values = values.detach().cpu().numpy()
+
+    if hasattr(weights, "detach"):
+        weights = weights.detach().cpu().numpy()
+
+    if hasattr(values, "__array__"):
+        import numpy as np
+
+        x = np.asarray(values, dtype=np.float64).ravel()
+        w = None if weights is None else np.asarray(weights, dtype=np.float64).ravel()
+
+        if w is not None and w.shape != x.shape:
+            raise ValueError("weights needs one value per value")
+
+        ok = np.isfinite(x)
+        nonfinite = float((~ok).sum() if w is None else w[~ok].sum())
+        x = x[ok]
+        w = None if w is None else w[ok]
+        stats: dict[str, float | None] = {}
+
+        if x.size:
+            mean = float(np.average(x, weights=w)) if w is None or w.sum() else None
+            var = float(np.average((x - mean) ** 2, weights=w)) if mean is not None else None
+            stats = {
+                "min": float(x.min()),
+                "max": float(x.max()),
+                "mean": mean,
+                "std": None if var is None else math.sqrt(var),
+            }
+
+        edges = _bin_edges(bins, range, stats)
+
+        counts, _ = np.histogram(x, bins=np.asarray(edges), weights=w)
+        inside = (x >= edges[0]) & (x <= edges[-1])
+        outside = float((~inside).sum() if w is None else w[~inside].sum())
+        return histogram_json(
+            edges, counts.tolist(), stats=stats, outside=outside, nonfinite=nonfinite
+        )
+
+    xs = [float(v) for v in _values(values)]
+    ws = [1.0] * len(xs) if weights is None else [float(v) for v in _values(weights)]
+
+    if len(ws) != len(xs):
+        raise ValueError("weights needs one value per value")
+
+    pairs = [(v, wt) for v, wt in zip(xs, ws, strict=True) if math.isfinite(v)]
+    nonfinite = sum(wt for v, wt in zip(xs, ws, strict=True) if not math.isfinite(v))
+    stats = {}
+
+    if pairs:
+        total = sum(wt for _, wt in pairs)
+        mean = sum(v * wt for v, wt in pairs) / total if total else None
+        var = sum(wt * (v - mean) ** 2 for v, wt in pairs) / total if mean is not None else None
+        stats = {
+            "min": min(v for v, _ in pairs),
+            "max": max(v for v, _ in pairs),
+            "mean": mean,
+            "std": None if var is None else math.sqrt(var),
+        }
+
+    edges = _bin_edges(bins, range, stats)
+
+    counts = [0.0] * (len(edges) - 1)
+    outside = 0.0
+
+    for v, wt in pairs:
+        if v < edges[0] or v > edges[-1]:
+            outside += wt
+            continue
+
+        # the last bin includes its right edge, as in NumPy
+        i = min(bisect.bisect_right(edges, v) - 1, len(counts) - 1)
+        counts[i] += wt
+
+    return histogram_json(edges, counts, stats=stats, outside=outside, nonfinite=nonfinite)
+
+
+def histogram_from_buckets(
+    lefts: list[float],
+    rights: list[float],
+    counts: list[float],
+    stats: dict[str, float | None] | None = None,
+    bins: int = 50,
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Re-bin a histogram with arbitrary buckets onto evenly spaced bins.
+
+    Used for TensorBoard histograms, whose buckets are exponentially spaced or
+    whose bucket edges differ per step. Each bucket's count is spread evenly
+    over its width; the new bins span the first left edge to the last right
+    edge that hold any count, clipped to `stats` min and max when given.
+
+    Args:
+        lefts: Left edge of each bucket.
+        rights: Right edge of each bucket.
+        counts: Count per bucket.
+        stats: Optional `min`, `max`, `mean` and `std`.
+        bins: Number of bins to re-bin onto.
+
+    Returns:
+        The JSON bytes, the MIME type and metadata (see `histogram_json`).
+    """
+
+    stats = dict(stats or {})
+    used = [(a, b, c) for a, b, c in zip(lefts, rights, counts, strict=True) if c > 0]
+
+    if not used:
+        return histogram_json(_edges(0.0, 0.0, bins), [0.0] * bins, stats=stats)
+
+    smin, smax = stats.get("min"), stats.get("max")
+    lo = max(min(a for a, _, _ in used), -math.inf if smin is None else smin)
+    hi = min(max(b for _, b, _ in used), math.inf if smax is None else smax)
+
+    if not (math.isfinite(lo) and math.isfinite(hi)) or hi < lo:
+        lo, hi = min(a for a, _, _ in used), max(b for _, b, _ in used)
+
+    edges = _edges(lo, hi, bins)
+    out = [0.0] * bins
+    width = edges[1] - edges[0]
+
+    for a, b, c in used:
+        a, b = max(a, edges[0]), min(b, edges[-1])
+
+        if b <= a:  # a point bucket, or one clipped to a point
+            out[min(max(int((a - edges[0]) / width), 0), bins - 1)] += c
+            continue
+
+        for i in range(
+            max(int((a - edges[0]) / width), 0), min(int((b - edges[0]) / width) + 1, bins)
+        ):
+            overlap = min(b, edges[i + 1]) - max(a, edges[i])
+
+            if overlap > 0:
+                out[i] += c * overlap / (b - a)
+
+    return histogram_json(edges, out, stats=stats)
 
 
 #: MIME type of tables in the media pack (see `table_bytes`)
