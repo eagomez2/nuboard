@@ -32,13 +32,9 @@ the [changelog](changelog.md) for what each version added.
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
-5. ~~**TensorBoard import**~~: done in 0.6 (`nuboard import-tensorboard`). Next:
-   histograms, once NuBoard can show distributions.
-6. Charts: Web Workers for decoding and smoothing, WebGL for very large
+5. Charts: Web Workers for decoding and smoothing, WebGL for very large
    scatters.
-7. Runs table: TanStack Virtual, Bits UI menus and comboboxes (0.2 uses
-   native controls and `prompt()` for collection names).
-8. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
+6. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
 
 ## Known limitations
 

@@ -272,6 +272,10 @@ test('all metrics can be filtered with a regex, and run tags are pills', async (
   await page.goto('/#/runs?project=vit-ablations');
   await expect(page.locator('.run .tagpill').first()).toBeVisible();
   await expect(page.locator('.config .tagpill')).toHaveCount(0);
+  const first = page.locator('.body .row').first();
+  const tags = await first.locator('.subline .tagpill').allTextContents();
+  await first.locator('button.name').click();
+  await expect(page.locator('.cmp .runtags .tagpill')).toHaveText(tags);
 });
 
 test('charts grid pages small charts, and the main chart goes full screen', async ({ page }) => {

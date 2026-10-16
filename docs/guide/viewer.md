@@ -80,7 +80,8 @@ listing run ids, so it can be committed and survives moving the folder.
 
 ### Run details and compare
 
-Click a run name to open its details above the table: every setting (config,
+Click a run name to open its details above the table, with the run's tags
+under its name: every setting (config,
 git commit, host, Python, GPUs, world size, fork origin, artifacts used and
 produced, last value of every metric) and the run's files. A crashed
 run shows its traceback.
