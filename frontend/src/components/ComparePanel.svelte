@@ -1,5 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import NotesEditor from './NotesEditor.svelte';
+  import PropertiesEditor from './PropertiesEditor.svelte';
   import Status from './Status.svelte';
   import { api, num, type RunDetail } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
@@ -51,7 +53,7 @@
   $effect(() => {
     const t = tab;
     const ds = details;
-    if (t === 'settings' || !ds.length) return;
+    if (t === 'settings' || t === 'notes' || t === 'properties' || !ds.length) return;
     loadingFile = true;
     Promise.all(ds.map((d) => api.file(d.run.key, t))).then((x) => {
       texts = x;
@@ -144,6 +146,12 @@
   {/if}
 
   <div class="tabs">
+    {#if details.length === 1}
+      <button class="tab" aria-pressed={tab === 'notes'} onclick={() => router.set({ tab: 'notes' })}>notes</button>
+      <button class="tab" aria-pressed={tab === 'properties'} onclick={() => router.set({ tab: 'properties' })}
+        >properties</button
+      >
+    {/if}
     <button class="tab mono" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}
       >all settings</button
     >
@@ -164,7 +172,11 @@
     {/if}
   </div>
 
-  {#if tab === 'settings'}
+  {#if tab === 'notes' && details.length === 1}
+    <NotesEditor run={details[0].run} />
+  {:else if tab === 'properties' && details.length === 1}
+    <PropertiesEditor run={details[0].run} />
+  {:else if tab === 'settings'}
     <div class="settings mono">
       {#if multi}
         <div class="srow head" style="grid-template-columns: {cols}; min-width: {rowWidth}">

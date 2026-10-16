@@ -51,7 +51,7 @@
     return candidates.filter((k) => !/seed/i.test(k)).slice(0, 6);
   });
   const get = (r: RunBrief, key: string): Value =>
-    key.startsWith('fields.') ? r.fields?.[key.slice(7)] : (r.config[key] as Value);
+    key.startsWith('fields.') ? (r.fields?.[key.slice(7)] as Value) : (r.config[key] as Value);
 
   const values = $derived(runs.map(value));
   const axes = $derived.by((): Axis[] => {
@@ -140,6 +140,26 @@
   const label = (key: string) => (key.startsWith('metric:') ? key.slice(7) : key);
   const short = (key: string) => label(key).split('.').slice(-2).join('.');
   const fmt = (v: number) => fmtAxis(v);
+  // Axis titles are SVG text, which cannot ellipsize: cut them to the room between axes
+  // (the outer axes only have the side padding), with the full name in a <title>.
+  const cut = (text: string, max: number) => (text.length > max ? text.slice(0, Math.max(1, max - 1)) + '…' : text);
+  const spacing = $derived(axes.length > 1 ? plotW / (axes.length - 1) : plotW);
+  const fitAxis = (text: string, k: number) => {
+    const room = (k === 0 || k === axes.length - 1 ? Math.min(spacing, 2 * PAD) : spacing) - 12;
+    return cut(text, Math.max(4, Math.floor(room / 7.6)));
+  };
+  // Category tick labels sit left of their axis: the first axis only has the side padding.
+  const fitTick = (text: string, a: Axis, k: number) =>
+    a.numeric ? text : cut(text, Math.max(4, Math.floor(((k === 0 ? PAD : spacing) - 14) / 6.4)));
+  // Scatter x labels: categories split the 230-unit axis between them, the outer ones anchored inward.
+  const scatterTick = (a: Axis, n: number, text: string) => {
+    if (a.numeric) return { text, anchor: 'middle' };
+    const room = 230 / Math.max(a.categories.length, 2) - 6;
+    return {
+      text: cut(text, Math.max(4, Math.floor(room / 6.4))),
+      anchor: n === 0 ? 'start' : n === 1 ? 'end' : 'middle',
+    };
+  };
 </script>
 
 <div class="card panel">
@@ -177,7 +197,7 @@
       {#each candidates as p (p)}
         {@const score = scores.get(p)}
         <button class="chip param" aria-pressed={params.includes(p)} onclick={() => toggleParam(p)} title={p}>
-          <span class="mono">{short(p)}</span>
+          <span class="mono trunc">{short(p)}</span>
           {#if params.includes(p) && score !== null && score !== undefined}
             <span class="imp" title="Rank correlation with {metric}"><span style="width:{score * 100}%"></span></span>
           {/if}
@@ -212,7 +232,9 @@
           {@const isMetric = k === axes.length - 1}
           <g class="axis" class:metricaxis={isMetric}>
             <line x1={x} x2={x} y1={TOP} y2={TOP + h} />
-            <text class="title mono" {x} y={TOP - 26} text-anchor="middle">{short(a.key)}</text>
+            <text class="title mono" {x} y={TOP - 26} text-anchor="middle"
+              ><title>{label(a.key)}</title>{fitAxis(short(a.key), k)}</text
+            >
             <text class="sub" {x} y={TOP - 12} text-anchor="middle"
               >{isMetric
                 ? `${stat} · best on top`
@@ -226,7 +248,9 @@
               {@const yy = yOf(isMetric && lower ? 1 - n : n)}
               {@const side = isMetric ? 1 : -1}
               <line class="tickmark" x1={x + side * 4} x2={x} y1={yy} y2={yy} />
-              <text class="tick mono" x={x + side * 7} y={yy + 4} text-anchor={isMetric ? 'start' : 'end'}>{text}</text>
+              <text class="tick mono" x={x + side * 7} y={yy + 4} text-anchor={isMetric ? 'start' : 'end'}
+                ><title>{text}</title>{fitTick(text, a, k)}</text
+              >
             {/each}
             {#if brushes[a.key]}
               {@const b = brushes[a.key]}
@@ -274,8 +298,8 @@
       {@const a = axes[params.indexOf(p)]}
       <div class="card scatter">
         <div class="sh">
-          <span class="mono">{short(p)}</span>
-          {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint"
+          <span class="mono trunc" title={p}>{short(p)}</span>
+          {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint keep"
               >correlation {fmtNum(scores.get(p)!, 2)}</span
             >{/if}
         </div>
@@ -283,7 +307,8 @@
           <line class="frame" x1="40" x2="290" y1="160" y2="160" />
           <line class="frame" x1="40" x2="40" y1="10" y2="160" />
           {#each axisTicks(a, fmt) as [n, text] (text + n)}
-            <text class="tick mono" x={46 + n * 230} y="176" text-anchor="middle">{text}</text>
+            {@const t = scatterTick(a, n, text)}
+            <text class="tick mono" x={46 + n * 230} y="176" text-anchor={t.anchor}><title>{text}</title>{t.text}</text>
           {/each}
           {#each axisTicks(metricAxis, fmt).filter((_, i, all) => i === 0 || i === all.length - 1 || all.length <= 3) as [n, text] (text + n)}
             {@const yy = 160 - (lower ? 1 - n : n) * 150}
@@ -316,14 +341,18 @@
   </section>
 
   <section class="card best">
-    <div class="sh"><span class="label">Best runs</span><span class="faint">{metric} ({stat}), filtered</span></div>
+    <div class="sh">
+      <span class="label keep">Best runs</span><span class="faint trunc" title="{metric} ({stat}), filtered"
+        >{metric} ({stat}), filtered</span
+      >
+    </div>
     <table>
       <thead>
         <tr>
           <th>#</th>
           <th>Run</th>
-          {#each params as p (p)}<th class="mono">{short(p)}</th>{/each}
-          <th class="right mono">{metric}</th>
+          {#each params as p (p)}<th class="mono"><span class="trunc cell" title={p}>{short(p)}</span></th>{/each}
+          <th class="right mono"><span class="trunc cell" title={metric}>{metric}</span></th>
         </tr>
       </thead>
       <tbody>
@@ -335,10 +364,16 @@
           >
             <td class="faint">{i + 1}</td>
             <td
-              ><button class="link mono" onclick={() => router.go('runs', { cmp: l.run.key })}>{l.run.name}</button></td
+              ><button
+                class="link mono trunc runname"
+                title={l.run.name}
+                onclick={() => router.go('runs', { cmp: l.run.key })}>{l.run.name}</button
+              ></td
             >
-            {#each params as p (p)}<td class="mono">{fmtValue(get(l.run, p))}</td>{/each}
-            <td class="right mono">{fmtNum(value(l.run))}</td>
+            {#each params as p (p)}<td class="mono"
+                ><span class="trunc cell" title={fmtValue(get(l.run, p))}>{fmtValue(get(l.run, p))}</span></td
+              >{/each}
+            <td class="right mono nowrap">{fmtNum(value(l.run))}</td>
           </tr>
         {/each}
       </tbody>
@@ -365,6 +400,30 @@
   .grow {
     flex: 1;
   }
+  /* Long names shrink with an ellipsis (full text in the title attribute); values never do. */
+  .trunc {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .keep {
+    flex: none;
+    white-space: nowrap;
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .cell {
+    max-width: 200px;
+  }
+  .right .cell {
+    margin-left: auto;
+  }
+  .runname {
+    max-width: 340px;
+  }
   .muted {
     color: var(--muted);
     font-size: 13px;
@@ -390,6 +449,8 @@
     gap: 6px;
     cursor: pointer;
     font-size: 12px;
+    max-width: 280px;
+    min-width: 0;
   }
   .param[aria-pressed='true'] {
     background: var(--accent-soft);
@@ -488,11 +549,14 @@
   }
   .scatter {
     padding: 12px 12px 6px;
+    min-width: 0;
   }
   .sh {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    gap: 10px;
+    min-width: 0;
     font-size: 13px;
     padding-bottom: 6px;
   }

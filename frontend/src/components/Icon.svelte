@@ -22,6 +22,14 @@
     artifact: 'M12 2l9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10',
     columns: 'M3 4h18v16H3zM9 4v16M15 4v16',
     plus: 'M12 5v14M5 12h14',
+    report: 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3',
+    bookmark: 'M6 3h12v18l-6-4-6 4z',
+    edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+    download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+    trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+    grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+    shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>

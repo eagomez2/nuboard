@@ -10,6 +10,8 @@
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { encodeSpec } from '../lib/chartspec';
+  import { appendToReport, askReport } from '../lib/reports.svelte';
 
   const MAX_LINES = 60;
 
@@ -160,6 +162,108 @@
   const running = $derived(runs.filter((r) => r.status === 'running'));
   const lastBeat = $derived(Math.max(0, ...running.map((r) => r.heartbeat ?? 0)));
   const nonfinite = $derived(runs.filter((r) => r.nonfinite.length));
+  // ---- full screen for the focus chart (with the inspector) ----
+  let focusEl = $state<HTMLElement>();
+  let full = $state(false);
+  let innerHeight = $state(900);
+  async function toggleFull() {
+    if (full) {
+      full = false;
+      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+      return;
+    }
+    full = true; // the overlay works even where the Fullscreen API is blocked
+    await focusEl?.requestFullscreen?.().catch(() => {});
+  }
+  onMount(() => {
+    const sync = () => {
+      if (!document.fullscreenElement && full) full = false;
+    };
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  });
+
+  // ---- saving the focus chart to a report: a PNG snapshot plus the view to draw it live ----
+  function snapshot(): string | null {
+    const src = focusEl?.querySelector<HTMLCanvasElement>('.main canvas');
+    if (!src) return null;
+    const css = getComputedStyle(focusEl!);
+    const dpr = src.width / Math.max(1, src.clientWidth);
+    const labels = (focusData?.series ?? []).filter((x) => !hidden.has(x.label));
+    const perRow = Math.max(1, Math.floor(src.clientWidth / 220));
+    const legendH = Math.ceil(labels.length / perRow) * 20 + 8;
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height + (36 + legendH) * dpr;
+    const ctx = out.getContext('2d')!;
+    ctx.fillStyle = css.getPropertyValue('--panel').trim() || '#fff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = css.getPropertyValue('--text').trim() || '#111';
+    ctx.font = `600 14px ${css.getPropertyValue('--mono') || 'monospace'}`;
+    ctx.fillText(focus + (groupBy ? `  ·  grouped by ${groupBy}` : ''), 12, 22);
+    ctx.drawImage(src, 0, 36, src.clientWidth, src.clientHeight);
+    ctx.font = '12px system-ui, sans-serif';
+    labels.forEach((x, i) => {
+      const cx = 12 + (i % perRow) * 220;
+      const cy = 36 + src.clientHeight + 16 + Math.floor(i / perRow) * 20;
+      ctx.fillStyle = colorOf(x.label, i);
+      ctx.beginPath();
+      ctx.arc(cx + 4, cy - 4, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = css.getPropertyValue('--muted').trim() || '#555';
+      const name = x.label.length > 30 ? x.label.slice(0, 29) + '…' : x.label;
+      ctx.fillText(name, cx + 14, cy);
+    });
+    return out.toDataURL('image/png');
+  }
+  let savingChart = $state(false);
+  async function addChartToReport() {
+    const project = app.runByKey(runKeys[0])?.project ?? router.get('project');
+    const png = snapshot();
+    if (!project || !png || !focus) return;
+    if (full) await toggleFull(); // dialogs are not shown over a full-screen element
+    const res = await askReport(
+      project,
+      `${focus}${groupBy ? ` by ${groupBy}` : ''}`,
+      `The chart as shown now; reports draw it live and keep a PNG copy for exports.`,
+    );
+    if (!res) return;
+    savingChart = true;
+    try {
+      const shot = await api.saveSnapshot(project, res.name, png);
+      if (!shot.path) return;
+      const spec = encodeSpec({
+        metric: focus,
+        runs: runKeys,
+        x: xKind,
+        group: groupBy,
+        agg,
+        smooth: smoothing,
+        raw: showRaw,
+        robust,
+        log: logY,
+        zoom,
+        hidden: [...hidden],
+      });
+      const caption = res.caption.replace(/[[\]\n]/g, ' ');
+      await appendToReport(project, res.name, `![${caption}](${shot.path} "chart:${spec}")`);
+    } finally {
+      savingChart = false;
+    }
+  }
+
+  // ---- the grid of small charts: columns and rows per page, like the Media page ----
+  const gridCols = $derived(Number(router.get('ccols', String(prefs.get('ccols', 0)))) || 0); // 0: fit
+  const gridRows = $derived(Number(router.get('crows', String(prefs.get('crows', 0)))) || 0); // 0: all
+  function setGrid(k: 'ccols' | 'crows', v: string) {
+    prefs.set(k, Number(v));
+    router.set({ [k]: v === '0' ? null : v });
+  }
+  let gridWidth = $state(1200);
+  const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 14) / (330 + 14))));
+  let gridPages = $state<Record<string, number>>({});
+
   const sections = $derived.by(() => {
     const map = new Map<string, string[]>();
     for (const m of metrics) {
@@ -199,13 +303,19 @@
     return [...metrics.filter(counter), ...metrics.filter((m) => !counter(m))];
   });
 
-  function fmtX(x: number | null) {
-    if (x === null) return '—';
-    if (xKind === 'time') return new Date(x * 1000).toLocaleTimeString();
-    if (xKind === 'relative' || xKind === 'active') return fmtDuration(x);
-    if (xMetric) return `${xMetric} ${fmtNum(x)}`;
-    return `step ${Math.round(x).toLocaleString()}`;
+  // The x readout as a name (may be a long metric, so it truncates) and a value (never truncated).
+  function fmtX(x: number | null): { name: string; value: string } {
+    if (x === null) return { name: '', value: '—' };
+    if (xKind === 'time') return { name: '', value: new Date(x * 1000).toLocaleTimeString() };
+    if (xKind === 'relative' || xKind === 'active') return { name: '', value: fmtDuration(x) };
+    if (xMetric) return { name: xMetric, value: fmtNum(x) };
+    return { name: 'step', value: Math.round(x).toLocaleString() };
   }
+  const xRead = $derived.by(() => {
+    if (cursorX !== null) return { prefix: '', ...fmtX(cursorX) };
+    if (!lastValues.length) return { prefix: '', name: '', value: '—' };
+    return { prefix: 'latest ·', ...fmtX(Math.max(...lastValues.map((v) => v.x))) };
+  });
   function setSmooth(v: number) {
     prefs.set('smooth', v);
     router.set({ smooth: v });
@@ -236,20 +346,38 @@
     return [...keys.entries()].filter(([, s]) => s.size > 1 && s.size < runs.length).map(([k]) => `config.${k}`);
   });
   const groupLabel = (g: string | null) => (g ? g.split('.').slice(-1)[0] : '');
+  const seriesTitle = (label: string) => (groupBy ? `${groupLabel(groupBy)} ${label}` : label);
 </script>
+
+<svelte:window
+  bind:innerHeight
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && full) toggleFull();
+  }}
+/>
+
+<!-- A series name: when grouped, the (often long) group key shrinks before the value that tells series apart. -->
+{#snippet seriesName(label: string, cls: string)}
+  <span class="sname {cls}" title={seriesTitle(label)}>
+    {#if groupBy}<span class="gkey">{groupLabel(groupBy)}</span>{/if}<span class="gval">{label}</span>
+  </span>
+{/snippet}
 
 {#if !runs.length}
   <div class="card empty">No runs to plot. Select runs on the Runs page, or change the query.</div>
 {:else}
   <section class="stats">
     <div class="card stat">
-      <div class="label">Best {focus || 'metric'} <span class="faint">({lower ? 'lowest' : 'highest'} last)</span></div>
+      <div class="label lrow">
+        <span class="trunc" title="Best {focus || 'metric'}">Best {focus || 'metric'}</span>
+        <span class="faint keep">({lower ? 'lowest' : 'highest'} last)</span>
+      </div>
       <div class="big mono">{best ? fmtNum(best.last) : '—'}</div>
       {#if best}
-        <div class="sub">
+        <div class="sub nowrap">
           <Marker index={colorIndex.get(best.label) ?? 0} color={colorOf(best.label, 0)} />
-          {groupLabel(groupBy)}
-          {best.label}{best.n ? ` · mean of ${best.n}` : ''}
+          {@render seriesName(best.label, '')}
+          {#if best.n}<span class="keep">· mean of {best.n}</span>{/if}
         </div>
       {/if}
     </div>
@@ -261,21 +389,25 @@
     <div class="card stat">
       <div class="label">Non-finite values</div>
       <div class="big mono" class:errc={nonfinite.length}>{nonfinite.length}</div>
-      <div class="sub">
+      <div class="sub nowrap">
         {#if nonfinite.length}
-          {#each nonfinite.slice(0, 2) as r (r.key)}<span class="chip chip-err">{r.name}: {r.nonfinite[0]}</span>{/each}
+          {#each nonfinite.slice(0, 2) as r (r.key)}<span
+              class="chip chip-err nf"
+              title="{r.name}: {r.nonfinite.join(', ')}"
+              ><span class="trunc nfname">{r.name}:</span><span class="trunc nfmetric">{r.nonfinite[0]}</span></span
+            >{/each}
         {:else}no NaN or Inf logged{/if}
       </div>
     </div>
     <div class="card stat">
       <div class="label">Shown</div>
       <div class="big mono">{runKeys.length} <span class="faint">run{runKeys.length === 1 ? '' : 's'}</span></div>
-      <div class="sub">
-        {groupBy
-          ? `grouped by ${groupBy}`
-          : runs.length > MAX_LINES
-            ? `first ${MAX_LINES} of ${runs.length}; group to see all`
-            : 'one line per run'}
+      <div class="sub nowrap">
+        {#if groupBy}
+          <span class="trunc" title="grouped by {groupBy}">grouped by {groupBy}</span>
+        {:else}
+          {runs.length > MAX_LINES ? `first ${MAX_LINES} of ${runs.length}; group to see all` : 'one line per run'}
+        {/if}
       </div>
     </div>
   </section>
@@ -305,7 +437,7 @@
           title={`${s.runs.length > 1 ? s.runs.join('\n') : s.runs[0]}\n\nClick to hide · double-click or Alt-click to solo`}
         >
           <Marker index={i} color={colorOf(s.label, i)} />
-          <span class="lab">{groupBy ? `${groupLabel(groupBy)} ${s.label}` : s.label}</span>
+          {@render seriesName(s.label, 'lab')}
           {#if s.n}<span class="faint">n={s.n}</span>{/if}
           <span class="mono" class:errc={s.nonfinite}>· {s.nonfinite ? 'NaN' : fmtNum(s.last)}</span>
         </button>
@@ -313,8 +445,9 @@
     </div>
     <div class="knobs">
       <select
-        class="input sm"
+        class="input sm groupsel"
         value={router.get('group') || (groupBy ?? 'none')}
+        title={groupBy ? `group by ${groupBy}` : 'no grouping'}
         onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
         aria-label="Group by"
       >
@@ -400,12 +533,15 @@
     </div>
   </section>
 
-  <section class="focus">
+  <section class="focus" class:full bind:this={focusEl}>
     <div class="card main">
       <div class="tabs">
         {#each tabs as m (m)}
-          <button class="mono tab" aria-pressed={m === focus} onclick={() => router.set({ metric: m, zoom: null })}
-            >{m}</button
+          <button
+            class="mono tab"
+            aria-pressed={m === focus}
+            title={m}
+            onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
           >
         {/each}
         <span class="note">
@@ -417,6 +553,20 @@
                 ? 'mean ± std'
                 : agg
               : 'drag to zoom · double-click to reset'}
+          <button
+            class="btn btn-ghost sm icon-btn"
+            title="Add this chart to a report"
+            aria-label="Add chart to a report"
+            disabled={savingChart || !focusData}
+            onclick={addChartToReport}><Icon name="bookmark" size={15} /></button
+          >
+          <button
+            class="btn btn-ghost sm icon-btn"
+            title={full ? 'Exit full screen (Esc)' : 'Full screen'}
+            aria-label={full ? 'Exit full screen' : 'Full screen'}
+            aria-pressed={full}
+            onclick={toggleFull}><Icon name={full ? 'shrink' : 'expand'} size={15} /></button
+          >
         </span>
       </div>
       <LineChart
@@ -429,7 +579,7 @@
         {highlight}
         {colorOf}
         themeVersion={app.themeVersion}
-        height={420}
+        height={full ? Math.max(320, innerHeight - (alerts.length ? 190 : 120)) : 420}
         onCursor={(x, v) => {
           if (!pinned) {
             cursorX = x;
@@ -451,9 +601,9 @@
               onclick={() => showAlert(a)}
             >
               <Icon name="alert" size={13} />
-              <span class="mono">{a.name}</span>
-              <span>{a.alert.message}</span>
-              {#if a.alert.rank}<span class="mono faint">rank {a.alert.rank}</span>{/if}
+              <span class="mono aname">{a.name}</span>
+              <span class="amsg">{a.alert.message}</span>
+              {#if a.alert.rank}<span class="mono faint keep">rank {a.alert.rank}</span>{/if}
             </button>
           {/each}
           {#if alerts.length > 12}<span class="faint">+{alerts.length - 12} more</span>{/if}
@@ -467,22 +617,22 @@
         >
       </div>
       <div class="ix mono">
-        {cursorX === null
-          ? lastValues.length
-            ? `latest · ${fmtX(Math.max(...lastValues.map((v) => v.x)))}`
-            : '—'
-          : fmtX(cursorX)}
+        {#if xRead.prefix}<span class="keep">{xRead.prefix}</span>{/if}
+        {#if xRead.name}<span class="trunc" title={xRead.name}>{xRead.name}</span>{/if}
+        <span class="keep">{xRead.value}</span>
       </div>
       <div class="im">
-        <span class="mono">{focus}</span><span class="faint">{lower ? 'lowest first' : 'highest first'}</span>
+        <span class="mono trunc" title={focus}>{focus}</span><span class="faint keep"
+          >{lower ? 'lowest first' : 'highest first'}</span
+        >
       </div>
       {#each inspector as v (v.label)}
         <div class="irow" class:hl={highlight === v.label}>
           <div class="itop">
             <Marker index={colorIndex.get(v.label) ?? v.series} color={colorOf(v.label, v.series)} />
-            <span class="ilab">{groupBy ? `${groupLabel(groupBy)} ${v.label}` : v.label}</span>
-            <span class="mono ival">{fmtNum(v.value)}</span>
-            {#if groupBy && v.lo !== null && v.hi !== null && agg === 'std'}<span class="mono faint"
+            {@render seriesName(v.label, 'ilab')}
+            <span class="mono ival keep">{fmtNum(v.value)}</span>
+            {#if groupBy && v.lo !== null && v.hi !== null && agg === 'std'}<span class="mono faint keep"
                 >±{fmtNum((v.hi - v.lo) / 2, 2)}</span
               >{/if}
           </div>
@@ -498,12 +648,65 @@
   </section>
 
   <section class="all">
-    <h3>All metrics <span class="faint">click one to bring it into focus</span></h3>
+    <div class="all-head">
+      <h3>All metrics <span class="faint">click one to bring it into focus</span></h3>
+      <span class="label">Grid</span>
+      <label class="opt"
+        ><span class="faint">columns</span>
+        <select
+          class="input sm"
+          aria-label="Chart columns"
+          value={String(gridCols)}
+          onchange={(e) => setGrid('ccols', e.currentTarget.value)}
+        >
+          <option value="0">fit</option>
+          {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+        </select></label
+      >
+      <label class="opt"
+        ><span class="faint">rows</span>
+        <select
+          class="input sm"
+          aria-label="Chart rows per page"
+          value={String(gridRows)}
+          onchange={(e) => setGrid('crows', e.currentTarget.value)}
+        >
+          {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          <option value="0">all</option>
+        </select></label
+      >
+    </div>
     {#each sections as [prefix, list] (prefix)}
+      {@const size = gridRows ? perRow * gridRows : list.length}
+      {@const pageCount = Math.max(1, Math.ceil(list.length / size))}
+      {@const page = Math.min(gridPages[prefix] ?? 0, pageCount - 1)}
       <div class="sect">
-        <div class="label">{prefix}</div>
-        <div class="grid">
-          {#each list as m (m)}
+        <div class="sect-head">
+          <div class="label trunc" title={prefix}>{prefix}</div>
+          {#if pageCount > 1}
+            <span class="pager">
+              <button
+                class="btn btn-ghost sm"
+                aria-label="Previous charts of {prefix}"
+                disabled={page === 0}
+                onclick={() => (gridPages = { ...gridPages, [prefix]: page - 1 })}>‹</button
+              >
+              <span class="mono faint">{page + 1} / {pageCount}</span>
+              <button
+                class="btn btn-ghost sm"
+                aria-label="Next charts of {prefix}"
+                disabled={page >= pageCount - 1}
+                onclick={() => (gridPages = { ...gridPages, [prefix]: page + 1 })}>›</button
+              >
+            </span>
+          {/if}
+        </div>
+        <div
+          class="grid"
+          bind:clientWidth={gridWidth}
+          style={gridCols ? `grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))` : ''}
+        >
+          {#each list.slice(page * size, page * size + size) as m (m)}
             <SmallChart
               metric={m}
               runs={runKeys}
@@ -531,6 +734,50 @@
 {/if}
 
 <style>
+  /* Long names shrink with an ellipsis (full text in the title attribute); values never do. */
+  .trunc {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .keep {
+    flex: none;
+    white-space: nowrap;
+  }
+  .sname {
+    display: flex;
+    gap: 0.35em;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .gkey,
+  .gval {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gkey {
+    flex: 0 8 auto;
+    min-width: 3.5em;
+    max-width: 45%;
+    color: var(--muted);
+  }
+  .gval {
+    flex: 0 1 auto;
+  }
+  .sub .nfname {
+    flex: 0 8 auto;
+    min-width: 5em;
+  }
+  .sub .nfmetric {
+    flex: 0 1 auto;
+  }
+  .groupsel {
+    max-width: 260px;
+  }
   .xmetric {
     max-width: 210px;
     font-size: 12.5px;
@@ -561,7 +808,22 @@
     color: var(--warn);
     background: var(--warn-bg);
     max-width: 100%;
+    min-width: 0;
     text-align: left;
+  }
+  .alert .aname,
+  .alert .amsg {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* the run name gives way before the message does */
+  .alert .aname {
+    flex: 0 8 auto;
+  }
+  .alert .amsg {
+    flex: 0 1 auto;
   }
   .alert.err {
     color: var(--err);
@@ -593,6 +855,12 @@
     gap: 4px;
     min-width: 0;
   }
+  .lrow {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    min-width: 0;
+  }
   .stat .label .faint {
     text-transform: none;
     letter-spacing: 0;
@@ -615,6 +883,15 @@
     align-items: center;
     flex-wrap: wrap;
     min-height: 20px;
+    min-width: 0;
+  }
+  .sub.nowrap {
+    flex-wrap: nowrap;
+  }
+  .sub .nf {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
   }
   .controls {
     display: flex;
@@ -627,6 +904,7 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    min-width: 0;
   }
   .showall {
     align-self: center;
@@ -638,12 +916,14 @@
     color: var(--text);
     font-size: 13.5px;
     box-shadow: var(--lift);
+    max-width: 100%;
   }
   .legend-chip.off {
     opacity: 0.4;
   }
   .legend-chip .lab {
     max-width: 220px;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -692,6 +972,11 @@
     border-radius: 8px;
     color: var(--muted);
     font-size: 13.5px;
+    max-width: 280px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tab[aria-pressed='true'] {
     background: var(--panel-2);
@@ -717,15 +1002,22 @@
   .ih {
     display: flex;
     justify-content: space-between;
+    gap: 8px;
     font-size: 12px;
   }
   .ix {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    min-width: 0;
     font-size: 19px;
     font-weight: 600;
   }
   .im {
     display: flex;
     justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
     font-size: 12.5px;
   }
   .irow {
@@ -736,6 +1028,7 @@
     flex-direction: column;
     gap: 6px;
     border: 1px solid transparent;
+    min-width: 0;
   }
   .irow.hl {
     border-color: var(--accent);
@@ -745,13 +1038,10 @@
     align-items: center;
     gap: 8px;
     font-size: 13.5px;
+    min-width: 0;
   }
   .ilab {
     flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .ival {
     font-weight: 600;
@@ -771,10 +1061,66 @@
     font-size: 13px;
     margin-top: auto;
   }
+  .all-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 8px 0 10px;
+  }
+  .all-head h3 {
+    margin: 0 auto 0 0;
+  }
   .all h3 {
     font-size: 16px;
     font-weight: 650;
-    margin: 8px 0 10px;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .opt select {
+    height: 30px;
+  }
+  .sect-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .sect-head .label {
+    min-width: 0;
+  }
+  .pager {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    flex: none;
+  }
+  .pager .btn {
+    height: 26px;
+    padding: 0 8px;
+  }
+  .icon-btn {
+    height: 28px;
+    width: 30px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+  }
+  .focus.full {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: var(--bg);
+    padding: 16px;
+    overflow: auto;
+    grid-template-columns: minmax(0, 1fr) 330px;
   }
   .all h3 .faint {
     font-size: 13px;
@@ -783,6 +1129,7 @@
   }
   .sect {
     margin-bottom: 14px;
+    min-width: 0;
   }
   .sect .label {
     margin: 4px 2px 8px;

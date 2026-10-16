@@ -178,14 +178,14 @@ run.use_artifact("dataset:latest")</pre>
       {#each byName as [k, versions] (k)}
         <div class="aname">
           <Icon name="artifact" size={15} />
-          <span class="grow mono">{versions[0].name}</span>
-          <span class="faint small">{versions[0].project}</span>
+          <span class="grow mono" title={versions[0].name}>{versions[0].name}</span>
+          <span class="faint small trunc proj" title={versions[0].project}>{versions[0].project}</span>
         </div>
         {#each versions as a (id(a))}
           <button class="ver" class:on={selected && id(a) === id(selected)} onclick={() => router.set({ art: id(a) })}>
             <span class="mono">v{a.version}</span>
-            <span class="faint small grow">{a.manifest.type ?? ''}</span>
-            <span class="faint small">{fmtAgo(a.manifest.created)}</span>
+            <span class="faint small grow" title={a.manifest.type ?? ''}>{a.manifest.type ?? ''}</span>
+            <span class="faint small keep">{fmtAgo(a.manifest.created)}</span>
           </button>
         {/each}
       {/each}
@@ -195,14 +195,16 @@ run.use_artifact("dataset:latest")</pre>
       <section class="main">
         <div class="card head">
           <div class="title">
-            <h2 class="mono">{selected.name}:v{selected.version}</h2>
-            {#if selected.manifest.type}<span class="chip">{selected.manifest.type}</span>{/if}
+            <h2 class="mono trunc" title="{selected.name}:v{selected.version}">{selected.name}:v{selected.version}</h2>
+            {#if selected.manifest.type}<span class="chip keep">{selected.manifest.type}</span>{/if}
             {#if selected.version === Math.max(...artifacts
                   .filter((a) => a.project === selected.project && a.name === selected.name)
-                  .map((a) => a.version))}<span class="chip latest">latest</span>{/if}
+                  .map((a) => a.version))}<span class="chip latest keep">latest</span>{/if}
           </div>
           <div class="facts">
-            <div><span class="label">Project</span><span>{selected.project}</span></div>
+            <div class="fact-name">
+              <span class="label">Project</span><span class="trunc" title={selected.project}>{selected.project}</span>
+            </div>
             <div><span class="label">Created</span><span>{fmtDate(selected.manifest.created)}</span></div>
             <div><span class="label">Size</span><span class="mono">{fmtBytes(selected.size)}</span></div>
             <div><span class="label">Files</span><span class="mono">{selected.manifest.files?.length ?? 0}</span></div>
@@ -236,7 +238,8 @@ run.use_artifact("dataset:latest")</pre>
                   onkeydown={(e) => e.key === 'Enter' && openNode(n)}
                 >
                   <rect width={NODE_W} height={NODE_H} rx={n.kind === 'artifact' ? 8 : 12} />
-                  <text class="nl mono" x="12" y="19">{n.label.length > 21 ? n.label.slice(0, 20) + '…' : n.label}</text
+                  <title>{n.label}</title>
+                  <text class="nl mono" x="12" y="19">{n.label.length > 20 ? n.label.slice(0, 18) + '…' : n.label}</text
                   >
                   <text class="ns" x="12" y="34">{n.kind === 'run' ? `run · ${n.sub}` : n.sub}</text>
                 </g>
@@ -250,7 +253,9 @@ run.use_artifact("dataset:latest")</pre>
             <div class="label">Produced by</div>
             {#each selected.producers as k (k)}
               <button class="runlink" onclick={() => router.go('runs', { cmp: k })}>
-                <Status status={app.runByKey(k)?.status ?? 'finished'} /><span class="mono">{runName(k)}</span>
+                <Status status={app.runByKey(k)?.status ?? 'finished'} /><span class="mono trunc" title={runName(k)}
+                  >{runName(k)}</span
+                >
               </button>
             {:else}
               <p class="faint">Logged outside a run.</p>
@@ -258,7 +263,9 @@ run.use_artifact("dataset:latest")</pre>
             <div class="label gap">Used by</div>
             {#each selected.consumers as k (k)}
               <button class="runlink" onclick={() => router.go('runs', { cmp: k })}>
-                <Status status={app.runByKey(k)?.status ?? 'finished'} /><span class="mono">{runName(k)}</span>
+                <Status status={app.runByKey(k)?.status ?? 'finished'} /><span class="mono trunc" title={runName(k)}
+                  >{runName(k)}</span
+                >
               </button>
             {:else}
               <p class="faint">No run has used this version yet.</p>
@@ -267,7 +274,9 @@ run.use_artifact("dataset:latest")</pre>
           <div class="card box">
             <div class="label">Metadata</div>
             {#each Object.entries(selected.manifest.metadata ?? {}) as [k, v] (k)}
-              <div class="kv"><span class="mono faint">{k}</span><span class="mono">{fmtValue(v)}</span></div>
+              <div class="kv">
+                <span class="mono faint trunc" title={k}>{k}</span><span class="mono kval">{fmtValue(v)}</span>
+              </div>
             {:else}
               <p class="faint">None.</p>
             {/each}
@@ -281,8 +290,8 @@ run.use_artifact("dataset:latest")</pre>
             <tbody>
               {#each selected.manifest.files ?? [] as f (f.path)}
                 <tr>
-                  <td class="mono">{f.path}</td>
-                  <td class="mono right">{fmtBytes(f.size)}</td>
+                  <td class="mono path">{f.path}</td>
+                  <td class="mono right keep">{fmtBytes(f.size)}</td>
                   <td class="mono faint" title={f.sha256}>{f.sha256.slice(0, 12)}…</td>
                 </tr>
               {/each}
@@ -305,6 +314,7 @@ run.use_artifact("dataset:latest")</pre>
     align-items: start;
   }
   .side {
+    min-width: 0;
     padding: 16px 12px;
     display: flex;
     flex-direction: column;
@@ -334,6 +344,7 @@ run.use_artifact("dataset:latest")</pre>
     font-size: 13px;
     color: var(--text);
     text-align: left;
+    min-width: 0;
   }
   .ver:hover {
     background: var(--panel-2);
@@ -347,9 +358,41 @@ run.use_artifact("dataset:latest")</pre>
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .small {
     font-size: 12px;
+  }
+  /* Long names shrink with an ellipsis (full text in the title attribute); values never do. */
+  .trunc {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .keep {
+    flex: none;
+    white-space: nowrap;
+  }
+  .proj {
+    max-width: 35%;
+  }
+  .kv .trunc {
+    flex: none;
+    max-width: 45%;
+  }
+  .fact-name {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .kval {
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .path {
+    overflow-wrap: anywhere;
   }
   .faint {
     color: var(--faint);
@@ -370,6 +413,7 @@ run.use_artifact("dataset:latest")</pre>
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
   }
   h2 {
     margin: 0;
@@ -396,6 +440,7 @@ run.use_artifact("dataset:latest")</pre>
     background: var(--panel-2);
     border-radius: 8px;
     font-size: 12.5px;
+    overflow-x: auto;
   }
   .lineage {
     padding: 14px;
@@ -451,10 +496,11 @@ run.use_artifact("dataset:latest")</pre>
   }
   .cols {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 16px;
   }
   .box {
+    min-width: 0;
     padding: 14px 16px;
     display: flex;
     flex-direction: column;
@@ -477,6 +523,8 @@ run.use_artifact("dataset:latest")</pre>
     color: var(--text);
     font-size: 13px;
     text-align: left;
+    min-width: 0;
+    max-width: 100%;
   }
   .runlink:hover .mono {
     color: var(--accent);
@@ -512,6 +560,7 @@ run.use_artifact("dataset:latest")</pre>
   }
   code {
     font-family: var(--mono);
+    overflow-wrap: anywhere;
   }
   .empty {
     padding: 40px;

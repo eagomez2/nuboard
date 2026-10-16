@@ -9,13 +9,14 @@ import glob
 import hashlib
 import os
 import re
+import shutil
 import sys
 import threading
 import time
 import traceback
 import warnings
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
 from . import _env, _fs
@@ -85,6 +86,46 @@ def _config_to_dict(config: Any) -> dict[str, Any]:
     )
 
 
+def _relative_name(name: str) -> PurePosixPath:
+    """Return `name` as a safe relative path inside a run's `files/` folder.
+
+    Args:
+        name: Relative name; `/` or a backslash separates subfolders.
+
+    Returns:
+        The name as a relative path without `.` parts.
+
+    Raises:
+        ValueError: If `name` is empty, absolute or contains `..`.
+    """
+    normalized = name.replace("\\", "/")
+    rel = PurePosixPath(normalized)
+
+    if rel.is_absolute() or PureWindowsPath(name).anchor:
+        raise ValueError(f"file name must be relative: {name!r}")
+
+    if ".." in rel.parts:
+        raise ValueError(f"file name must not contain '..': {name!r}")
+
+    if not rel.parts:
+        raise ValueError(f"file name must not be empty: {name!r}")
+
+    return rel
+
+
+def _copy_atomic(src: Path, dest: Path) -> None:
+    """Copy `src` to `dest` via a temporary file next to `dest` and `os.replace`."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(f".{dest.name}.{_fs.random_suffix(4)}.tmp")
+
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def _suffix_from(shared_id: str) -> str:
     """Derive a 6-character run id suffix from an id shared by every rank."""
     digest = hashlib.sha1(shared_id.encode("utf-8")).digest()
@@ -133,8 +174,9 @@ class Run:
             to `"run"`.
         config: Hyperparameters: a mapping, a dataclass instance, an OmegaConf
             config, an object with `to_dict()` or a namespace such as
-            `argparse.Namespace`. Saved in `run.json` and `files/config.json`. When
-            resuming with no config, the stored one is kept.
+            `argparse.Namespace`. Saved in `run.json`. When resuming with no config,
+            the stored one is kept. To keep a config file as it is (YAML, TOML,
+            Hydra's `.hydra/` folder, ...), attach it with `Run.add_file`.
         dir: Root folder for projects. Defaults to `$NUBOARD_DIR` or `./experiments`.
         tags: Tags shown and searchable in the viewer.
         notes: Free-form notes.
@@ -385,7 +427,6 @@ class Run:
             "shared_id": self.dist.shared_id,
         }
         meta["sessions"].append({"session": self.session, "started": self.started, "ended": None})
-        _fs.atomic_write_json(files / "config.json", self.config)
 
         if capture_env:
             git, diff = _env.git_info()
@@ -701,6 +742,55 @@ class Run:
         """Return `step`, or the step of the latest `log` call when it is None."""
         return self._last_step if step is None else step
 
+    # -- files --------------------------------------------------------------------
+    def add_file(self, path: str | os.PathLike[str], name: str | None = None) -> Path | None:
+        """Copy a file or folder into the run's `files/` folder.
+
+        Use it to keep config files in whatever format they come in (YAML, TOML,
+        Hydra's `.hydra/` folder, ...) or any other file next to the run. The viewer
+        lists every file in `files/` and diffs them between runs. A folder is copied
+        recursively. Each file is copied to a temporary name and moved into place
+        with `os.replace`, so readers never see a half-written file; existing files
+        with the same name are overwritten. Only rank 0 copies; the copy happens on
+        the calling thread.
+
+        Args:
+            path: File or folder to copy.
+            name: Destination inside `files/`, such as `"config.yaml"` or
+                `"hydra/config.yaml"` (subfolders are created). Defaults to the base
+                name of `path`.
+
+        Returns:
+            The destination path, or None on a non-zero rank.
+
+        Raises:
+            FileNotFoundError: If `path` does not exist (on rank 0).
+            ValueError: If `name` is empty, absolute or contains `..`.
+        """
+        src = Path(path)
+        rel = _relative_name(src.resolve().name if name is None else name)
+
+        if not self.dist.is_main:
+            return None
+
+        if not src.exists():
+            raise FileNotFoundError(f"cannot add file: {src} does not exist")
+
+        files = self.path / "files"
+        dest = files.joinpath(*rel.parts)
+
+        if src.is_dir():
+            for folder, _, names in os.walk(src):
+                for fname in names:
+                    file = Path(folder) / fname
+                    _copy_atomic(file, dest / file.relative_to(src))
+
+            dest.mkdir(parents=True, exist_ok=True)
+        else:
+            _copy_atomic(src, dest)
+
+        return dest
+
     # -- artifacts ----------------------------------------------------------------
     def add_artifact(
         self,
@@ -895,8 +985,9 @@ def init(
             to `"run"`.
         config: Hyperparameters: a mapping, a dataclass instance, an OmegaConf
             config, an object with `to_dict()` or a namespace such as
-            `argparse.Namespace`. Saved in `run.json` and `files/config.json`. When
-            resuming with no config, the stored one is kept.
+            `argparse.Namespace`. Saved in `run.json`. When resuming with no config,
+            the stored one is kept. To keep a config file as it is (YAML, TOML,
+            Hydra's `.hydra/` folder, ...), attach it with `Run.add_file`.
         dir: Root folder for projects. Defaults to `$NUBOARD_DIR` or `./experiments`.
         tags: Tags shown and searchable in the viewer.
         notes: Free-form notes.

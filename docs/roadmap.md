@@ -14,6 +14,10 @@ the [changelog](changelog.md) for what each version added.
 - **0.3**: charts against any metric (tokens, epochs) and interactive Plotly,
   Vega-Lite and Bokeh figures; compare up to eight runs.
 - **0.4**: audio logging with a waveform and spectrogram player.
+- **0.5**: `add_*` naming, Google-style docstrings, MIT license.
+- **0.6**: TensorBoard import.
+- **0.7**: Media page rebuilt (kinds, grid, best-metric step), Markdown
+  reports, run notes and typed properties.
 
 ## Next
 

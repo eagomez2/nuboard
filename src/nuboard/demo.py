@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 import random
+import struct
 import tempfile
 import threading
 import time
+import zlib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from . import _fs
 from .collection import save_collection
+from .reports import save_fields, save_report, save_snapshot
 from .run import init
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
@@ -34,6 +39,40 @@ def _llm_config(lr: float, seed: int) -> dict[str, Any]:
         "train": {"steps": LLM_STEPS, "precision": "bf16", "grad_clip": 1.0},
         "seed": seed,
     }
+
+
+def _yaml(obj: dict[str, Any], indent: int = 0) -> str:
+    """Return a small config of dicts, lists and scalars as YAML text."""
+
+    def scalar(v: Any) -> str:
+        if v is None:
+            return "null"
+
+        if isinstance(v, bool):
+            return "true" if v else "false"
+
+        if isinstance(v, list):
+            return "[" + ", ".join(scalar(x) for x in v) + "]"
+
+        return str(v)
+
+    lines = []
+
+    for key, value in obj.items():
+        if isinstance(value, dict):
+            lines.append(f"{' ' * indent}{key}:")
+            lines.append(_yaml(value, indent + 2).rstrip("\n"))
+        else:
+            lines.append(f"{' ' * indent}{key}: {scalar(value)}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _add_config_file(run: Any, config: dict[str, Any]) -> None:
+    """Attach `config` to `run` as `files/config.yaml`, as a YAML-based project would."""
+    path = Path(tempfile.mkdtemp()) / "config.yaml"
+    path.write_text(_yaml(config), "utf-8")
+    run.add_file(path)
 
 
 def _lr_at(step: int, lr: float) -> float:
@@ -164,6 +203,7 @@ def _llm_runs(root: Path, base: float) -> None:
             group=f"lr={lr:g}",
             _started=started,
         )
+        _add_config_file(run, _llm_config(lr, seed))
         run.use_artifact("fineweb-edu:v2")
         sec_per_step = 0.22
         t = started
@@ -315,6 +355,8 @@ def _pattern(seed: int, epoch: int, kind: str) -> Any:
 def _vit_runs(root: Path, base: float) -> None:
     """Write the `vit-ablations` project: four augmentations times two seeds, with media."""
     gains = {"none": 0.0, "randaug": 0.021, "mixup": 0.015, "cutmix": 0.026}
+    ids: dict[str, str] = {}
+    curves: dict[str, list[float]] = {}
 
     for i, (aug, seed) in enumerate((a, s) for a in gains for s in (0, 1)):
         rng = random.Random(f"{aug}{seed}")
@@ -337,6 +379,7 @@ def _vit_runs(root: Path, base: float) -> None:
             capture_env=False,
             _started=started,
         )
+        _add_config_file(run, config)
         t = started
 
         for epoch in range(101):
@@ -350,10 +393,12 @@ def _vit_runs(root: Path, base: float) -> None:
                     + rng.gauss(0, 0.02),
                     "val/acc": acc,
                     "val/loss": 1.6 - acc + rng.gauss(0, 0.01),
+                    **_vit_extra(epoch, acc, rng),
                 },
                 step=epoch,
                 time=t,
             )
+            curves.setdefault(f"{aug}-s{seed}", []).append(acc)
 
             if epoch % 20 == 0:
                 img = _pattern(seed, epoch, aug)
@@ -368,7 +413,156 @@ def _vit_runs(root: Path, base: float) -> None:
                 run.add_figure("eval/per_class", _vega_per_class(per_class, epoch), step=epoch)
                 run.add_figure("eval/confusion", _plotly_confusion(rng, per_class), step=epoch)
 
+        ids[f"{aug}-s{seed}"] = run.id
         run.finish(_ended=t)
+
+    _vit_notes(root / "vit-ablations", ids, curves)
+
+
+def _vit_extra(epoch: int, acc: float, rng: random.Random) -> dict[str, float]:
+    """Return the other `vit-ablations` metrics of one epoch, enough to fill the chart grid."""
+    lr = 5e-4 * min(1.0, (epoch + 1) / 5) * 0.5 * (1 + math.cos(math.pi * epoch / 100))
+    out = {
+        "train/lr": lr,
+        "train/grad_norm": 1.2 * math.exp(-epoch / 60) + 0.3 + abs(rng.gauss(0, 0.05)),
+        "val/top5": min(0.999, acc + 0.12 + rng.gauss(0, 0.002)),
+        "val/calibration_error": 0.08 * math.exp(-epoch / 40) + 0.02 + abs(rng.gauss(0, 0.003)),
+        "sys/gpu_util": 0.9 + rng.gauss(0, 0.02),
+        "sys/gpu_mem_gb": 21.5 + rng.gauss(0, 0.1),
+        "sys/images_per_sec": 2400 + rng.gauss(0, 40),
+    }
+
+    for i, name in enumerate(_CLASSES):  # one chart per class: a section with many charts
+        out[f"per_class/acc_{name}"] = min(0.999, acc + 0.05 * math.sin(i) + rng.gauss(0, 0.006))
+
+    return out
+
+
+def _png(width: int, height: int, pixels: bytearray) -> bytes:
+    """Encode RGB `pixels` (row by row) as a PNG with the standard library."""
+    rows = b"".join(
+        b"\x00" + bytes(pixels[y * width * 3 : (y + 1) * width * 3]) for y in range(height)
+    )
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        """Return one PNG chunk."""
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def _line_chart_png(curves: list[tuple[list[float], tuple[int, int, int]]]) -> bytes:
+    """Draw curves on a white 720x300 image: the snapshot of a chart saved into a report."""
+    w, h, pad = 720, 300, 24
+    px = bytearray(b"\xff" * (w * h * 3))
+    lo = min(min(c) for c, _ in curves)
+    hi = max(max(c) for c, _ in curves)
+
+    def dot(x: int, y: int, rgb: tuple[int, int, int]) -> None:
+        """Paint a 2x2 dot."""
+
+        for dx in (0, 1):
+            for dy in (0, 1):
+                if 0 <= x + dx < w and 0 <= y + dy < h:
+                    i = ((y + dy) * w + x + dx) * 3
+                    px[i : i + 3] = bytes(rgb)
+
+    for k in range(5):  # light grid lines
+        y = pad + k * (h - 2 * pad) // 4
+
+        for x in range(pad, w - pad):
+            px[(y * w + x) * 3 : (y * w + x) * 3 + 3] = b"\xe4\xe7\xec"
+
+    for values, rgb in curves:
+        n = len(values) - 1
+        pts = [
+            (pad + i * (w - 2 * pad) / n, h - pad - (v - lo) / (hi - lo) * (h - 2 * pad))
+            for i, v in enumerate(values)
+        ]
+
+        for (x0, y0), (x1, y1) in itertools.pairwise(pts):
+            steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+
+            for s in range(steps + 1):
+                dot(round(x0 + (x1 - x0) * s / steps), round(y0 + (y1 - y0) * s / steps), rgb)
+
+    return _png(w, h, px)
+
+
+def _vit_notes(project: Path, ids: dict[str, str], curves: dict[str, list[float]]) -> None:
+    """Add typed properties, a Markdown note and a report to the `vit-ablations` demo."""
+    save_fields(
+        project,
+        [
+            {"name": "verdict", "type": "choice", "options": ["keep", "drop", "rerun"]},
+            {"name": "topics", "type": "tags", "options": ["augmentation", "baseline"]},
+            {"name": "gpu_hours", "type": "number", "unit": "h"},
+            {"name": "reviewed", "type": "bool"},
+            {"name": "paper", "type": "link", "description": "Where the idea comes from"},
+        ],
+    )
+    values = {
+        "none-s0": {"verdict": "keep", "topics": ["baseline"], "gpu_hours": 6.5},
+        "cutmix-s0": {
+            "verdict": "keep",
+            "topics": ["augmentation"],
+            "gpu_hours": 6.8,
+            "reviewed": True,
+            "paper": "https://arxiv.org/abs/1905.04899",
+        },
+        "mixup-s1": {"verdict": "rerun", "topics": ["augmentation"], "gpu_hours": 6.7},
+    }
+    notes = {
+        "cutmix-s0": (
+            "**Best of the sweep** so far, about +2.6 points over the baseline.\n\n"
+            "- Gains show up after epoch 20\n"
+            "- Trucks and ships are still confused\n\n"
+            f"![Confusion at the last epoch](media:{ids['cutmix-s0']}/eval/confusion@100)\n"
+        ),
+    }
+
+    for name, run_id in ids.items():
+        if name not in values and name not in notes:
+            continue
+
+        path = project / "runs" / run_id / "annotations.json"
+        ann = _fs.read_json(path, {}) or {}
+        ann["fields"] = values.get(name, {})
+
+        if name in notes:
+            ann["notes"] = notes[name]
+
+        _fs.atomic_write_json(path, ann)
+
+    # a chart saved from the Charts page: a PNG snapshot, drawn live by the viewer
+    shot = save_snapshot(
+        project,
+        "augmentation-findings",
+        _line_chart_png([(curves["cutmix-s0"], (0, 114, 178)), (curves["none-s0"], (230, 159, 0))]),
+    )
+    runs = ",".join(ids[n] for n in ("cutmix-s0", "none-s0"))
+    spec = urlencode({"metric": "val/acc", "runs": runs, "x": "step", "smooth": "0.6"})
+    save_report(
+        project,
+        "augmentation-findings",
+        "# Augmentation findings\n\n"
+        "CutMix gives the largest gain on ViT-S/16; MixUp is close but noisier across seeds.\n\n"
+        "## Samples\n\n"
+        f"![CutMix samples at epoch 100](media:{ids['cutmix-s0']}/samples/augmented@100)\n\n"
+        f"![Baseline samples at epoch 100](media:{ids['none-s0']}/samples/augmented@100)\n\n"
+        "## Accuracy\n\n"
+        f'![val/acc, CutMix against the baseline]({shot} "chart:{spec}")\n\n'
+        "## Errors\n\n"
+        f"![CutMix confusion](media:{ids['cutmix-s0']}/eval/confusion@100)\n\n"
+        "| run | val/acc |\n|---|---|\n| none-s0 | 0.80 |\n| cutmix-s0 | 0.83 |\n",
+    )
 
 
 _CLASSES = ["plane", "car", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]

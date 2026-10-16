@@ -23,15 +23,18 @@ path.
         media.r<rank>.pack                images, figures and HTML appended back to back
         data.parquet                      compacted scalars (written at finish, optional)
         files/
-          config.json                     the config passed to init
           requirements.txt                installed packages (pip freeze format)
           git.patch                       `git diff HEAD` at start (only if dirty)
           command.txt                     the command line that started the run
+          ...                             files and folders added with run.add_file
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
       files/...                           the artifact's files
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
+    reports/<name>.md                     Markdown reports written in the viewer
+    reports/files/*.png                   chart snapshots embedded in reports
+    fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
 
@@ -61,7 +64,7 @@ ignore keys they do not know.
 | `project`, `name`, `group` | str | As given to `init`. |
 | `tags` | list[str] | Tags given to `init` (the viewer adds its own in `annotations.json`). |
 | `notes` | str | Notes given to `init`. |
-| `config` | object | The config (also saved as `files/config.json`). |
+| `config` | object | The config passed to `init`. |
 | `status` | str | `running`, `finished`, `crashed` or `killed`. |
 | `created`, `started`, `ended`, `heartbeat` | float | Unix seconds. `heartbeat` is refreshed every 10 s while running. |
 | `sessions` | list | One `{session, started, ended}` per start or resume. |
@@ -82,10 +85,11 @@ shown as **lost** (the process died without running its exit handlers, e.g.
 ## `annotations.json`
 
 Owned by the viewer, written atomically: `starred` (bool), `archived` (bool),
-`reviewed` (bool), `notes` (str, overrides `run.json` notes in the viewer),
-`tags` (list, merged with `run.json` tags), `fields` (object of custom fields:
-string, number or boolean values). Keeping these inside the run folder means
-they travel with the run.
+`reviewed` (bool), `notes` (Markdown str, overrides `run.json` notes in the
+viewer), `tags` (list, merged with `run.json` tags), `fields` (object of custom
+fields and property values: string, number, boolean or list-of-string values;
+lists hold the values of `tags` properties). Keeping these inside the run
+folder means they travel with the run.
 
 ### `alerts` in `run.json`
 
@@ -229,6 +233,49 @@ deleting the file deletes the collection.
 
 `{"page": "charts", "params": {"q": "...", "metric": "...", ...}}`, where
 `params` are the viewer's URL parameters. Safe to commit.
+
+## Reports: `reports/<name>.md`
+
+Plain Markdown, written atomically by the viewer and safe to edit by hand or
+commit. The first `# ` heading is the report's title. A logged item is embedded
+with an image line whose target is a media reference:
+
+```markdown
+![CutMix samples at epoch 100](media:20261016-0815_cutmix-s0_ab12cd/samples/augmented@100)
+```
+
+that is `media:<run id>/<key>@<step>`, where the run id is the run's folder
+name in the same project and `<key>` may contain `/`. A reference that no
+longer resolves is shown as missing.
+
+A chart saved from the Charts page is an ordinary image of a PNG snapshot in
+`reports/files/`, whose title describes the chart as a URL query string after
+`chart:`:
+
+```markdown
+![val/acc](files/findings-1a2b3c4d.png "chart:metric=val%2Facc&runs=<key>,<key>&x=step&smooth=0.6")
+```
+
+Keys: `metric`, `runs` (comma-separated run keys), `x`, `group`, `agg`,
+`smooth`, `raw=0`, `robust=0`, `log=1`, `zoom=<from>~<to>` and `hide`
+(series labels separated by newlines). The viewer draws the chart live from
+these and shows the snapshot when it cannot; other Markdown viewers show the
+snapshot.
+
+## Property definitions: `fields.json`
+
+```json
+{"fields": [
+  {"name": "verdict", "type": "choice", "options": ["keep", "drop", "rerun"]},
+  {"name": "gpu_hours", "type": "number", "unit": "h"},
+  {"name": "paper", "type": "link", "description": "Where the idea comes from"}
+]}
+```
+
+`type` is one of `text`, `number`, `choice`, `tags`, `bool`, `date` (an ISO
+`YYYY-MM-DD` string) or `link`. `options` is used by `choice` and `tags`,
+`unit` by `number`; `description` is optional. The values live in each run's
+`annotations.json` `fields`; a value without a definition is shown as text.
 
 ## The catalog cache
 

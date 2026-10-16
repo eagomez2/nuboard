@@ -1,60 +1,189 @@
 <script lang="ts">
-  import AudioFrame from '../components/AudioFrame.svelte';
-  import FigureFrame from '../components/FigureFrame.svelte';
-  import { api, type MediaItem } from '../lib/api';
+  import Icon from '../components/Icon.svelte';
+  import MediaCard from '../components/MediaCard.svelte';
+  import MediaView from '../components/MediaView.svelte';
+  import { api, type MediaItem, type RunBrief } from '../lib/api';
+  import { seriesVar } from '../lib/colors';
+  import { appendToReport, askReport } from '../lib/reports.svelte';
+  import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
+  import { MEDIA_KINDS, embedLine, kindOf, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
-  const MAX_RUNS = 16;
+  const MAX_RUNS = 48;
   const runs = $derived(app.visibleRuns().slice(0, MAX_RUNS));
+  const runIndex = $derived(new Map(runs.map((r, i) => [r.key, i])));
   let items = $state<Record<string, MediaItem[]>>({});
+  let loaded = $state(false);
 
   $effect(() => {
     const keys = runs.map((r) => r.key);
     Promise.all(keys.map((k) => api.media(k).then((res) => [k, res.items] as const))).then((pairs) => {
       items = Object.fromEntries(pairs);
+      loaded = true;
     });
   });
 
-  const mediaKeys = $derived.by(() => {
-    const map = new Map<string, { kind: string; runs: number }>();
-    for (const list of Object.values(items)) {
-      const seen = new Set<string>();
-      for (const it of list) {
-        if (!map.has(it.key)) map.set(it.key, { kind: it.kind, runs: 0 });
-        if (!seen.has(it.key)) {
-          map.get(it.key)!.runs++;
-          seen.add(it.key);
-        }
+  // -- what to show ---------------------------------------------------------------
+  const LABELS: Record<MediaKind, string> = {
+    image: 'Images',
+    audio: 'Audio',
+    figure: 'Figures',
+    html: 'HTML',
+    text: 'Text',
+  };
+  const kindCounts = $derived.by(() => {
+    const keys: Record<MediaKind, Set<string>> = {
+      image: new Set(),
+      audio: new Set(),
+      figure: new Set(),
+      html: new Set(),
+      text: new Set(),
+    };
+    for (const list of Object.values(items)) for (const it of list) keys[kindOf(it)].add(it.key);
+    return keys;
+  });
+  const available = $derived(MEDIA_KINDS.filter((k) => kindCounts[k].size));
+  const kinds = $derived.by(() => {
+    const picked = router.list('mkinds').filter((k): k is MediaKind => MEDIA_KINDS.includes(k as MediaKind));
+    return picked.length ? picked : available;
+  });
+  function toggleKind(k: MediaKind) {
+    const next = kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k];
+    router.set({ mkinds: next.length === available.length || !next.length ? null : next.join(',') });
+  }
+  function onlyKind(k: MediaKind) {
+    router.set({ mkinds: kinds.length === 1 && kinds[0] === k ? null : k });
+  }
+  const find = $derived(router.get('mfind'));
+  const findRe = $derived.by(() => {
+    try {
+      return find ? new RegExp(find, 'i') : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // key -> run key -> items sorted by step
+  const byKey = $derived.by(() => {
+    const map = new Map<string, { kind: MediaKind; runs: Map<string, MediaItem[]> }>();
+    for (const r of runs) {
+      for (const it of items[r.key] ?? []) {
+        const kind = kindOf(it);
+        if (!kinds.includes(kind)) continue;
+        if (find && !(findRe ? findRe.test(it.key) : it.key.toLowerCase().includes(find.toLowerCase()))) continue;
+        if (!map.has(it.key)) map.set(it.key, { kind, runs: new Map() });
+        const per = map.get(it.key)!.runs;
+        if (!per.has(r.key)) per.set(r.key, []);
+        per.get(r.key)!.push(it);
       }
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const v of map.values()) for (const list of v.runs.values()) list.sort((a, b) => a.step - b.step);
+    return new Map([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
   });
-  const key = $derived(
-    mediaKeys.some(([k]) => k === router.get('mkey')) ? router.get('mkey') : (mediaKeys[0]?.[0] ?? ''),
-  );
-  const steps = $derived(
-    [...new Set(Object.values(items).flatMap((l) => l.filter((i) => i.key === key).map((i) => i.step)))].sort(
+
+  // Sections: one per key (cards are runs) or one per run (cards are keys)
+  const by = $derived(router.get('mby', 'key') === 'run' ? 'run' : 'key');
+  interface Card {
+    id: string;
+    run: RunBrief;
+    items: MediaItem[];
+    title: string;
+  }
+  interface Section {
+    id: string;
+    title: string;
+    sub: string;
+    kind: MediaKind | null;
+    cards: Card[];
+  }
+  const sections = $derived.by((): Section[] => {
+    if (by === 'key')
+      return [...byKey.entries()].map(([key, v]) => ({
+        id: key,
+        title: key,
+        kind: v.kind,
+        sub: `${v.runs.size} of ${runs.length} runs`,
+        cards: runs.map((r) => ({ id: r.key, run: r, items: v.runs.get(r.key) ?? [], title: r.name })),
+      }));
+    return runs
+      .map((r) => {
+        const cards = [...byKey.entries()]
+          .filter(([, v]) => v.runs.has(r.key))
+          .map(([key, v]) => ({ id: key, run: r, items: v.runs.get(r.key)!, title: key }));
+        return { id: r.key, title: r.name, kind: null, sub: `${cards.length} keys`, cards };
+      })
+      .filter((s) => s.cards.length);
+  });
+  // Runs that logged nothing under a key are hidden unless asked for
+  const showEmpty = $derived(router.get('mempty') === '1');
+
+  // -- which step -------------------------------------------------------------------
+  const mode = $derived(router.get('mmode', 'latest') as 'latest' | 'step' | 'best');
+  const allSteps = $derived(
+    [...new Set([...byKey.values()].flatMap((v) => [...v.runs.values()].flatMap((l) => l.map((i) => i.step))))].sort(
       (a, b) => a - b,
     ),
   );
-  const stepIdx = $derived(
-    Math.min(
-      steps.length - 1,
-      Math.max(0, router.get('mstep') ? steps.findIndex((s) => s >= Number(router.get('mstep'))) : steps.length - 1),
-    ),
+  const pickedStep = $derived.by(() => {
+    const want = Number(router.get('mstep', ''));
+    if (!allSteps.length) return 0;
+    if (!router.get('mstep') || !Number.isFinite(want)) return allSteps[allSteps.length - 1];
+    return allSteps.reduce((b, s) => (Math.abs(s - want) < Math.abs(b - want) ? s : b), allSteps[0]);
+  });
+  const metricNames = $derived([...new Set(runs.flatMap((r) => Object.keys(r.summary)))].sort());
+  const bestMetric = $derived(
+    metricNames.includes(router.get('mmetric')) ? router.get('mmetric') : defaultMetric(metricNames),
   );
-  const step = $derived(steps[stepIdx === -1 ? steps.length - 1 : stepIdx]);
+  const bestDir = $derived((router.get('mdir') || (lowerIsBetter(bestMetric) ? 'min' : 'max')) as 'min' | 'max');
+  let best = $state<Record<string, { step: number; value: number }>>({});
+  $effect(() => {
+    if (mode !== 'best' || !bestMetric || !runs.length) return;
+    const metric = bestMetric;
+    api
+      .best(
+        runs.map((r) => r.key),
+        metric,
+        bestDir,
+      )
+      .then((res) => (best = res.best));
+  });
+  function targetFor(runKey: string): number | null {
+    if (mode === 'step') return pickedStep;
+    if (mode === 'best') return best[runKey]?.step ?? null;
+    return null;
+  }
 
-  const kind = $derived(mediaKeys.find(([k]) => k === key)?.[1].kind);
-  // Waveform player (default) or the browser's own audio controls
+  // -- grid ---------------------------------------------------------------------------
+  const cols = $derived(Number(router.get('mcols', String(prefs.get('mcols', 0)))) || 0); // 0: fit to width
+  const rows = $derived(Number(router.get('mrows', String(prefs.get('mrows', 2)))) || 0); // 0: all
+  function setGrid(k: 'mcols' | 'mrows', v: string) {
+    prefs.set(k, Number(v));
+    router.set({ [k]: v });
+  }
+  let width = $state(1200);
+  function minWidth(s: Section): number {
+    const k = s.kind ?? (s.cards.some((c) => c.items.some((i) => kindOf(i) === 'audio')) ? 'audio' : 'image');
+    return k === 'audio' && player === 'wave' ? 520 : k === 'image' ? 200 : 380;
+  }
+  function colsFor(s: Section): number {
+    return cols || Math.max(1, Math.floor((width + 14) / (minWidth(s) + 14)));
+  }
+  let pages = $state<Record<string, number>>({});
+  let folded = $state<Record<string, boolean>>({});
+  function isOpen(s: Section, i: number): boolean {
+    return folded[s.id] === undefined ? sections.length <= 6 || i < 3 : !folded[s.id];
+  }
+  function setAll(open: boolean) {
+    folded = Object.fromEntries(sections.map((s) => [s.id, !open]));
+  }
+
+  // -- audio player options -------------------------------------------------------------
   const player = $derived(router.get('player', prefs.get('player', 'wave')));
   function setPlayer(p: string) {
     prefs.set('player', p);
     router.set({ player: p === 'wave' ? null : p });
   }
-
-  // Spectrogram options of the waveform player, remembered per browser and kept in the URL
   const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1' };
   type AudioOpt = keyof typeof AUDIO_DEFAULTS;
   const opt = (k: AudioOpt) => router.get(k, prefs.get(k, AUDIO_DEFAULTS[k]));
@@ -68,16 +197,25 @@
     fftSize: Number(opt('fft')) || 1024,
     spectrogram: opt('spec') !== '0',
   });
+  const showsAudio = $derived(kinds.includes('audio') && kindCounts.audio.size > 0);
 
-  function at(runKey: string): MediaItem | null {
-    const list = (items[runKey] ?? []).filter((i) => i.key === key && i.step <= step);
-    return list.length ? list[list.length - 1] : null;
+  // -- saving to a report and the large view ---------------------------------------------
+  async function save(run: RunBrief, it: MediaItem) {
+    const res = await askReport(
+      run.project,
+      `${it.key} · ${run.name} · step ${it.step}`,
+      `${it.key} at step ${it.step} of ${run.name}`,
+    );
+    if (res) await appendToReport(run.project, res.name, embedLine(run.id, it.key, it.step, res.caption));
   }
+  let zoom = $state<{ run: RunBrief; item: MediaItem } | null>(null);
 </script>
+
+<svelte:window onkeydown={(e) => e.key === 'Escape' && (zoom = null)} />
 
 {#if !runs.length}
   <div class="card empty">No runs selected. Pick runs on the Runs page and press “Media”.</div>
-{:else if !mediaKeys.length}
+{:else if loaded && !available.length}
   <div class="card empty">
     These runs logged no images, audio, figures, HTML or text. Use <code>run.add_image</code>,
     <code>add_audio</code>, <code>add_figure</code>, <code>add_html</code>
@@ -85,16 +223,96 @@
   </div>
 {:else}
   <div class="card bar">
-    <div class="keys">
-      {#each mediaKeys as [k, info] (k)}
-        <button class="tab mono" aria-pressed={k === key} onclick={() => router.set({ mkey: k, mstep: null })}
-          >{k} <span class="faint">{info.kind}</span></button
-        >
-      {/each}
+    <div class="row">
+      <div class="kinds" role="group" aria-label="Kinds of media">
+        {#each available as k (k)}
+          <button
+            class="chip kind"
+            aria-pressed={kinds.includes(k)}
+            title="Click to show or hide · double-click to show only {LABELS[k].toLowerCase()}"
+            onclick={() => toggleKind(k)}
+            ondblclick={() => onlyKind(k)}>{LABELS[k]} <span class="n">{kindCounts[k].size}</span></button
+          >
+        {/each}
+      </div>
+      <input
+        class="input sm find mono"
+        placeholder="Filter keys (regex)"
+        aria-label="Filter keys"
+        value={find}
+        oninput={(e) => router.set({ mfind: e.currentTarget.value })}
+      />
+      <div class="seg" role="group" aria-label="Arrange by">
+        <button aria-pressed={by === 'key'} onclick={() => router.set({ mby: null })}>by key</button>
+        <button aria-pressed={by === 'run'} onclick={() => router.set({ mby: 'run' })}>by run</button>
+      </div>
     </div>
-    {#if kind === 'audio'}
-      <div class="players">
-        <span class="faint">player</span>
+
+    <div class="row">
+      <span class="label">Step</span>
+      <div class="seg" role="group" aria-label="Step to show">
+        <button aria-pressed={mode === 'latest'} onclick={() => router.set({ mmode: null })}>latest</button>
+        <button aria-pressed={mode === 'step'} onclick={() => router.set({ mmode: 'step' })}>pick step</button>
+        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>best metric</button>
+      </div>
+      {#if mode === 'step' && allSteps.length}
+        <label class="slider">
+          <input
+            type="range"
+            min="0"
+            max={allSteps.length - 1}
+            value={allSteps.indexOf(pickedStep)}
+            aria-label="Step"
+            oninput={(e) => router.set({ mstep: allSteps[Number(e.currentTarget.value)] })}
+          />
+          <span class="mono">step {pickedStep.toLocaleString()}</span>
+        </label>
+      {:else if mode === 'best'}
+        <select
+          class="input sm mono metric"
+          aria-label="Metric"
+          value={bestMetric}
+          onchange={(e) => router.set({ mmetric: e.currentTarget.value })}
+        >
+          {#each metricNames as m (m)}<option value={m}>{m}</option>{/each}
+        </select>
+        <div class="seg" role="group" aria-label="Best is">
+          <button aria-pressed={bestDir === 'min'} onclick={() => router.set({ mdir: 'min' })}>lowest</button>
+          <button aria-pressed={bestDir === 'max'} onclick={() => router.set({ mdir: 'max' })}>highest</button>
+        </div>
+        <span class="faint small">each run shows the item logged closest to its best step</span>
+      {/if}
+      <span class="spacer"></span>
+      <span class="label">Grid</span>
+      <label class="opt"
+        ><span class="faint">columns</span>
+        <select
+          class="input sm"
+          aria-label="Columns"
+          value={String(cols)}
+          onchange={(e) => setGrid('mcols', e.currentTarget.value)}
+        >
+          <option value="0">fit</option>
+          {#each [1, 2, 3, 4, 5, 6, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}
+        </select></label
+      >
+      <label class="opt"
+        ><span class="faint">rows</span>
+        <select
+          class="input sm"
+          aria-label="Rows per page"
+          value={String(rows)}
+          onchange={(e) => setGrid('mrows', e.currentTarget.value)}
+        >
+          {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+          <option value="0">all</option>
+        </select></label
+      >
+    </div>
+
+    {#if showsAudio}
+      <div class="row">
+        <span class="label">Audio</span>
         <div class="seg">
           <button aria-pressed={player === 'wave'} onclick={() => setPlayer('wave')}>waveform</button>
           <button aria-pressed={player === 'simple'} onclick={() => setPlayer('simple')}>simple</button>
@@ -148,82 +366,122 @@
             ></button>
             <span class="faint">spectrogram</span></label
           >
+          <span class="faint small"
+            >players follow each other's zoom and selection · space plays · ctrl + wheel zooms</span
+          >
         {/if}
       </div>
-      {#if player === 'wave'}
-        <span class="faint hint"
-          >players follow each other's zoom, scroll and selection · space plays · drag to select · ctrl + wheel zooms</span
-        >
-      {/if}
-    {/if}
-    {#if steps.length > 1}
-      <label class="slider">
-        <span class="mono">step {step?.toLocaleString()}</span>
-        <input
-          type="range"
-          min="0"
-          max={steps.length - 1}
-          value={stepIdx}
-          oninput={(e) => router.set({ mstep: steps[Number((e.currentTarget as HTMLInputElement).value)] })}
-        />
-        <span class="faint mono">{steps.length} steps</span>
-      </label>
     {/if}
   </div>
-  <div class="grid" class:wide={kind !== 'image'} class:audio={kind === 'audio' && player === 'wave'}>
-    {#each runs as r (r.key)}
-      {@const it = at(r.key)}
-      <figure class="card cell">
-        <figcaption>
-          <span class="mono name">{r.name}</span>{#if it}<span class="faint mono">step {it.step}</span>{/if}
-        </figcaption>
-        {#if !it}
-          <div class="none faint">nothing logged yet</div>
-        {:else if it.kind === 'text'}
-          <pre class="text mono">{it.text}</pre>
-        {:else if it.mime === 'text/html'}
-          <iframe title="{r.name} {it.key}" sandbox="allow-scripts" src={api.mediaUrl(r.key, it.index!)}></iframe>
-        {:else if it.mime.startsWith('image/')}
-          <img src={api.mediaUrl(r.key, it.index!)} alt={it.caption ?? it.key} />
-          {#if it.caption}<div class="faint cap">{it.caption}</div>{/if}
-        {:else if it.kind === 'audio' || it.mime.startsWith('audio/')}
-          {#if player === 'wave'}
-            <AudioFrame
-              url={api.mediaUrl(r.key, it.index!)}
-              title="{r.name} {it.key}"
-              sampleRate={it.sample_rate}
-              channels={it.channels}
-              duration={it.duration ?? undefined}
-              group={`${key}`}
-              options={audioOptions}
-              header={{ label: r.name, name: `${it.key} · step ${it.step}`, tags: it.caption ? [it.caption] : [] }}
-            />
-          {:else}
-            <audio controls preload="metadata" src={api.mediaUrl(r.key, it.index!)}></audio>
+
+  <div class="sections-head">
+    <span class="faint"
+      >{sections.length}
+      {by === 'key' ? 'keys' : 'runs'}{runs.length === MAX_RUNS ? ` · first ${MAX_RUNS} runs` : ''}</span
+    >
+    <label class="opt"
+      ><button
+        class="switch"
+        role="switch"
+        aria-checked={showEmpty}
+        aria-label="Show runs without this key"
+        onclick={() => router.set({ mempty: showEmpty ? null : '1' })}
+      ></button>
+      <span class="faint">show runs without the key</span></label
+    >
+    <span class="spacer"></span>
+    <button class="btn btn-ghost sm" onclick={() => setAll(true)}>Expand all</button>
+    <button class="btn btn-ghost sm" onclick={() => setAll(false)}>Collapse all</button>
+  </div>
+
+  <div class="sections" bind:clientWidth={width}>
+    {#each sections as s, si (s.id)}
+      {@const open = isOpen(s, si)}
+      {@const cards = showEmpty || by === 'run' ? s.cards : s.cards.filter((c) => c.items.length)}
+      {@const n = colsFor(s)}
+      {@const size = rows ? n * rows : cards.length}
+      {@const pageCount = Math.max(1, Math.ceil(cards.length / Math.max(1, size)))}
+      {@const page = Math.min(pages[s.id] ?? 0, pageCount - 1)}
+      <section class="card section">
+        <header>
+          <button
+            class="fold"
+            aria-expanded={open}
+            onclick={() => (folded = { ...folded, [s.id]: open })}
+            title={s.title}
+          >
+            <span class="chev" class:closed={!open}><Icon name="chevron" size={16} /></span>
+            <span class="mono stitle">{s.title}</span>
+            {#if s.kind}<span class="chip kindtag">{LABELS[s.kind]}</span>{/if}
+            <span class="faint small">{s.sub}</span>
+          </button>
+          {#if open && pageCount > 1}
+            <span class="pager">
+              <button
+                class="btn btn-ghost sm"
+                aria-label="Previous page"
+                disabled={page === 0}
+                onclick={() => (pages = { ...pages, [s.id]: page - 1 })}>‹</button
+              >
+              <span class="mono small">{page + 1} / {pageCount}</span>
+              <button
+                class="btn btn-ghost sm"
+                aria-label="Next page"
+                disabled={page >= pageCount - 1}
+                onclick={() => (pages = { ...pages, [s.id]: page + 1 })}>›</button
+              >
+            </span>
           {/if}
-          <div class="faint cap mono">
-            {[
-              it.caption,
-              it.duration != null ? `${it.duration.toFixed(2)} s` : null,
-              it.sample_rate ? `${it.sample_rate / 1000} kHz` : null,
-              it.channels ? (it.channels === 1 ? 'mono' : `${it.channels} ch`) : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-            ·
-            <a href={api.mediaUrl(r.key, it.index!)} download="{r.name}-{it.key.replaceAll('/', '_')}-{it.step}"
-              >download</a
-            >
+        </header>
+        {#if open}
+          <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
+            {#each cards.slice(page * size, page * size + size) as c (c.id)}
+              <MediaCard
+                run={c.run}
+                items={c.items}
+                target={targetFor(c.run.key)}
+                nearest={mode === 'best'}
+                title={c.title}
+                color={seriesVar(runIndex.get(c.run.key) ?? 0)}
+                {player}
+                {audioOptions}
+                onsave={(it) => save(c.run, it)}
+                onzoom={(it) => (zoom = { run: c.run, item: it })}
+              />
+            {/each}
           </div>
-        {:else if /plotly|vega|bokeh/.test(it.mime)}
-          <FigureFrame url={api.mediaUrl(r.key, it.index!)} mime={it.mime} title="{r.name} {it.key}" />
-        {:else}
-          <div class="none">
-            <a href={api.mediaUrl(r.key, it.index!)} download>{it.mime}</a>
-          </div>
+          {#if mode === 'best' && by === 'key'}
+            <p class="faint small bestnote">
+              best {bestMetric}:
+              {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{i ? ' · ' : ''}{c
+                    .run.name}
+                  {fmtNum(best[c.run.key].value)} at step {best[c.run.key].step.toLocaleString()}{/if}{/each}
+            </p>
+          {/if}
         {/if}
-      </figure>
+      </section>
     {/each}
+  </div>
+{/if}
+
+{#if zoom}
+  <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && (zoom = null)}>
+    <div class="card big" role="dialog" aria-label="{zoom.item.key} at step {zoom.item.step}">
+      <header>
+        <span class="mono stitle">{zoom.item.key}</span>
+        <span class="faint mono small">{zoom.run.name} · step {zoom.item.step.toLocaleString()}</span>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost sm" onclick={() => zoom && save(zoom.run, zoom.item)}
+          ><Icon name="bookmark" size={14} /> Add to report</button
+        >
+        <button class="btn btn-ghost sm" aria-label="Close" onclick={() => (zoom = null)}
+          ><Icon name="x" size={16} /></button
+        >
+      </header>
+      <div class="bigbody">
+        <MediaView runKey={zoom.run.key} runName={zoom.run.name} item={zoom.item} {player} {audioOptions} />
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -239,128 +497,178 @@
   .faint {
     color: var(--faint);
   }
+  .small {
+    font-size: 12px;
+  }
   .bar {
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .keys {
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .label {
+    min-width: 46px;
+  }
+  .kinds {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
   }
-  .tab {
-    border: 1px solid var(--border);
-    background: var(--panel-2);
-    border-radius: 8px;
-    padding: 5px 12px;
+  .kind {
+    height: 30px;
+    padding: 0 12px;
     font-size: 13px;
-    color: var(--muted);
+    cursor: pointer;
   }
-  .tab[aria-pressed='true'] {
-    border-color: var(--accent);
-    color: var(--accent);
+  .kind[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
     background: var(--accent-soft);
+    color: var(--accent);
     font-weight: 600;
   }
-  .tab .faint {
-    font-weight: 400;
+  .kind .n {
+    font-family: var(--mono);
     font-size: 11.5px;
-    margin-left: 4px;
+    opacity: 0.75;
+  }
+  .find {
+    width: 220px;
+    height: 30px;
+  }
+  .sm {
+    height: 30px;
+  }
+  .metric {
+    max-width: 260px;
   }
   .slider {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    flex: 1;
+    min-width: 200px;
   }
   .slider input {
     flex: 1;
     accent-color: var(--accent);
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 14px;
-  }
-  .grid.wide {
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-  }
-  .grid.audio {
-    grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
-  }
-  audio {
-    width: 100%;
-  }
-  .cap a {
-    color: var(--accent);
-  }
-  .players {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-  }
-  .players {
-    flex-wrap: wrap;
   }
   .opt {
     display: inline-flex;
     align-items: center;
     gap: 6px;
   }
-  .hint {
-    font-size: 12px;
+  .spacer {
+    flex: 1;
   }
-  .cell {
-    margin: 0;
-    padding: 10px;
+  .sections-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    margin-bottom: -6px;
+  }
+  .sections {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
+  }
+  .section {
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     min-width: 0;
   }
-  figcaption {
+  .section header,
+  .big header {
     display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12.5px;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
   }
-  .name {
-    font-weight: 600;
+  .fold {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+    font-size: 13.5px;
+  }
+  .chev {
+    display: inline-grid;
+    color: var(--muted);
+    transition: transform 0.15s;
+  }
+  .chev.closed {
+    transform: rotate(-90deg);
+  }
+  .stitle {
+    font-weight: 650;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
-  img {
-    width: 100%;
-    image-rendering: pixelated;
-    border-radius: 8px;
-    background: var(--panel-2);
+  .kindtag {
+    height: 20px;
+    font-size: 11px;
+    flex: none;
   }
-  iframe {
-    width: 100%;
-    height: 220px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: #fff;
+  .fold .small {
+    flex: none;
   }
-  .text {
+  .pager {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+  }
+  .grid {
+    display: grid;
+    gap: 12px;
+  }
+  .bestnote {
     margin: 0;
-    white-space: pre-wrap;
-    font-size: 12.5px;
-    background: var(--panel-2);
-    border-radius: 8px;
-    padding: 10px;
-    max-height: 260px;
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(2px);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .big {
+    width: min(1100px, 100%);
+    max-height: calc(100vh - 48px);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     overflow: auto;
   }
-  .none {
-    padding: 24px 8px;
-    text-align: center;
-    font-size: 13px;
+  .bigbody :global(img) {
+    image-rendering: auto;
+    max-height: calc(100vh - 160px);
+    object-fit: contain;
   }
-  .cap {
-    font-size: 12px;
+  .bigbody :global(iframe) {
+    height: 70vh;
+  }
+  .bigbody :global(pre) {
+    max-height: none;
   }
 </style>

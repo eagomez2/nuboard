@@ -12,6 +12,8 @@ from nuboard.server import create_app
 
 @pytest.fixture
 def client(tmp_path):
+    (tmp_path / "config.yaml").write_text("lr: 0.001\n", "utf-8")
+
     for lr in (1e-3, 1e-4):
         for seed in (1, 2):
             with nb.init(
@@ -25,6 +27,7 @@ def client(tmp_path):
                     run.log({"loss": 1 / (s + 1) + lr * seed}, step=s)
 
                 run.add_text("note", "hi", step=1)
+                run.add_file(tmp_path / "config.yaml")
 
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
 
@@ -74,7 +77,7 @@ def test_annotations_and_files(client):
         ).status_code
         == 415
     )
-    assert '"lr"' in client.get(f"/api/runs/{key}/files/config.json").text
+    assert "lr: 0.001" in client.get(f"/api/runs/{key}/files/config.yaml").text
     assert "format_version" not in client.get(f"/api/runs/{key}/files/%2E%2E/run.json").text
     import pathlib
 
@@ -219,3 +222,103 @@ def test_audio_supports_byte_ranges(tmp_path):
         tail = c.get(url, headers={"Range": "bytes=-4"})
         assert tail.content == full.content[-4:]
         assert c.get(url, headers={"Range": "bytes=99999-"}).status_code == 416
+
+
+def test_best_steps_and_media_refs(client):
+    runs = client.get("/api/runs").json()["runs"]
+    keys = [r["key"] for r in runs]
+    best = client.get("/api/best", params={"runs": ",".join(keys), "metric": "loss"}).json()
+    assert all(b["step"] == 499 for b in best["best"].values()) and len(best["best"]) == 4
+    top = client.get("/api/best", params={"runs": keys[0], "metric": "loss", "mode": "max"}).json()
+    assert top["best"][keys[0]]["step"] == 0
+    run_id = runs[0]["id"]
+    ref = client.get("/api/media/ref", params={"project": "sweep", "ref": f"{run_id}/note@1"})
+    assert ref.json()["item"]["text"] == "hi" and ref.json()["run"] == keys[0]
+    missing = {"project": "sweep", "ref": f"{run_id}/note@7"}
+    assert client.get("/api/media/ref", params=missing).status_code == 404
+    bad = {"project": "sweep", "ref": "nope"}
+    assert client.get("/api/media/ref", params=bad).status_code == 400
+
+
+def test_reports_round_trip(client):
+    run_id = client.get("/api/runs").json()["runs"][0]["id"]
+    line = f"![the note](media:{run_id}/note@1)"
+
+    for _ in range(2):  # the first append creates the report, the second adds to it
+        r = client.post("/api/reports", json={"project": "sweep", "name": "Notes", "append": line})
+        assert r.json()["saved"] == "Notes"
+
+    text = client.get("/api/reports/sweep/Notes").json()["text"]
+    assert text.startswith("# Notes\n") and text.count(line) == 2
+    assert client.get("/api/reports", params={"project": "sweep"}).json()["reports"][0][
+        "title"
+    ] == ("Notes")
+    export = client.get("/api/reports/sweep/Notes/export")
+    assert export.headers["content-type"] == "application/zip"
+    import io
+    import zipfile
+
+    md = zipfile.ZipFile(io.BytesIO(export.content)).read("Notes.md").decode()
+    assert "```text\nhi\n```" in md
+    moved = client.post(
+        "/api/reports", json={"project": "sweep", "name": "Notes", "rename": "final"}
+    ).json()
+    assert moved["saved"] == "final"
+    assert client.get("/api/reports/sweep/Notes").status_code == 404
+    client.post("/api/reports", json={"project": "sweep", "name": "final", "delete": True})
+    assert client.get("/api/reports").json()["reports"] == []
+    unknown = client.post("/api/reports", json={"project": "zzz", "name": "a", "text": ""})
+    assert unknown.status_code == 400
+
+
+def test_property_definitions_and_tag_values(client):
+    defs = [{"name": "topics", "type": "tags", "options": ["a"]}, {"name": "n", "type": "number"}]
+    assert client.post("/api/fields", json={"project": "sweep", "fields": defs}).json()["fields"]
+    assert client.get("/api/fields", params={"project": "sweep"}).json()["fields"][0] == defs[0]
+    bad = client.post(
+        "/api/fields", json={"project": "sweep", "fields": [{"name": "x", "type": "?"}]}
+    )
+    assert bad.status_code == 400
+    key = client.get("/api/runs").json()["runs"][0]["key"]
+    patch = {"fields": {"topics": ["a", "b"], "n": 3}}
+    client.post("/api/runs/annotate", json={"keys": [key], "patch": patch})
+    assert client.get(f"/api/runs/{key}").json()["run"]["fields"] == {"topics": ["a", "b"], "n": 3}
+    client.post("/api/runs/annotate", json={"keys": [key], "patch": {"fields": {"topics": []}}})
+    assert client.get(f"/api/runs/{key}").json()["run"]["fields"] == {"n": 3}
+
+
+def test_runs_with_the_same_name_get_distinct_series(tmp_path):
+    for _ in range(2):
+        with nb.init("dup", name="same", dir=tmp_path / "exp", capture_env=False) as run:
+            run.log({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        keys = [r["key"] for r in c.get("/api/runs").json()["runs"]]
+        res = c.get("/api/scalars", params={"runs": ",".join(keys), "metric": "loss"})
+        series = json.loads(pa.ipc.open_stream(res.content).read_all().schema.metadata[b"series"])
+        labels = [s["label"] for s in series]
+        assert len(set(labels)) == 2 and all(lb.startswith("same (") for lb in labels)
+
+
+def test_chart_snapshots_are_served_and_exported(client):
+    import base64
+    import io
+    import zipfile
+
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+    body = {"project": "sweep", "report": "Charts", "png": "data:image/png;base64,"}
+    path = client.post(
+        "/api/reports/snapshot", json={**body, "png": body["png"] + base64.b64encode(png).decode()}
+    ).json()["path"]
+    assert path.startswith("files/Charts-") and path.endswith(".png")
+    assert client.get(f"/api/reports/sweep/{path}").content == png
+    bad = client.post("/api/reports/snapshot", json={**body, "png": "aGVsbG8="})
+    assert bad.status_code == 400
+    line = f'![loss]({path} "chart:metric=loss&runs=a")'
+    client.post("/api/reports", json={"project": "sweep", "name": "Charts", "append": line})
+    zf = zipfile.ZipFile(io.BytesIO(client.get("/api/reports/sweep/Charts/export").content))
+    assert f"![loss]({path})" in zf.read("Charts.md").decode()
+    assert zf.read(path) == png
+    assert client.get("/api/reports/sweep/files/..%2Fruns").status_code == 404

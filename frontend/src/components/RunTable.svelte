@@ -230,8 +230,15 @@
     await api.annotate(keys, patch);
   }
   function startNote(r: RunBrief) {
+    // multi-line (Markdown) notes are edited in the run's details
+    if (r.notes?.includes('\n')) return router.set({ cmp: r.key, tab: 'notes' });
     editing = r.key;
     noteDraft = r.notes;
+  }
+  // first line of a note, without Markdown marks
+  function notePreview(n: string): string {
+    const line = n.split('\n').find((l) => l.trim()) ?? '';
+    return line.replace(/^\s*(#+|[-*+]|\d+\.|>)\s*/, '').replace(/[*_`]/g, '');
   }
   async function saveNote(r: RunBrief) {
     if (editing !== r.key) return;
@@ -517,8 +524,12 @@
                   }}
                 />
               {:else}
-                <button class="notebtn" class:faint={!r.notes} onclick={() => startNote(r)} title="Edit note"
-                  >{r.notes || (r.status === 'crashed' ? 'add a note…' : '—')}</button
+                <button
+                  class="notebtn"
+                  class:faint={!r.notes}
+                  onclick={() => startNote(r)}
+                  title={r.notes?.includes('\n') ? 'Open notes' : 'Edit note'}
+                  >{notePreview(r.notes ?? '') || (r.status === 'crashed' ? 'add a note…' : '—')}</button
                 >
               {/if}
             </span>
