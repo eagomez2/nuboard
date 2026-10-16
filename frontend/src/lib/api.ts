@@ -158,7 +158,19 @@ export interface MediaItem {
   sample_rate?: number;
   channels?: number;
   duration?: number | null;
+  /** Point clouds: the number of points and whether they carry colors. */
+  points?: number;
+  colors?: boolean;
   text?: string;
+  /** Notes on sections of an audio item, added in the viewer. */
+  notes?: AudioNote[];
+}
+
+export interface AudioNote {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
 }
 
 export interface SeriesMeta {
@@ -216,6 +228,12 @@ export const api = {
     }),
   metrics: (keys: string[]) =>
     json<{ metrics: { name: string; runs: number }[] }>(`/api/metrics?runs=${keys.map(encodeURIComponent).join(',')}`),
+  setAudioNotes: (key: string, item: string, notes: AudioNote[]) =>
+    json<{ notes: AudioNote[] }>(`/api/runs/${encodeURIComponent(key)}/audio-notes`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item, notes }),
+    }),
   media: (key: string) => json<{ items: MediaItem[] }>(`/api/runs/${encodeURIComponent(key)}/media`),
   alerts: (keys: string[]) =>
     json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),

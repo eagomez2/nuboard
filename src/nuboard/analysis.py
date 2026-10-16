@@ -57,6 +57,15 @@ class RunHandle:
         """Custom fields set in the viewer (`annotations.json`)."""
         return self.record.get("fields") or {}
 
+    @property
+    def audio_notes(self) -> dict[str, list[dict[str, Any]]]:
+        """Notes added to audio in the viewer, by `<media key>@<step>`.
+
+        Each note is `{id, start, end, text}`, with times in seconds.
+        """
+        ann = _fs.read_json(self.path / "annotations.json", {}) or {}
+        return ann.get("audio_notes") or {}
+
     def set_field(self, name: str, value: Any) -> None:
         """Set a custom field, as the viewer does.
 
@@ -111,6 +120,34 @@ class RunHandle:
     def reader(self) -> RunReader:
         """Return a new `RunReader` over the run's folder."""
         return RunReader(self.path)
+
+    def table(self, key: str, step: int | None = None) -> list[dict[str, Any]]:
+        """Return a table logged with `Run.add_table`, one dict per row.
+
+        Media cells come back as `{"$cell": <media key>}`; read their bytes with
+        `reader().media(<media key>)`.
+
+        Args:
+            key: The table's key.
+            step: The step to read. Defaults to the last one logged.
+
+        Returns:
+            The rows, or an empty list when there is no such table.
+        """
+        import json
+
+        reader = self.reader()
+        found = [e for e in reader.media(key) if e.meta.get("kind") == "table"]
+
+        if step is not None:
+            found = [e for e in found if e.step == step]
+
+        if not found:
+            return []
+
+        data = json.loads(reader.read_media(found[-1]))
+        names = [c["name"] for c in data["columns"]]
+        return [dict(zip(names, row, strict=True)) for row in data["rows"]]
 
     def scalars(self, metric: str | None = None, rank: int = 0) -> pa.Table:
         """Return one metric, or all of them, as a long table.

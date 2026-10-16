@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import re
 import zipfile
 from collections.abc import Callable
@@ -369,6 +370,47 @@ def check_field(field: dict[str, Any], value: Any) -> None:
     elif kind == "link":
         if not isinstance(value, str) or not re.match(r"https?://\S+$", value):
             raise ValueError(f"{name} is a link property; use an http:// or https:// address")
+
+
+def clean_audio_notes(notes: Any) -> list[dict[str, Any]]:
+    """Validate the notes of one audio item.
+
+    Args:
+        notes: A list of `{id, start, end, text}` objects, times in seconds.
+
+    Returns:
+        The notes sorted by start time, with text trimmed to 2,000 characters.
+
+    Raises:
+        ValueError: If a note is not an object with numeric times and text.
+    """
+
+    if not isinstance(notes, list):
+        raise ValueError("notes must be a list")
+
+    out = []
+
+    for n in notes:
+        if not isinstance(n, dict):
+            raise ValueError("each note is an object with start, end and text")
+
+        start, end, text = n.get("start"), n.get("end"), n.get("text")
+
+        if any(isinstance(t, bool) or not isinstance(t, (int, float)) for t in (start, end)):
+            raise ValueError("a note's start and end are numbers of seconds")
+
+        start, end = float(start), float(end)  # pyright: ignore[reportArgumentType]
+
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("a note needs some text")
+
+        if not (math.isfinite(start) and math.isfinite(end)) or start < 0 or end < start:
+            raise ValueError("a note ends after it starts, at or after 0 s")
+
+        note_id = str(n.get("id") or f"{start:.3f}-{end:.3f}")[:64]
+        out.append({"id": note_id, "start": start, "end": end, "text": text.strip()[:2000]})
+
+    return sorted(out, key=lambda n: (n["start"], n["end"]))
 
 
 def save_fields(project_dir: Path, fields: list[Any]) -> list[dict[str, Any]]:

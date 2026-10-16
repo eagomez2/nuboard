@@ -101,7 +101,7 @@
   {#if !it}
     <div class="none faint">nothing logged under this key</div>
   {:else}
-    <MediaView runKey={run.key} runName={run.name} item={it} {player} {audioOptions} group={it.key} />
+    <MediaView runKey={run.key} runName={run.name} item={it} {player} {audioOptions} group={it.key} {color} />
   {/if}
   {#if steps.length > 1}
     <label class="slider">

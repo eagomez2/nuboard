@@ -421,6 +421,7 @@ test('a saved chart is drawn live in the exported HTML and follows its theme', a
   const off = await ctx.newPage();
   await off.goto('file://' + path);
   await expect(off.locator('.nbplot canvas')).toBeVisible();
+  await expect.poll(() => drawnPixels(off.locator('.nbpoints canvas'))).toBeGreaterThan(500);
   await expect(off.locator('html')).toHaveAttribute('data-theme', 'light');
   await off.getByRole('button', { name: 'Switch between light and dark theme' }).click();
   await expect(off.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -444,4 +445,117 @@ test('about window and chart points', async ({ page }) => {
   await page.getByRole('switch', { name: 'Points' }).click();
   await expect(page).toHaveURL(/dots=0/);
   await expect(chart.locator('.nb-dot')).toHaveCount(0);
+});
+
+test('notes on a section of audio are saved, edited and deleted', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
+  const frame = page.locator('iframe[src="./audio.html"]').first();
+  const player = page.frameLocator('iframe[src="./audio.html"]').first();
+  await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
+  const box = (await player.locator('#waveform').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + 30, { steps: 8 });
+  await page.mouse.up();
+  await player.getByRole('button', { name: 'Note', exact: true }).click();
+  await player.locator('#note-text').fill('hiss here');
+  await player.locator('#note-text').press('Enter');
+  await expect(player.locator('.note-chip', { hasText: 'hiss here' })).toBeVisible();
+  await expect(player.getByRole('button', { name: 'Edit note' })).toBeVisible();
+
+  // kept in the run's annotations and shown again after a reload
+  await page.reload();
+  await expect(frame).toBeVisible();
+  const mine = player.locator('.note-chip', { hasText: 'hiss here' });
+  await expect(mine).toBeVisible({ timeout: 15000 });
+  await mine.click();
+  await player.getByRole('button', { name: 'Edit note' }).click();
+  await expect(player.locator('#note-text')).toHaveValue('hiss here');
+  await player.locator('#note-text').fill('hum');
+  await player.locator('#note-text').press('Enter');
+  await expect(player.locator('.note-chip', { hasText: 'hum' })).toBeVisible();
+  await player.getByRole('button', { name: 'Edit note' }).click();
+  await player.getByRole('button', { name: 'Delete' }).click();
+  await expect(player.locator('.note-chip', { hasText: 'hum' })).toHaveCount(0);
+});
+
+/** How many pixels of a canvas differ from its top-left (background) pixel. */
+async function drawnPixels(canvas: import('@playwright/test').Locator): Promise<number> {
+  return canvas.evaluate((c: HTMLCanvasElement) => {
+    const d = new Uint32Array(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data.buffer);
+    return d.reduce((n, v) => n + (v !== d[0] ? 1 : 0), 0);
+  });
+}
+
+test('point clouds are drawn and can be rotated', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=embeddings');
+  await expect(page.getByRole('button', { name: 'Point clouds 1' })).toBeVisible();
+  const canvas = page.getByLabel('cutmix-s0 eval/embeddings');
+  await expect(canvas).toBeVisible();
+  await expect.poll(() => drawnPixels(canvas)).toBeGreaterThan(1000);
+  const before = await canvas.screenshot();
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Buffer.compare(before, await canvas.screenshot())).not.toBe(0);
+  await expect(page.getByText('3,000 points').first()).toBeVisible();
+});
+
+test('PR curves overlay every run and show counts on hover', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fpr%2Fcat%24');
+  const all = page.getByRole('img', { name: /Precision-recall curves of eval\/pr\/cat for all runs/ });
+  await expect(all.locator('polyline')).toHaveCount(8);
+  await expect(page.getByText(/cutmix-s0 · step 100 AP 0\.\d{3}/)).toBeVisible();
+  // hover the middle point of one curve
+  const [x, y] = await all
+    .locator('polyline')
+    .first()
+    .evaluate((el: SVGPolylineElement) => {
+      const pts = el.points;
+      const p = pts.getItem(Math.floor(pts.numberOfItems / 2));
+      const m = el.getScreenCTM()!;
+      return [p.x * m.a + m.e, p.y * m.d + m.f];
+    });
+  await page.mouse.move(x, y);
+  await expect(page.getByText(/^threshold 0\.\d{3}$/)).toBeVisible();
+  await expect(page.getByText(/^TP \d+ · FP \d+ · TN \d+ · FN \d+$/)).toBeVisible();
+});
+
+test('tables compare steps, sort, filter and open a row', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=eval%2Fsamples');
+  await expect(page.getByRole('button', { name: 'Tables 1' })).toBeVisible();
+  const card = page.locator('.tv').first();
+  await expect(card.getByText(/^40 of 40 rows$/)).toBeVisible();
+  await expect(card.getByText(/since step 20/)).toBeVisible();
+  await card.getByRole('button', { name: /^pesq/ }).click();
+  await expect(card.locator('th[aria-sort="ascending"]')).toHaveText(/pesq/);
+  await expect(card.locator('td.heat[style*="color-mix"]').first()).toBeVisible();
+  await card.getByLabel('Filter rows').fill('noise = babble and snr_in < 0');
+  await expect(card.getByText(/^\d of 40 rows$/)).toBeVisible();
+  await card.getByLabel('Filter rows').fill('nope < 1');
+  await expect(card.getByText('no column named nope')).toBeVisible();
+  await card.getByLabel('Filter rows').fill('');
+  // the worst file carries its audio: opening the row shows its history and the player
+  await card.locator('tbody tr').first().click();
+  await expect(card.locator('.detail tr.now')).toBeVisible();
+  await expect(card.locator('.detail iframe[src="./audio.html"]')).toBeVisible();
+});
+
+test('a report with a table and audio notes exports them', async ({ page, browser }) => {
+  await page.goto('/#/reports?rproject=speech-denoise&report=listening-notes');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const path = test.info().outputPath('listening-notes.html');
+  await (await download).saveAs(path);
+  const ctx = await browser.newContext({ offline: true });
+  const off = await ctx.newPage();
+  await off.goto('file://' + path);
+  await expect(off.locator('.nbtable tbody tr')).toHaveCount(40);
+  await expect(off.getByText('Colors show the change since step 20.')).toBeVisible();
+  await expect(off.locator('.nbnote')).toHaveCount(2);
+  await expect(off.getByText('tonal blip (musical noise)')).toBeVisible();
+  await ctx.close();
 });

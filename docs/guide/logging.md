@@ -87,7 +87,7 @@ background thread wakes every `flush_interval` seconds, encodes the batch into
 one columnar frame and appends it to the event log. Call `run.flush()` if you
 need everything on disk at a given point (rarely needed).
 
-## Text, images, audio, figures, HTML
+## Text, images, audio, figures, PR curves, tables, point clouds, HTML
 
 | Method | Accepts |
 | --- | --- |
@@ -95,6 +95,9 @@ need everything on disk at a given point (rarely needed).
 | `add_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
 | `add_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
 | `add_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
+| `add_pr_curve(key, labels, predictions, step=None, num_thresholds=201, weights=None)` | labels (bool or 0/1) and scores in [0, 1], as arrays, tensors or lists |
+| `add_table(key, rows, step=None, row_id=None)` | a list of dicts (one per row), a dict of column lists, or a pandas DataFrame; cells are numbers, booleans, strings, None, `nb.Audio(...)` or `nb.Image(...)` |
+| `add_point_cloud(key, points, step=None, colors=None, caption=None)` | an `(N, 3)` array, tensor or list of x, y, z positions, with optional `(N, 3)` RGB colors (uint8, or float in [0, 1]) |
 | `add_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
 
 Every method also takes a keyword-only `time=` (a Unix timestamp) to override
@@ -110,6 +113,43 @@ channel count and duration are recorded with each clip.
 ```python
 run.add_audio("eval/enhanced", model(noisy)[0], step=epoch, sample_rate=16_000)
 run.add_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_001")
+```
+
+PR curves work as in TensorBoard: true and false positives are counted at
+`num_thresholds` evenly spaced thresholds when you log, so only those counts
+are stored, never the predictions. Log one curve per class:
+
+```python
+for c, name in enumerate(classes):
+    run.add_pr_curve(f"eval/pr/{name}", labels == c, probs[:, c], step=epoch)
+```
+
+Tables hold per-example results, such as one row per test file with its
+scores. Log the same table at each eval: the viewer matches rows across steps
+by `row_id` (the first column by default) and colors each cell by how it
+changed. Media cells (`nb.Audio`, `nb.Image`, which take the same arguments as
+`add_audio` and `add_image`) are stored like any other media item, so attach
+audio only to the rows worth listening to:
+
+```python
+rows = [{"file": f, "snr_in": snr, "pesq": p, "si_sdr": s} for f, snr, p, s in results]
+for r in sorted(rows, key=lambda r: r["pesq"])[:5]:  # the five worst files
+    r["enhanced"] = nb.Audio(outputs[r["file"]], sample_rate=16_000)
+run.add_table("eval/samples", rows, step=epoch)
+```
+
+Tables are stored as JSON in the media pack (about 50 bytes per row of
+numbers), written with the standard library.
+
+Point clouds are stored as float32 positions (12 bytes per point, plus 3 for
+colors), packed with the standard library. The viewer draws them in a view you
+can rotate, colored by `colors` or else by height (z is up). Projections of
+embeddings work too: reduce them to three dimensions first (PCA, UMAP) and
+color the points by class.
+
+```python
+run.add_point_cloud("lidar/scan", scan[:, :3], step=step)
+run.add_point_cloud("eval/embeddings", pca3, step=epoch, colors=palette[labels])
 ```
 
 Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of

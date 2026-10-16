@@ -14,6 +14,7 @@ import warnings
 import pytest
 
 import nuboard as nb
+from nuboard._media import points_bytes, pr_curve_bytes
 from nuboard.catalog import effective_status
 from nuboard.reader import RunReader
 
@@ -267,6 +268,93 @@ def test_text_and_media(tmp_path):
 
     assert Image.open(io.BytesIO(png)).size == (5, 4)
     assert r.read_media(media[1]) == b"<b>hi</b>"
+
+
+def test_point_clouds(tmp_path):
+    import numpy as np
+
+    run = nb.init("p", capture_env=False)
+    xyz = np.arange(12, dtype="float64").reshape(4, 3)
+    run.add_point_cloud("scan", xyz, step=1, colors=np.full((4, 3), 0.5), caption="toy")
+    run.add_point_cloud("plain", [(0, 0, 0), (1, 2, 3)], step=1)
+
+    with pytest.raises(ValueError, match="shape"):
+        points_bytes(np.zeros((3, 2)))
+
+    with pytest.raises(ValueError, match="rows"):
+        points_bytes(xyz, colors=[(1, 2, 3)])
+
+    run.finish()
+    r = RunReader(run.path)
+    scan, plain = r.media()
+    assert scan.meta["mime"] == "application/x-nuboard-points"
+    assert scan.meta["points"] == 4 and scan.meta["colors"] and scan.meta["caption"] == "toy"
+    data = r.read_media(scan)
+    assert np.frombuffer(data[:48], "<f4").tolist() == list(range(12))
+    assert data[48:] == bytes([128] * 12)
+    assert np.frombuffer(r.read_media(plain), "<f4").tolist() == [0, 0, 0, 1, 2, 3]
+    assert plain.meta["colors"] is False
+
+
+def test_pr_curves():
+    import numpy as np
+
+    run = nb.init("p", capture_env=False)
+    labels = np.array([1, 0, 1, 1, 0])
+    scores = np.array([0.9, 0.8, 0.4, 0.1, 0.05])
+    run.add_pr_curve("pr/cat", labels, scores, step=2, num_thresholds=5)
+    labels[:] = 0  # the call copied its inputs
+
+    with pytest.raises(ValueError, match="same"):
+        pr_curve_bytes([1, 0], [0.5])
+
+    run.finish()
+    r = RunReader(run.path)
+    (item,) = r.media()
+    assert item.meta["kind"] == "pr" and item.meta["positives"] == 3
+    data = json.loads(r.read_media(item))
+    assert data["tp"] == [3, 2, 1, 1, 0] and data["fp"] == [2, 1, 1, 1, 0]
+    assert data["fn"] == [0, 1, 2, 2, 3] and data["tn"] == [0, 1, 1, 1, 2]
+    assert data["precision"][2] == 0.5 and data["recall"][1] == pytest.approx(2 / 3, abs=1e-6)
+    assert data["precision"][-1] == 1.0  # nothing predicted positive
+
+
+def test_tables_with_media_cells(tmp_path):
+    import numpy as np
+
+    run = nb.init("t", capture_env=False)
+    wav = np.zeros(800)
+    rows = [
+        {"file": "a", "pesq": np.float32(2.5), "ok": True, "clip": nb.Audio(wav, sample_rate=8000)},
+        {"file": "b", "pesq": float("nan"), "ok": False, "note": "loud"},
+    ]
+    run.add_table("eval/samples", rows, step=3)
+    run.add_table("eval/samples", {"file": ["a", "b"], "pesq": [2.7, 1.9]}, step=4)
+
+    with pytest.raises(ValueError, match="row_id"):
+        run.add_table("eval/samples", rows, row_id="nope")
+
+    run.finish()
+    r = RunReader(run.path)
+    cell, first, _ = r.media()
+    assert cell.key == "eval/samples#0/clip" and cell.meta["kind"] == "cell"
+    assert cell.meta["mime"] == "audio/wav" and cell.step == 3
+    data = json.loads(r.read_media(first))
+    types = {c["name"]: c["type"] for c in data["columns"]}
+    assert types == {
+        "file": "text",
+        "pesq": "number",
+        "ok": "bool",
+        "clip": "audio",
+        "note": "text",
+    }
+    assert data["id"] == "file" and first.meta["rows"] == 2
+    assert data["rows"][1] == ["b", None, False, None, "loud"]
+    assert data["rows"][0][3] == {"$cell": "eval/samples#0/clip"}
+    handle = nb.load("t").runs()[0]
+    assert handle.table("eval/samples") == [{"file": "a", "pesq": 2.7}, {"file": "b", "pesq": 1.9}]
+    assert handle.table("eval/samples", step=3)[0]["pesq"] == pytest.approx(2.5)
+    assert handle.table("nothing") == []
 
 
 def test_matplotlib_figure():

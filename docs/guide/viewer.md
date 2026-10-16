@@ -213,8 +213,9 @@ preview side by side. See [Reports](reports.md).
 
 ## Media page
 
-Shows images, audio, figures, HTML and text logged with `add_image`,
-`add_audio`, `add_figure`, `add_html` and `add_text`, for the selected runs (or
+Shows images, audio, figures, point clouds, HTML and text logged with
+`add_image`, `add_audio`, `add_figure`, `add_pr_curve`, `add_table`,
+`add_point_cloud`, `add_html` and `add_text`, for the selected runs (or
 the query result, up to 48 runs). Each key is a collapsible section with a card
 per run; every card has its own step slider, as in TensorBoard, so one run can
 be scrolled through its steps while the others stay put.
@@ -222,7 +223,7 @@ be scrolled through its steps while the others stay put.
 - **Runs**: a chip per run, as in the Charts legend. Click one to hide or
   show it, double-click (or Alt-click) to show only that run, and **All** or
   **None** to show or hide every run.
-- **Kinds**: the chips below (Images, Audio, Figures, HTML, Text) show or
+- **Kinds**: the chips below (Images, Audio, Figures, Tables, Point clouds, HTML, Text) show or
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
@@ -268,6 +269,47 @@ the CDN is unreachable the figure shows a message and the spec stays
 downloadable.
 
 
+### Tables
+
+Tables (`add_table`) take the whole width of the section. Each run's card has
+its step slider, and every number is compared with the same row at the
+**previous step** or the **first step** (or **nothing**): the cell is tinted
+green when it got better and orange when it got worse, darker for bigger
+changes, with the change next to the value (**color + Δ**, **color** or
+**Δ**). A column counts as better when lower if its name looks like a loss or
+error (`loss`, `error`, `wer`, ...), and when higher otherwise; the arrow next
+to each column name says which.
+
+- Click a column to sort; rows glide to their new place when the step changes,
+  and the arrows next to the rank say how many places a row moved.
+- **Filter rows** takes comparisons joined with `and`, such as
+  `snr_in < 0 and noise = babble`; other text matches the row id.
+- The summary counts the rows that improved or got worse on the sorted column
+  (or the first column that changed), with its mean and change.
+- **trend** draws that column for each row across the logged steps.
+- Click a row for its values at every step and its media: an audio cell opens
+  in the waveform player, with notes.
+
+In an HTML export a table shows its first 200 rows, colored by the change
+since the previous step.
+
+### PR curves
+
+PR curves are listed with the figures. Each card draws its run's curve
+(precision against recall) in the run's color with its average precision, and
+a chart above the cards overlays every run's curve at the chosen step, as
+TensorBoard does. Hover a curve for the threshold, precision, recall and the
+TP, FP, TN and FN counts there.
+
+### Point clouds
+
+Point clouds are drawn in a view you can rotate (drag), pan (shift-drag or
+right-drag), zoom (click the view, then scroll) and reset (double-click),
+colored by their logged colors or else by height. Each card has its step
+slider, so you can watch a cloud change over training; the zoomed view draws
+it larger. The renderer is a few hundred lines of plain canvas code, so it
+needs no WebGL and works the same in an HTML export.
+
 ### Audio
 
 Audio has two players, switched with **player** above the grid (the choice is
@@ -289,6 +331,14 @@ remembered):
   in the URL (`cmap`, `fscale`, `fft`, `spec`), so a shared link shows the
   same view.
 - **simple**: the browser's own audio controls, as in TensorBoard.
+
+**Notes**: in the waveform player, select a section and press **Note** (or
+`N`), type, and press Enter. Notes show in a lane above the waveform; click
+one to select its section again, then **Edit note** changes or deletes it.
+Notes are saved in the run's `annotations.json` (keyed by the media key and
+step), so they show wherever the clip does, including reports, and an HTML
+export lists them under the clip with buttons that play each section. From
+Python, `Run.audio_notes` reads them.
 
 Each clip shows its caption, duration, sample rate and channels, and a
 download link. The waveform player is a port of the player in

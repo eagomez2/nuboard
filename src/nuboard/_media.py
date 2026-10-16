@@ -1,16 +1,19 @@
-"""Conversion of images, audio, figures and HTML into bytes for the media pack.
+"""Conversion of images, audio, figures, point clouds, PR curves and HTML into media pack bytes.
 
-Standard library only: image arrays are PNG-encoded with `zlib` and audio
-arrays WAV-encoded with `wave`; figure libraries are used only if the object
+Standard library only: image arrays are PNG-encoded with `zlib`, audio
+arrays WAV-encoded with `wave`, point clouds packed with `array` and PR
+curves counted in plain Python; figure libraries are used only if the object
 passed in already comes from them.
 """
 
 from __future__ import annotations
 
+import array
 import io
 import json
 import os
 import struct
+import sys
 import wave
 import zlib
 from typing import Any
@@ -360,3 +363,280 @@ def _wav_info(data: bytes) -> dict[str, Any]:
             }
     except (wave.Error, EOFError):  # e.g. float WAV, which `wave` does not read
         return {}
+
+
+#: MIME type of point clouds in the media pack (see `points_bytes`)
+POINTS_MIME = "application/x-nuboard-points"
+
+
+def _flat(values: Any, kind: str, width: int, name: str) -> tuple[array.array, int]:
+    """Return an N x `width` array or nested sequence as a flat `array` and N.
+
+    Args:
+        values: A NumPy array, torch tensor or sequence of rows.
+        kind: The `array` type code to convert to (`f` or `B`).
+        width: The number of values per row.
+        name: The argument name, for error messages.
+
+    Returns:
+        The flat values and the number of rows.
+
+    Raises:
+        ValueError: If the rows do not hold `width` values each.
+    """
+
+    if hasattr(values, "detach"):  # torch tensor
+        values = values.detach().cpu().numpy()
+
+    if hasattr(values, "shape") and hasattr(values, "tobytes"):  # NumPy array
+        shape = tuple(values.shape)
+
+        if len(shape) != 2 or shape[1] != width:
+            raise ValueError(f"{name} must have shape (N, {width}), not {shape}")
+
+        dtype = "<f4" if kind == "f" else "uint8"
+        out = array.array(kind, values.astype(dtype).tobytes(order="C"))
+
+        if sys.byteorder == "big" and kind == "f":
+            out.byteswap()  # read back as little-endian below
+
+        return out, shape[0]
+
+    rows = [list(r) for r in values]
+
+    if any(len(r) != width for r in rows):
+        raise ValueError(f"each row of {name} must hold {width} values")
+
+    return array.array(kind, [v for r in rows for v in r]), len(rows)
+
+
+def points_bytes(points: Any, colors: Any = None) -> tuple[bytes, str, dict[str, Any]]:
+    """Pack a point cloud as little-endian float32 positions and optional RGB bytes.
+
+    Args:
+        points: An (N, 3) array, tensor or sequence of x, y, z positions.
+        colors: An optional (N, 3) array or sequence of RGB colors, as uint8
+            values or floats in [0, 1].
+
+    Returns:
+        The bytes (N x 12 bytes of positions, then N x 3 bytes of colors if
+        given), the MIME type and the `points` and `colors` metadata.
+
+    Raises:
+        ValueError: If the shapes do not match.
+    """
+
+    xyz, n = _flat(points, "f", 3, "points")
+
+    if sys.byteorder == "big":
+        xyz.byteswap()
+
+    data = xyz.tobytes()
+
+    if colors is not None:
+        if hasattr(colors, "detach"):
+            colors = colors.detach().cpu().numpy()
+
+        floats = getattr(getattr(colors, "dtype", None), "kind", "") == "f" or (
+            not hasattr(colors, "dtype") and any(isinstance(v, float) for r in colors for v in r)
+        )
+
+        if floats:
+            scaled, m = _flat(colors, "f", 3, "colors")
+            rgb = array.array("B", [min(255, max(0, round(v * 255))) for v in scaled])
+        else:
+            rgb, m = _flat(colors, "B", 3, "colors")
+
+        if m != n:
+            raise ValueError(f"colors has {m} rows but points has {n}")
+
+        data += rgb.tobytes()
+
+    return data, POINTS_MIME, {"points": n, "colors": colors is not None}
+
+
+#: MIME type of precision-recall curves in the media pack (see `pr_curve_bytes`)
+PR_MIME = "application/x-nuboard-pr+json"
+
+
+def _values(x: Any) -> list[Any]:
+    """Return a flat list of the values of an array, tensor or sequence."""
+
+    if hasattr(x, "detach"):  # torch tensor
+        x = x.detach().cpu().numpy()
+
+    if hasattr(x, "ravel"):  # NumPy array
+        return x.ravel().tolist()
+
+    return list(x)
+
+
+def pr_curve_json(counts: dict[str, list[float]]) -> tuple[bytes, str, dict[str, Any]]:
+    """Encode precision-recall counts per threshold as the stored JSON.
+
+    Args:
+        counts: `tp`, `fp`, `tn` and `fn` lists (one value per threshold, the
+            thresholds evenly spaced from 0 to 1), and optionally `precision`
+            and `recall`, which are computed from the counts when missing.
+
+    Returns:
+        The JSON bytes, the MIME type and the `thresholds` and `positives`
+        metadata.
+
+    Raises:
+        ValueError: If the lists have different lengths or fewer than 2 values.
+    """
+
+    tp, fp, tn, fn = (list(map(float, counts[k])) for k in ("tp", "fp", "tn", "fn"))
+    n = len(tp)
+
+    if n < 2 or any(len(v) != n for v in (fp, tn, fn)):
+        raise ValueError("tp, fp, tn and fn need the same length, at least 2")
+
+    precision = counts.get("precision") or [
+        a / (a + b) if a + b > 0 else 1.0 for a, b in zip(tp, fp, strict=True)
+    ]
+    recall = counts.get("recall") or [
+        a / (a + b) if a + b > 0 else 0.0 for a, b in zip(tp, fn, strict=True)
+    ]
+    data = {
+        "thresholds": [round(i / (n - 1), 6) for i in range(n)],
+        "tp": tp,
+        "fp": fp,
+        "tn": tn,
+        "fn": fn,
+        "precision": [round(float(v), 6) for v in precision],
+        "recall": [round(float(v), 6) for v in recall],
+    }
+    meta = {"thresholds": n, "positives": tp[0] + fn[0]}
+    return json.dumps(data, separators=(",", ":")).encode("utf-8"), PR_MIME, meta
+
+
+def pr_curve_bytes(
+    labels: Any, predictions: Any, num_thresholds: int = 201, weights: Any = None
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Count true and false positives at evenly spaced thresholds, as TensorBoard does.
+
+    A prediction counts as positive at threshold `t` when it is at least `t`;
+    predictions are clipped to [0, 1] and bucketed, so the cost is one pass
+    over the data and the result has `num_thresholds` values per count.
+
+    Args:
+        labels: Ground truth, as booleans or 0/1 values.
+        predictions: Scores in [0, 1], one per label.
+        num_thresholds: How many thresholds, from 0 to 1 inclusive.
+        weights: Optional weight per example (defaults to 1).
+
+    Returns:
+        The JSON bytes, the MIME type and metadata (see `pr_curve_json`).
+
+    Raises:
+        ValueError: If the inputs have different lengths or are empty.
+    """
+
+    y = _values(labels)
+    p = _values(predictions)
+    w = _values(weights) if weights is not None else None
+
+    if not y or len(y) != len(p) or (w is not None and len(w) != len(y)):
+        raise ValueError("labels, predictions and weights need the same, non-zero length")
+
+    if num_thresholds < 2:
+        raise ValueError("num_thresholds must be at least 2")
+
+    top = num_thresholds - 1
+    pos = [0.0] * num_thresholds  # weight of positives per bucket
+    neg = [0.0] * num_thresholds
+
+    for i, (label, score) in enumerate(zip(y, p, strict=True)):
+        bucket = int(min(max(float(score), 0.0), 1.0) * top)
+        weight = float(w[i]) if w is not None else 1.0
+
+        if label:
+            pos[bucket] += weight
+        else:
+            neg[bucket] += weight
+
+    # At threshold i, every prediction in bucket i or above is positive
+    tp, fp = [0.0] * num_thresholds, [0.0] * num_thresholds
+    run_pos = run_neg = 0.0
+
+    for i in range(top, -1, -1):
+        run_pos += pos[i]
+        run_neg += neg[i]
+        tp[i], fp[i] = run_pos, run_neg
+
+    fn = [tp[0] - v for v in tp]
+    tn = [fp[0] - v for v in fp]
+    return pr_curve_json({"tp": tp, "fp": fp, "tn": tn, "fn": fn})
+
+
+#: MIME type of tables in the media pack (see `table_bytes`)
+TABLE_MIME = "application/x-nuboard-table+json"
+
+
+def cell_value(value: Any) -> Any:
+    """Return a table cell as a JSON value: a number, bool, string or None.
+
+    NumPy and torch scalars become numbers, non-finite numbers become None and
+    anything else becomes its `str`.
+    """
+
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
+        try:
+            value = value.item()  # NumPy or torch scalar
+        except (TypeError, ValueError):
+            pass
+
+    if value is None or isinstance(value, (bool, str)):
+        return value
+
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, float):
+        return value if value == value and abs(value) != float("inf") else None
+
+    return str(value)
+
+
+def table_bytes(
+    columns: list[str], kinds: dict[str, str], rows: list[list[Any]], row_id: str
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Encode a table as the stored JSON.
+
+    Column types are `number`, `bool` or `text` from the values, or the kind of
+    the media cells (`audio`, `image`) given in `kinds`.
+
+    Args:
+        columns: Column names, in order.
+        kinds: Media kind of the columns that hold media cells.
+        rows: One list of cell values per row, in column order; media cells are
+            `{"$cell": <media key>}`.
+        row_id: The column whose values match rows across steps.
+
+    Returns:
+        The JSON bytes, the MIME type and the `rows` and `columns` metadata.
+    """
+
+    def kind(i: int, name: str) -> str:
+        if name in kinds:
+            return kinds[name]
+
+        values = [r[i] for r in rows if r[i] is not None]
+
+        if values and all(isinstance(v, bool) for v in values):
+            return "bool"
+
+        if values and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+            return "number"
+
+        return "text"
+
+    data = {
+        "columns": [{"name": c, "type": kind(i, c)} for i, c in enumerate(columns)],
+        "id": row_id,
+        "rows": rows,
+    }
+    meta = {"rows": len(rows), "columns": len(columns)}
+    return json.dumps(data, separators=(",", ":")).encode("utf-8"), TABLE_MIME, meta

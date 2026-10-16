@@ -28,11 +28,7 @@
           <span id="selection-text"></span>
           <button id="loop" class="btn small toggle" title="Loop the selection (L)">Loop</button>
           <button id="zoom-selection" class="btn small" title="Zoom to the selection (Z)">Zoom in</button>
-          <button
-            id="annotate"
-            class="btn small"
-            title="Add a note with the selection's timestamps to the file's notes (N)"
-          >
+          <button id="annotate" class="btn small" title="Add a note on the selection, or edit the note it matches (N)">
             Note
           </button>
           <button id="clear-selection" class="btn small icon" title="Clear the selection (Esc)">
@@ -75,7 +71,8 @@
           placeholder="Note for this selection (Enter to add, Esc to cancel)"
           autocomplete="off"
         />
-        <button type="submit" class="btn small toggle on">Add</button>
+        <button id="note-submit" type="submit" class="btn small toggle on">Add</button>
+        <button id="note-delete" type="button" class="btn small" hidden>Delete</button>
         <button id="note-cancel" type="button" class="btn small">Cancel</button>
       </form>
       <div id="minimap" class="minimap"></div>

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.0
+
+**Media**
+
+- Tables: `run.add_table(key, rows)` logs per-example results, with audio and
+  image cells (`nb.Audio`, `nb.Image`). The viewer compares each cell with the
+  same row at the previous or first step, tinted green or orange with the
+  change next to it, and rows glide to their new place as the step slider
+  moves. Tables sort, filter (`snr_in < 0 and noise = babble`), show a trend
+  per row and open a row's history and media. They export to HTML, and
+  `RunHandle.table()` reads them back. The `speech-denoise` demo logs a table
+  of 40 test files per eval, and its new `listening-notes` report shows it
+  with audio notes.
+- PR curves: `run.add_pr_curve(key, labels, predictions)` counts true and
+  false positives at evenly spaced thresholds, as TensorBoard does, and stores
+  only the counts. Each run's curve shows with the figures, all runs are
+  overlaid on one chart above them, and hovering shows the threshold and
+  counts. `nuboard import-tensorboard` imports TensorBoard's PR curves, and the
+  `vit-ablations` demo logs three of them.
+- Point clouds: `run.add_point_cloud(key, points, colors=...)` logs an
+  `(N, 3)` cloud (lidar scans, mesh samples, 3D projections of embeddings).
+  The Media page draws it in a view you can rotate, pan and zoom, colored by
+  the logged colors or by height, with a step slider per run. It works in
+  reports and in HTML exports. The `vit-ablations` demo logs eval embeddings
+  that separate into classes over training.
+- Audio notes: select a section in the waveform player and add a note. Notes
+  can be edited and deleted, are kept in the run's `annotations.json`, show
+  in reports, and are listed under the clip in HTML exports, where clicking
+  one plays its section. `Run.audio_notes` reads them from Python.
+
 ## 0.8.3
 
 **Runs**

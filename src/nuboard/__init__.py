@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from ._meta import FORMAT_VERSION, NAME
 from .artifacts import Artifact
+from .cells import Audio, Image
 from .run import Run, init
 
 try:
@@ -48,4 +49,14 @@ def load(project: str, *, dir: str | None = None) -> Project:
     return Project.open(project, dir=dir)
 
 
-__all__ = ["FORMAT_VERSION", "NAME", "Artifact", "Run", "__version__", "init", "load"]
+__all__ = [
+    "FORMAT_VERSION",
+    "NAME",
+    "Artifact",
+    "Audio",
+    "Image",
+    "Run",
+    "__version__",
+    "init",
+    "load",
+]

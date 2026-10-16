@@ -6,8 +6,8 @@ Logs written by TensorFlow 1 and 2, PyTorch's `SummaryWriter` and tensorboardX
 are understood.
 
 Each folder holding event files becomes one run, named after its path relative to
-the log folder. Scalars, images, audio, text and hyperparameters (the HParams
-plugin) are imported; histograms, graphs, embeddings and other plugins are
+the log folder. Scalars, images, audio, text, PR curves and hyperparameters
+(the HParams plugin) are imported; histograms, graphs, embeddings and other plugins are
 counted and skipped. A folder that holds only `add_hparams` output (PyTorch writes
 it to a timestamped sub-folder) is merged into its parent run.
 
@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from . import _fs
+from ._media import pr_curve_json
 from .run import Run
 
 # TensorFlow DataType enum values and their struct formats (little-endian).
@@ -509,6 +510,16 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                             )
 
                         result.media += len(clips)
+                    elif plugin == "pr_curves" and len(shape) == 2 and shape[0] == 6:
+                        # rows: TP, FP, TN, FN, precision, recall; one column per threshold
+                        n = shape[1]
+                        rows = [values[i * n : (i + 1) * n] for i in range(6)]
+                        names = ("tp", "fp", "tn", "fn", "precision", "recall")
+                        counts = dict(zip(names, rows, strict=True))
+                        run._put_media(
+                            tag, step, lambda c=counts: pr_curve_json(c), {"kind": "pr"}, t
+                        )
+                        result.media += 1
                     elif plugin == "text" or dtype == _DT_STRING:
                         text = "\n".join(s.decode("utf-8", "replace") for s in _strings(values))
                         key = tag.removesuffix("/text_summary")  # PyTorch, tensorboardX

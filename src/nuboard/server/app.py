@@ -8,6 +8,7 @@ import contextlib
 import json
 import math
 import os
+import re
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -39,6 +40,7 @@ from ..query import QueryError, parse
 from ..reports import (
     MediaRef,
     check_field,
+    clean_audio_notes,
     export_report,
     parse_ref,
     read_fields,
@@ -536,6 +538,65 @@ def create_app(
 
         return Response(body, media_type="application/vnd.apache.arrow.stream")
 
+    def audio_notes_of(key: str) -> dict[str, Any]:
+        """Return a run's audio notes, by `<media key>@<step>`."""
+        path = catalog.path_of(key)
+        ann = _fs.read_json(path / "annotations.json", {}) if path else {}
+        notes = (ann or {}).get("audio_notes")
+        return notes if isinstance(notes, dict) else {}
+
+    def with_notes(item: dict[str, Any], notes: dict[str, Any]) -> dict[str, Any]:
+        """Add the notes of an audio item to its media list entry."""
+        found = notes.get(f"{item['key']}@{item['step']}")
+        return {**item, "notes": found} if found else item
+
+    async def set_audio_notes(request: Request) -> Response:
+        """Replace the notes of one audio item of a run (`PUT`).
+
+        The JSON body holds `item` (`<media key>@<step>`) and `notes`, a list
+        of `{id, start, end, text}`; an empty list removes the item's notes.
+        Returns the stored notes.
+        """
+        key = request.path_params["key"]
+        path = catalog.path_of(key)
+
+        if path is None:
+            return PlainTextResponse("unknown run", 404)
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        item = str(body.get("item") or "")
+
+        if not re.fullmatch(r".+@-?\d+", item):
+            return PlainTextResponse("item must be <media key>@<step>", 400)
+
+        try:
+            notes = clean_audio_notes(body.get("notes"))
+        except ValueError as exc:
+            return PlainTextResponse(str(exc), 400)
+
+        def write() -> None:
+            """Store the notes in the run's annotations.json."""
+            ann = _fs.read_json(path / "annotations.json", {}) or {}
+            per = dict(ann.get("audio_notes") or {})
+
+            if notes:
+                per[item] = notes
+            else:
+                per.pop(item, None)
+
+            if per:
+                ann["audio_notes"] = per
+            else:
+                ann.pop("audio_notes", None)
+
+            _fs.atomic_write_json(path / "annotations.json", ann)
+
+        await run_in_threadpool(write)
+        return JSON({"notes": notes})
+
     def media_list(request: Request) -> Response:
         """Return a run's media and text entries.
 
@@ -548,13 +609,13 @@ def create_app(
         rank = int(request.query_params.get("rank", 0))
         want = request.query_params.get("key")
         items: list[dict[str, Any]] = []
+        notes = audio_notes_of(key) if rank == 0 else {}
 
         if reader is not None:
             for i, e in enumerate(reader.media(rank=rank)):
                 if want is None or e.key == want:
-                    items.append(
-                        {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
-                    )
+                    item = {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
+                    items.append(with_notes(item, notes))
 
             for t in reader.texts(rank=rank):
                 if want is None or t.key == want:
@@ -824,6 +885,7 @@ def create_app(
         for i, e in enumerate(reader.media()):
             if e.key == ref.key and e.step == ref.step:
                 found = {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
+                found = with_notes(found, audio_notes_of(key))
 
         for t in reader.texts(ref.key):
             if t.step == ref.step:
@@ -1118,6 +1180,7 @@ def create_app(
         Route("/api/runs/{key}", annotate, methods=["PATCH"]),
         Route("/api/runs/{key}/files/{path:path}", run_file),
         Route("/api/runs/{key}/media", media_list),
+        Route("/api/runs/{key}/audio-notes", set_audio_notes, methods=["PUT"]),
         Route("/api/runs/{key}/media/{index:int}", media_blob),
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),

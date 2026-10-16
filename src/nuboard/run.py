@@ -156,6 +156,33 @@ def _install_excepthook() -> None:
     sys.excepthook = hook
 
 
+def _records(rows: Any) -> list[dict[Any, Any]]:
+    """Return a table's rows as dicts, from dicts, a dict of columns or a DataFrame."""
+
+    if hasattr(rows, "to_dict") and hasattr(rows, "columns"):  # pandas DataFrame
+        return rows.to_dict(orient="records")
+
+    if isinstance(rows, dict):  # columns
+        names = list(rows)
+        return [
+            dict(zip(names, values, strict=True)) for values in zip(*rows.values(), strict=True)
+        ]
+
+    return [dict(r) for r in rows]
+
+
+def _copied(data: Any) -> Any:
+    """Return media data the caller may reuse right away: tensors on the CPU, arrays copied."""
+
+    if hasattr(data, "detach"):
+        data = data.detach().cpu()
+
+    if hasattr(data, "copy") and not isinstance(data, (bytes, str)):
+        data = data.copy()
+
+    return data
+
+
 class Run:
     """One training run, stored as one self-contained folder.
 
@@ -677,6 +704,189 @@ class Run:
             lambda: audio_bytes(audio, sample_rate),
             {"kind": "audio", "caption": caption},
             time,
+        )
+
+    def add_point_cloud(
+        self,
+        key: str,
+        points: Any,
+        step: int | None = None,
+        *,
+        colors: Any = None,
+        caption: str | None = None,
+        time: float | None = None,
+    ) -> None:
+        """Log a 3D point cloud, such as a lidar scan or points sampled from a mesh.
+
+        The viewer draws it in a view you can rotate and zoom, colored by
+        `colors` or else by height (z). Points are stored as float32; arrays are
+        copied, so the caller may reuse its buffer right away. Only rank 0 logs
+        media.
+
+        Args:
+            key: Name the point cloud is logged under.
+            points: An (N, 3) array, tensor or sequence of x, y, z positions.
+            step: Training step. Defaults to the step of the latest `log` call.
+            colors: Optional (N, 3) RGB colors, uint8 or floats in [0, 1].
+            caption: Optional caption shown in the viewer.
+            time: Unix timestamp of the item. Defaults to now.
+
+        Example:
+            >>> import numpy as np
+            >>> run.add_point_cloud("scan", np.random.rand(1000, 3), step=10)
+        """
+        from ._media import points_bytes
+
+        if hasattr(points, "detach"):
+            points = points.detach().cpu()
+
+        if hasattr(colors, "detach"):
+            colors = colors.detach().cpu()
+
+        points = points.copy() if hasattr(points, "copy") else list(points)
+
+        if colors is not None:
+            colors = colors.copy() if hasattr(colors, "copy") else list(colors)
+
+        self._put_media(
+            key,
+            step,
+            lambda: points_bytes(points, colors),
+            {"kind": "points", "caption": caption},
+            time,
+        )
+
+    def add_pr_curve(
+        self,
+        key: str,
+        labels: Any,
+        predictions: Any,
+        step: int | None = None,
+        *,
+        num_thresholds: int = 201,
+        weights: Any = None,
+        time: float | None = None,
+    ) -> None:
+        """Log a precision-recall curve, as TensorBoard's `add_pr_curve` does.
+
+        True and false positives are counted at `num_thresholds` evenly spaced
+        thresholds from 0 to 1, so only those counts are stored, not the
+        predictions. For several classes, log one curve per class
+        (`pr/cat`, `pr/dog`, ...). Only rank 0 logs media.
+
+        Args:
+            key: Name the curve is logged under.
+            labels: Ground truth, as booleans or 0/1 values (array, tensor or
+                sequence).
+            predictions: Scores in [0, 1], one per label.
+            step: Training step. Defaults to the step of the latest `log` call.
+            num_thresholds: How many thresholds, from 0 to 1 inclusive.
+            weights: Optional weight per example.
+            time: Unix timestamp of the item. Defaults to now.
+
+        Example:
+            >>> run.add_pr_curve("pr/cat", labels == 3, probs[:, 3], step=epoch)
+        """
+        from ._media import _values, pr_curve_bytes
+
+        # copied now: the caller may reuse its buffers after we return
+        y, p = _values(labels), _values(predictions)
+        w = _values(weights) if weights is not None else None
+        self._put_media(
+            key,
+            step,
+            lambda: pr_curve_bytes(y, p, num_thresholds, w),
+            {"kind": "pr"},
+            time,
+        )
+
+    def add_table(
+        self,
+        key: str,
+        rows: Any,
+        step: int | None = None,
+        *,
+        row_id: str | None = None,
+        time: float | None = None,
+    ) -> None:
+        """Log a table, such as per-example evaluation results.
+
+        Cells hold numbers, booleans, strings or None, or media as
+        `nuboard.Audio(...)` and `nuboard.Image(...)`; media cells are stored like
+        `add_audio` and `add_image` items. Log the same table at several steps
+        and the viewer colors each cell by how it changed, matching rows by
+        `row_id`. Only rank 0 logs media.
+
+        Args:
+            key: Name the table is logged under.
+            rows: A list of dicts (one per row), a dict of column lists, or a
+                pandas DataFrame.
+            step: Training step. Defaults to the step of the latest `log` call.
+            row_id: The column that identifies a row across steps. Defaults to
+                the first column.
+            time: Unix timestamp of the item. Defaults to now.
+
+        Raises:
+            ValueError: If `row_id` is not one of the columns.
+
+        Example:
+            >>> clip = nb.Audio(wav, sample_rate=16000)
+            >>> run.add_table("eval/samples", [
+            ...     {"file": "p232_001", "pesq": 2.91, "enhanced": clip},
+            ...     {"file": "p232_002", "pesq": 1.74},
+            ... ], step=epoch)
+        """
+        from ._media import audio_bytes, cell_value, image_bytes, table_bytes
+        from .cells import Audio, Image
+
+        if not self.dist.is_main:
+            return
+
+        records = _records(rows)
+        columns: list[str] = []
+
+        for r in records:
+            columns += [str(c) for c in r if str(c) not in columns]
+
+        if not columns:
+            return
+
+        if row_id is not None and row_id not in columns:
+            raise ValueError(f"row_id {row_id!r} is not a column of the table")
+
+        kinds: dict[str, str] = {}
+        out: list[list[Any]] = []
+        at = self._step(step)
+
+        for i, record in enumerate(records):
+            values = {str(c): v for c, v in record.items()}
+            row: list[Any] = []
+
+            for c in columns:
+                v = values.get(c)
+
+                if isinstance(v, (Audio, Image)):
+                    cell = f"{key}#{i}/{c}"
+                    data = _copied(v.data)
+                    meta = {"kind": "cell", "caption": v.caption}
+
+                    if isinstance(v, Audio):
+                        rate = v.sample_rate
+                        producer = lambda d=data, r=rate: audio_bytes(d, r)  # noqa: E731
+                    else:
+                        producer = lambda d=data: image_bytes(d)  # noqa: E731
+
+                    self._put_media(cell, at, producer, meta, time)
+                    kinds[c] = "audio" if isinstance(v, Audio) else "image"
+                    row.append({"$cell": cell})
+                else:
+                    row.append(cell_value(v))
+
+            out.append(row)
+
+        rid = row_id or columns[0]
+        self._put_media(
+            key, at, lambda: table_bytes(columns, kinds, out, rid), {"kind": "table"}, time
         )
 
     def add_figure(
