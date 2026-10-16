@@ -628,13 +628,24 @@ def _plotly_confusion(rng: random.Random, per_class: list[float]) -> dict[str, A
 def _report_html(aug: str, epoch: int, acc: float) -> str:
     """Return a small HTML eval report with an accuracy bar and a scripted button."""
     bar = int(acc * 200)
-    return (
-        "<!doctype html><meta charset=utf-8><body style='font:14px system-ui;margin:12px'>"
-        f"<h3 style='margin:0 0 8px'>Eval report: {aug}, epoch {epoch}</h3>"
-        f"<div style='background:#0072b2;height:14px;width:{bar}px;border-radius:3px'></div>"
-        f"<p>top-1 accuracy <b>{acc:.3f}</b></p>"
-        "<button onclick=\"this.textContent='scripts run in a sandbox'\">click me</button></body>"
-    )
+    return f"""<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body {{ font: 14px system-ui; margin: 12px; }}
+      h3 {{ margin: 0 0 8px; }}
+      .bar {{ background: #0072b2; height: 14px; width: {bar}px; border-radius: 3px; }}
+    </style>
+  </head>
+  <body>
+    <h3>Eval report: {aug}, epoch {epoch}</h3>
+    <div class="bar"></div>
+    <p>top-1 accuracy <b>{acc:.3f}</b></p>
+    <button onclick="this.textContent = 'scripts run in a sandbox'">click me</button>
+  </body>
+</html>
+"""
 
 
 SPEECH_RATE = 16_000

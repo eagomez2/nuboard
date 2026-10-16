@@ -33,7 +33,7 @@ path.
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
-    reports/files/*.png                   chart snapshots embedded in reports
+    reports/files/*.png                   chart and plot snapshots embedded in reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -261,6 +261,10 @@ Keys: `metric`, `runs` (comma-separated run keys), `x`, `group`, `agg`,
 (series labels separated by newlines). The viewer draws the chart live from
 these and shows the snapshot when it cannot; other Markdown viewers show the
 snapshot.
+
+A snapshot from another page (Sweeps, Timeline) has the title
+`view:<page>?<viewer URL parameters>`; the viewer shows the image with a
+button that reopens that page with those parameters.
 
 ## Property definitions: `fields.json`
 

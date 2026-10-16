@@ -2,6 +2,7 @@
   import { mount, unmount } from 'svelte';
   import ChartEmbed from './ChartEmbed.svelte';
   import MediaEmbed from './MediaEmbed.svelte';
+  import ViewEmbed from './ViewEmbed.svelte';
   import { api } from '../lib/api';
   import { renderMarkdown } from '../lib/markdown';
 
@@ -26,6 +27,12 @@
         mount(ChartEmbed, {
           target: slot,
           props: { spec: slot.dataset.spec ?? '', caption: slot.dataset.caption ?? '', src: slot.dataset.src ?? '' },
+        }),
+      ),
+      ...[...el.querySelectorAll<HTMLElement>('.nb-view')].map((slot) =>
+        mount(ViewEmbed, {
+          target: slot,
+          props: { view: slot.dataset.view ?? '', caption: slot.dataset.caption ?? '', src: slot.dataset.src ?? '' },
         }),
       ),
     ];
@@ -123,7 +130,8 @@
     margin: 1.4em 0;
   }
   .md :global(.nb-embed),
-  .md :global(.nb-chart) {
+  .md :global(.nb-chart),
+  .md :global(.nb-view) {
     display: block;
     margin: 1em 0;
   }

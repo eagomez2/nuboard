@@ -17,6 +17,9 @@
     audioOptions,
     onsave,
     onzoom,
+    selecting = false,
+    isSelected = () => false,
+    onselect = () => {},
   }: {
     run: RunBrief;
     items: MediaItem[];
@@ -28,6 +31,9 @@
     audioOptions: AudioOptions;
     onsave: (it: MediaItem) => void;
     onzoom: (it: MediaItem) => void;
+    selecting?: boolean; // show a checkbox to pick the shown item for a report
+    isSelected?: (it: MediaItem) => boolean;
+    onselect?: (it: MediaItem, on: boolean) => void;
   } = $props();
 
   // A step picked on this card's own slider; cleared whenever the page-wide step changes.
@@ -56,8 +62,17 @@
   const zoomable = $derived(!!it && it.kind !== 'audio' && !it.mime.startsWith('audio/'));
 </script>
 
-<figure class="card cell">
+<figure class="card cell" class:picked={selecting && !!it && isSelected(it)}>
   <figcaption>
+    {#if selecting && it}
+      <input
+        type="checkbox"
+        class="pick"
+        aria-label="Select {title} at step {it.step}"
+        checked={isSelected(it)}
+        onchange={(e) => onselect(it, e.currentTarget.checked)}
+      />
+    {/if}
     <i class="dot" style="background:{color}"></i>
     <span class="mono name" title="{run.name}&#10;{run.path}">{title}</span>
     {#if it}<span class="faint mono step">step {it.step.toLocaleString()}</span>{/if}
@@ -111,6 +126,15 @@
     flex-direction: column;
     gap: 8px;
     min-width: 0;
+  }
+  .picked {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .pick {
+    margin: 0;
+    accent-color: var(--accent);
+    flex: none;
   }
   figcaption {
     display: flex;

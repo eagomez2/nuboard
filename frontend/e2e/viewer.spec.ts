@@ -205,7 +205,7 @@ test('add a media item to a report, then open and export it', async ({ page }) =
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/media:.*samples\/augmented@/);
   await expect(page.locator('.preview img').first()).toBeVisible();
   const download = page.waitForEvent('download');
-  await page.getByRole('link', { name: /Export/ }).click();
+  await page.getByRole('link', { name: 'Export as .zip' }).click();
   expect((await download).suggestedFilename()).toBe('e2e-report.zip');
 });
 
@@ -220,9 +220,9 @@ test('the demo report renders its embedded figures', async ({ page }) => {
 test('run details show Markdown notes and typed properties', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.getByRole('button', { name: 'cutmix-s0', exact: true }).click();
-  await page.getByRole('button', { name: 'notes', exact: true }).click();
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await expect(page.getByText('Best of the sweep', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'properties', exact: true }).click();
+  await page.getByRole('button', { name: 'Properties', exact: true }).click();
   await expect(page.locator('#prop-verdict')).toHaveValue('keep');
   await page.locator('#prop-gpu_hours').fill('7.25');
   await page.getByRole('button', { name: 'Save 1 change' }).click();
@@ -256,4 +256,96 @@ test('add the main chart to a report, where it is drawn live', async ({ page }) 
   await expect(page.locator('.preview .nb-chart canvas')).toBeVisible();
   await page.getByRole('button', { name: 'Open in Charts' }).click();
   await expect(page).toHaveURL(/#\/charts.*metric=val%2Facc/);
+});
+
+test('the browser tab is titled NuBoard', async ({ page }) => {
+  await page.goto('/#/runs');
+  await expect(page).toHaveTitle('NuBoard');
+});
+
+test('media legend shows and hides runs, and HTML items show their code', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mkinds=html&mrows=0');
+  const cards = page.locator('section.section figure');
+  await expect(cards).toHaveCount(8);
+  await page.getByRole('button', { name: 'None', exact: true }).click();
+  await expect(cards).toHaveCount(0);
+  await page.locator('.run-chip').first().click();
+  await expect(cards).toHaveCount(1);
+  await page.locator('.run-chip').nth(1).dblclick();
+  await expect(cards).toHaveCount(1);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(cards).toHaveCount(8);
+  await cards.first().getByRole('button', { name: 'code', exact: true }).click();
+  const code = cards.first().getByRole('region', { name: /HTML source/ });
+  await expect(code).toContainText('Eval report');
+  await expect(code.locator('.ln').nth(2)).toHaveText('3');
+});
+
+test('sweeps: grid, full screen, and plots added to a report', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain');
+  await page.getByRole('combobox', { name: 'Plot columns' }).selectOption('1');
+  await page.getByRole('combobox', { name: 'Plot rows per page' }).selectOption('1');
+  await expect(page.locator('.scatter')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Next plots' }).click();
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(page.locator('.panel.full')).toBeVisible();
+  await page.getByRole('button', { name: 'Add parallel coordinates to a report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-sweeps');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.locator('.panel.full')).toHaveCount(0); // left full screen for the dialog
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"view:sweeps\?/);
+  await page.getByRole('button', { name: 'Open in Sweeps' }).click();
+  await expect(page).toHaveURL(/#\/sweeps/);
+});
+
+test('timeline goes full screen and into a report, which exports as HTML', async ({ page }) => {
+  await page.goto('/#/timeline');
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(page.locator('.panel.full')).toBeVisible();
+  await page.getByRole('button', { name: 'Exit full screen' }).click();
+  await page.getByRole('button', { name: 'Add timeline to a report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-timeline');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.locator('.preview .nb-view img')).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('e2e-timeline.html');
+  const html = await (await file.createReadStream()).toArray();
+  expect(Buffer.concat(html).toString()).toContain('src="data:image/png;base64,');
+});
+
+test('several media items go to a report together and export without a network', async ({ page, browser }) => {
+  await page.goto('/#/media?project=vit-ablations&mkinds=figure&mcols=2&mrows=1');
+  await page.getByRole('button', { name: 'Select for report' }).click();
+  const boxes = page.getByRole('checkbox');
+  await boxes.nth(0).check();
+  await boxes.nth(2).check(); // the first card of the next key
+  await expect(page.getByRole('toolbar', { name: 'Selected media' })).toContainText('2 selected');
+  await page.getByRole('button', { name: 'Add 2 to report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-figures');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(
+    /eval\/confusion@.*\n\n.*eval\/per_class@/s,
+  );
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  const path = test.info().outputPath('e2e-figures.html');
+  await (await download).saveAs(path);
+  const html = (await import('node:fs')).readFileSync(path, 'utf8');
+  expect(html).not.toMatch(/<script[^>]+src=/);
+  // the file draws both figures with every network request blocked
+  const ctx = await browser.newContext({ offline: true });
+  await ctx.route(/^https?:/, (r) => r.abort());
+  const off = await ctx.newPage();
+  await off.goto('file://' + path);
+  await expect(off.locator('.nbfig .main-svg').first()).toBeVisible();
+  await expect(off.locator('.nbfig svg.marks')).toBeVisible();
+  await ctx.close();
 });

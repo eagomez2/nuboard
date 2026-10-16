@@ -30,9 +30,17 @@ the axis.
 several axes combine, and the scatters, best-runs table and **Plot N runs**
 button follow them. Click an axis to clear its filter.
 
+The corner button next to **Plot N runs** shows the chart full screen (Esc
+leaves), and the bookmark button adds it to a [report](reports.md) as a
+snapshot.
+
 ## Scatters and best runs
 
 Below the chart, one scatter per parameter plots the objective against it.
+**Grid** sets the plots per row (fit to width, or 1 to 6) and the rows per page
+(1 to 6, or all), with a pager when there are more; both are remembered and
+kept in the URL (`scols`, `srows`). The bookmark button on each scatter adds
+it to a report.
 The **Best runs** table lists the top ten runs that pass the filters. Click a
 run anywhere on the page to open its details on the Runs page, or press
 **Plot N runs** to open them on Charts.

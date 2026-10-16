@@ -22,12 +22,40 @@
   } = $props();
 
   const url = $derived(item.index === undefined ? '' : api.mediaUrl(runKey, item.index));
+
+  // Logged HTML: the rendered output, or its source with line numbers
+  let htmlView = $state<'output' | 'code'>('output');
+  let source = $state<string | null>(null);
+  $effect(() => {
+    if (htmlView !== 'code' || item.mime !== 'text/html' || !url) return;
+    source = null;
+    fetch(url)
+      .then((r) => r.text())
+      .then((t) => (source = t))
+      .catch(() => (source = ''));
+  });
+  const sourceLines = $derived((source ?? '').replace(/\n$/, '').split('\n'));
 </script>
 
 {#if item.kind === 'text'}
   <pre class="text mono">{item.text}</pre>
 {:else if item.mime === 'text/html'}
-  <iframe title="{runName} {item.key}" sandbox="allow-scripts" src={url}></iframe>
+  <div class="seg htmlseg" role="group" aria-label="Show HTML as">
+    <button aria-pressed={htmlView === 'output'} onclick={() => (htmlView = 'output')}>output</button>
+    <button aria-pressed={htmlView === 'code'} onclick={() => (htmlView = 'code')}>code</button>
+  </div>
+  {#if htmlView === 'output'}
+    <iframe title="{runName} {item.key}" sandbox="allow-scripts" src={url}></iframe>
+  {:else if source === null}
+    <div class="none faint">Loading…</div>
+  {:else}
+    <div class="code mono" role="region" aria-label="HTML source of {item.key}">
+      {#each sourceLines as line, i (i)}
+        <span class="ln">{i + 1}</span>
+        <span class="lc">{line}</span>
+      {/each}
+    </div>
+  {/if}
 {:else if item.mime.startsWith('image/')}
   <img src={url} alt={item.caption ?? item.key} />
   {#if item.caption}<div class="faint cap">{item.caption}</div>{/if}
@@ -79,6 +107,39 @@
   }
   audio {
     width: 100%;
+  }
+  .htmlseg {
+    align-self: flex-start;
+    margin-bottom: 6px;
+  }
+  .htmlseg button {
+    height: 24px;
+    font-size: 11.5px;
+  }
+  .code {
+    margin: 0;
+    height: 220px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: start;
+  }
+  .ln {
+    color: var(--faint);
+    text-align: right;
+    padding: 0 10px 0 10px;
+    user-select: none;
+    border-right: 1px solid var(--border);
+  }
+  .lc {
+    padding: 0 10px;
+    white-space: pre;
   }
   .text {
     margin: 0;

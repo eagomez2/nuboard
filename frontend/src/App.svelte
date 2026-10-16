@@ -11,7 +11,7 @@
   import SweepsPage from './pages/SweepsPage.svelte';
   import ArtifactsPage from './pages/ArtifactsPage.svelte';
   import ReportsPage from './pages/ReportsPage.svelte';
-  import { NAME } from './lib/brand';
+  import { DISPLAY_NAME as NAME } from './lib/brand';
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
   import { app } from './lib/state.svelte';

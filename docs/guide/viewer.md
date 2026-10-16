@@ -84,12 +84,12 @@ run shows its traceback.
 
 For a single run there are two more tabs:
 
-- **notes**: Markdown notes for the run, with a preview. Notes can use
+- **Notes**: Markdown notes for the run, with a preview. Notes can use
   headings, lists, tables, links and code, and embed any logged item with
   the same `![caption](media:<run id>/<key>@<step>)` line as a
   [report](reports.md). The runs table shows the first line; a note of more
   than one line opens here when clicked.
-- **properties**: typed properties of the run. **Add property** defines one for
+- **Properties**: typed properties of the run. **Add property** defines one for
   the whole project, with a type: text, number (with an optional unit),
   choice, tags, bool, date or link. Choices and tags offer the values used
   before, and new values are added to the list. Values are saved per run as
@@ -98,7 +98,7 @@ For a single run there are two more tabs:
   `<project>/fields.json`.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
-**all settings** has a column per run and highlights rows where any run
+**All settings** has a column per run and highlights rows where any run
 differs. There is a tab for each file the runs saved (such as
 `requirements.txt`, `git.patch`, `command.txt` and any file added with
 [`add_file`](logging.md#config-files)); it shows a line diff between two of the
@@ -167,7 +167,8 @@ are selected, every run matching the query.
 ## Sweeps page
 
 Parallel coordinates over the parameters that vary between runs, with brushing
-on every axis, a scatter per parameter and a best-runs table. See
+on every axis, a grid of scatters (one per parameter) and a best-runs table.
+The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
 
 ## Timeline page
@@ -179,7 +180,9 @@ project or group. **Packed** puts runs that never overlap on the same row, so
 the chart shows how many ran at once; the summary line gives the peak and the
 total run time. Crashed runs end in ✕, runs with alerts have a dot, and
 diamonds mark artifact versions a run produced. Drag to zoom into a time
-range, double-click to reset, click a bar to open the run.
+range, double-click to reset, click a bar to open the run. The corner button
+shows the timeline full screen (Esc leaves), and the bookmark button adds it
+to a [report](reports.md) as a snapshot.
 
 ## Artifacts page
 
@@ -199,7 +202,10 @@ the query result, up to 48 runs). Each key is a collapsible section with a card
 per run; every card has its own step slider, as in TensorBoard, so one run can
 be scrolled through its steps while the others stay put.
 
-- **Kinds**: the chips at the top (Images, Audio, Figures, HTML, Text) show or
+- **Runs**: a chip per run, as in the Charts legend. Click one to hide or
+  show it, double-click (or Alt-click) to show only that run, and **All** or
+  **None** to show or hide every run.
+- **Kinds**: the chips below (Images, Audio, Figures, HTML, Text) show or
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
@@ -219,12 +225,14 @@ be scrolled through its steps while the others stay put.
   card for runs that never logged it.
 
 Each card can open its item large, download it, or **add it to a report**
-(the bookmark button); see [Reports](reports.md). The whole view is kept in
+(the bookmark button). **Select for report** adds a checkbox to every card
+so several items go into a report at once; see [Reports](reports.md). The whole view is kept in
 the URL (`mkinds`, `mfind`, `mby`, `mmode`, `mstep`, `mmetric`, `mdir`,
 `mcols`, `mrows`), so a shared link shows the same grid.
 
 Logged HTML runs in a sandboxed iframe (`sandbox="allow-scripts"`, no
 same-origin access) and is served with a matching `Content-Security-Policy`.
+**output / code** above it switches to the HTML source, with line numbers.
 Matplotlib figures are stored as SVG and shown as images. Plotly, Vega-Lite
 and Bokeh figures are interactive (hover, zoom, pan, export), each in its own
 sandboxed iframe, and follow the light or dark theme. Every figure also has a
