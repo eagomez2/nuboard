@@ -1,8 +1,12 @@
 <script lang="ts">
   import AudioFrame from './AudioFrame.svelte';
   import FigureFrame from './FigureFrame.svelte';
-  import { api, type MediaItem } from '../lib/api';
-  import type { AudioOptions } from '../lib/media';
+  import PointsView from './PointsView.svelte';
+  import PrChart from './PrChart.svelte';
+  import TableView from './TableView.svelte';
+  import { api, type AudioNote, type MediaItem } from '../lib/api';
+  import { notice } from '../lib/dialog.svelte';
+  import { POINTS_MIME, PR_MIME, TABLE_MIME, type AudioOptions } from '../lib/media';
 
   // One logged item (image, audio, figure, HTML or text) of a run.
   let {
@@ -12,6 +16,8 @@
     player = 'wave',
     audioOptions = { colormap: 'theme', scale: 'linear', fftSize: 1024, spectrogram: true },
     group = '',
+    tall = false,
+    color = 'var(--s1)',
   }: {
     runKey: string;
     runName: string;
@@ -19,7 +25,25 @@
     player?: string;
     audioOptions?: AudioOptions;
     group?: string;
+    /** Draw point clouds taller, as in the zoomed view. */
+    tall?: boolean;
+    /** The run's series color, for curves. */
+    color?: string;
   } = $props();
+
+  // Notes on the audio, saved in the run's annotations.json
+  let notes = $derived<AudioNote[]>(item.notes ?? []);
+  async function saveNotes(next: AudioNote[]) {
+    const before = notes;
+    notes = next;
+    try {
+      notes = (await api.setAudioNotes(runKey, `${item.key}@${item.step}`, next)).notes;
+      item.notes = notes;
+    } catch (e) {
+      notes = before;
+      notice('Note not saved', String(e instanceof Error ? e.message : e).replace(/^\d+ /, ''));
+    }
+  }
 
   const url = $derived(item.index === undefined ? '' : api.mediaUrl(runKey, item.index));
 
@@ -70,6 +94,8 @@
       group={group || item.key}
       options={audioOptions}
       header={{ label: runName, name: `${item.key} · step ${item.step}`, tags: item.caption ? [item.caption] : [] }}
+      {notes}
+      onnotes={saveNotes}
     />
   {:else}
     <audio controls preload="metadata" src={url}></audio>
@@ -84,6 +110,25 @@
       .filter(Boolean)
       .join(' · ')}
   </div>
+{:else if item.mime === TABLE_MIME}
+  <TableView {runKey} {runName} {item} />
+{:else if item.mime === PR_MIME}
+  <PrChart
+    curves={[{ name: runName, color, url }]}
+    height={tall ? 460 : 220}
+    label="Precision-recall curve of {runName} {item.key} at step {item.step}"
+  />
+{:else if item.mime === POINTS_MIME}
+  {#key url}
+    <PointsView
+      {url}
+      count={item.points ?? 0}
+      colors={!!item.colors}
+      title="{runName} {item.key}"
+      height={tall ? 560 : 260}
+    />
+  {/key}
+  {#if item.caption}<div class="faint cap">{item.caption}</div>{/if}
 {:else if /plotly|vega|bokeh/.test(item.mime)}
   <FigureFrame {url} mime={item.mime} title="{runName} {item.key}" />
 {:else}

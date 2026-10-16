@@ -18,6 +18,12 @@ for r in runs:
 for r in project.runs('collections has "shortlist"'):
     print(r.name, r.fields.get("verdict"), r.collections, [a["message"] for a in r.alerts()])
 
+# a table logged with add_table, one dict per row (the last step, or step=...)
+worst = sorted(project.runs()[0].table("eval/samples"), key=lambda r: r["pesq"])[:5]
+
+# notes added to audio in the viewer, by "<media key>@<step>"
+print(project.runs()[0].audio_notes.get("eval/enhanced@30", []))
+
 # write a custom field (None removes it); a running viewer picks it up
 project.runs("where config.optim.lr = 1e-3")[0].set_field("verdict", "keep")
 

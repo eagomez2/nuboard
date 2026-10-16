@@ -2,9 +2,14 @@
 // snapshots inlined as data URLs, logged text and HTML inlined, and interactive figures drawn from
 // their spec by the Plotly or Vega libraries embedded once in the file (only those it uses).
 
-import { api, type MediaItem } from './api';
+import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
+import { POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
+import { lowerIsBetter } from './format';
+import { tableHtml, type TableData } from './tables';
+import { mountPoints } from './points';
+import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
 import { ema, robustRange } from './smooth';
 import LOGO from '../../public/logo.svg?raw';
@@ -49,7 +54,43 @@ function frame(doc: string, title: string, height: number): string {
 interface Needs {
   libs: Set<Lib>;
   bokeh?: string;
+  /** An audio item has notes, so the script that plays a note's section is added. */
+  notes?: boolean;
+  /** A point cloud is embedded, so its renderer is added. */
+  points?: boolean;
 }
+
+/** `m:ss.s` for a time in seconds, as the audio player shows it. */
+function clock(t: number): string {
+  const m = Math.floor(t / 60);
+  return `${m}:${(t - m * 60).toFixed(1).padStart(4, '0')}`;
+}
+
+/** An audio item's notes, each playing its section when clicked. */
+function notesHtml(notes: AudioNote[], needs: Needs): string {
+  if (!notes.length) return '';
+  needs.notes = true;
+  const rows = notes
+    .map(
+      (n) =>
+        `<li><button type="button" class="nbnote" data-start="${n.start}" data-end="${n.end}" title="Play this section">${clock(n.start)} – ${clock(n.end)}</button> ${esc(n.text)}</li>`,
+    )
+    .join('');
+  return `<ol class="nbnotes">${rows}</ol>`;
+}
+
+// Draws each embedded point cloud and keeps its background on the page's theme.
+const POINTS_JS = `var mountPoints=(${mountPoints.toString()});
+document.querySelectorAll('.nbpoints').forEach(function(box){
+var c=box.querySelector('canvas'),s=box.querySelector('script'),bin=atob(s.textContent.trim()),u=new Uint8Array(bin.length);
+for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+var bg=function(){return getComputedStyle(document.documentElement).getPropertyValue('--code').trim()};
+var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg());
+new MutationObserver(function(){v.setBackground(bg())}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+});`;
+
+// Clicking a note plays its section of the audio just above it.
+const NOTES_JS = `document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.nbnote');if(!b)return;var a=b.closest('figure').querySelector('audio');if(!a)return;var end=+b.dataset.end;a.currentTime=+b.dataset.start;a.play();a.ontimeupdate=function(){if(a.currentTime>=end){a.pause();a.ontimeupdate=null}}});`;
 
 /** A placeholder drawn by the script at the end of the file, with its spec next to it. */
 function figureHtml(mime: string, json: string, needs: Needs): string {
@@ -252,8 +293,26 @@ async function mediaHtml(project: string, ref: string, caption: string, needs: N
   if (item.kind === 'text') body = `<pre>${esc(item.text ?? '')}</pre>`;
   else if (item.mime.startsWith('image/')) body = `<img src="${await dataUrl(url)}" alt="${esc(caption)}">`;
   else if (item.kind === 'audio' || item.mime.startsWith('audio/'))
-    body = `<audio controls src="${await dataUrl(url)}"></audio>`;
-  else if (item.mime === 'text/html') body = frame(await (await fetch(url)).text(), item.key, 360);
+    body = `<audio controls src="${await dataUrl(url)}"></audio>${notesHtml(item.notes ?? [], needs)}`;
+  else if (item.mime === TABLE_MIME) {
+    const table = (await (await fetch(url)).json()) as TableData;
+    // compared with the same table at the step before, as the viewer does by default
+    const { items } = await api.media(found.run);
+    const prev = items
+      .filter((m) => m.key === item.key && m.mime === TABLE_MIME && m.step < item.step && m.index !== undefined)
+      .pop();
+    const base = prev ? ((await (await fetch(api.mediaUrl(found.run, prev.index!))).json()) as TableData) : null;
+    const since = prev ? `<small class="nbmore">Colors show the change since step ${prev.step}.</small>` : '';
+    body = tableHtml(table, base, lowerIsBetter) + since;
+  } else if (item.mime === PR_MIME) {
+    const data = (await (await fetch(url)).json()) as PRData;
+    const curve = prSvg([{ name: found.run_name, color: 'var(--s1)', data }], 640, 300);
+    body = `<div class="nbpr">${curve}<small>AP ${prArea(data).toFixed(3)}</small></div>`;
+  } else if (item.mime === POINTS_MIME) {
+    needs.points = true;
+    const base64 = (await dataUrl(url)).replace(/^data:[^,]*,/, '');
+    body = `<div class="nbpoints" data-count="${item.points ?? 0}" data-colors="${item.colors ? 1 : 0}"><canvas aria-label="${esc(item.key)}"></canvas><script type="application/octet-stream">${base64}</script><small>${(item.points ?? 0).toLocaleString()} points · drag to rotate, shift-drag to pan, click then scroll to zoom, double-click to reset</small></div>`;
+  } else if (item.mime === 'text/html') body = frame(await (await fetch(url)).text(), item.key, 360);
   else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;
@@ -272,7 +331,11 @@ a{color:var(--link)}code{font:.9em ui-monospace,Menlo,monospace;background:var(-
 pre{background:var(--code);border:1px solid var(--border);border-radius:9px;padding:10px 12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}
 pre code{background:none;padding:0}table{border-collapse:collapse;margin:.8em 0}th,td{border:1px solid var(--border);padding:5px 10px}
 blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid var(--border);color:var(--muted)}
-img{max-width:100%;border-radius:8px}figure{margin:1.2em 0}figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
+img{max-width:100%;border-radius:8px}figure{margin:1.2em 0}.nbtable{overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px}.nbtable table{margin:0;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}.nbtable th{position:sticky;top:0;background:var(--panel);text-align:left}.nbtable .n{text-align:right;white-space:nowrap}.nbtable td small{color:var(--muted);margin-left:6px;font-size:11px}.nbtable .m{color:var(--faint)}.nbmore{color:var(--faint);font-size:12px}
+.nbpr svg{display:block;max-width:100%;height:auto}.nbpr small{color:var(--faint);font-size:12px}
+.nbpoints canvas{display:block;width:100%;height:420px;border-radius:8px;background:var(--code)}.nbpoints small{color:var(--faint);font-size:12px}
+.nbnotes{margin:6px 0 0;padding-left:1.4em;font-size:13.5px}.nbnote{font:12px ui-monospace,Menlo,monospace;color:var(--link);background:var(--code);border:1px solid var(--border);border-radius:6px;padding:1px 6px;cursor:pointer;margin-right:4px}
+figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
 figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
 .nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
@@ -364,6 +427,8 @@ export async function reportHtml(
     if (bokeh) scripts.push(...bokeh);
   }
   if (needs.libs.size) scripts.push(DRAW);
+  if (needs.notes) scripts.push(NOTES_JS);
+  if (needs.points) scripts.push(POINTS_JS);
   const tail = scripts.map((js) => `<script>${scriptSafe(js)}</script>`).join('\n');
   const switchable = opts.theme === 'switch';
   const theme = switchable ? `<script>${THEME_START}</script>` : '';

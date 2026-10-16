@@ -7,14 +7,26 @@ export interface AudioOptions {
   spectrogram: boolean;
 }
 
-export type MediaKind = 'image' | 'audio' | 'figure' | 'html' | 'text';
-export const MEDIA_KINDS: MediaKind[] = ['image', 'audio', 'figure', 'html', 'text'];
+export type MediaKind = 'image' | 'audio' | 'figure' | 'table' | 'points' | 'html' | 'text';
+export const MEDIA_KINDS: MediaKind[] = ['image', 'audio', 'figure', 'table', 'points', 'html', 'text'];
+
+/** MIME type of tables logged with `add_table`. */
+export const TABLE_MIME = 'application/x-nuboard-table+json';
+
+/** MIME type of point clouds logged with `add_point_cloud`. */
+export const POINTS_MIME = 'application/x-nuboard-points';
+
+/** MIME type of precision-recall curves logged with `add_pr_curve`. */
+export const PR_MIME = 'application/x-nuboard-pr+json';
 
 /** The kind a media item is filtered by on the Media page. */
 export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'text') return 'text';
   if (it.mime === 'text/html' || it.kind === 'html') return 'html';
   if (it.kind === 'audio' || it.mime.startsWith('audio/')) return 'audio';
+  if (it.mime === POINTS_MIME) return 'points';
+  if (it.mime === PR_MIME) return 'figure';
+  if (it.mime === TABLE_MIME) return 'table';
   if (it.kind === 'figure' || /plotly|vega|bokeh|svg/.test(it.mime)) return 'figure';
   return 'image';
 }

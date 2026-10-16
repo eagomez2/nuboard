@@ -2,11 +2,12 @@
   import Icon from '../components/Icon.svelte';
   import MediaCard from '../components/MediaCard.svelte';
   import MediaView from '../components/MediaView.svelte';
+  import PrChart from '../components/PrChart.svelte';
   import { api, type MediaItem, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
   import { appendToReport, askReport } from '../lib/reports.svelte';
   import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
-  import { MEDIA_KINDS, embedLine, kindOf, type MediaKind } from '../lib/media';
+  import { MEDIA_KINDS, PR_MIME, embedLine, kindOf, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -31,7 +32,9 @@
 
   $effect(() => {
     const keys = runs.map((r) => r.key);
-    Promise.all(keys.map((k) => api.media(k).then((res) => [k, res.items] as const))).then((pairs) => {
+    // media cells of tables (kind "cell") are shown inside their table, not as keys
+    const own = (list: MediaItem[]) => list.filter((it) => it.kind !== 'cell');
+    Promise.all(keys.map((k) => api.media(k).then((res) => [k, own(res.items)] as const))).then((pairs) => {
       items = Object.fromEntries(pairs);
       loaded = true;
     });
@@ -42,6 +45,8 @@
     image: 'Images',
     audio: 'Audio',
     figure: 'Figures',
+    table: 'Tables',
+    points: 'Point clouds',
     html: 'HTML',
     text: 'Text',
   };
@@ -50,6 +55,8 @@
       image: new Set(),
       audio: new Set(),
       figure: new Set(),
+      table: new Set(),
+      points: new Set(),
       html: new Set(),
       text: new Set(),
     };
@@ -168,6 +175,31 @@
       )
       .then((res) => (best = res.best));
   });
+  // The item a card shows for the page-wide step (its own slider aside), as MediaCard picks it
+  function shownItem(list: MediaItem[], target: number | null, nearest: boolean): MediaItem | null {
+    if (!list.length) return null;
+    if (target === null) return list[list.length - 1];
+    if (nearest) return list.reduce((a, b) => (Math.abs(b.step - target) < Math.abs(a.step - target) ? b : a));
+    let found = list[0];
+    for (const it of list) if (it.step <= target) found = it;
+    return found;
+  }
+  // PR curves of every run under one key, overlaid on one chart above the cards
+  function prOverlay(cards: { run: RunBrief; items: MediaItem[] }[]) {
+    return cards.flatMap((c) => {
+      const it = shownItem(c.items, targetFor(c.run.key), mode === 'best');
+      return it && it.index !== undefined
+        ? [
+            {
+              name: `${c.run.name} · step ${it.step.toLocaleString()}`,
+              color: seriesVar(runIndex.get(c.run.key) ?? 0),
+              url: api.mediaUrl(c.run.key, it.index),
+            },
+          ]
+        : [];
+    });
+  }
+
   function targetFor(runKey: string): number | null {
     if (mode === 'step') return pickedStep;
     if (mode === 'best') return best[runKey]?.step ?? null;
@@ -184,7 +216,7 @@
   let width = $state(1200);
   function minWidth(s: Section): number {
     const k = s.kind ?? (s.cards.some((c) => c.items.some((i) => kindOf(i) === 'audio')) ? 'audio' : 'image');
-    return k === 'audio' && player === 'wave' ? 520 : k === 'image' ? 200 : 380;
+    return k === 'table' ? 860 : k === 'audio' && player === 'wave' ? 520 : k === 'image' ? 200 : 380;
   }
   function colsFor(s: Section): number {
     return cols || Math.max(1, Math.floor((width + 14) / (minWidth(s) + 14)));
@@ -513,6 +545,12 @@
             </span>
           {/if}
         </header>
+        {#if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === PR_MIME}
+          <div class="prall">
+            <span class="faint small">All runs on one chart</span>
+            <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
+          </div>
+        {/if}
         {#if open}
           <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
             {#each cards.slice(page * size, page * size + size) as c (c.id)}
@@ -576,7 +614,15 @@
         >
       </header>
       <div class="bigbody">
-        <MediaView runKey={zoom.run.key} runName={zoom.run.name} item={zoom.item} {player} {audioOptions} />
+        <MediaView
+          runKey={zoom.run.key}
+          runName={zoom.run.name}
+          item={zoom.item}
+          {player}
+          {audioOptions}
+          tall
+          color={seriesVar(runIndex.get(zoom.run.key) ?? 0)}
+        />
       </div>
     </div>
   </div>
@@ -778,6 +824,13 @@
   }
   .bestnote {
     margin: 0;
+  }
+  .prall {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 760px;
+    margin-bottom: 4px;
   }
   .overlay {
     position: fixed;

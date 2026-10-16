@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { AudioNote } from '../lib/api';
   import { app } from '../lib/state.svelte';
 
   /**
@@ -7,6 +8,8 @@
    * same-origin iframe so its script, styles and keyboard shortcuts stay
    * self-contained. Players with the same `group` follow each other's zoom,
    * scroll, cursor and selection, and starting one pauses the others.
+   * With `onnotes`, a selection can carry a note; the player sends each
+   * added, edited or deleted note and the new list goes to `onnotes`.
    */
   let {
     url,
@@ -17,6 +20,8 @@
     group,
     header,
     options,
+    notes = [],
+    onnotes,
   }: {
     url: string;
     title: string;
@@ -27,6 +32,8 @@
     header: { label?: string; name?: string; tags?: string[] };
     /** Spectrogram colormap, frequency scale and window (see MediaPage's options). */
     options: { colormap: string; scale: string; fftSize: number; spectrogram: boolean };
+    notes?: AudioNote[];
+    onnotes?: (notes: AudioNote[]) => void;
   } = $props();
 
   let frame = $state<HTMLIFrameElement | null>(null);
@@ -62,8 +69,8 @@
       waveHeight: 72,
       spectrogramHeight: options.spectrogram ? 140 : 0,
       normalize: false,
-      notes: false,
-      annotations: [],
+      notes: !!onnotes,
+      annotations: $state.snapshot(notes),
       header,
     };
     frame.contentWindow.postMessage({ type: 'nb-audio:render', args, theme: theme() }, location.origin);
@@ -77,6 +84,11 @@
         send();
       } else if (e.data?.type === 'nb-audio:height') {
         height = Math.max(Number(e.data.height) || 0, 60);
+      } else if (e.data?.type === 'nb-audio:note' && onnotes) {
+        const note = e.data.value as AudioNote;
+        onnotes([...notes.filter((n) => n.id !== note.id), note].sort((a, b) => a.start - b.start));
+      } else if (e.data?.type === 'nb-audio:note-delete' && onnotes) {
+        onnotes(notes.filter((n) => n.id !== e.data.id));
       }
     };
     window.addEventListener('message', onMessage);
@@ -86,6 +98,7 @@
   // a new clip (step slider), theme or option re-renders the player
   $effect(() => {
     void [url, app.theme, app.themeVersion, options.colormap, options.scale, options.fftSize, options.spectrogram];
+    void notes;
     send();
   });
 </script>

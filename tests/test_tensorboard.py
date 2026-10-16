@@ -1,3 +1,4 @@
+import json
 import shutil
 import struct
 from pathlib import Path
@@ -147,3 +148,46 @@ def test_cli_import_tensorboard(tmp_path, capsys):
 
     with pytest.raises(SystemExit, match="no TensorBoard event files"):
         main(["import-tensorboard", str(tmp_path / "tb" / "runs"), "--dir", str(tmp_path)])
+
+
+def _varint(n: int) -> bytes:
+    out = bytearray()
+
+    while True:
+        byte, n = n & 0x7F, n >> 7
+
+        if not n:
+            out.append(byte)
+            return bytes(out)
+
+        out.append(byte | 0x80)
+
+
+def _field(number: int, payload: bytes) -> bytes:
+    return _varint(number << 3 | 2) + _varint(len(payload)) + payload
+
+
+def test_imports_pr_curves(tmp_path):
+    # TensorBoard's pr_curves tensor: rows TP, FP, TN, FN, precision, recall
+    rows = [[3, 2, 0], [2, 1, 0], [0, 1, 2], [0, 1, 3], [0.6, 0.667, 1.0], [1.0, 0.667, 0.0]]
+    content = struct.pack("<18f", *(v for r in rows for v in r))
+    shape = _field(2, _field(2, b"\x08\x06") + _field(2, b"\x08\x03"))
+    tensor = b"\x08\x01" + shape + _field(4, content)  # dtype float
+    meta = _field(1, _field(1, b"pr_curves"))
+    value = _field(1, b"pr/cat") + _field(9, meta) + _field(8, tensor)
+    event = b"\x09" + struct.pack("<d", 1700000000.0) + b"\x10\x07" + _field(5, _field(1, value))
+    folder = tmp_path / "logs" / "pr"
+    folder.mkdir(parents=True)
+    record = struct.pack("<Q", len(event)) + b"\0" * 4 + event + b"\0" * 4
+    (folder / "events.out.tfevents.1.host").write_bytes(record)
+
+    (result,) = import_logdir(folder, "tb", dir=tmp_path / "out")
+
+    assert result.media == 1 and not result.ignored
+    reader = next(iter(_runs(tmp_path / "out").values())).reader()
+    (item,) = reader.media()
+    assert item.key == "pr/cat" and item.step == 7
+    assert item.meta["mime"] == "application/x-nuboard-pr+json"
+    data = json.loads(reader.read_media(item))
+    assert data["tp"] == [3, 2, 0] and data["thresholds"] == [0, 0.5, 1]
+    assert data["precision"][1] == pytest.approx(0.667, abs=1e-6)

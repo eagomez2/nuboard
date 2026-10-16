@@ -88,7 +88,9 @@ Owned by the viewer, written atomically: `starred` (bool), `archived` (bool),
 `reviewed` (bool), `notes` (Markdown str, overrides `run.json` notes in the
 viewer), `tags` (list, merged with `run.json` tags), `fields` (object of custom
 fields and property values: string, number, boolean or list-of-string values;
-lists hold the values of `tags` properties). Keeping these inside the run
+lists hold the values of `tags` properties), `audio_notes` (object keyed by
+`<media key>@<step>` of rank 0, each a list of `{id, start, end, text}` notes on
+sections of that audio item, times in seconds). Keeping these inside the run
 folder means they travel with the run.
 
 ### `alerts` in `run.json`
@@ -159,7 +161,7 @@ series and rank 0 is the default.
 ## Media pack: `media.r<rank>.pack`
 
 Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), figures (Plotly JSON,
-Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib) and HTML documents,
+Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib), PR curves, tables, point clouds and HTML documents,
 appended back to back with no framing. Only `M` frames give them meaning, so
 bytes after the last indexed entry (from a crash) are harmless.
 
@@ -172,6 +174,9 @@ bytes after the last indexed entry (from a crash) are harmless.
 | `application/vnd.plotly.v1+json` | `add_figure` with a Plotly figure or a figure dict |
 | `application/vnd.vegalite+json` | `add_figure` with an Altair chart or a Vega-Lite dict |
 | `application/vnd.bokeh+json` | `add_figure` with a Bokeh figure |
+| `application/x-nuboard-pr+json` | `add_pr_curve`: `{thresholds, tp, fp, tn, fn, precision, recall}`, one value per threshold (thresholds evenly spaced from 0 to 1); the frame's `thresholds` and `positives` give the count of thresholds and positives |
+| `application/x-nuboard-table+json` | `add_table`: `{columns: [{name, type}], id, rows}`; `type` is `number`, `bool`, `text`, `audio` or `image`, `id` names the column that matches rows across steps, and each row is a list of cells in column order. A media cell is `{"$cell": "<key>#<row>/<column>"}`, the key of a media item logged at the same step with `kind` `cell` (not listed on its own in the viewer). The frame's `rows` and `columns` give the counts |
+| `application/x-nuboard-points` | `add_point_cloud`: N x 3 little-endian float32 x, y, z, then N x 3 RGB bytes when the frame's `colors` is true; `points` holds N |
 | `text/html` | `add_html` (the viewer renders it in a sandboxed iframe) |
 
 ## Compacted scalars: `data.parquet`

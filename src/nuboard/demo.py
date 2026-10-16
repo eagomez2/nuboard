@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from . import _fs
+from .cells import Audio
 from .collection import save_collection
 from .reports import save_fields, save_report, save_snapshot
 from .run import init
@@ -352,6 +353,57 @@ def _pattern(seed: int, epoch: int, kind: str) -> Any:
     return img.clip(0, 1)
 
 
+#: Class colors of the embedding demo (the viewer's series palette)
+_CLASS_RGB = [
+    (0, 114, 178),
+    (230, 159, 0),
+    (204, 121, 167),
+    (0, 158, 115),
+    (213, 94, 0),
+    (86, 180, 233),
+    (138, 122, 0),
+    (106, 76, 147),
+    (120, 120, 120),
+    (240, 228, 66),
+]
+
+
+def _embeddings(seed: int, epoch: int, gain: float) -> tuple[Any, Any] | None:
+    """Return 3D eval embeddings and class colors, or None without numpy.
+
+    Ten classes start mixed and pull into their own clusters as training goes
+    on; stronger augmentations end with tighter clusters.
+    """
+
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        return None
+
+    rng = np.random.default_rng(seed * 7 + 1)  # same samples and centers at every epoch
+    per = 300
+    phi = np.arccos(1 - 2 * (np.arange(10) + 0.5) / 10)
+    theta = np.pi * (1 + 5**0.5) * np.arange(10)
+    centers = np.stack(
+        [np.sin(phi) * np.cos(theta), np.sin(phi) * np.sin(theta), np.cos(phi)], axis=1
+    )
+    labels = np.repeat(np.arange(10), per)
+    noise = rng.normal(size=(10 * per, 3))
+    progress = 1 - math.exp(-epoch / 30)
+    spread = 0.75 - (0.55 + 4 * gain) * progress
+    points = centers[labels] * (0.15 + 0.85 * progress) + noise * spread
+    colors = np.array(_CLASS_RGB, dtype="uint8")[labels]
+    return points, colors
+
+
+def _pr_samples(rng: random.Random, acc: float, hard: float) -> tuple[list[int], list[float]]:
+    """Return labels and scores for one class: 10% positives, separated more as `acc` rises."""
+    labels = [int(rng.random() < 0.1) for _ in range(1000)]
+    gap = (acc - 0.5) * 12 * (1.3 - 0.6 * hard)
+    scores = [1 / (1 + math.exp(-(rng.gauss(0, 1) + (gap if y else -gap) / 2 - 1))) for y in labels]
+    return labels, scores
+
+
 def _vit_runs(root: Path, base: float) -> None:
     """Write the `vit-ablations` project: four augmentations times two seeds, with media."""
     gains = {"none": 0.0, "randaug": 0.021, "mixup": 0.015, "cutmix": 0.026}
@@ -407,6 +459,21 @@ def _vit_runs(root: Path, base: float) -> None:
                     run.add_image(
                         "samples/augmented", img, step=epoch, caption=f"{aug} epoch {epoch}"
                     )
+
+                emb = _embeddings(seed, epoch, gains[aug])
+
+                if emb is not None:
+                    run.add_point_cloud(
+                        "eval/embeddings",
+                        emb[0],
+                        step=epoch,
+                        colors=emb[1],
+                        caption=f"{aug} epoch {epoch}, 10 classes",
+                    )
+
+                for cls, hard in (("cat", 0.9), ("dog", 0.8), ("ship", 0.3)):
+                    labels, scores = _pr_samples(rng, acc, hard)
+                    run.add_pr_curve(f"eval/pr/{cls}", labels, scores, step=epoch)
 
                 run.add_html("eval/report", _report_html(aug, epoch, acc), step=epoch)
                 per_class = _per_class(rng, acc)
@@ -559,6 +626,11 @@ def _vit_notes(project: Path, ids: dict[str, str], curves: dict[str, list[float]
         f"![Baseline samples at epoch 100](media:{ids['none-s0']}/samples/augmented@100)\n\n"
         "## Accuracy\n\n"
         f'![val/acc, CutMix against the baseline]({shot} "chart:{spec}")\n\n'
+        "## Embeddings\n\n"
+        "Eval features in 3D, one color per class: classes separate as training goes on.\n\n"
+        f"![CutMix embeddings at epoch 100](media:{ids['cutmix-s0']}/eval/embeddings@100)\n\n"
+        "## Precision and recall\n\n"
+        f"![Cat, CutMix at epoch 100](media:{ids['cutmix-s0']}/eval/pr/cat@100)\n\n"
         "## Errors\n\n"
         f"![CutMix confusion](media:{ids['cutmix-s0']}/eval/confusion@100)\n\n"
         "| run | val/acc |\n|---|---|\n| none-s0 | 0.80 |\n| cutmix-s0 | 0.83 |\n",
@@ -708,6 +780,7 @@ def _speech_runs(root: Path, base: float) -> None:
 
     models = {"unet-l1": (0.30, 0.020), "unet-sisdr": (0.16, 0.012), "convtasnet": (0.10, 0.006)}
     rng = np.random.default_rng(7)
+    ids: dict[str, str] = {}
     clean = _speech(rng)
     noise = _noise(rng, len(clean))
     noisy = np.clip(clean + noise, -1, 1)
@@ -767,8 +840,79 @@ def _speech_runs(root: Path, base: float) -> None:
                     sample_rate=SPEECH_RATE,
                     caption=f"epoch {epoch}",
                 )
+                rows = _eval_rows(model, epoch, left)
+                worst = sorted(range(len(rows)), key=lambda j: rows[j]["pesq"])[:3]
+
+                for j in worst:  # attach the enhanced audio of the three worst files
+                    gain = 10 ** (-rows[j]["snr_in"] / 40)
+                    clip = np.clip(clean + left * gain * noise + artifacts * 6 * blips, -1, 1)
+                    rows[j]["enhanced"] = Audio(clip, sample_rate=SPEECH_RATE)
+
+                run.add_table("eval/samples", rows, step=epoch)
 
         run.finish(_ended=t)
+        ids[model] = run.id
+
+    _speech_notes(root / "speech-denoise", ids)
+
+
+def _speech_notes(project: Path, ids: dict[str, str]) -> None:
+    """Add audio notes and a listening report to the `speech-denoise` demo."""
+    run_dir = project / "runs" / ids["convtasnet"]
+    notes = [
+        {"id": "n1", "start": 0.42, "end": 0.78, "text": "residual hiss on the vowel"},
+        {"id": "n2", "start": 1.55, "end": 1.9, "text": "tonal blip (musical noise)"},
+    ]
+    ann = _fs.read_json(run_dir / "annotations.json", {}) or {}
+    ann["audio_notes"] = {"audio/enhanced@30": notes}
+    _fs.atomic_write_json(run_dir / "annotations.json", ann)
+    save_report(
+        project,
+        "listening-notes",
+        "# Listening notes\n\n"
+        "Conv-TasNet is cleanest overall; what is left is a little hiss and a few tonal blips.\n\n"
+        f"![Conv-TasNet at epoch 30](media:{ids['convtasnet']}/audio/enhanced@30)\n\n"
+        "## Per-file scores\n\n"
+        "Sorted by PESQ in the viewer, the worst files are babble noise at low input SNR; "
+        "colors show the change since the previous eval.\n\n"
+        f"![Eval samples at epoch 30](media:{ids['convtasnet']}/eval/samples@30)\n",
+    )
+
+
+_NOISES = ["babble", "cafe", "street", "car", "white"]
+
+
+def _eval_rows(model: str, epoch: int, left: float) -> list[dict[str, Any]]:
+    """Return per-file scores of one eval: 40 test files, the same files at every epoch.
+
+    Babble and low input SNR are harder; a few files get worse at the last eval.
+    """
+    rows = []
+
+    for j in range(40):
+        f = random.Random(f"file{j}")  # the file's own properties, the same for every model
+        noise = _NOISES[j % 5]
+        snr = round(f.uniform(-5, 10), 1)
+        hard = {"babble": 0.5, "cafe": 0.3}.get(noise, 0.1) + (5 - snr) * 0.04 + f.random() * 0.2
+        late = -(0.25 + f.random() * 0.3) if f.random() < 0.18 and epoch == 30 else 0.0
+        g = random.Random(f"{model}{j}{epoch}")
+        p = 1 - left
+        rows.append(
+            {
+                "file": f"p{232 + 25 * (j % 2)}_{100 + 7 * j:03d}",
+                "noise": noise,
+                "snr_in": snr,
+                "pesq": round(
+                    max(1.02, 1.35 + (2.4 - hard * 1.4) * p + g.gauss(0, 0.03) + late), 3
+                ),
+                "si_sdr": round(
+                    4 + snr * 0.6 + (13 - hard * 9) * p + g.gauss(0, 0.3) + late * 5, 2
+                ),
+                "stoi": round(min(0.99, 0.78 + (0.17 - hard * 0.08) * p + late * 0.04), 4),
+            }
+        )
+
+    return rows
 
 
 def _ppo_runs(root: Path, base: float) -> None:

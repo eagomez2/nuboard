@@ -236,6 +236,33 @@ def test_audio_supports_byte_ranges(tmp_path):
         assert c.get(url, headers={"Range": "bytes=99999-"}).status_code == 416
 
 
+def test_audio_notes_are_kept_per_item(tmp_path):
+    import numpy as np
+
+    run = nb.init("audio", capture_env=False)
+    run.add_audio("clip", np.zeros(4000), step=3, sample_rate=8000)
+    run.finish()
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        record = c.get("/api/runs").json()["runs"][0]
+        key = record["key"]
+        url = f"/api/runs/{key}/audio-notes"
+        note = {"id": "a", "start": 0.1, "end": 0.25, "text": " click "}
+        r = c.put(url, json={"item": "clip@3", "notes": [note]})
+        assert r.json()["notes"] == [{"id": "a", "start": 0.1, "end": 0.25, "text": "click"}]
+        items = c.get(f"/api/runs/{key}/media").json()["items"]
+        assert items[0]["notes"][0]["text"] == "click"
+        params = {"project": "audio", "ref": f"{record['id']}/clip@3"}
+        assert c.get("/api/media/ref", params=params).json()["item"]["notes"][0]["id"] == "a"
+        backwards = {**note, "start": 0.3}
+        assert c.put(url, json={"item": "clip@3", "notes": [backwards]}).status_code == 400
+        assert c.put(url, json={"item": "clip", "notes": []}).status_code == 400
+        assert c.put(url, json={"item": "clip@3", "notes": []}).json()["notes"] == []
+        assert "notes" not in c.get(f"/api/runs/{key}/media").json()["items"][0]
+        assert "audio_notes" not in json.loads((run.path / "annotations.json").read_text())
+
+
 def test_best_steps_and_media_refs(client):
     runs = client.get("/api/runs").json()["runs"]
     keys = [r["key"] for r in runs]

@@ -3,8 +3,8 @@
  * on wavesurfer.js. Ported from Esteban Gómez's audioviewer player: it runs
  * in a same-origin iframe (`audio.html`) and talks to the viewer through
  * postMessage (`nb-audio:*` messages, see `AudioFrame.svelte`) instead of the
- * Streamlit component protocol. The notes lane is kept but nuboard does not
- * send notes yet.
+ * Streamlit component protocol. Notes are on when the viewer asks for them
+ * (`args.notes`).
  *
  * Players of the same sample group can follow each other (zoom, scroll,
  * cursor and selection) through a BroadcastChannel, and starting one player
@@ -14,6 +14,9 @@
  * value (`{start, end, text, id}`), which appends it to the file's notes.
  * The notes that carry timestamps come back as `annotations` and are shown
  * in a lane above the waveform; clicking one selects its section again.
+ *
+ * In NuBoard a note on exactly the selected section opens for editing (the
+ * form then also offers Delete, sent as `nb-audio:note-delete`).
  *
  * The full screen button lays the component's frame over the whole app
  * window (like Streamlit's own full screen view of a chart) and stretches
@@ -40,6 +43,8 @@
     noteTime: $('note-time'),
     noteText: $('note-text'),
     noteCancel: $('note-cancel'),
+    noteDelete: $('note-delete'),
+    noteSubmit: $('note-submit'),
     rate: $('rate'),
     zoomOut: $('zoom-out'),
     zoom: $('zoom'),
@@ -66,6 +71,7 @@
   let ws = null;
   let regions = null;
   let annotations = [];
+  let editing = null; // id of the note open in the form, or null for a new one
   let selection = null;
   let looping = false;
   let ready = false;
@@ -388,7 +394,8 @@
       chip.className = 'note-chip';
       chip.textContent = a.text;
       chip.title =
-        `${formatTime(a.start)} – ${formatTime(a.end)}  ${a.text}\n` + 'Click to select, double-click to zoom in';
+        `${formatTime(a.start)} – ${formatTime(a.end)}  ${a.text}\n` +
+        `Click to select${args.notes ? ' (then N to edit)' : ''}, double-click to zoom in`;
       chip.style.left = `${left}px`;
       chip.style.width = `${span}px`;
       chip.style.top = `${a.row * NOTE_ROW_HEIGHT}px`;
@@ -405,6 +412,8 @@
   // Highlights the note whose section is selected (without redrawing, so
   // a double-click lands on the same element as the click before it)
   function markActiveNote() {
+    el.annotate.textContent = noteAtSelection() ? 'Edit note' : 'Note';
+
     for (const chip of el.notesLane.children) {
       const a = chip.note;
       chip.classList.toggle(
@@ -877,9 +886,23 @@
   // -------------------------------------------------------------------------
   // Notes
   // -------------------------------------------------------------------------
+  function noteAtSelection() {
+    if (!selection) return null;
+
+    return (
+      annotations.find((a) => Math.abs(selection.start - a.start) < 1e-3 && Math.abs(selection.end - a.end) < 1e-3) ||
+      null
+    );
+  }
+
   function openNoteForm() {
     if (!selection || !args.notes) return;
 
+    const note = noteAtSelection();
+    editing = note ? note.id : null;
+    el.noteText.value = note ? note.text : '';
+    el.noteDelete.hidden = !note;
+    el.noteSubmit.textContent = note ? 'Save' : 'Add';
     el.noteTime.textContent = `${formatTime(selection.start)} – ${formatTime(selection.end)}`;
     el.noteForm.hidden = false;
     el.noteText.focus();
@@ -906,9 +929,16 @@
         end: selection.end,
         text: text,
         // A fresh id makes repeated notes count as new values
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: editing || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       },
     });
+    closeNoteForm();
+    el.player.focus();
+  }
+
+  function deleteNote() {
+    if (editing) send('nb-audio:note-delete', { id: editing });
+
     closeNoteForm();
     el.player.focus();
   }
@@ -1228,6 +1258,7 @@
   el.fullscreen.addEventListener('click', toggleFullscreen);
   el.fsClose.addEventListener('click', exitFullscreen);
   el.noteCancel.addEventListener('click', closeNoteForm);
+  el.noteDelete.addEventListener('click', deleteNote);
   el.noteForm.addEventListener('submit', (e) => {
     e.preventDefault();
     submitNote();

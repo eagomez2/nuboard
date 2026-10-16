@@ -37,8 +37,9 @@ the standard library, so the command works with a plain `pip install nuboard`.
 | images | PNG or JPEG images; several images in one summary become `tag/0`, `tag/1`, ... |
 | audio | audio clips, playable in the waveform player |
 | text | text entries |
+| PR curves (`add_pr_curve`, `pr_curve`) | PR curves, with the original counts per threshold |
 | hyperparameters (`add_hparams`, `hp.hparams`) | the run's config, so they appear in the table, sweeps and queries |
-| histograms, graphs, embeddings, PR curves, other plugins | skipped, and counted in the output |
+| histograms, graphs, embeddings, other plugins | skipped, and counted in the output |
 
 Runs keep their original start and end times, so the Timeline page shows when
 they actually ran. Each run's notes say which folder it came from.

@@ -20,15 +20,15 @@ the [changelog](changelog.md) for what each version added.
   reports, run notes and typed properties.
 - **0.8**: HTML export of reports, full screen and report snapshots for
   Sweeps and Timeline, run chips on the Media page.
+- **0.9**: tables compared across steps, PR curves, point clouds and audio notes.
 
 ## Next
 
 1. **Multi-GPU view**: rank-0 line with min/mean/max bands across ranks,
    expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
    Alerts already record their rank.
-2. **Media**: three.js point clouds, side-by-side text diffs across steps,
-   notes on audio selections (the player supports them; NuBoard does not
-   store them yet).
+2. **Media**: side-by-side text diffs across steps; embeddings reduced to 3D
+   in the viewer (PCA, t-SNE, UMAP) and drawn with the point cloud view.
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
