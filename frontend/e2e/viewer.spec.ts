@@ -227,6 +227,13 @@ test('run details show Markdown notes and typed properties', async ({ page }) =>
   await page.locator('#prop-gpu_hours').fill('7.25');
   await page.getByRole('button', { name: 'Save 1 change' }).click();
   await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add property' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Name', { exact: true }).fill('split');
+  await dlg.getByRole('combobox', { name: 'Type' }).selectOption('choice');
+  await dlg.getByLabel('Options or unit').fill('train, val, test');
+  await dlg.getByRole('button', { name: 'Add property' }).click();
+  await expect(page.locator('#prop-split')).toBeVisible();
 });
 
 test('charts grid pages small charts, and the main chart goes full screen', async ({ page }) => {
@@ -313,10 +320,15 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   await expect(page.locator('.preview .nb-view img')).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe('e2e-timeline.html');
   const html = await (await file.createReadStream()).toArray();
-  expect(Buffer.concat(html).toString()).toContain('src="data:image/png;base64,');
+  const doc = Buffer.concat(html).toString();
+  expect(doc).toContain('src="data:image/png;base64,');
+  expect(doc).toContain('class="nbtheme"'); // switchable by default
+  expect(doc).toContain('Exported with NuBoard');
+  expect(doc).toContain('rel="icon"');
 });
 
 test('several media items go to a report together and export without a network', async ({ page, browser }) => {
@@ -336,10 +348,18 @@ test('several media items go to a report together and export without a network',
   );
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
+  const exp = page.getByRole('dialog');
+  await exp.getByRole('button', { name: 'Dark', exact: true }).click();
+  await exp.getByLabel('Footer', { exact: true }).fill('Figures for the group meeting');
+  await exp.getByRole('switch').click(); // no logo
+  await exp.getByRole('button', { name: 'Export', exact: true }).click();
   const path = test.info().outputPath('e2e-figures.html');
   await (await download).saveAs(path);
   const html = (await import('node:fs')).readFileSync(path, 'utf8');
   expect(html).not.toMatch(/<script[^>]+src=/);
+  expect(html).toContain('data-theme="dark"');
+  expect(html).toContain('<span>Figures for the group meeting</span>');
+  expect(html).not.toContain('rel="icon"');
   // the file draws both figures with every network request blocked
   const ctx = await browser.newContext({ offline: true });
   await ctx.route(/^https?:/, (r) => r.abort());
@@ -347,5 +367,25 @@ test('several media items go to a report together and export without a network',
   await off.goto('file://' + path);
   await expect(off.locator('.nbfig .main-svg').first()).toBeVisible();
   await expect(off.locator('.nbfig svg.marks')).toBeVisible();
+  await ctx.close();
+});
+
+test('a saved chart is drawn live in the exported HTML and follows its theme', async ({ page, browser }) => {
+  await page.goto('/#/reports?rproject=vit-ablations&report=augmentation-findings');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Switchable', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const path = test.info().outputPath('augmentation-findings.html');
+  await (await download).saveAs(path);
+  const ctx = await browser.newContext({ offline: true, colorScheme: 'light' });
+  await ctx.route(/^https?:/, (r) => r.abort());
+  const off = await ctx.newPage();
+  await off.goto('file://' + path);
+  await expect(off.locator('.nbplot canvas')).toBeVisible();
+  await expect(off.locator('html')).toHaveAttribute('data-theme', 'light');
+  await off.getByRole('button', { name: 'Switch between light and dark theme' }).click();
+  await expect(off.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(off.locator('.nbplot canvas')).toBeVisible();
   await ctx.close();
 });

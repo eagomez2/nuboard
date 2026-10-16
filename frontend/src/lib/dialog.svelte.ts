@@ -7,6 +7,10 @@ export interface DialogField {
   placeholder?: string;
   hint?: string;
   suggestions?: string[];
+  /** Pick one of these instead of typing (buttons up to four, else a menu); the value is the option's `value`. */
+  options?: { value: string; label: string }[];
+  /** A switch instead of a text box; the value is `'1'` or `'0'`. */
+  toggle?: boolean;
 }
 
 export interface DialogRequest {

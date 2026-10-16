@@ -3,12 +3,18 @@
 // their spec by the Plotly or Vega libraries embedded once in the file (only those it uses).
 
 import { api, type MediaItem } from './api';
+import { DISPLAY_NAME } from './brand';
+import { decodeSpec } from './chartspec';
 import { renderMarkdown } from './markdown';
+import { ema, robustRange } from './smooth';
+import LOGO from '../../public/logo.svg?raw';
+import UPLOT_CSS from '../../node_modules/uplot/dist/uPlot.min.css?raw';
 
-type Lib = 'plotly' | 'vega' | 'bokeh';
+type Lib = 'plotly' | 'vega' | 'bokeh' | 'uplot';
 
 // The UMD builds the viewer already ships, loaded as text only when a report is exported.
-const VENDOR: Record<'plotly' | 'vega', () => Promise<string[]>> = {
+const VENDOR: Record<'plotly' | 'vega' | 'uplot', () => Promise<string[]>> = {
+  uplot: async () => [(await import('../../node_modules/uplot/dist/uPlot.iife.min.js?raw')).default],
   plotly: async () => [(await import('../../node_modules/plotly.js-dist-min/plotly.min.js?raw')).default],
   vega: async () =>
     Promise.all([
@@ -73,6 +79,61 @@ function figureHtml(mime: string, json: string, needs: Needs): string {
   return `<div class="nbfig" data-lib="${lib}"${style}></div><script type="application/json">${json.replace(/</g, '\\u003c')}</script>`;
 }
 
+const round = (a: ArrayLike<number>) => Array.from(a, (v) => (Number.isFinite(v) ? Number(v.toPrecision(6)) : null));
+
+/**
+ * A chart saved from the Charts page, drawn live in the file (uPlot) from its data as of the export,
+ * so it follows the file's theme. Null when the data cannot be loaded (the snapshot is used then).
+ */
+async function chartHtml(specText: string, caption: string, needs: Needs): Promise<string | null> {
+  const spec = decodeSpec(specText);
+  if (!spec) return null;
+  let data;
+  try {
+    data = await api.chart({
+      runs: spec.runs,
+      metric: spec.metric,
+      x: spec.x,
+      group: spec.group,
+      agg: spec.agg,
+      points: 900,
+      xmin: spec.zoom?.[0],
+      xmax: spec.zoom?.[1],
+    });
+  } catch {
+    return null;
+  }
+  const hidden = new Set(spec.hidden);
+  const smooth = (a: ArrayLike<number>) => (spec.smooth > 0 ? ema(a, spec.smooth) : a);
+  const ys: Float64Array[] = [];
+  const series = data.series.flatMap((x, i) => {
+    if (hidden.has(x.label) || !x.x.length) return [];
+    const y = smooth(x.y);
+    ys.push(Float64Array.from(y));
+    const band = x.lo.some((v, k) => Number.isFinite(v) && v !== x.y[k]) && (x.n ?? 1) > 1;
+    return [
+      {
+        label: x.label,
+        c: i % 8,
+        x: Array.from(x.x),
+        y: round(y),
+        raw: spec.raw && spec.smooth > 0 ? round(x.y) : undefined,
+        lo: band ? round(smooth(x.lo)) : undefined,
+        hi: band ? round(smooth(x.hi)) : undefined,
+      },
+    ];
+  });
+  if (!series.length) return null;
+  needs.libs.add('uplot');
+  const range = spec.robust && !spec.log ? robustRange(ys) : null;
+  const json = JSON.stringify({ xKind: data.xKind, log: spec.log, zoom: spec.zoom, range, series });
+  const sub = spec.group ? `grouped by ${spec.group}` : `${spec.runs.length} runs`;
+  const legend = series
+    .map((x) => `<span><i style="background:var(--s${x.c + 1})"></i>${esc(x.label)}</span>`)
+    .join('');
+  return `<figure><div class="nbchart"><div class="nbchart-head"><b>${esc(spec.metric)}</b><span>${esc(sub)}</span></div><div class="nbplot"></div><script type="application/json">${json.replace(/</g, '\\u003c')}</script><div class="nblegend">${legend}</div></div>${caption ? `<figcaption><span>${esc(caption)}</span></figcaption>` : ''}</figure>`;
+}
+
 /** BokehJS must match the version that wrote the figure; it is fetched once, when exporting. */
 async function bokehScripts(version: string): Promise<string[] | null> {
   const base = `https://cdn.bokeh.org/bokeh/release/bokeh-${version}.min.js`;
@@ -85,18 +146,97 @@ async function bokehScripts(version: string): Promise<string[] | null> {
   }
 }
 
-const DRAW = `for (const el of document.querySelectorAll('.nbfig')) {
-  try {
-    const spec = JSON.parse(el.nextElementSibling.textContent);
-    const lib = el.dataset.lib;
-    if (lib === 'plotly') Plotly.newPlot(el, spec.data || [], spec.layout || {}, { responsive: true, displaylogo: false });
-    else if (lib === 'vega') vegaEmbed(el, spec, { actions: false, renderer: 'svg' });
-    else if (lib === 'bokeh' && window.Bokeh) { el.id = el.id || 'nbfig' + Math.random().toString(36).slice(2); Bokeh.embed.embed_item(spec, el.id); }
-    else el.textContent = 'This figure could not be drawn because its library is not in the file.';
-  } catch (e) {
-    el.textContent = 'This figure could not be drawn: ' + e;
+// Draws every figure for the page's theme, and again when a switchable page changes theme.
+const DRAW = `const nbDrawn = new Map();
+function nbDraw() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  for (const el of document.querySelectorAll('.nbfig')) {
+    try {
+      const spec = JSON.parse(el.nextElementSibling.textContent);
+      const lib = el.dataset.lib;
+      if (lib === 'plotly') {
+        const layout = Object.assign({}, spec.layout || {}, { paper_bgcolor: 'rgba(0,0,0,0)' });
+        if (dark) {
+          layout.plot_bgcolor = 'rgba(0,0,0,0)';
+          layout.font = Object.assign({}, layout.font || {}, { color: '#e6eaf0' });
+          const keys = Object.keys(layout).filter((k) => /^[xy]axis\\d*$/.test(k));
+          for (const k of keys.length ? keys : ['xaxis', 'yaxis'])
+            layout[k] = Object.assign({ gridcolor: 'rgba(255,255,255,0.1)', zerolinecolor: 'rgba(255,255,255,0.2)' }, layout[k] || {});
+        }
+        Plotly.react(el, spec.data || [], layout, { responsive: true, displaylogo: false });
+      } else if (lib === 'vega') {
+        if (nbDrawn.has(el)) nbDrawn.get(el).finalize();
+        el.innerHTML = '';
+        vegaEmbed(el, spec, { actions: false, renderer: 'svg', theme: dark ? 'dark' : undefined, config: { background: 'transparent' } })
+          .then((r) => nbDrawn.set(el, r));
+      } else if (lib === 'bokeh' && window.Bokeh) {
+        if (nbDrawn.has(el)) continue;
+        el.id = el.id || 'nbfig' + Math.random().toString(36).slice(2);
+        Bokeh.embed.embed_item(spec, el.id);
+        nbDrawn.set(el, true);
+      } else el.textContent = 'This figure could not be drawn because its library is not in the file.';
+    } catch (e) {
+      el.textContent = 'This figure could not be drawn: ' + e;
+    }
   }
-}`;
+}
+function nbCharts() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (n) => css.getPropertyValue(n).trim();
+  const alpha = (hex, a) => {
+    let h = hex.replace('#', '');
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    const n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  };
+  for (const el of document.querySelectorAll('.nbplot')) {
+    try {
+      const d = JSON.parse(el.nextElementSibling.textContent);
+      const tables = [];
+      const series = [{}];
+      const bands = [];
+      let col = 1;
+      const hidden = { stroke: 'transparent', width: 0, points: { show: false } };
+      for (const s of d.series) {
+        const color = v('--s' + (s.c + 1)) || '#0072b2';
+        const cols = [];
+        if (s.raw) {
+          cols.push(s.raw);
+          series.push({ label: s.label + ' raw', stroke: alpha(color, 0.28), width: 1, points: { show: false } });
+        }
+        if (s.lo) {
+          cols.push(s.lo, s.hi);
+          series.push(Object.assign({ label: s.label + ' lo' }, hidden), Object.assign({ label: s.label + ' hi' }, hidden));
+          bands.push({ series: [col + cols.length - 1, col + cols.length - 2], fill: alpha(color, 0.16) });
+        }
+        cols.push(s.y);
+        series.push({ label: s.label, stroke: color, width: 2, points: { show: false } });
+        col += cols.length;
+        tables.push([s.x].concat(cols));
+      }
+      const axis = { stroke: v('--muted'), grid: { stroke: v('--grid'), width: 1 }, ticks: { show: false }, font: '12px ui-monospace,Menlo,monospace' };
+      const y = { distr: d.log ? 3 : 1 };
+      if (d.range) y.range = () => d.range;
+      if (nbDrawn.has(el)) nbDrawn.get(el).destroy();
+      el.innerHTML = '';
+      const u = new uPlot({
+        width: el.clientWidth || 800, height: 300, series, bands, legend: { show: false }, padding: [12, 12, 0, 4],
+        scales: { x: { time: d.xKind === 'time' }, y },
+        axes: [Object.assign({ size: 40 }, axis), Object.assign({ size: 56 }, axis)],
+        cursor: { drag: { x: true, y: false }, points: { show: false } },
+      }, tables.length === 1 ? tables[0] : uPlot.join(tables), el);
+      if (d.zoom) u.setScale('x', { min: d.zoom[0], max: d.zoom[1] });
+      nbDrawn.set(el, u);
+    } catch (e) {
+      el.textContent = 'This chart could not be drawn: ' + e;
+    }
+  }
+}
+nbDraw();
+nbCharts();
+document.addEventListener('nbtheme', () => { nbDraw(); nbCharts(); });
+let nbResize = 0;
+addEventListener('resize', () => { clearTimeout(nbResize); nbResize = setTimeout(nbCharts, 150); });`;
 
 async function mediaHtml(project: string, ref: string, caption: string, needs: Needs): Promise<string> {
   let found: { run: string; run_name: string; item: MediaItem };
@@ -119,22 +259,63 @@ async function mediaHtml(project: string, ref: string, caption: string, needs: N
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;
 }
 
+// Light and dark colors, including the series palette, mirror app.css.
 const STYLE = `
-body{margin:0;background:#f4f6f9;color:#1b2430;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:900px;margin:32px auto;padding:32px 40px;background:#fff;border-radius:14px;box-shadow:0 1px 3px rgb(0 0 0/.08)}
+:root{--bg:#f4f6f9;--panel:#fff;--text:#1b2430;--muted:#5b6675;--faint:#8a94a3;--border:#e3e7ed;--code:#f0f2f5;--link:#0b6bcb;--grid:#e9edf2;color-scheme:light;
+--s1:#0072b2;--s2:#e69f00;--s3:#cc79a7;--s4:#009e73;--s5:#d55e00;--s6:#56b4e9;--s7:#8a7a00;--s8:#6a4c93}
+:root[data-theme=dark]{--bg:#0f1318;--panel:#171c23;--text:#e6eaf0;--muted:#a3adba;--faint:#75808e;--border:#2a313b;--code:#1f252e;--link:#6cb0ff;--grid:#232a35;color-scheme:dark;
+--s1:#56b4e9;--s2:#e69f00;--s3:#e08fbd;--s4:#2bbf95;--s5:#ff8c42;--s6:#9ad0f0;--s7:#f0e442;--s8:#b39ddb}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:900px;margin:32px auto;padding:32px 40px;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 3px rgb(0 0 0/.08)}
 h1{font-size:28px;letter-spacing:-.02em;margin:.2em 0 .6em}h2{font-size:21px;margin:1.4em 0 .5em}h3{font-size:17px}
-a{color:#0b6bcb}code{font:.9em ui-monospace,Menlo,monospace;background:#f0f2f5;border-radius:5px;padding:1px 5px}
-pre{background:#f0f2f5;border:1px solid #e3e7ed;border-radius:9px;padding:10px 12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}
-pre code{background:none;padding:0}table{border-collapse:collapse;margin:.8em 0}th,td{border:1px solid #e3e7ed;padding:5px 10px}
-blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid #e3e7ed;color:#5b6675}
+a{color:var(--link)}code{font:.9em ui-monospace,Menlo,monospace;background:var(--code);border-radius:5px;padding:1px 5px}
+pre{background:var(--code);border:1px solid var(--border);border-radius:9px;padding:10px 12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}
+pre code{background:none;padding:0}table{border-collapse:collapse;margin:.8em 0}th,td{border:1px solid var(--border);padding:5px 10px}
+blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid var(--border);color:var(--muted)}
 img{max-width:100%;border-radius:8px}figure{margin:1.2em 0}figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
-figcaption small{color:#8a94a3;font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
-.nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid #e3e7ed;border-radius:8px;background:#fff}.missing{color:#8a94a3;font-style:italic}
-footer{max-width:900px;margin:0 auto 32px;color:#8a94a3;font-size:12px;text-align:center}
-@media print{body{background:#fff}main{box-shadow:none;margin:0;padding:0}}`;
+figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
+.nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
+.nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
+.nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;display:flex;align-items:center;justify-content:center;gap:8px}
+footer svg{width:18px;height:18px;flex:none}
+.nbtheme{position:fixed;top:14px;right:14px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer}
+.nbtheme:hover{color:var(--text)}.nbtheme svg{width:18px;height:18px}
+:root[data-theme=dark] .nbtheme .sun,:root:not([data-theme=dark]) .nbtheme .moon{display:none}
+@media (max-width:640px){main{margin:16px;padding:20px 16px}}
+@media print{:root{--bg:#fff;--panel:#fff}main{box-shadow:none;border:0;margin:0;padding:0}.nbtheme{display:none}}`;
+
+// A switchable page starts in the reader's system theme (or the one they picked last) and has a
+// button that flips it.
+const THEME_START = `(()=>{let t;try{t=localStorage.getItem('nuboard-report-theme')}catch{}
+document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()`;
+const THEME_BUTTON = `<button class="nbtheme" type="button" aria-label="Switch between light and dark theme" title="Light or dark theme"
+onclick="const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('nuboard-report-theme',r.dataset.theme)}catch{}document.dispatchEvent(new Event('nbtheme'))">
+<svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+<svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>`;
+
+export type ExportTheme = 'light' | 'dark' | 'switch';
+
+/** How a report is exported: its theme, the footer text, and whether the logo is shown. */
+export interface ExportOptions {
+  theme: ExportTheme;
+  footer: string;
+  logo: boolean;
+}
+
+/** The footer a report gets unless it is changed when exporting. */
+export function defaultFooter(project: string): string {
+  return `Exported with ${DISPLAY_NAME} from ${project}/reports on ${new Date().toLocaleString()}`;
+}
 
 /** Build the standalone HTML of a report. */
-export async function reportHtml(project: string, title: string, text: string): Promise<string> {
+export async function reportHtml(
+  project: string,
+  title: string,
+  text: string,
+  opts: ExportOptions = { theme: 'light', footer: defaultFooter(project), logo: true },
+): Promise<string> {
   const files = api.reportFileUrl(project, '');
   const doc = new DOMParser().parseFromString(`<main>${renderMarkdown(text, files)}</main>`, 'text/html');
   const main = doc.querySelector('main')!;
@@ -159,8 +340,17 @@ export async function reportHtml(project: string, title: string, text: string): 
   const jobs: Promise<void>[] = [];
   for (const el of main.querySelectorAll<HTMLElement>('.nb-embed'))
     jobs.push(swap(el, mediaHtml(project, el.dataset.ref ?? '', el.dataset.caption ?? '', needs)));
-  for (const el of main.querySelectorAll<HTMLElement>('.nb-chart, .nb-view'))
-    jobs.push(swap(el, snapshot(el.dataset.src ?? '', el.dataset.caption ?? '', el.classList.contains('nb-view'))));
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-chart')) {
+    const { spec = '', caption = '', src = '' } = el.dataset;
+    jobs.push(
+      swap(
+        el,
+        chartHtml(spec, caption, needs).then((html) => html ?? snapshot(src, caption, false)),
+      ),
+    );
+  }
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-view'))
+    jobs.push(swap(el, snapshot(el.dataset.src ?? '', el.dataset.caption ?? '', true)));
   for (const img of main.querySelectorAll<HTMLImageElement>('img'))
     if (img.getAttribute('src')?.startsWith(files))
       jobs.push(dataUrl(img.getAttribute('src')!).then((d) => img.setAttribute('src', d)));
@@ -168,23 +358,39 @@ export async function reportHtml(project: string, title: string, text: string): 
   const scripts: string[] = [];
   if (needs.libs.has('plotly')) scripts.push(...(await VENDOR.plotly()));
   if (needs.libs.has('vega')) scripts.push(...(await VENDOR.vega()));
+  if (needs.libs.has('uplot')) scripts.push(...(await VENDOR.uplot()));
   if (needs.bokeh) {
     const bokeh = await bokehScripts(needs.bokeh);
     if (bokeh) scripts.push(...bokeh);
   }
   if (needs.libs.size) scripts.push(DRAW);
   const tail = scripts.map((js) => `<script>${scriptSafe(js)}</script>`).join('\n');
+  const switchable = opts.theme === 'switch';
+  const theme = switchable ? `<script>${THEME_START}</script>` : '';
+  const icon = opts.logo
+    ? `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">`
+    : '';
+  const footer =
+    opts.footer.trim() || opts.logo
+      ? `<footer>${opts.logo ? LOGO.replace('<svg', '<svg aria-hidden="true"') : ''}${opts.footer.trim() ? `<span>${esc(opts.footer.trim())}</span>` : ''}</footer>`
+      : '';
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title><style>${STYLE}</style></head>
-<body>${main.outerHTML}<footer>Exported from ${esc(project)}/reports on ${new Date().toLocaleString()}</footer>
+<html lang="en"${switchable ? '' : ` data-theme="${opts.theme}"`}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}</style></head>
+<body>${switchable ? THEME_BUTTON : ''}${main.outerHTML}${footer}
 ${tail}</body></html>
 `;
 }
 
 /** Download the report as `<name>.html`. */
-export async function downloadReportHtml(project: string, name: string, title: string, text: string) {
-  const html = await reportHtml(project, title, text);
+export async function downloadReportHtml(
+  project: string,
+  name: string,
+  title: string,
+  text: string,
+  opts: ExportOptions,
+) {
+  const html = await reportHtml(project, title, text, opts);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   a.download = `${name}.html`;

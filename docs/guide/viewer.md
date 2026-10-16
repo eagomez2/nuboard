@@ -90,7 +90,7 @@ For a single run there are two more tabs:
   [report](reports.md). The runs table shows the first line; a note of more
   than one line opens here when clicked.
 - **Properties**: typed properties of the run. **Add property** defines one for
-  the whole project, with a type: text, number (with an optional unit),
+  the whole project, with a type picked from a menu: text, number (with an optional unit),
   choice, tags, bool, date or link. Choices and tags offer the values used
   before, and new values are added to the list. Values are saved per run as
   custom fields, so they show up as columns and work in queries

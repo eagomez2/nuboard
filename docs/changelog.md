@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.1
+
+**Reports**
+
+- **Export as HTML** asks for a theme (light, dark, or switchable with a
+  button that follows the reader's system theme), the footer text (by
+  default "Exported with NuBoard …") and whether to show the NuBoard logo
+  in the footer and as the tab icon.
+- Charts saved from the Charts page are drawn live in the exported file
+  from their data, so they follow its theme instead of showing a snapshot
+  taken in another theme.
+
+**Runs**
+
+- **Add property** picks the type from a menu instead of a text box.
+
 ## 0.8.0
 
 **Reports**
