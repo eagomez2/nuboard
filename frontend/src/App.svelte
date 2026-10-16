@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Dialog from './components/Dialog.svelte';
+  import ReportToast from './components/ReportToast.svelte';
   import Icon from './components/Icon.svelte';
   import QueryBar from './components/QueryBar.svelte';
   import RunsPage from './pages/RunsPage.svelte';
@@ -9,6 +10,7 @@
   import TimelinePage from './pages/TimelinePage.svelte';
   import SweepsPage from './pages/SweepsPage.svelte';
   import ArtifactsPage from './pages/ArtifactsPage.svelte';
+  import ReportsPage from './pages/ReportsPage.svelte';
   import { NAME } from './lib/brand';
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
@@ -21,6 +23,7 @@
     { page: 'sweeps', icon: 'sweep', label: 'Sweeps' },
     { page: 'timeline', icon: 'timeline', label: 'Timeline' },
     { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
+    { page: 'reports', icon: 'report', label: 'Reports' },
   ];
   const titles: Record<Page, string> = {
     runs: 'All runs',
@@ -29,6 +32,7 @@
     sweeps: 'Sweeps',
     timeline: 'Timeline',
     artifacts: 'Artifacts',
+    reports: 'Reports',
   };
 
   onMount(() => {
@@ -120,6 +124,8 @@
       <TimelinePage />
     {:else if router.page === 'artifacts'}
       <ArtifactsPage />
+    {:else if router.page === 'reports'}
+      <ReportsPage />
     {:else}
       <MediaPage />
     {/if}
@@ -127,6 +133,7 @@
 </div>
 
 <Dialog />
+<ReportToast />
 
 <style>
   .shell {

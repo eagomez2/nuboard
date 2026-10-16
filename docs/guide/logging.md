@@ -38,7 +38,7 @@ nb.init(
 `init` creates `<dir>/<project>/runs/<YYYYMMDD-HHMM>_<name>_<rand>/` and
 records:
 
-- the config (`run.json` and `files/config.json`),
+- the config (in `run.json`),
 - git commit, branch, remote and dirty flag, plus `git diff HEAD` as
   `files/git.patch` (skipped outside a repository),
 - installed packages as `files/requirements.txt` (read from package metadata,
@@ -48,6 +48,23 @@ records:
 - rank and world size (see [Distributed training](distributed.md)).
 
 Pass `capture_env=False` to skip git, packages and GPUs.
+
+### Config files
+
+The config passed to `init` is stored in `run.json`, whatever it came from. To
+also keep the config files themselves, in whatever format they are, attach them
+with `add_file`:
+
+```python
+run.add_file("config.yaml")  # files/config.yaml
+run.add_file("train.toml", "cfg/train.toml")
+run.add_file(".hydra", "hydra")  # Hydra's folder, copied recursively
+```
+
+`add_file` copies any file or folder into the run's `files/` folder, under its
+base name or the relative name you give, and returns the destination path.
+Only rank 0 copies. The viewer lists these files in the run details and diffs
+them between runs in Compare.
 
 ## `run.log`
 

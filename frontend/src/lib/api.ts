@@ -24,7 +24,25 @@ export interface Alert {
   count?: number;
 }
 
-export type FieldValue = string | number | boolean;
+export type FieldValue = string | number | boolean | string[];
+
+export type FieldType = 'text' | 'number' | 'choice' | 'tags' | 'bool' | 'date' | 'link';
+
+/** A typed property, defined per project in `<project>/fields.json`. */
+export interface FieldDef {
+  name: string;
+  type: FieldType;
+  options?: string[];
+  unit?: string;
+  description?: string;
+}
+
+export interface ReportInfo {
+  project: string;
+  name: string;
+  title: string;
+  updated: number;
+}
 
 export interface Collection {
   name: string;
@@ -210,6 +228,48 @@ export const api = {
       body: JSON.stringify(body),
     }),
   mediaUrl: (key: string, index: number) => `/api/runs/${encodeURIComponent(key)}/media/${index}`,
+  best: (keys: string[], metric: string, mode: 'min' | 'max') =>
+    json<{ best: Record<string, { step: number; value: number }> }>(
+      `/api/best?${qs({ runs: keys.join(','), metric, mode })}`,
+    ),
+  mediaRef: (project: string, ref: string) =>
+    json<{ run: string; run_name: string; item: MediaItem }>(`/api/media/ref?${qs({ project, ref })}`),
+  reports: (project?: string | null) => json<{ reports: ReportInfo[] }>(`/api/reports?${qs({ project })}`),
+  report: (project: string, name: string) =>
+    json<{ project: string; name: string; text: string }>(
+      `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(name)}`,
+    ),
+  reportExportUrl: (project: string, name: string) =>
+    `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(name)}/export`,
+  saveReport: (body: {
+    project: string;
+    name: string;
+    text?: string;
+    append?: string;
+    rename?: string;
+    delete?: boolean;
+  }) =>
+    json<{ saved?: string; deleted?: string; error?: string }>('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  saveSnapshot: (project: string, report: string, png: string) =>
+    json<{ path?: string; error?: string }>('/api/reports/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, report, png }),
+    }),
+  /** URL of a report-local file such as `files/chart.png`. */
+  reportFileUrl: (project: string, path: string) =>
+    `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${path}`,
+  fields: (project: string) => json<{ fields: FieldDef[] }>(`/api/fields?${qs({ project })}`),
+  saveFields: (project: string, fields: FieldDef[]) =>
+    json<{ fields: FieldDef[] }>('/api/fields', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, fields }),
+    }),
 
   async chart(p: {
     runs: string[];

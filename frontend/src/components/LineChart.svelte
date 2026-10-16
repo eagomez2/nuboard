@@ -57,6 +57,20 @@
   let mains: { idx: number; label: string; series: number; lo: number | null; hi: number | null }[] = [];
   let frame = 0;
 
+  // Shorten text with an ellipsis so it fits in `max` canvas pixels (long run names would run off the plot).
+  function fitText(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+    if (max <= 0) return '';
+    if (ctx.measureText(text).width <= max) return text;
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (ctx.measureText(text.slice(0, mid) + '…').width <= max) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo ? text.slice(0, lo) + '…' : '';
+  }
+
   function clean(a: ArrayLike<number>): (number | null)[] {
     const out = new Array<number | null>(a.length);
     for (let i = 0; i < a.length; i++) out[i] = Number.isFinite(a[i]) ? a[i] : null;
@@ -251,7 +265,11 @@
               if (!compact) {
                 ctx.font = `${11 * dpr}px ${cssVar('--mono') || 'monospace'}`;
                 ctx.textAlign = 'left';
-                ctx.fillText(r.label, a + 4 * dpr, u.bbox.top + u.bbox.height - 8 * dpr);
+                ctx.fillText(
+                  fitText(ctx, r.label, right - a - 8 * dpr),
+                  a + 4 * dpr,
+                  u.bbox.top + u.bbox.height - 8 * dpr,
+                );
               }
             }
             ctx.restore();
@@ -274,8 +292,17 @@
                 ctx.setLineDash([]);
                 ctx.fillStyle = errColor;
                 ctx.font = `${12 * devicePixelRatio}px ${cssVar('--mono') || 'monospace'}`;
-                ctx.textAlign = 'right';
-                ctx.fillText(`NaN · ${mark.label}`, px - 6 * devicePixelRatio, u.bbox.top + 14 * devicePixelRatio);
+                // label to the left of the line, or to the right when the line sits near the left edge
+                const gap = 6 * devicePixelRatio;
+                const leftRoom = px - gap - u.bbox.left;
+                const rightRoom = u.bbox.left + u.bbox.width - px - gap;
+                const onLeft = leftRoom >= Math.min(rightRoom, 160 * devicePixelRatio);
+                ctx.textAlign = onLeft ? 'right' : 'left';
+                ctx.fillText(
+                  fitText(ctx, `NaN · ${mark.label}`, onLeft ? leftRoom : rightRoom),
+                  onLeft ? px - gap : px + gap,
+                  u.bbox.top + 14 * devicePixelRatio,
+                );
               }
             }
             ctx.restore();
@@ -310,7 +337,8 @@
   });
 
   $effect(() => {
-    if (plot && width > 0) plot.setSize({ width, height });
+    const size = { width, height }; // read first: `plot` is not reactive, so the effect must depend on these
+    if (plot && size.width > 0) plot.setSize(size);
   });
 
   onMount(() => {

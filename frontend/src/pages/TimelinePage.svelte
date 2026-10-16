@@ -178,6 +178,14 @@
   function laneY(r: RunBrief) {
     return AXIS + (lanes.lane.get(r.key) ?? 0) * ROW;
   }
+  // SVG text cannot ellipsize: cut it to `px` pixels at roughly `charW` pixels per (monospace) character.
+  function fit(text: string, px: number, charW: number): string {
+    const max = Math.floor(px / charW);
+    if (text.length <= max) return text;
+    return max > 1 ? text.slice(0, max - 1) + '…' : '';
+  }
+  // Keep the hover card on screen near the right and bottom edges.
+  const tipLeft = $derived(hover ? Math.max(8, Math.min(hover.x + 14, window.innerWidth - 356)) : 0);
 </script>
 
 <div class="card panel">
@@ -227,7 +235,9 @@
           <text class="nowlabel" x={xOf(now) - 4} y={16} text-anchor="end">now</text>
         {/if}
         {#each lanes.headers as h (h.project)}
-          <text class="project" x={8} y={AXIS + h.lane * ROW + 16}>{h.project}</text>
+          <text class="project" x={8} y={AXIS + h.lane * ROW + 16}
+            ><title>{h.project}</title>{fit(h.project, width - 16, 7.6)}</text
+          >
           <line class="sep" x1={0} x2={width} y1={AXIS + h.lane * ROW + 0.5} y2={AXIS + h.lane * ROW + 0.5} />
         {/each}
         {#each runs as r (r.key)}
@@ -235,7 +245,9 @@
           {@const x0 = Math.max(xOf(r.started ?? 0), LABEL)}
           {@const x1 = Math.min(xOf(endOf(r)), LABEL + plotW)}
           {#if !packed}
-            <text class="name" class:dim={r.archived} x={20} y={y + 16}>{r.name}</text>
+            <text class="name" class:dim={r.archived} x={20} y={y + 16}
+              ><title>{r.name}</title>{fit(r.name, LABEL - 20 - 14, 7.3)}</text
+            >
           {/if}
           {#if x1 >= LABEL && x0 <= LABEL + plotW}
             <g
@@ -259,7 +271,7 @@
                 opacity={r.status === 'running' ? 0.85 : 0.7}
               />
               {#if packed && x1 - x0 > 60}
-                <text class="inbar" x={x0 + 5} y={y + 16}>{r.name}</text>
+                <text class="inbar" x={x0 + 5} y={y + 16}>{fit(r.name, x1 - x0 - 10, 6.8)}</text>
               {/if}
               {#if r.status === 'crashed' || r.status === 'killed'}
                 <text class="cross" x={x1 + 3} y={y + 16}>✕</text>
@@ -296,7 +308,7 @@
 </div>
 
 {#if hover}
-  <div class="tip card" style="left:{hover.x + 14}px; top:{hover.y + 14}px">
+  <div class="tip card" style="left:{tipLeft}px; top:{hover.y + 14}px">
     <div class="tname mono">{hover.run.name}</div>
     <div class="trow"><Status status={hover.run.status} /> <span class="faint">{hover.run.project}</span></div>
     <div class="trow">Started {fmtDate(hover.run.started)}</div>
@@ -423,9 +435,11 @@
   }
   .tname {
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
   .trow {
     color: var(--muted);
+    overflow-wrap: anywhere;
   }
   .warn {
     color: var(--warn);

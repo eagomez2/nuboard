@@ -30,11 +30,51 @@ def test_init_creates_self_contained_folder(tmp_path):
     assert meta["status"] == "finished"
     assert meta["config"]["opt"]["b"] == [0.9, 0.95]
     assert meta["summary"]["nested/acc"]["last"] == 0.5
-    assert {"config.json", "requirements.txt", "command.txt"} <= set(os.listdir(run.path / "files"))
+    assert {"requirements.txt", "command.txt"} <= set(os.listdir(run.path / "files"))
+    assert "config.json" not in os.listdir(run.path / "files")
 
     for f in run.path.rglob("*"):  # nothing points outside the folder
         if f.is_file() and f.suffix in (".json", ".txt"):
             assert str(tmp_path / "exp" / "other") not in f.read_text("utf-8", errors="ignore")
+
+
+def test_add_file_copies_files_and_folders(tmp_path):
+    (tmp_path / "config.yaml").write_text("lr: 0.001\n", "utf-8")
+    hydra = tmp_path / ".hydra"
+    (hydra / "sub").mkdir(parents=True)
+    (hydra / "config.yaml").write_text("model: vit\n", "utf-8")
+    (hydra / "sub" / "overrides.yaml").write_text("- lr=0.1\n", "utf-8")
+    (hydra / "empty").mkdir()
+
+    with nb.init("files", capture_env=False) as run:
+        files = run.path / "files"
+        assert run.add_file(tmp_path / "config.yaml") == files / "config.yaml"
+        assert run.add_file(tmp_path / "config.yaml", "cfg/train.yaml") == files / "cfg/train.yaml"
+        assert run.add_file(hydra, "hydra") == files / "hydra"
+        assert run.add_file(hydra) == files / ".hydra"
+        run.add_file(tmp_path / "config.yaml")  # overwrites in place
+
+    assert (files / "config.yaml").read_text("utf-8") == "lr: 0.001\n"
+    assert (files / "cfg" / "train.yaml").read_text("utf-8") == "lr: 0.001\n"
+    assert (files / "hydra" / "config.yaml").read_text("utf-8") == "model: vit\n"
+    assert (files / "hydra" / "sub" / "overrides.yaml").read_text("utf-8") == "- lr=0.1\n"
+    assert (files / ".hydra" / "sub" / "overrides.yaml").exists()
+    assert not [p for p in files.rglob("*.tmp")]
+
+
+def test_add_file_rejects_unsafe_names(tmp_path):
+    (tmp_path / "a.toml").write_text("x = 1\n", "utf-8")
+    run = nb.init("files", capture_env=False)
+
+    for bad in ("../x", "a/../../x", str(tmp_path / "abs.toml"), "/abs.toml", "C:\\x", "", "."):
+        with pytest.raises(ValueError):
+            run.add_file(tmp_path / "a.toml", bad)
+
+    with pytest.raises(FileNotFoundError):
+        run.add_file(tmp_path / "missing.yaml")
+
+    run.finish()
+    assert not (run.path.parent / "x").exists()
 
 
 def test_log_values_and_steps(tmp_path):
@@ -172,6 +212,9 @@ def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
     r0.log({"loss": 1.0}, step=0)
     r1.log({"loss": 2.0}, step=0)  # ignored: rank 1, not all_ranks
     r1.log({"grad_norm": 3.0}, step=0, all_ranks=True)
+    (tmp_path / "config.yaml").write_text("lr: 0.001\n", "utf-8")
+    assert r1.add_file(tmp_path / "config.yaml") is None  # only rank 0 copies
+    assert not (r1.path / "files" / "config.yaml").exists()
     r1.finish()
     r0.finish()
     files = sorted(os.listdir(r0.path))

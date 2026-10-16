@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import math
@@ -35,6 +36,17 @@ from ..artifacts import list_artifacts
 from ..catalog import Catalog
 from ..collection import delete_collection, list_collections, save_collection
 from ..query import QueryError, parse
+from ..reports import (
+    MediaRef,
+    export_report,
+    parse_ref,
+    read_fields,
+    report_names,
+    report_path,
+    save_fields,
+    save_report,
+    save_snapshot,
+)
 from .data import Store, path_inside
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -412,7 +424,9 @@ def create_app(
             fields_patch = {
                 str(k)[:64]: v
                 for k, v in fields_raw.items()
-                if v is None or isinstance(v, (str, int, float, bool))
+                if v is None
+                or isinstance(v, (str, int, float, bool))
+                or (isinstance(v, list) and all(isinstance(x, str) for x in v))  # tags
             }
 
         def write() -> list[str]:
@@ -432,7 +446,7 @@ def create_app(
                     fields = dict(ann.get("fields") or {})
 
                     for k, v in fields_patch.items():
-                        if v is None or v == "":
+                        if v is None or v == "" or v == []:
                             fields.pop(k, None)
                         else:
                             fields[k] = v
@@ -769,6 +783,253 @@ def create_app(
         )
         return JSON({"saved": name})
 
+    def run_key_of(project: str, run_id: str) -> str | None:
+        """Return the catalog key of run `run_id` of `project`, or None."""
+
+        for refresh in (False, True):
+            if refresh:
+                catalog.refresh()
+
+            for r in catalog.runs():
+                if r["project"] == project and run_id in (r["id"], Path(r["path"]).name):
+                    return r["key"]
+
+        return None
+
+    def find_item(project: str, ref: MediaRef) -> tuple[str, dict[str, Any]] | None:
+        """Return the run key and media list entry a reference points to, or None."""
+        key = run_key_of(project, ref.run_id)
+        reader = store.fresh_reader(key) if key else None
+
+        if key is None or reader is None:
+            return None
+
+        found: dict[str, Any] | None = None
+
+        for i, e in enumerate(reader.media()):
+            if e.key == ref.key and e.step == ref.step:
+                found = {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
+
+        for t in reader.texts(ref.key):
+            if t.step == ref.step:
+                found = {"key": t.key, "step": t.step, "time": t.time, "kind": "text"}
+                found.update({"mime": "text/plain", "text": t.text})
+
+        return (key, found) if found else None
+
+    def best_steps(request: Request) -> Response:
+        """Return, per run, the step where a metric is lowest (or highest).
+
+        Query parameters: `runs` (comma-separated keys), `metric` and `mode`
+        (`min`, the default, or `max`). Runs without finite values are left out.
+        """
+        metric = request.query_params.get("metric", "")
+        highest = request.query_params.get("mode") == "max"
+        out: dict[str, dict[str, float]] = {}
+
+        for key in filter(None, request.query_params.get("runs", "").split(",")):
+            reader = store.reader(key)
+
+            if reader is None:
+                continue
+
+            steps, _, values = reader.scalars(metric)
+            best: tuple[float, int] | None = None
+
+            for st, v in zip(steps.tolist(), values.tolist()):
+                if math.isfinite(v) and (best is None or (v > best[0] if highest else v < best[0])):
+                    best = (v, int(st))
+
+            if best is not None:
+                out[key] = {"step": best[1], "value": best[0]}
+
+        return JSON({"metric": metric, "mode": "max" if highest else "min", "best": out})
+
+    def media_ref(request: Request) -> Response:
+        """Resolve a media reference (`project` and `ref` query parameters) to its item."""
+        project = request.query_params.get("project", "")
+
+        try:
+            ref = parse_ref(request.query_params.get("ref", ""))
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        found = find_item(project, ref)
+
+        if found is None:
+            return JSON({"error": "not found"}, status_code=404)
+
+        key, item = found
+        record = catalog.get(key) or {}
+        return JSON({"run": key, "run_name": record.get("name", ref.run_id), "item": item})
+
+    def reports(request: Request) -> Response:
+        """Return the reports of every project, or of the `project` query parameter."""
+        want = request.query_params.get("project")
+        out = []
+
+        for p in catalog.projects():
+            if want and p["name"] != want:
+                continue
+
+            pdir = project_dir(p["name"])
+
+            if pdir is not None:
+                out += [{"project": p["name"], **r} for r in report_names(pdir)]
+
+        return JSON({"reports": out})
+
+    def report_file(request: Request) -> Path | None:
+        """Return the file of the report named in the path, or None for an unknown project."""
+        pdir = project_dir(request.path_params["project"])
+        return report_path(pdir, request.path_params["name"]) if pdir else None
+
+    def report_get(request: Request) -> Response:
+        """Return a report's Markdown text."""
+        path = report_file(request)
+
+        if path is None or not path.is_file():
+            return JSON({"error": "no such report"}, status_code=404)
+
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return JSON({"project": request.path_params["project"], "name": path.stem, "text": text})
+
+    def report_export(request: Request) -> Response:
+        """Return a zip with the report's Markdown and the files it embeds."""
+        path = report_file(request)
+        project = request.path_params["project"]
+
+        if path is None or not path.is_file():
+            return JSON({"error": "no such report"}, status_code=404)
+
+        def resolve(ref: MediaRef) -> tuple[dict[str, Any], bytes] | None:
+            """Return an embedded item and its bytes."""
+            found = find_item(project, ref)
+
+            if found is None:
+                return None
+
+            key, item = found
+
+            if item.get("kind") == "text":
+                return item, b""
+
+            reader = store.fresh_reader(key)
+            assert reader is not None
+            return item, reader.read_media(reader.media()[item["index"]])
+
+        def local(name: str) -> bytes | None:
+            """Return a report-local file such as a chart snapshot."""
+            target = path_inside(path.parent, name)
+            return target.read_bytes() if target and target.is_file() else None
+
+        data = export_report(path.read_text(encoding="utf-8"), resolve, path.stem, local)
+        disposition = f'attachment; filename="{path.stem}.zip"'
+        return Response(
+            data, media_type="application/zip", headers={"Content-Disposition": disposition}
+        )
+
+    async def report_save(request: Request) -> Response:
+        """Save, rename or delete a report.
+
+        The JSON body holds `project`, `name` and `text`; `append` adds a block
+        at the end instead (creating the report if needed), `rename` moves the
+        report to a new name and `delete: true` removes it.
+        """
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        path = report_path(pdir, str(body.get("name", "report")))
+
+        if body.get("delete"):
+            path.unlink(missing_ok=True)
+            return JSON({"deleted": path.stem})
+
+        if body.get("rename"):
+            target = report_path(pdir, str(body["rename"]))
+
+            if target.exists() and target != path:
+                return JSON({"error": f"a report named {target.stem} exists"}, status_code=409)
+
+            path = target if not path.exists() else path.rename(target)
+
+        text = body.get("text")
+
+        if body.get("append"):  # add a block at the end, creating the report if needed
+            old = path.read_text(encoding="utf-8") if path.exists() else f"# {body.get('name')}\n"
+            text = f"{old.rstrip()}\n\n{str(body['append']).strip()}\n"
+
+        if text is None and path.exists():
+            return JSON({"saved": path.stem})
+
+        save_report(pdir, path.stem, str(text or ""))
+        return JSON({"saved": path.stem})
+
+    def report_asset(request: Request) -> Response:
+        """Serve a report-local file, such as a chart snapshot in `reports/files/`."""
+        pdir = project_dir(request.path_params["project"])
+        target = (
+            path_inside(pdir / "reports" / "files", request.path_params["file"]) if pdir else None
+        )
+
+        if target is None or not target.is_file():
+            return JSON({"error": "not found"}, status_code=404)
+
+        return FileResponse(target)
+
+    async def report_snapshot(request: Request) -> Response:
+        """Store a chart snapshot (JSON body: `project`, `report`, `png` as a data URL)."""
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        raw = str(body.get("png", "")).split(",", 1)[-1]
+
+        try:
+            png = base64.b64decode(raw, validate=True)
+            path = save_snapshot(pdir, str(body.get("report", "report")), png)
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        return JSON({"path": path})
+
+    def fields_get(request: Request) -> Response:
+        """Return the property definitions of the `project` query parameter."""
+        pdir = project_dir(request.query_params.get("project", ""))
+        return JSON({"fields": read_fields(pdir) if pdir else []})
+
+    async def fields_save(request: Request) -> Response:
+        """Replace a project's property definitions (JSON body: `project`, `fields`)."""
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        try:
+            fields = save_fields(pdir, list(body.get("fields") or []))
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        return JSON({"fields": fields})
+
     async def stream(request: Request) -> Response:
         """Return a server-sent event stream: `hello`, then `runs` and `data` change events.
 
@@ -851,6 +1112,16 @@ def create_app(
         Route("/api/collections", collection_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),
         Route("/api/views/{project:path}/{name}", view_get),
+        Route("/api/best", best_steps),
+        Route("/api/media/ref", media_ref),
+        Route("/api/reports", reports),
+        Route("/api/reports", report_save, methods=["POST"]),
+        Route("/api/reports/snapshot", report_snapshot, methods=["POST"]),
+        Route("/api/reports/{project:path}/files/{file}", report_asset),
+        Route("/api/reports/{project:path}/{name}/export", report_export),
+        Route("/api/reports/{project:path}/{name}", report_get),
+        Route("/api/fields", fields_get),
+        Route("/api/fields", fields_save, methods=["POST"]),
         Route("/api/stream", stream),
         Route("/", index),
     ]

@@ -315,3 +315,17 @@ button {
 .u-cursor-y {
   border-color: var(--faint) !important;
 }
+
+@media print {
+  .rail,
+  .page > header {
+    display: none !important;
+  }
+  .shell {
+    display: block !important;
+    background: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}

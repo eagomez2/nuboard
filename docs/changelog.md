@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.7.0
+
+**Media page**
+
+- Kind chips show or hide images, audio, figures, HTML and text (double-click
+  one to show only that kind), and a regex filter narrows the keys.
+- Each key is a collapsible section with a card per run, and each card has its
+  own step slider, as in TensorBoard. **by run** turns it around: a section per
+  run with a card per key.
+- **Step**: latest, one step for every card, or **best metric**, which moves
+  each run to its best step for a metric you pick (lowest or highest).
+- **Grid**: columns per row (fit, 1 to 8) and rows per page (1 to 6, or all),
+  with a pager per section. Up to 48 runs.
+- Each item can be opened large, downloaded or added to a report.
+- The demo's `vit-ablations` project has more metrics (one per class), typed
+  properties, a Markdown note and a sample report with images, a figure and a
+  chart.
+
+**Reports**
+
+- New **Reports** page: Markdown reports in `<project>/reports/<name>.md`, with
+  a split editor and preview, autosave, rename, delete, print and
+  **Export .zip** (the Markdown plus the embedded files).
+- `![caption](media:<run id>/<key>@<step>)` embeds a logged image, audio clip,
+  figure, HTML page or text. The Media page writes these lines for you.
+
+**Charts page**
+
+- **Grid** for the small charts: charts per row (fit, 1 to 6) and rows per
+  section (1 to 6, or all), with a pager per section.
+- **Full screen** for the focused chart and its inspector.
+- **Add to a report**: saves the focused chart as shown (runs, grouping,
+  smoothing, zoom, hidden series). Reports draw it live and keep a PNG
+  snapshot for exports and other Markdown viewers.
+
+**Notes and properties**
+
+- Run notes are Markdown, edited with a preview in the run's **notes** tab, and
+  can embed logged items.
+- Typed properties (text, number, choice, tags, bool, date, link), defined per
+  project in `fields.json` and set in the run's **properties** tab. They are
+  custom fields, so they show up as columns and in queries.
+
+**Config files**
+
+- nuboard no longer writes `files/config.json`. `run.add_file(path)` copies
+  any file or folder (YAML, TOML, Hydra outputs, ...) into the run's `files/`,
+  where the viewer shows and diffs it. The config passed to `init` is still in
+  `run.json`.
+
+**Fixes**
+
+- Charts kept their first width: a chart drawn before its container was laid
+  out (or after a window resize) did not fill it.
+- Two runs with the same name no longer break the Charts page; their series
+  are labelled with the run id's suffix.
+- Long run, metric and key names no longer overflow the Charts inspector, the
+  summary cards (Best, Running, ...) and other panels; they are cut with an
+  ellipsis and shown in full on hover.
+
 ## 0.6.0
 
 **TensorBoard import**

@@ -377,11 +377,18 @@ class Store:
                 loaded[key] = data
 
         if not group_by:
+            names = {key: (self.catalog.get(key) or {}).get("name", key) for key in loaded}
+            counts = collections.Counter(names.values())
+
             for key, (x, v, lo, hi) in loaded.items():
                 xb, yb, lob, hib = bucket_envelope(x, v, lo, hi, points)
-                record = self.catalog.get(key) or {}
+                label = names[key]
+
+                if counts[label] > 1:  # series are told apart by label in the viewer
+                    label = f"{label} ({key.rsplit('_', 1)[-1]})"
+
                 add(
-                    {"label": record.get("name", key), "runs": [key], "group": None},
+                    {"label": label, "runs": [key], "group": None},
                     xb,
                     yb,
                     lob,

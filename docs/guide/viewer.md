@@ -79,14 +79,30 @@ listing run ids, so it can be committed and survives moving the folder.
 
 Click a run name to open its details above the table: every setting (config,
 git commit, host, Python, GPUs, world size, fork origin, artifacts used and
-produced, last value of every metric) and the files saved by `init`. A crashed
+produced, last value of every metric) and the run's files. A crashed
 run shows its traceback.
+
+For a single run there are two more tabs:
+
+- **notes**: Markdown notes for the run, with a preview. Notes can use
+  headings, lists, tables, links and code, and embed any logged item with
+  the same `![caption](media:<run id>/<key>@<step>)` line as a
+  [report](reports.md). The runs table shows the first line; a note of more
+  than one line opens here when clicked.
+- **properties**: typed properties of the run. **Add property** defines one for
+  the whole project, with a type: text, number (with an optional unit),
+  choice, tags, bool, date or link. Choices and tags offer the values used
+  before, and new values are added to the list. Values are saved per run as
+  custom fields, so they show up as columns and work in queries
+  (`verdict = "keep"`, `topics has "augmentation"`). Definitions are kept in
+  `<project>/fields.json`.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **all settings** has a column per run and highlights rows where any run
-differs. Each file tab (`config.json`, `requirements.txt`, `git.patch`,
-`command.txt`) shows a line diff between two of the runs; with more than two,
-pick which two from the **diff … against …** menus. **only changes** hides
+differs. There is a tab for each file the runs saved (such as
+`requirements.txt`, `git.patch`, `command.txt` and any file added with
+[`add_file`](logging.md#config-files)); it shows a line diff between two of the
+runs. With more than two, pick which two from the **diff … against …** menus. **only changes** hides
 identical rows and lines.
 
 ## Charts page
@@ -128,9 +144,17 @@ are selected, every run matching the query.
   sorted best first, with ± std for grouped series. Click to pin the step.
   Without hovering it shows the latest values.
 - **Linked crosshair**: hovering any chart moves the crosshair on all of them.
+- **Full screen**: the corner button above the focused chart (or Esc to
+  leave) fills the screen with the chart and the inspector.
+- **Add to a report**: the bookmark button above the focused chart saves it
+  into a [report](reports.md), as it is shown: runs, grouping, smoothing,
+  zoom and hidden series. The report draws it live and keeps a PNG copy for
+  exports.
 - **All metrics**: a small chart per metric, grouped by prefix (`train/`,
   `eval/`, `sys/`…). Small charts load as you scroll. Click a title to bring
-  the metric into focus.
+  the metric into focus. **Grid** sets the charts per row (fit to width, or 1
+  to 6) and the rows per section (1 to 6, or all); a section with more charts
+  gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
 - A run that logged NaN gets a dashed marker at the first NaN with a
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
@@ -162,12 +186,42 @@ range, double-click to reset, click a bar to open the run.
 Every artifact version with its files, metadata and a lineage graph of the
 runs that produced and used it. See [Artifacts and lineage](artifacts.md).
 
+## Reports page
+
+Lists the Markdown reports of every project, with an editor and a live
+preview side by side. See [Reports](reports.md).
+
 ## Media page
 
 Shows images, audio, figures, HTML and text logged with `add_image`,
-`add_audio`, `add_figure`, `add_html` and `add_text`, for the selected runs (or the query result, up to
-16 runs). Pick a key, then move the step slider; each run shows its latest
-item at or before that step, side by side.
+`add_audio`, `add_figure`, `add_html` and `add_text`, for the selected runs (or
+the query result, up to 48 runs). Each key is a collapsible section with a card
+per run; every card has its own step slider, as in TensorBoard, so one run can
+be scrolled through its steps while the others stay put.
+
+- **Kinds**: the chips at the top (Images, Audio, Figures, HTML, Text) show or
+  hide a kind of media; double-click one to show only that kind. The number
+  on each chip counts its keys.
+- **Filter keys**: a regular expression on the keys, such as `^eval/` or
+  `confusion|per_class`.
+- **by key / by run**: a section per key with a card per run (default), or a
+  section per run with a card per key.
+- **Step**: **latest** shows each run's last item; **pick step** moves every
+  card to the item at or before one step; **best metric** moves each run to
+  the item closest to the step where a metric of your choice was lowest or
+  highest (for example the best `val/acc`). Moving a card's own slider
+  overrides the page-wide step for that card only.
+- **Grid**: **columns** sets the cards per row (fit to width, or 1 to 8) and
+  **rows** how many rows each section shows per page (1 to 6, or all); a
+  section with more cards gets a pager. Both are remembered.
+- **Expand all** and **Collapse all** fold the sections; with many keys only
+  the first three start open. **show runs without the key** adds an empty
+  card for runs that never logged it.
+
+Each card can open its item large, download it, or **add it to a report**
+(the bookmark button); see [Reports](reports.md). The whole view is kept in
+the URL (`mkinds`, `mfind`, `mby`, `mmode`, `mstep`, `mmetric`, `mdir`,
+`mcols`, `mrows`), so a shared link shows the same grid.
 
 Logged HTML runs in a sandboxed iframe (`sandbox="allow-scripts"`, no
 same-origin access) and is served with a matching `Content-Security-Policy`.

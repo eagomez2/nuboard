@@ -39,7 +39,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.6.0-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.7.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -47,16 +47,17 @@ Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.6
+## What's in 0.7
 
 | Area | Included |
 | --- | --- |
-| Python API | `init` (+ resume, fork, ranks), `log`, `add_text`, `add_image`, `add_audio`, `add_figure`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager |
+| Python API | `init` (+ resume, fork, ranks), `log`, `add_file`, `add_text`, `add_image`, `add_audio`, `add_figure`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager |
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
-| Runs | query language, stars, notes, archive, custom fields, column chooser, collections, saved views, run details and config/file diffs |
+| Runs | query language, stars, Markdown notes, archive, typed properties, custom fields, column chooser, collections, saved views, run details and config/file diffs |
 | Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any metric (tokens, epochs), solo or show all series |
-| Media | images, audio (waveform + spectrogram player, or the browser's player), text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures |
+| Media | images, audio (waveform + spectrogram player, or the browser's player), text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures; filter by kind, a step slider per card, best-metric step, configurable grid |
+| Reports | Markdown reports that embed logged items, export as a zip, print to PDF |
 | Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |

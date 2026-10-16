@@ -76,7 +76,7 @@
 </script>
 
 <div class="card small" bind:this={el}>
-  <button class="title" onclick={onFocus} title="Bring into focus">
+  <button class="title" onclick={onFocus} title="{metric}: click to bring into focus">
     <span class="mono name">{metric}</span>
     <span class="note">{note}</span>
   </button>
@@ -116,6 +116,7 @@
   .name {
     font-weight: 600;
     font-size: 13px;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -128,6 +129,7 @@
     color: var(--faint);
     font-size: 12px;
     white-space: nowrap;
+    flex: none;
   }
   .err {
     color: var(--err);

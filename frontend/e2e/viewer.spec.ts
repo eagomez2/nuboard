@@ -17,7 +17,7 @@ test('compare two runs shows a config diff', async ({ page }) => {
   await boxes.nth(0).check();
   await boxes.nth(2).check();
   await page.getByRole('button', { name: 'Compare' }).click();
-  await page.getByRole('button', { name: 'config.json' }).click();
+  await page.getByRole('button', { name: 'config.yaml' }).click();
   await expect(page.locator('.line.del').first()).toBeVisible();
 });
 
@@ -28,7 +28,7 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await page.getByRole('button', { name: 'Compare' }).click();
   await expect(page.getByRole('heading', { name: /Compare 4 runs/ })).toBeInViewport();
   await expect(page.locator('.srow.head .run')).toHaveCount(4);
-  await page.getByRole('button', { name: 'config.json' }).click();
+  await page.getByRole('button', { name: 'config.yaml' }).click();
   await page.getByRole('combobox', { name: 'Right run' }).selectOption({ index: 3 });
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
@@ -44,7 +44,7 @@ test('charts render grouped bands, a legend and small multiples', async ({ page 
 });
 
 test('media page shows logged images', async ({ page }) => {
-  await page.goto('/#/media?project=vit-ablations&mkey=samples%2Faugmented');
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples%2Faugmented%24');
   await expect(page.locator('figure img').first()).toBeVisible();
 });
 
@@ -102,16 +102,16 @@ test('charts can use another metric as the x axis', async ({ page }) => {
 });
 
 test('media page renders Vega-Lite and Plotly figures', async ({ page }) => {
-  await page.goto('/#/media?project=vit-ablations&mkey=eval%2Fper_class');
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fper_class%24');
   const vega = page.frameLocator('iframe[sandbox]').first();
   await expect(vega.locator('svg.marks')).toBeVisible({ timeout: 15000 });
-  await page.goto('/#/media?project=vit-ablations&mkey=eval%2Fconfusion');
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fconfusion%24');
   const plotly = page.frameLocator('iframe[sandbox]').first();
   await expect(plotly.locator('.main-svg').first()).toBeVisible({ timeout: 15000 });
 });
 
 test('media page plays audio with the waveform and simple players', async ({ page }) => {
-  await page.goto('/#/media?project=speech-denoise&mkey=audio%2Fenhanced');
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const player = page.frameLocator('iframe[src="./audio.html"]').first();
   await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
   await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
@@ -176,4 +176,84 @@ test('save view asks in a themed dialog', async ({ page }) => {
   await expect(dlg.getByLabel('Name')).toHaveValue('my-view');
   await page.keyboard.press('Escape');
   await expect(dlg).toBeHidden();
+});
+
+test('media page filters kinds, sets the grid and picks the best step', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations');
+  const kinds = page.getByRole('group', { name: 'Kinds of media' });
+  await kinds.getByRole('button', { name: /^Images/ }).dblclick();
+  await expect(page).toHaveURL(/mkinds=image/);
+  await expect(page.locator('section.section')).toHaveCount(1);
+  await page.getByRole('combobox', { name: 'Columns' }).selectOption('2');
+  await page.getByRole('combobox', { name: 'Rows per page' }).selectOption('1');
+  await expect(page.locator('section.section figure')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.locator('section.section figure')).toHaveCount(2);
+  await page.getByRole('button', { name: 'best metric' }).click();
+  await expect(page).toHaveURL(/mmode=best/);
+  await expect(page.locator('figure .step').first()).toContainText('step');
+});
+
+test('add a media item to a report, then open and export it', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples');
+  await page.getByRole('button', { name: 'Add to a report' }).first().click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-report');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page).toHaveURL(/#\/reports/);
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/media:.*samples\/augmented@/);
+  await expect(page.locator('.preview img').first()).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: /Export/ }).click();
+  expect((await download).suggestedFilename()).toBe('e2e-report.zip');
+});
+
+test('the demo report renders its embedded figures', async ({ page }) => {
+  await page.goto('/#/reports?rview=preview');
+  await page.getByRole('button', { name: /Augmentation findings/ }).click();
+  await expect(page.locator('.preview img')).toHaveCount(2);
+  const plotly = page.frameLocator('.preview iframe[sandbox]').first();
+  await expect(plotly.locator('.main-svg').first()).toBeVisible({ timeout: 15000 });
+});
+
+test('run details show Markdown notes and typed properties', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.getByRole('button', { name: 'cutmix-s0', exact: true }).click();
+  await page.getByRole('button', { name: 'notes', exact: true }).click();
+  await expect(page.getByText('Best of the sweep', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'properties', exact: true }).click();
+  await expect(page.locator('#prop-verdict')).toHaveValue('keep');
+  await page.locator('#prop-gpu_hours').fill('7.25');
+  await page.getByRole('button', { name: 'Save 1 change' }).click();
+  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+});
+
+test('charts grid pages small charts, and the main chart goes full screen', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  await page.getByRole('combobox', { name: 'Chart columns' }).selectOption('3');
+  await page.getByRole('combobox', { name: 'Chart rows per page' }).selectOption('1');
+  await expect(page).toHaveURL(/ccols=3/);
+  const perClass = page.locator('.sect').filter({ hasText: 'per_class' });
+  await expect(perClass.locator('.small')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Next charts of per_class' }).click();
+  await expect(perClass.getByText('2 / 4')).toBeVisible();
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  await expect(page.locator('.focus.full')).toBeVisible();
+  await page.getByRole('button', { name: 'Exit full screen' }).click();
+  await expect(page.locator('.focus.full')).toHaveCount(0);
+});
+
+test('add the main chart to a report, where it is drawn live', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  await expect(page.locator('.main canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Add chart to a report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-charts');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/files\/e2e-charts-\w+\.png "chart:/);
+  await expect(page.locator('.preview .nb-chart canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Open in Charts' }).click();
+  await expect(page).toHaveURL(/#\/charts.*metric=val%2Facc/);
 });
