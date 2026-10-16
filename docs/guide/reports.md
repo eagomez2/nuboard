@@ -16,7 +16,12 @@ as
 ![cutmix-s0 at the best val/acc](media:20261016-0815_cutmix-s0_ab12cd/samples/augmented@80)
 ```
 
-to the end of the report, creating it if needed. **Open report** in the
+to the end of the report, creating it if needed.
+
+To add several at once, press **Select for report** above the sections, tick
+the cards whose shown item you want, and press **Add N to report** in the bar
+at the bottom. They are appended in the order you ticked them, each with a
+caption naming its key, step and run. **Open report** in the
 notice jumps to it. Use **best metric** on the Media page first to save the
 item at a run's best step.
 
@@ -36,6 +41,19 @@ viewer. In nuboard the title after `chart:` describes the view, and the
 chart is drawn live instead: it follows the theme, updates while runs are
 running, and **Open in Charts** opens it on the Charts page.
 
+## Adding Sweeps and Timeline plots
+
+The bookmark buttons on the **Sweeps** page (the parallel coordinates and each
+scatter) and on the **Timeline** add a PNG snapshot of the plot as shown:
+
+```markdown
+![lr sweep](files/findings-5e6f7a8b.png "view:sweeps?project=llm-pretrain&metric=train%2Floss")
+```
+
+The title after `view:` is the page and its settings; in nuboard the image
+gets an **Open in Sweeps** (or **Open in Timeline**) button that restores
+that view.
+
 ## Writing
 
 The **Reports** page lists the reports of every project. **New** creates one;
@@ -51,10 +69,17 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
 
 ## Sharing
 
-- **Export .zip** downloads the Markdown with every embedded image and audio
+- **.zip** downloads the Markdown with every embedded image and audio
   clip as a file in `files/`, figures and HTML as linked files, chart
   snapshots as images, and logged text inlined, so it reads on GitHub or in any Markdown editor without
   nuboard.
+- **.html** downloads the report as one self-contained HTML file that opens
+  offline, with no nuboard and no CDN: images, audio clips and snapshots are
+  inlined, logged text and HTML are included, and Plotly and Vega-Lite
+  figures stay interactive because their libraries are embedded in the file
+  (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
+  cdn.bokeh.org once, while exporting, for the figure's exact version and
+  embedded too; if it cannot be reached, the figure is left out with a note.
 - **Print** prints the rendered report, or saves it as a PDF, without the
   viewer's menus.
 

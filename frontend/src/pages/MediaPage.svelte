@@ -13,6 +13,19 @@
   const MAX_RUNS = 48;
   const runs = $derived(app.visibleRuns().slice(0, MAX_RUNS));
   const runIndex = $derived(new Map(runs.map((r, i) => [r.key, i])));
+  // Runs hidden with the legend chips (All / None, click to hide, double-click or Alt-click to solo)
+  let hiddenRuns = $state(new Set<string>());
+  const shownRuns = $derived(runs.filter((r) => !hiddenRuns.has(r.key)));
+  function toggleRun(key: string) {
+    const next = new Set(hiddenRuns);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    hiddenRuns = next;
+  }
+  function soloRun(key: string) {
+    const alone = !hiddenRuns.has(key) && runs.every((r) => r.key === key || hiddenRuns.has(r.key));
+    hiddenRuns = alone ? new Set() : new Set(runs.filter((r) => r.key !== key).map((r) => r.key));
+  }
   let items = $state<Record<string, MediaItem[]>>({});
   let loaded = $state(false);
 
@@ -67,7 +80,7 @@
   // key -> run key -> items sorted by step
   const byKey = $derived.by(() => {
     const map = new Map<string, { kind: MediaKind; runs: Map<string, MediaItem[]> }>();
-    for (const r of runs) {
+    for (const r of shownRuns) {
       for (const it of items[r.key] ?? []) {
         const kind = kindOf(it);
         if (!kinds.includes(kind)) continue;
@@ -103,10 +116,10 @@
         id: key,
         title: key,
         kind: v.kind,
-        sub: `${v.runs.size} of ${runs.length} runs`,
-        cards: runs.map((r) => ({ id: r.key, run: r, items: v.runs.get(r.key) ?? [], title: r.name })),
+        sub: `${v.runs.size} of ${shownRuns.length} runs`,
+        cards: shownRuns.map((r) => ({ id: r.key, run: r, items: v.runs.get(r.key) ?? [], title: r.name })),
       }));
-    return runs
+    return shownRuns
       .map((r) => {
         const cards = [...byKey.entries()]
           .filter(([, v]) => v.runs.has(r.key))
@@ -209,6 +222,32 @@
     if (res) await appendToReport(run.project, res.name, embedLine(run.id, it.key, it.step, res.caption));
   }
   let zoom = $state<{ run: RunBrief; item: MediaItem } | null>(null);
+
+  // Several items picked with the card checkboxes, added to one report in the order picked.
+  let selecting = $state(false);
+  let picked = $state<{ id: string; run: RunBrief; item: MediaItem }[]>([]);
+  const pickId = (run: RunBrief, it: MediaItem) => `${run.key}\u0000${it.key}\u0000${it.step}`;
+  const pickedIds = $derived(new Set(picked.map((p) => p.id)));
+  function pick(run: RunBrief, it: MediaItem, on: boolean) {
+    const id = pickId(run, it);
+    picked = on ? [...picked.filter((p) => p.id !== id), { id, run, item: it }] : picked.filter((p) => p.id !== id);
+  }
+  function stopSelecting() {
+    selecting = false;
+    picked = [];
+  }
+  async function savePicked() {
+    if (!picked.length) return;
+    const project = picked[0].run.project;
+    const n = picked.length;
+    const res = await askReport(project, null, `Add ${n} item${n === 1 ? '' : 's'}, each with its own caption.`);
+    if (!res) return;
+    const lines = picked.map((p) =>
+      embedLine(p.run.id, p.item.key, p.item.step, `${p.item.key} at step ${p.item.step} of ${p.run.name}`),
+    );
+    await appendToReport(project, res.name, lines.join('\n\n'));
+    stopSelecting();
+  }
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && (zoom = null)} />
@@ -223,6 +262,30 @@
   </div>
 {:else}
   <div class="card bar">
+    {#if runs.length > 1}
+      <div class="row legend">
+        <div class="seg" role="group" aria-label="Show runs">
+          <button aria-pressed={hiddenRuns.size === 0} title="Show every run" onclick={() => (hiddenRuns = new Set())}
+            >All</button
+          >
+          <button
+            aria-pressed={runs.every((r) => hiddenRuns.has(r.key))}
+            title="Hide every run, then click chips to add them back"
+            onclick={() => (hiddenRuns = new Set(runs.map((r) => r.key)))}>None</button
+          >
+        </div>
+        {#each runs as r, i (r.key)}
+          <button
+            class="chip run-chip"
+            class:off={hiddenRuns.has(r.key)}
+            title="{r.name}&#10;&#10;Click to hide · double-click or Alt-click to solo"
+            onclick={(e) => (e.altKey || e.metaKey || e.ctrlKey ? soloRun(r.key) : toggleRun(r.key))}
+            ondblclick={() => soloRun(r.key)}
+            ><i class="dot" style="background:{seriesVar(i)}"></i><span class="mono rn">{r.name}</span></button
+          >
+        {/each}
+      </div>
+    {/if}
     <div class="row">
       <div class="kinds" role="group" aria-label="Kinds of media">
         {#each available as k (k)}
@@ -390,6 +453,12 @@
       <span class="faint">show runs without the key</span></label
     >
     <span class="spacer"></span>
+    <button
+      class="btn btn-ghost sm"
+      aria-pressed={selecting}
+      onclick={() => (selecting ? stopSelecting() : (selecting = true))}
+      ><Icon name="bookmark" size={14} /> Select for report</button
+    >
     <button class="btn btn-ghost sm" onclick={() => setAll(true)}>Expand all</button>
     <button class="btn btn-ghost sm" onclick={() => setAll(false)}>Collapse all</button>
   </div>
@@ -447,6 +516,9 @@
                 {audioOptions}
                 onsave={(it) => save(c.run, it)}
                 onzoom={(it) => (zoom = { run: c.run, item: it })}
+                {selecting}
+                isSelected={(it) => pickedIds.has(pickId(c.run, it))}
+                onselect={(it, on) => pick(c.run, it, on)}
               />
             {/each}
           </div>
@@ -461,6 +533,20 @@
         {/if}
       </section>
     {/each}
+  </div>
+{/if}
+
+{#if selecting}
+  <div class="card selbar" role="toolbar" aria-label="Selected media">
+    <span
+      >{picked.length ? `${picked.length} selected` : 'Tick the items to add, then add them to a report together'}</span
+    >
+    <span class="spacer"></span>
+    <button class="btn btn-primary sm" disabled={!picked.length} onclick={savePicked}
+      ><Icon name="bookmark" size={14} /> Add {picked.length || ''} to report</button
+    >
+    <button class="btn btn-ghost sm" onclick={() => (picked = [])} disabled={!picked.length}>Clear</button>
+    <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
   </div>
 {/if}
 
@@ -559,6 +645,35 @@
     flex: 1;
     accent-color: var(--accent);
   }
+  .legend {
+    gap: 6px;
+  }
+  .run-chip {
+    height: 28px;
+    padding: 0 10px;
+    gap: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12.5px;
+    box-shadow: var(--lift);
+    max-width: 240px;
+    min-width: 0;
+  }
+  .run-chip.off {
+    opacity: 0.4;
+  }
+  .run-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .run-chip .rn {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
   .opt {
     display: inline-flex;
     align-items: center;
@@ -566,6 +681,18 @@
   }
   .spacer {
     flex: 1;
+  }
+  .selbar {
+    position: sticky;
+    bottom: 12px;
+    z-index: 5;
+    margin-top: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
   }
   .sections-head {
     display: flex;

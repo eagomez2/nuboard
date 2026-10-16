@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.8.0
+
+**Reports**
+
+- **Export as HTML**: one self-contained file that opens offline, with
+  images, audio and snapshots inlined, logged text and HTML included, and
+  interactive Plotly and Vega-Lite figures whose libraries are embedded in
+  the file (no CDN).
+- Sweeps and Timeline plots can be added to reports as snapshots, with an
+  **Open in Sweeps** / **Open in Timeline** button that restores the view.
+
+**Sweeps**
+
+- **Grid** for the scatter plots: plots per row and rows per page, with a
+  pager.
+- **Full screen** for the parallel coordinates; a bookmark button adds it,
+  or any scatter, to a report.
+
+**Timeline**
+
+- **Full screen**, and a bookmark button that adds the timeline to a report.
+
+**Media**
+
+- **Select for report**: tick several cards and add their items to a report
+  in one go.
+- A chip per run with **All** and **None**, as in the Charts legend: click to
+  hide a run, double-click or Alt-click to show only that run.
+- Logged HTML has **output / code**: the rendered page or its source with
+  line numbers.
+
+**Other**
+
+- The browser tab and the header say **NuBoard**.
+- Run details tabs are capitalized: **Notes**, **Properties**, **All
+  settings**.
+- Fixes: embeds of the previous report no longer flash when switching
+  reports.
+
 ## 0.7.0
 
 **Media page**
@@ -37,10 +76,10 @@
 
 **Notes and properties**
 
-- Run notes are Markdown, edited with a preview in the run's **notes** tab, and
+- Run notes are Markdown, edited with a preview in the run's **Notes** tab, and
   can embed logged items.
 - Typed properties (text, number, choice, tags, bool, date, link), defined per
-  project in `fields.json` and set in the run's **properties** tab. They are
+  project in `fields.json` and set in the run's **Properties** tab. They are
   custom fields, so they show up as columns and in queries.
 
 **Config files**

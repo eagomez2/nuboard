@@ -1,11 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Icon from '../components/Icon.svelte';
   import Status from '../components/Status.svelte';
   import { api, type ArtifactVersion, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
   import { fmtDate, fmtDuration } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { FullScreen } from '../lib/fullscreen.svelte';
+  import { addSnapshotToReport } from '../lib/reports.svelte';
+  import { svgToPng } from '../lib/snapshot';
+
+  const fs = new FullScreen();
+  onMount(() => fs.listen());
+  async function saveToReport() {
+    const project = runs[0]?.project ?? router.get('project');
+    if (!svg || !project) return;
+    const png = await svgToPng(svg, `Timeline · ${runs.length} runs`);
+    if (fs.on) await fs.toggle(); // dialogs are not shown over a full-screen element
+    await addSnapshotToReport(project, png, `Timeline of ${runs.length} runs`, {
+      page: 'timeline',
+      params: { ...router.params },
+    });
+  }
 
   const ROW = 24;
   const AXIS = 30;
@@ -188,7 +205,7 @@
   const tipLeft = $derived(hover ? Math.max(8, Math.min(hover.x + 14, window.innerWidth - 356)) : 0);
 </script>
 
-<div class="card panel">
+<div class="card panel" class:full={fs.on} bind:this={fs.el}>
   <div class="toolbar">
     <span class="muted">
       {runs.length} runs · up to {stats.peak} at once · {fmtDuration(stats.total)} of run time
@@ -207,6 +224,20 @@
       <button aria-pressed={packed} onclick={() => router.set({ layout: 'packed' })}>packed</button>
     </div>
     {#if router.get('tz')}<button class="btn" onclick={() => router.set({ tz: null })}>Reset zoom</button>{/if}
+    <button
+      class="btn btn-ghost icon-btn"
+      title="Add the timeline to a report"
+      aria-label="Add timeline to a report"
+      disabled={!runs.length}
+      onclick={saveToReport}><Icon name="bookmark" size={15} /></button
+    >
+    <button
+      class="btn btn-ghost icon-btn"
+      title={fs.on ? 'Exit full screen (Esc)' : 'Full screen'}
+      aria-label={fs.on ? 'Exit full screen' : 'Full screen'}
+      aria-pressed={fs.on}
+      onclick={() => fs.toggle()}><Icon name={fs.on ? 'shrink' : 'expand'} size={15} /></button
+    >
   </div>
 
   {#if !runs.length}
@@ -321,6 +352,22 @@
 <style>
   .panel {
     overflow: hidden;
+  }
+  .panel.full {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border-radius: 0;
+    overflow: auto;
+    background: var(--panel);
+  }
+  .icon-btn {
+    height: 32px;
+    width: 34px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
   }
   .toolbar {
     display: flex;

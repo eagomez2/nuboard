@@ -147,13 +147,12 @@
 
   <div class="tabs">
     {#if details.length === 1}
-      <button class="tab" aria-pressed={tab === 'notes'} onclick={() => router.set({ tab: 'notes' })}>notes</button>
+      <button class="tab" aria-pressed={tab === 'notes'} onclick={() => router.set({ tab: 'notes' })}>Notes</button>
       <button class="tab" aria-pressed={tab === 'properties'} onclick={() => router.set({ tab: 'properties' })}
-        >properties</button
+        >Properties</button
       >
     {/if}
-    <button class="tab mono" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}
-      >all settings</button
+    <button class="tab" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}>All settings</button
     >
     {#each files as f (f)}
       <button class="tab mono" aria-pressed={tab === f} onclick={() => router.set({ tab: f })}>{f}</button>

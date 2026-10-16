@@ -1,11 +1,19 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import Icon from '../components/Icon.svelte';
   import { num, type RunBrief } from '../lib/api';
+  import { FullScreen } from '../lib/fullscreen.svelte';
+  import { addSnapshotToReport } from '../lib/reports.svelte';
+  import { svgToPng } from '../lib/snapshot';
   import { defaultMetric, fmtAxis, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
-  import { router } from '../lib/router.svelte';
+  import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { axisTicks, importance, makeAxis, norm, type Axis, type Value } from '../lib/sweep';
 
-  const H = 380;
+  const fs = new FullScreen();
+  onMount(() => fs.listen());
+  let innerHeight = $state(900);
+  const H = $derived(fs.on ? Math.max(380, innerHeight - 200) : 380);
   const TOP = 46;
   const BOTTOM = 30;
   const PAD = 70;
@@ -24,6 +32,25 @@
   });
   const stat = $derived(router.get('stat', 'best'));
   const lower = $derived(lowerIsBetter(metric));
+
+  // ---- snapshots for reports, and the grid of scatter plots ----
+  async function saveToReport(svg: SVGSVGElement | null | undefined, title: string, caption: string) {
+    const project = runs[0]?.project ?? router.get('project');
+    if (!svg || !project) return;
+    const png = await svgToPng(svg, title);
+    if (fs.on) await fs.toggle(); // dialogs are not shown over a full-screen element
+    await addSnapshotToReport(project, png, caption, { page: 'sweeps', params: { ...router.params } });
+  }
+  let pcSvg = $state<SVGSVGElement>();
+  const gridCols = $derived(Number(router.get('scols', String(prefs.get('scols', 0)))) || 0); // 0: fit
+  const gridRows = $derived(Number(router.get('srows', String(prefs.get('srows', 0)))) || 0); // 0: all
+  function setGrid(k: 'scols' | 'srows', v: string) {
+    prefs.set(k, Number(v));
+    router.set({ [k]: v === '0' ? null : v });
+  }
+  let gridWidth = $state(1200);
+  let gridPage = $state(0);
+  const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 16) / (300 + 16))));
 
   function value(r: RunBrief): number | null {
     const s = r.summary[metric];
@@ -78,7 +105,7 @@
 
   const plotW = $derived(Math.max(320, width - 2 * PAD));
   const xOf = (i: number) => PAD + (axes.length <= 1 ? plotW / 2 : (i / (axes.length - 1)) * plotW);
-  const h = H - TOP - BOTTOM;
+  const h = $derived(H - TOP - BOTTOM);
   // The metric axis is flipped for lower-is-better metrics so the best runs are always on top.
   const pos = (axis: Axis, v: Value): number | null => {
     const n = norm(axis, v);
@@ -162,7 +189,9 @@
   };
 </script>
 
-<div class="card panel">
+<svelte:window bind:innerHeight />
+
+<div class="card panel" class:full={fs.on} bind:this={fs.el}>
   <div class="toolbar">
     <span class="label">Objective</span>
     <select
@@ -180,6 +209,22 @@
     <span class="muted">{lower ? 'lower is better' : 'higher is better'} · {kept.length} of {runs.length} runs</span>
     <span class="grow"></span>
     {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}
+    <button
+      class="btn btn-ghost icon-btn"
+      title="Add this plot to a report"
+      aria-label="Add parallel coordinates to a report"
+      disabled={!ranked.length}
+      onclick={() =>
+        saveToReport(pcSvg, `${metric} (${stat}) · parallel coordinates`, `${metric} across ${params.join(', ')}`)}
+      ><Icon name="bookmark" size={15} /></button
+    >
+    <button
+      class="btn btn-ghost icon-btn"
+      title={fs.on ? 'Exit full screen (Esc)' : 'Full screen'}
+      aria-label={fs.on ? 'Exit full screen' : 'Full screen'}
+      aria-pressed={fs.on}
+      onclick={() => fs.toggle()}><Icon name={fs.on ? 'shrink' : 'expand'} size={15} /></button
+    >
     <button
       class="btn btn-primary"
       disabled={!ranked.length}
@@ -208,7 +253,7 @@
     </div>
 
     <div class="pc" bind:clientWidth={width}>
-      <svg {width} height={H} role="img" aria-label="Parallel coordinates of {runs.length} runs">
+      <svg {width} height={H} role="img" aria-label="Parallel coordinates of {runs.length} runs" bind:this={pcSvg}>
         {#each lines.filter((l) => !l.keep) as l (l.run.key)}
           <path class="line dim" d={l.d} />
         {/each}
@@ -293,8 +338,60 @@
 </div>
 
 {#if runs.length && metric && params.length}
-  <section class="grid">
-    {#each params as p (p)}
+  {@const size = gridRows ? perRow * gridRows : params.length}
+  {@const pageCount = Math.max(1, Math.ceil(params.length / size))}
+  {@const page = Math.min(gridPage, pageCount - 1)}
+  <div class="grid-head">
+    <h3>{metric} against each parameter</h3>
+    {#if pageCount > 1}
+      <span class="pager">
+        <button
+          class="btn btn-ghost sm"
+          aria-label="Previous plots"
+          disabled={page === 0}
+          onclick={() => (gridPage = page - 1)}>‹</button
+        >
+        <span class="mono faint">{page + 1} / {pageCount}</span>
+        <button
+          class="btn btn-ghost sm"
+          aria-label="Next plots"
+          disabled={page >= pageCount - 1}
+          onclick={() => (gridPage = page + 1)}>›</button
+        >
+      </span>
+    {/if}
+    <span class="label">Grid</span>
+    <label class="opt"
+      ><span class="faint">columns</span>
+      <select
+        class="input sm"
+        aria-label="Plot columns"
+        value={String(gridCols)}
+        onchange={(e) => setGrid('scols', e.currentTarget.value)}
+      >
+        <option value="0">fit</option>
+        {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+      </select></label
+    >
+    <label class="opt"
+      ><span class="faint">rows</span>
+      <select
+        class="input sm"
+        aria-label="Plot rows per page"
+        value={String(gridRows)}
+        onchange={(e) => setGrid('srows', e.currentTarget.value)}
+      >
+        {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
+        <option value="0">all</option>
+      </select></label
+    >
+  </div>
+  <section
+    class="grid"
+    bind:clientWidth={gridWidth}
+    style={gridCols ? `grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))` : ''}
+  >
+    {#each params.slice(page * size, page * size + size) as p (p)}
       {@const a = axes[params.indexOf(p)]}
       <div class="card scatter">
         <div class="sh">
@@ -302,6 +399,17 @@
           {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint keep"
               >correlation {fmtNum(scores.get(p)!, 2)}</span
             >{/if}
+          <button
+            class="icon"
+            title="Add this plot to a report"
+            aria-label="Add {short(p)} plot to a report"
+            onclick={(e) =>
+              saveToReport(
+                e.currentTarget.closest('.scatter')?.querySelector<SVGSVGElement>('svg[role="img"]'),
+                `${metric} against ${p}`,
+                `${metric} against ${p}`,
+              )}><Icon name="bookmark" size={14} /></button
+          >
         </div>
         <svg viewBox="0 0 300 190" role="img" aria-label="{metric} against {p}">
           <line class="frame" x1="40" x2="290" y1="160" y2="160" />
@@ -384,6 +492,79 @@
 <style>
   .panel {
     overflow: hidden;
+  }
+  .panel.full {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border-radius: 0;
+    overflow: auto;
+    background: var(--panel);
+  }
+  .icon-btn {
+    height: 32px;
+    width: 34px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+  }
+  .icon {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    flex: none;
+    margin-left: auto;
+  }
+  .scatter .sh {
+    justify-content: flex-start;
+    align-items: center;
+  }
+  .scatter .sh .keep {
+    margin-left: auto;
+  }
+  .scatter .sh .keep + .icon {
+    margin-left: 0;
+  }
+  .icon:hover {
+    background: var(--panel-2);
+    color: var(--accent);
+  }
+  .grid-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 18px 0 10px;
+  }
+  .grid-head h3 {
+    font-size: 16px;
+    font-weight: 650;
+    margin: 0 auto 0 0;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .opt select {
+    height: 30px;
+  }
+  .pager {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .pager .btn {
+    height: 26px;
+    padding: 0 8px;
   }
   .toolbar {
     display: flex;

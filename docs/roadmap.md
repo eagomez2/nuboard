@@ -18,6 +18,8 @@ the [changelog](changelog.md) for what each version added.
 - **0.6**: TensorBoard import.
 - **0.7**: Media page rebuilt (kinds, grid, best-metric step), Markdown
   reports, run notes and typed properties.
+- **0.8**: HTML export of reports, full screen and report snapshots for
+  Sweeps and Timeline, run chips on the Media page.
 
 ## Next
 

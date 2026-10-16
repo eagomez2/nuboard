@@ -4,7 +4,7 @@ import '@fontsource-variable/geist-mono';
 import 'uplot/dist/uPlot.min.css';
 import './app.css';
 import App from './App.svelte';
-import { NAME } from './lib/brand';
+import { DISPLAY_NAME } from './lib/brand';
 
-document.title = NAME;
+document.title = DISPLAY_NAME;
 mount(App, { target: document.getElementById('app')! });

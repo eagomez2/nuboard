@@ -8,13 +8,13 @@ export const lastAdded = $state<{ value: { project: string; name: string } | nul
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 /**
- * Ask which report of `project` to add to and with what caption.
+ * Ask which report of `project` to add to and with what caption (none asked when `caption` is null).
  *
  * Returns the report name and caption, or null when cancelled.
  */
 export async function askReport(
   project: string,
-  caption: string,
+  caption: string | null,
   message: string,
 ): Promise<{ name: string; caption: string } | null> {
   const names = (await api.reports(project)).reports.map((r) => r.name);
@@ -27,12 +27,12 @@ export async function askReport(
         suggestions: names,
         hint: `In ${project}/reports/. A new name starts a new report.`,
       },
-      { label: 'Caption', value: caption },
+      ...(caption === null ? [] : [{ label: 'Caption', value: caption }]),
     ],
     { confirm: 'Add', message },
   );
   if (!res || !res[0].trim()) return null;
-  return { name: res[0].trim(), caption: res[1] };
+  return { name: res[0].trim(), caption: res[1] ?? '' };
 }
 
 /** Append a Markdown block to a report (creating it if needed) and show the notice. */
@@ -44,4 +44,26 @@ export async function appendToReport(project: string, name: string, block: strin
   lastAdded.value = { project, name: final };
   clearTimeout(timer);
   timer = setTimeout(() => (lastAdded.value = null), 6000);
+}
+
+/**
+ * Ask for a report and add a PNG snapshot to it, linked to the page it came from.
+ *
+ * The line is `![caption](files/x.png "view:<page>?<params>")`: an image in any Markdown viewer,
+ * and in nuboard also an "Open in ..." button that restores the view.
+ */
+export async function addSnapshotToReport(
+  project: string,
+  png: string,
+  caption: string,
+  view: { page: string; params: Record<string, string> },
+): Promise<boolean> {
+  const res = await askReport(project, caption, 'A snapshot of the plot as shown now, linked to this page.');
+  if (!res) return false;
+  const shot = await api.saveSnapshot(project, res.name, png);
+  if (!shot.path) throw new Error(shot.error ?? 'could not save the snapshot');
+  const params = new URLSearchParams(view.params).toString();
+  const cap = res.caption.replace(/[[\]\n]/g, ' ');
+  await appendToReport(project, res.name, `![${cap}](${shot.path} "view:${view.page}?${params}")`);
+  return true;
 }

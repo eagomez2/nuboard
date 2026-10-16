@@ -3,6 +3,7 @@
   import Markdown from '../components/Markdown.svelte';
   import { api, type ReportInfo } from '../lib/api';
   import { ask, confirmAction } from '../lib/dialog.svelte';
+  import { downloadReportHtml } from '../lib/exporthtml';
   import { fmtAgo } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -28,6 +29,7 @@
   let text = $state('');
   let savedText = $state('');
   let loadedFor = $state('');
+  let textProject = $state(''); // the project `text` belongs to, so embeds never mix reports
   let saving = $state(false);
   $effect(() => {
     const r = current;
@@ -37,7 +39,9 @@
     text = savedText = '';
     if (r)
       api.report(r.project, r.name).then((res) => {
-        if (loadedFor === id) text = savedText = res.text;
+        if (loadedFor !== id) return;
+        text = savedText = res.text;
+        textProject = r.project;
       });
   });
   async function save() {
@@ -100,6 +104,18 @@
     router.set({ report: null, rproject: null });
     await load();
   }
+  let exporting = $state(false);
+  async function exportHtml() {
+    const r = current;
+    if (!r) return;
+    exporting = true;
+    try {
+      await save();
+      await downloadReportHtml(r.project, r.name, r.title, text);
+    } finally {
+      exporting = false;
+    }
+  }
   const byProject = $derived(
     [...new Set(list.map((r) => r.project))].map((p) => ({ p, reports: list.filter((r) => r.project === p) })),
   );
@@ -152,8 +168,19 @@
           <button aria-pressed={view === 'split'} onclick={() => router.set({ rview: null })}>split</button>
           <button aria-pressed={view === 'preview'} onclick={() => router.set({ rview: 'preview' })}>preview</button>
         </div>
-        <a class="btn sm" href={api.reportExportUrl(current.project, current.name)} download
-          ><Icon name="download" size={15} /> Export .zip</a
+        <a
+          class="btn sm"
+          href={api.reportExportUrl(current.project, current.name)}
+          download
+          aria-label="Export as .zip"
+          title="Markdown plus the embedded files, in a zip"><Icon name="download" size={15} /> .zip</a
+        >
+        <button
+          class="btn sm"
+          disabled={exporting}
+          aria-label="Export as HTML"
+          title="One HTML file with every item inlined"
+          onclick={exportHtml}><Icon name="download" size={15} /> {exporting ? 'Exporting…' : '.html'}</button
         >
         <button class="btn sm" onclick={() => window.print()} title="Print or save as PDF">Print</button>
         <button class="btn sm btn-ghost" onclick={rename} aria-label="Rename" title="Rename"
@@ -180,7 +207,7 @@
         {/if}
         {#if view !== 'write'}
           <div class="preview printable">
-            <Markdown {text} project={current.project} files />
+            <Markdown {text} project={textProject} files />
           </div>
         {/if}
       </div>
