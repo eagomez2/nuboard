@@ -19,6 +19,8 @@ export interface DialogRequest {
   fields: DialogField[];
   confirm: string;
   danger?: boolean;
+  /** Only an OK button: the dialog tells something and asks nothing. */
+  notice?: boolean;
   resolve: (values: string[] | null) => void;
 }
 
@@ -58,4 +60,9 @@ export async function confirmAction(
 ): Promise<boolean> {
   const res = await open({ title, message, fields: [], confirm: opts.confirm ?? 'OK', danger: opts.danger });
   return res !== null;
+}
+
+/** Tell something that needs acknowledging, such as why a change was not saved. */
+export async function notice(title: string, message: string): Promise<void> {
+  await open({ title, message, fields: [], confirm: 'OK', notice: true });
 }

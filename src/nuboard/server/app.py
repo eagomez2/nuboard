@@ -38,6 +38,7 @@ from ..collection import delete_collection, list_collections, save_collection
 from ..query import QueryError, parse
 from ..reports import (
     MediaRef,
+    check_field,
     export_report,
     parse_ref,
     read_fields,
@@ -428,6 +429,20 @@ def create_app(
                 or isinstance(v, (str, int, float, bool))
                 or (isinstance(v, list) and all(isinstance(x, str) for x in v))  # tags
             }
+
+        if fields_patch:  # values must fit their project's property definitions
+            projects = {(catalog.get(k) or {}).get("project") for k in keys} - {None}
+
+            for name in projects:
+                pdir = project_dir(str(name))
+                defs = {f["name"]: f for f in read_fields(pdir)} if pdir else {}
+
+                for k, v in fields_patch.items():
+                    if k in defs:
+                        try:
+                            check_field(defs[k], v)
+                        except ValueError as exc:
+                            return PlainTextResponse(str(exc), 400)
 
         def write() -> list[str]:
             """Apply the patch to each known run and return the updated keys."""

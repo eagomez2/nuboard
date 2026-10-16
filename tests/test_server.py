@@ -120,6 +120,18 @@ def test_custom_fields_and_query(client):
     )
 
 
+def test_field_values_follow_definitions(client):
+    keys = [r["key"] for r in client.get("/api/runs").json()["runs"]]
+    project = client.get(f"/api/runs/{keys[0]}").json()["run"]["project"]
+    defs = [{"name": "verdict", "type": "choice", "options": ["keep", "drop"]}]
+    client.post("/api/fields", json={"project": project, "fields": defs})
+    bad = {"keys": keys[:1], "patch": {"fields": {"verdict": "maybe"}}}
+    res = client.post("/api/runs/annotate", json=bad)
+    assert res.status_code == 400 and "keep, drop" in res.text
+    good = {"keys": keys[:1], "patch": {"fields": {"verdict": "drop"}}}
+    assert client.post("/api/runs/annotate", json=good).json()["updated"] == keys[:1]
+
+
 def test_collections(client, tmp_path):
     runs = client.get("/api/runs").json()["runs"]
     keys = [r["key"] for r in runs]
@@ -281,6 +293,10 @@ def test_property_definitions_and_tag_values(client):
     assert bad.status_code == 400
     key = client.get("/api/runs").json()["runs"][0]["key"]
     patch = {"fields": {"topics": ["a", "b"], "n": 3}}
+    res = client.post("/api/runs/annotate", json={"keys": [key], "patch": patch})
+    assert res.status_code == 400  # "b" is not an option of topics
+    defs[0]["options"] = ["a", "b"]
+    client.post("/api/fields", json={"project": "sweep", "fields": defs})
     client.post("/api/runs/annotate", json={"keys": [key], "patch": patch})
     assert client.get(f"/api/runs/{key}").json()["run"]["fields"] == {"topics": ["a", "b"], "n": 3}
     client.post("/api/runs/annotate", json={"keys": [key], "patch": {"fields": {"topics": []}}})

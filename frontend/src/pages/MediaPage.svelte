@@ -77,6 +77,13 @@
     }
   });
 
+  // Keys of the chosen kinds before the filter, for the "N of M" count
+  const keyTotal = $derived.by(() => {
+    const keys = new Set<string>();
+    for (const r of shownRuns) for (const it of items[r.key] ?? []) if (kinds.includes(kindOf(it))) keys.add(it.key);
+    return keys.size;
+  });
+
   // key -> run key -> items sorted by step
   const byKey = $derived.by(() => {
     const map = new Map<string, { kind: MediaKind; runs: Map<string, MediaItem[]> }>();
@@ -305,6 +312,7 @@
         value={find}
         oninput={(e) => router.set({ mfind: e.currentTarget.value })}
       />
+      {#if find}<span class="faint small">{byKey.size} of {keyTotal}</span>{/if}
       <div class="seg" role="group" aria-label="Arrange by">
         <button aria-pressed={by === 'key'} onclick={() => router.set({ mby: null })}>by key</button>
         <button aria-pressed={by === 'run'} onclick={() => router.set({ mby: 'run' })}>by run</button>
@@ -440,7 +448,9 @@
   <div class="sections-head">
     <span class="faint"
       >{sections.length}
-      {by === 'key' ? 'keys' : 'runs'}{runs.length === MAX_RUNS ? ` · first ${MAX_RUNS} runs` : ''}</span
+      {by === 'key' ? 'key' : 'run'}{sections.length === 1 ? '' : 's'}{runs.length === MAX_RUNS
+        ? ` · first ${MAX_RUNS} runs`
+        : ''}</span
     >
     <label class="opt"
       ><button
@@ -463,6 +473,7 @@
     <button class="btn btn-ghost sm" onclick={() => setAll(false)}>Collapse all</button>
   </div>
 
+  {#if find && !byKey.size}<p class="faint">No key matches “{find}”.</p>{/if}
   <div class="sections" bind:clientWidth={width}>
     {#each sections as s, si (s.id)}
       {@const open = isOpen(s, si)}

@@ -22,6 +22,7 @@
     artifact: 'M12 2l9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10',
     columns: 'M3 4h18v16H3zM9 4v16M15 4v16',
     plus: 'M12 5v14M5 12h14',
+    info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5h.01',
     report: 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3',
     bookmark: 'M6 3h12v18l-6-4-6 4z',
     edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',

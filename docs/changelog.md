@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.3
+
+**Runs**
+
+- Property values must fit their type: a choice is picked from a menu, tags
+  are toggled as colored pills, numbers, dates and links are checked, and the
+  server and `Run.set_field` refuse values that do not fit. New options are
+  added on purpose (**New option…**, **+ option**) instead of by typing.
+- Removing a property removes its definition and its values; properties set
+  without a definition can be removed too.
+- Run tags are colored pills under the run name instead of sitting in the
+  config column.
+
+**Media**
+
+- The key filter shows how many keys match and says so when none do.
+
+**Charts**
+
+- **Filter metrics** (regex) above All metrics.
+- **Points**: a dot on each curve at the logged point under the cursor.
+- "robust y" is now **ignore outliers**, with a tooltip explaining it.
+
+**Other**
+
+- **About** at the bottom of the side bar: version, copyright, license and a
+  link to the documentation.
+
 ## 0.8.2
 
 - Exported reports show the NuBoard logo only as the browser tab icon; the

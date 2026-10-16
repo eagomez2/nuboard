@@ -31,6 +31,8 @@
     onZoom,
     onPin,
     regions = [],
+    markers = false,
+    pinned = false,
   }: {
     data: ChartData | null;
     smoothing?: number;
@@ -49,7 +51,12 @@
     onPin?: () => void;
     /** Shaded x ranges, e.g. health alerts: a spike or a throughput drop. */
     regions?: { x0: number; x1: number; label: string }[];
+    /** A dot on each curve at the data point under the cursor (as in TensorBoard). */
+    markers?: boolean;
+    /** The cursor is pinned: the dots stay where they are. */
+    pinned?: boolean;
   } = $props();
+  let dots: HTMLElement[] = [];
 
   let el: HTMLDivElement;
   let plot: uPlot | null = null;
@@ -212,12 +219,16 @@
         ],
         setCursor: [
           (u) => {
-            if (!onCursor) return;
+            if (!onCursor && !markers) return;
             const idx = u.cursor.idx;
-            if (idx === null || idx === undefined) return onCursor(null, []);
+            const moveDots = markers && !pinned;
+            if (idx === null || idx === undefined) {
+              if (moveDots) for (const d of dots) d.style.display = 'none';
+              return onCursor?.(null, []);
+            }
             const x = u.data[0][idx];
             const values: CursorValue[] = [];
-            for (const m of mains) {
+            for (const [i, m] of mains.entries()) {
               const col = u.data[m.idx] as (number | null)[];
               let k = idx;
               let found: number | null = col[k] ?? null;
@@ -230,6 +241,14 @@
                   found = col[k] as number;
                 }
               }
+              const dot = dots[i];
+              if (moveDots && dot) {
+                const left = found === null ? NaN : u.valToPos(u.data[0][k], 'x');
+                const top = found === null ? NaN : u.valToPos(found, 'y');
+                const inside = left >= 0 && left <= u.bbox.width / devicePixelRatio && top >= 0;
+                dot.style.display = inside && top <= u.bbox.height / devicePixelRatio ? 'block' : 'none';
+                dot.style.transform = `translate(${left}px, ${top}px)`;
+              }
               if (found !== null) {
                 values.push({
                   series: m.series,
@@ -240,7 +259,7 @@
                 });
               }
             }
-            onCursor(x, values);
+            onCursor?.(x, values);
           },
         ],
         draw: [
@@ -311,6 +330,15 @@
       },
     };
     plot = new uPlot(opts, joined, el);
+    dots = markers
+      ? mains.map((m) => {
+          const d = document.createElement('div');
+          d.className = 'nb-dot';
+          d.style.background = (series[m.idx].stroke as string) ?? '';
+          plot!.over.append(d);
+          return d;
+        })
+      : [];
   }
 
   function schedule() {
@@ -332,6 +360,7 @@
       highlight,
       themeVersion,
       regions,
+      markers,
     ];
     schedule();
   });
@@ -355,6 +384,19 @@
 <div class="chart" bind:this={el} style="min-height:{height}px"></div>
 
 <style>
+  .chart :global(.nb-dot) {
+    display: none;
+    position: absolute;
+    left: -5px;
+    top: -5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--panel);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15);
+    pointer-events: none;
+    z-index: 2;
+  }
   .chart {
     width: 100%;
     position: relative;

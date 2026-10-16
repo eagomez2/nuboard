@@ -15,6 +15,7 @@ from .catalog import find_runs, make_record
 from .collection import attach
 from .query import parse, resolve
 from .reader import RunReader
+from .reports import check_field, read_fields
 from .run import project_dir
 
 
@@ -64,7 +65,16 @@ class RunHandle:
         Args:
             name: Field name.
             value: Field value. `None` or `""` removes the field.
+
+        Raises:
+            ValueError: If the project defines the property and the value does
+                not fit its type or options.
         """
+
+        for field in read_fields(self.path.parent.parent):
+            if field["name"] == name:
+                check_field(field, value)
+
         path = self.path / "annotations.json"
         ann = _fs.read_json(path, {}) or {}
         fields = dict(ann.get("fields") or {})

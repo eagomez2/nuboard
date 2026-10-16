@@ -21,14 +21,17 @@ browser's local storage.
   groups and orders runs everywhere in the app. See the
   [query language](../reference/query.md).
 - **Theme toggle**: light and dark themes; the default follows your system.
+- **About** (the small ⓘ at the bottom of the side bar): the version, the
+  copyright, the license and a link to this documentation.
 
 ## Runs page
 
 - **Workspace** (left): every project found under the folder, with run counts,
   its collections and its saved views. **Save current view…** writes the
   current URL state to `<project>/views/<name>.json`, which you can commit.
-- **Table**: status, star, name and folder, the config keys that differ between
-  the listed runs, a result column, start time, duration, reviewed mark and
+- **Table**: status, star, name and folder (with the run's collections and its
+  tags as colored pills; a tag keeps its color everywhere), the config keys
+  that differ between the listed runs, a result column, start time, duration, reviewed mark and
   notes. Pick the result metric in the toolbar and switch between **best**
   (min for losses and errors, max otherwise) and **last**. Click a column
   header to sort. The list is virtualized, so thousands of runs scroll
@@ -91,8 +94,13 @@ For a single run there are two more tabs:
   than one line opens here when clicked.
 - **Properties**: typed properties of the run. **Add property** defines one for
   the whole project, with a type picked from a menu: text, number (with an optional unit),
-  choice, tags, bool, date or link. Choices and tags offer the values used
-  before, and new values are added to the list. Values are saved per run as
+  choice, tags, bool, date or link. A choice is picked from a menu and tags
+  are toggled as colored pills; neither accepts a value outside its options,
+  which are added on purpose with **New option…** or **+ option**. Numbers,
+  dates and links are checked before saving, and the server rejects values
+  that do not fit (from the table, the API or `Run.set_field` too). The bin
+  button removes a property: its definition and its value on every run of the
+  project. Values are saved per run as
   custom fields, so they show up as columns and work in queries
   (`verdict = "keep"`, `topics has "augmentation"`). Definitions are kept in
   `<project>/fields.json`.
@@ -135,8 +143,14 @@ are selected, every run matching the query.
   only grows. The choice is kept in the URL as `x=metric:<name>`.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
-- **Robust y**: clips the y-axis to the 1st–99th percentile so a single spike
-  does not flatten every curve. **Log y** switches to a log scale.
+- **Points**: a dot on each curve at the logged point under the cursor, so
+  you can see where the real data points are (as in TensorBoard). When the
+  cursor is pinned (click the chart), the dots stay. Kept in the URL as
+  `dots=0` when off.
+- **Ignore outliers** (TensorBoard's "Ignore outliers in chart scaling"):
+  fits the y-axis to the 1st–99th percentile of the values, so a few spikes
+  (such as a huge loss at step 0) do not flatten every curve. Off, the axis
+  fits every point. **Log y** switches to a log scale.
 - **Zoom**: drag across a chart to zoom in; the server sends a finer
   resolution for the visible range (from the precomputed zoom levels in
   `data.parquet`, or from the raw log for live runs). Double-click to reset.
@@ -155,6 +169,9 @@ are selected, every run matching the query.
   the metric into focus. **Grid** sets the charts per row (fit to width, or 1
   to 6) and the rows per section (1 to 6, or all); a section with more charts
   gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
+  **Filter metrics** takes a regular expression (as in TensorBoard, case
+  insensitive; `loss|acc`, `^train/`) and shows only the matching charts; it
+  is kept in the URL as `cfind`.
 - A run that logged NaN gets a dashed marker at the first NaN with a
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
@@ -209,7 +226,8 @@ be scrolled through its steps while the others stay put.
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
-  `confusion|per_class`.
+  `confusion|per_class`. While it is set, the count next to it shows how many
+  keys match, and keys that do not match are hidden.
 - **by key / by run**: a section per key with a card per run (default), or a
   section per run with a card per key.
 - **Step**: **latest** shows each run's last item; **pick step** moves every

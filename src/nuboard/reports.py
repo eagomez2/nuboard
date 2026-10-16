@@ -327,6 +327,50 @@ def clean_fields(fields: list[Any]) -> list[dict[str, Any]]:
     return out
 
 
+def check_field(field: dict[str, Any], value: Any) -> None:
+    """Check that a value fits a property definition.
+
+    Args:
+        field: The definition, as returned by `read_fields`.
+        value: The value to store (null or empty values clear a field and are
+            not checked).
+
+    Raises:
+        ValueError: If the value does not fit the property's type or options.
+    """
+
+    if value is None or value == "" or value == []:
+        return
+
+    name = field["name"]
+    kind = field.get("type", "text")
+    options = field.get("options") or []
+
+    if kind == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} is a number property; {value!r} is not a number")
+
+    elif kind == "bool":
+        if not isinstance(value, bool):
+            raise ValueError(f"{name} is a yes/no property; use true or false")
+
+    elif kind == "choice":
+        if not isinstance(value, str) or (options and value not in options):
+            raise ValueError(f"{name} must be one of: {', '.join(options)}")
+
+    elif kind == "tags":
+        if not isinstance(value, list) or (options and any(v not in options for v in value)):
+            raise ValueError(f"{name} takes tags from: {', '.join(options)}")
+
+    elif kind == "date":
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError(f"{name} is a date property; use YYYY-MM-DD")
+
+    elif kind == "link":
+        if not isinstance(value, str) or not re.match(r"https?://\S+$", value):
+            raise ValueError(f"{name} is a link property; use an http:// or https:// address")
+
+
 def save_fields(project_dir: Path, fields: list[Any]) -> list[dict[str, Any]]:
     """Validate and write a project's property definitions to `fields.json`.
 
