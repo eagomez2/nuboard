@@ -4,6 +4,8 @@ export interface PointsView {
   reset(): void;
   /** Redraw on another background (a CSS color), e.g. after a theme change. */
   setBackground(color: string): void;
+  /** Show x, y and z axes with these three names, or hide them with null. */
+  setAxes(names: string[] | null): void;
   /** Stop listening to the canvas and its size. */
   destroy(): void;
 }
@@ -16,7 +18,9 @@ export interface PointsView {
  * A small software renderer: each point is projected with a perspective
  * camera that orbits the cloud (z is up) and written into the canvas's pixels
  * with a depth buffer, so a million points draw in a few frames' time without
- * WebGL. Points are colored by `colors` or else by height.
+ * WebGL. Points are colored by `colors` or else by height. With `axes`, the
+ * three axes are drawn from the cloud's lowest corner with round values along
+ * them, labeled with the given names.
  *
  * The function is self-contained (no imports and no names from outside it),
  * so the HTML export embeds it with `mountPoints.toString()`.
@@ -27,6 +31,7 @@ export interface PointsView {
  * @param count - N, the number of points.
  * @param hasColors - Whether the buffer carries colors.
  * @param background - The background color, as CSS.
+ * @param axes - Names of the x, y and z axes to draw, or null for none.
  */
 export function mountPoints(
   canvas: HTMLCanvasElement,
@@ -34,6 +39,7 @@ export function mountPoints(
   count: number,
   hasColors: boolean,
   background: string,
+  axes: string[] | null = null,
 ): PointsView {
   const pos = new Float32Array(buffer, 0, count * 3);
   const rgb = hasColors ? new Uint8Array(buffer, count * 12, count * 3) : null;
@@ -59,6 +65,7 @@ export function mountPoints(
     if (r > radius) radius = r;
   }
   radius = Math.sqrt(radius) || 1;
+  const boxRadius = Math.hypot(...[0, 1, 2].map((a) => (Number.isFinite(lo[a]) ? (hi[a] - lo[a]) / 2 / radius : 0)));
   const xyz = new Float32Array(count * 3);
   for (let i = 0; i < count * 3; i++) xyz[i] = (pos[i] - mid[i % 3]) / radius;
 
@@ -91,13 +98,91 @@ export function mountPoints(
   }
 
   let bg = 0;
+  let ink = '#3b4252';
   function setBackground(css: string) {
     const probe = document.createElement('canvas').getContext('2d')!;
     probe.fillStyle = css;
     probe.fillRect(0, 0, 1, 1);
     const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
     bg = (255 << 24) | (b << 16) | (g << 8) | r;
+    ink = 0.299 * r + 0.587 * g + 0.114 * b > 128 ? '#3b4252' : '#d3d8e2';
     schedule(1);
+  }
+
+  // Round values along an axis from `a` to `b`, about `n` of them
+  function ticks(a: number, b: number, n: number): { v: number; label: string }[] {
+    const span = b - a;
+    if (!(span > 0)) return [{ v: a, label: String(Number(a.toPrecision(4))) }];
+    const raw = span / n;
+    const p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const m = raw / p;
+    const step = p * (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10);
+    const digits = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+    const out: { v: number; label: string }[] = [];
+    for (let v = Math.ceil(a / step - 1e-9) * step; v <= b + step * 1e-9; v += step)
+      out.push({ v, label: (Math.abs(v) < step / 1e6 ? 0 : v).toFixed(digits) });
+    return out;
+  }
+
+  let axisNames = axes;
+  const AXIS_COLORS = ['#e5534b', '#3fa055', '#4f8fea'];
+
+  function drawAxes(project: (x: number, y: number, z: number) => [number, number] | null) {
+    if (!axisNames || !Number.isFinite(lo[0])) return;
+    const ratio = window.devicePixelRatio || 1;
+    const norm = (v: number, a: number) => (v - mid[a]) / radius;
+    const at = (p: number[]) => project(norm(p[0], 0), norm(p[1], 1), norm(p[2], 2));
+    const center = project(0, 0, 0);
+    const away = (q: [number, number], d: number): [number, number] => {
+      if (!center) return q;
+      const dx = q[0] - center[0];
+      const dy = q[1] - center[1];
+      const len = Math.hypot(dx, dy) || 1;
+      return [q[0] + (dx / len) * d, q[1] + (dy / len) * d];
+    };
+    ctx.save();
+    ctx.lineWidth = 1.5 * ratio;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let a = 0; a < 3; a++) {
+      const start = [lo[0], lo[1], lo[2]];
+      const end = [...start];
+      end[a] = hi[a];
+      const s0 = at(start);
+      const s1 = at(end);
+      if (!s0 || !s1) continue;
+      ctx.strokeStyle = AXIS_COLORS[a];
+      ctx.beginPath();
+      ctx.moveTo(s0[0], s0[1]);
+      ctx.lineTo(s1[0], s1[1]);
+      ctx.stroke();
+      ctx.fillStyle = ink;
+      ctx.font = `${10.5 * ratio}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      for (const t of ticks(lo[a], hi[a], 4)) {
+        if (t.v - lo[a] < (hi[a] - lo[a]) * 0.12) continue; // the corner, where the axes meet
+        const p = [...start];
+        p[a] = t.v;
+        const q = at(p);
+        if (!q) continue;
+        ctx.fillStyle = AXIS_COLORS[a];
+        ctx.fillRect(q[0] - 2 * ratio, q[1] - 2 * ratio, 4 * ratio, 4 * ratio);
+        const l = away(q, 14 * ratio);
+        ctx.fillStyle = ink;
+        ctx.fillText(t.label, l[0], l[1]);
+      }
+      // the name just past the end of the axis, kept inside the canvas
+      const dx = s1[0] - s0[0];
+      const dy = s1[1] - s0[1];
+      const len = Math.hypot(dx, dy) || 1;
+      const name = axisNames[a] ?? 'xyz'[a];
+      ctx.font = `600 ${12 * ratio}px system-ui, sans-serif`;
+      const half = ctx.measureText(name).width / 2 + 4 * ratio;
+      const nx = Math.min(Math.max(s1[0] + (dx / len) * 22 * ratio, half), canvas.width - half);
+      const ny = Math.min(Math.max(s1[1] + (dy / len) * 16 * ratio, 10 * ratio), canvas.height - 10 * ratio);
+      ctx.fillStyle = AXIS_COLORS[a];
+      ctx.fillText(name, nx, ny);
+    }
+    ctx.restore();
   }
 
   // Camera: orbit angles, zoom and pan (in device pixels)
@@ -123,7 +208,9 @@ export function mountPoints(
     const sy = Math.sin(cam.yaw);
     const cp = Math.cos(cam.pitch);
     const sp = Math.sin(cam.pitch);
-    const scale = Math.min(w, h) * 0.45 * cam.zoom;
+    // with axes, fit the cloud's box (whose corners reach past its sphere) and leave room for labels
+    const fit = axisNames ? 0.9 / Math.max(1, boxRadius) : 1;
+    const scale = Math.min(w, h) * 0.45 * cam.zoom * fit;
     const ox = w / 2 + cam.panX;
     const oy = h / 2 + cam.panY;
     const dist = 3;
@@ -154,6 +241,12 @@ export function mountPoints(
       }
     }
     ctx.putImageData(image, 0, 0);
+    drawAxes((x, y, z) => {
+      const xr = x * cy - y * sy;
+      const yr = x * sy + y * cy;
+      const f = dist / (dist + yr * cp - z * sp);
+      return f > 0 ? [ox + xr * scale * f, oy - (yr * sp + z * cp) * scale * f] : null;
+    });
   }
 
   function schedule(stride: number) {
@@ -237,6 +330,10 @@ export function mountPoints(
   return {
     reset,
     setBackground,
+    setAxes(names: string[] | null) {
+      axisNames = names;
+      schedule(1);
+    },
     destroy() {
       observer.disconnect();
       cancelAnimationFrame(frame);

@@ -6,8 +6,8 @@ Logs written by TensorFlow 1 and 2, PyTorch's `SummaryWriter` and tensorboardX
 are understood.
 
 Each folder holding event files becomes one run, named after its path relative to
-the log folder. Scalars, images, audio, text, PR curves and hyperparameters
-(the HParams plugin) are imported; histograms, graphs, embeddings and other plugins are
+the log folder. Scalars, images, audio, text, PR curves, histograms and
+hyperparameters (the HParams plugin) are imported; graphs, embeddings and other plugins are
 counted and skipped. A folder that holds only `add_hparams` output (PyTorch writes
 it to a timestamped sub-folder) is merged into its parent run.
 
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from . import _fs
-from ._media import pr_curve_json
+from ._media import histogram_from_buckets, pr_curve_json
 from .run import Run
 
 # TensorFlow DataType enum values and their struct formats (little-endian).
@@ -132,6 +132,8 @@ class TBValue:
         audio: Encoded audio bytes of a TF1 `Summary.Audio`.
         sample_rate: Sample rate of the TF1 audio.
         tensor: Decoded `TensorProto` as `(dtype, shape, values)`.
+        histogram: A TF1 `HistogramProto` as `min`, `max`, `num`, `sum`,
+            `sum_squares`, `bucket_limit` and `bucket`.
     """
 
     tag: str = ""
@@ -143,6 +145,7 @@ class TBValue:
     audio: bytes | None = None
     sample_rate: float | None = None
     tensor: tuple[int, list[int], list[Any]] | None = None
+    histogram: dict[str, Any] | None = None
 
 
 @dataclass
@@ -213,6 +216,25 @@ def _tensor(buf: bytes) -> tuple[int, list[int], list[Any]]:
     return dtype, shape, values
 
 
+def _histogram(buf: bytes) -> dict[str, Any]:
+    """Decode a `HistogramProto`."""
+    names = {1: "min", 2: "max", 3: "num", 4: "sum", 5: "sum_squares"}
+    out: dict[str, Any] = {"bucket_limit": [], "bucket": []}
+
+    for number, wire, value in _fields(buf):
+        if number in names and wire == 1:
+            out[names[number]] = _double(value)
+        elif number in (6, 7):
+            name = "bucket_limit" if number == 6 else "bucket"
+
+            if wire == 2:  # packed
+                out[name].extend(struct.unpack(f"<{len(value) // 8}d", value))
+            else:
+                out[name].append(_double(value))
+
+    return out
+
+
 def _summary_value(buf: bytes) -> TBValue:
     """Decode one `Summary.Value`."""
     out = TBValue()
@@ -236,7 +258,7 @@ def _summary_value(buf: bytes) -> TBValue:
                 elif k == 4:
                     out.audio = v
         elif number == 5:
-            out.kind = "histograms"
+            out.kind, out.histogram = "histograms", _histogram(value)
         elif number == 8:
             out.kind, out.tensor = "tensor", _tensor(value)
         elif number == 9:  # SummaryMetadata
@@ -486,6 +508,30 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                 elif v.kind == "audio" and v.audio:
                     run.add_audio(tag, v.audio, step, time=t)
                     result.media += 1
+                elif v.kind == "histograms" and v.histogram and v.histogram["bucket"]:
+                    # bucket i holds values in (limit[i-1], limit[i]]; the first starts at min
+                    h = v.histogram
+                    limits, counts = h["bucket_limit"], h["bucket"]
+                    lefts = [h.get("min", limits[0]), *limits[:-1]]
+                    num = h.get("num") or 0.0
+                    mean = h["sum"] / num if num and "sum" in h else None
+                    var = h["sum_squares"] / num - mean**2 if mean is not None else None
+                    stats = {
+                        "min": h.get("min"),
+                        "max": h.get("max"),
+                        "mean": mean,
+                        "std": None if var is None else max(var, 0.0) ** 0.5,
+                    }
+                    run._put_media(
+                        tag,
+                        step,
+                        lambda a=lefts, b=limits, c=counts, s=stats: histogram_from_buckets(
+                            a, b, c, s
+                        ),
+                        {"kind": "histogram"},
+                        t,
+                    )
+                    result.media += 1
                 elif v.kind == "tensor" and v.tensor is not None:
                     dtype, shape, values = v.tensor
 
@@ -518,6 +564,25 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                         counts = dict(zip(names, rows, strict=True))
                         run._put_media(
                             tag, step, lambda c=counts: pr_curve_json(c), {"kind": "pr"}, t
+                        )
+                        result.media += 1
+                    elif plugin == "histograms" and len(shape) == 2 and shape[1] == 3:
+                        # one row per bucket: left edge, right edge, count
+                        rows = [values[i * 3 : i * 3 + 3] for i in range(shape[0])]
+                        lefts, rights, counts = (list(map(float, c)) for c in zip(*rows))
+                        used = [r for r in rows if r[2] > 0]
+                        stats = {
+                            "min": min((r[0] for r in used), default=None),
+                            "max": max((r[1] for r in used), default=None),
+                        }
+                        run._put_media(
+                            tag,
+                            step,
+                            lambda a=lefts, b=rights, c=counts, s=stats: histogram_from_buckets(
+                                a, b, c, s
+                            ),
+                            {"kind": "histogram"},
+                            t,
                         )
                         result.media += 1
                     elif plugin == "text" or dtype == _DT_STRING:

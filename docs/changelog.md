@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0
+
+**Media**
+
+- Distributions: `run.add_histogram(key, values)` stores bin counts and the
+  values' min, max, mean and standard deviation, as TensorBoard's histograms
+  do. They show with the figures: each card draws the chosen step filled with
+  the step before it dashed, hovering shows a bin's share, and **over steps**
+  shows the median and 68%, 86% and 100% bands across training. A chart above
+  the cards overlays every run. They export to HTML, and the `vit-ablations`
+  demo logs weight, gradient and logit-margin distributions.
+- `nuboard import-tensorboard` imports histograms (TF1, TF2, PyTorch and
+  tensorboardX), re-binned into 50 even bins.
+- Point clouds: an **axes** button draws x, y and z axes with round values.
+  `add_point_cloud(..., axes=True)` shows them from the start, and three names
+  label them, as the demo's embeddings do.
+
 ## 0.9.1
 
 - The run details panel (click a run name) shows the run's tags under its name,

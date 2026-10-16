@@ -374,7 +374,7 @@ test('timeline goes full screen and into a report, which exports as HTML', async
 });
 
 test('several media items go to a report together and export without a network', async ({ page, browser }) => {
-  await page.goto('/#/media?project=vit-ablations&mkinds=figure&mcols=2&mrows=1');
+  await page.goto('/#/media?project=vit-ablations&mkinds=figure&mcols=2&mrows=1&mfind=confusion%7Cper_class');
   await page.getByRole('button', { name: 'Select for report' }).click();
   const boxes = page.getByRole('checkbox');
   await boxes.nth(0).check();
@@ -505,6 +505,32 @@ test('point clouds are drawn and can be rotated', async ({ page }) => {
   await page.mouse.up();
   await expect.poll(async () => Buffer.compare(before, await canvas.screenshot())).not.toBe(0);
   await expect(page.getByText('3,000 points').first()).toBeVisible();
+  // the demo logs axis names, so the axes start shown and can be hidden
+  const axes = page.locator('.points').filter({ has: canvas }).getByRole('button', { name: 'axes' });
+  await expect(axes).toHaveAttribute('aria-pressed', 'true');
+  const withAxes = await canvas.screenshot();
+  await axes.click();
+  await expect(axes).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(async () => Buffer.compare(withAxes, await canvas.screenshot())).not.toBe(0);
+});
+
+test('distributions overlay every run, compare steps and show quantiles over steps', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=logit_margin');
+  const all = page.getByRole('img', { name: /Distributions of eval\/logit_margin for all runs/ });
+  await expect(all.locator('path')).toHaveCount(8);
+  await expect(page.getByText(/^cutmix-s0 · step 100 mean -?\d/)).toBeVisible();
+  // a card draws its step filled and the step before it dashed
+  const card = page.getByRole('img', { name: 'Distribution of cutmix-s0 eval/logit_margin at step 100' });
+  await expect(card.locator('path[stroke-dasharray]')).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  const box = (await card.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+  await expect(page.getByText(/^step 100: .+ to .+ · [\d,]+ \(\d+\.\d%\)$/)).toBeVisible();
+  await page.locator('.hv').filter({ has: card }).getByRole('button', { name: 'over steps' }).click();
+  const bands = page.getByRole('img', { name: 'Distribution of cutmix-s0 eval/logit_margin over steps' });
+  await expect(bands.locator('polygon')).toHaveCount(3);
+  await bands.hover();
+  await expect(page.getByText(/^median -?\d/)).toBeVisible();
 });
 
 test('PR curves overlay every run and show counts on hover', async ({ page }) => {

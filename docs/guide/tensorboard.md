@@ -9,9 +9,9 @@ nuboard up                                  # view them (./experiments by defaul
 ```
 
 ```text
-imported  baseline/train: 3000 scalars, 12 media, 4 hparams, skipped 40 histograms
+imported  baseline/train: 3000 scalars, 52 media, 4 hparams
 imported  baseline/validation: 300 scalars, 0 media
-imported  lr3e-4/train: 3000 scalars, 12 media, 4 hparams, skipped 40 histograms
+imported  lr3e-4/train: 3000 scalars, 52 media, 4 hparams
 3 run(s) imported into experiments/mnist. View them with: nuboard up experiments
 ```
 
@@ -38,8 +38,9 @@ the standard library, so the command works with a plain `pip install nuboard`.
 | audio | audio clips, playable in the waveform player |
 | text | text entries |
 | PR curves (`add_pr_curve`, `pr_curve`) | PR curves, with the original counts per threshold |
+| histograms (`add_histogram`, `tf.summary.histogram`) | distributions, re-binned into 50 even bins; TF1 and PyTorch histograms also keep their mean and standard deviation |
 | hyperparameters (`add_hparams`, `hp.hparams`) | the run's config, so they appear in the table, sweeps and queries |
-| histograms, graphs, embeddings, other plugins | skipped, and counted in the output |
+| graphs, embeddings, other plugins | skipped, and counted in the output |
 
 Runs keep their original start and end times, so the Timeline page shows when
 they actually ran. Each run's notes say which folder it came from.

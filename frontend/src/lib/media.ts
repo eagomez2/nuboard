@@ -19,13 +19,16 @@ export const POINTS_MIME = 'application/x-nuboard-points';
 /** MIME type of precision-recall curves logged with `add_pr_curve`. */
 export const PR_MIME = 'application/x-nuboard-pr+json';
 
+/** MIME type of distributions logged with `add_histogram`. */
+export const HIST_MIME = 'application/x-nuboard-histogram+json';
+
 /** The kind a media item is filtered by on the Media page. */
 export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'text') return 'text';
   if (it.mime === 'text/html' || it.kind === 'html') return 'html';
   if (it.kind === 'audio' || it.mime.startsWith('audio/')) return 'audio';
   if (it.mime === POINTS_MIME) return 'points';
-  if (it.mime === PR_MIME) return 'figure';
+  if (it.mime === PR_MIME || it.mime === HIST_MIME) return 'figure';
   if (it.mime === TABLE_MIME) return 'table';
   if (it.kind === 'figure' || /plotly|vega|bokeh|svg/.test(it.mime)) return 'figure';
   return 'image';

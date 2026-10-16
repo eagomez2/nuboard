@@ -10,7 +10,21 @@
     colors = false,
     title,
     height = 260,
-  }: { url: string; count: number; colors?: boolean; title: string; height?: number } = $props();
+    axes = null,
+  }: {
+    url: string;
+    count: number;
+    colors?: boolean;
+    title: string;
+    height?: number;
+    /** Axis names logged with the cloud; when given, the axes start shown. */
+    axes?: string[] | null;
+  } = $props();
+
+  // shown as logged until toggled
+  let toggled = $state<boolean | null>(null);
+  const showAxes = $derived(toggled ?? !!axes);
+  const names = () => (showAxes ? (axes ?? ['x', 'y', 'z']) : null);
 
   let canvas = $state<HTMLCanvasElement | null>(null);
   let view: PointsView | null = null;
@@ -25,13 +39,18 @@
       .then((buffer) => {
         if (cancelled || !canvas) return;
         if (buffer.byteLength < count * (colors ? 15 : 12)) throw new Error('the file is shorter than its points');
-        view = mountPoints(canvas, buffer, count, colors, background());
+        view = mountPoints(canvas, buffer, count, colors, background(), names());
       })
       .catch((e) => (error = `Could not load the points: ${e instanceof Error ? e.message : e}`));
     return () => {
       cancelled = true;
       view?.destroy();
     };
+  });
+
+  $effect(() => {
+    const n = names(); // read first, so the effect follows the toggle before the view exists
+    view?.setAxes(n);
   });
 
   // follow the theme
@@ -44,7 +63,10 @@
 <div class="points">
   <canvas bind:this={canvas} style="height:{height}px" aria-label={title}></canvas>
   <div class="hint faint">
-    <span class="mono">{count.toLocaleString()} points</span>
+    <span class="left"
+      ><span class="mono">{count.toLocaleString()} points</span>
+      <button class="axes" aria-pressed={showAxes} onclick={() => (toggled = !showAxes)}>axes</button></span
+    >
     <span>drag to rotate · shift-drag to pan · click, then scroll to zoom · double-click to reset</span>
   </div>
   {#if error}<p class="faint error">{error}</p>{/if}
@@ -70,7 +92,26 @@
     overflow: hidden;
     white-space: nowrap;
   }
-  .hint span:last-child {
+  .left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+  .axes {
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--faint);
+    border-radius: 6px;
+    padding: 0 6px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .axes[aria-pressed='true'] {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .hint > span:last-child {
     overflow: hidden;
     text-overflow: ellipsis;
   }

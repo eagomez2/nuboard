@@ -161,6 +161,11 @@ export interface MediaItem {
   /** Point clouds: the number of points and whether they carry colors. */
   points?: number;
   colors?: boolean;
+  /** Point clouds: axis names, when logged with `axes`. */
+  axes?: string[];
+  /** Distributions: the number of bins and of values. */
+  bins?: number;
+  count?: number;
   text?: string;
   /** Notes on sections of an audio item, added in the viewer. */
   notes?: AudioNote[];

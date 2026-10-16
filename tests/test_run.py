@@ -14,7 +14,7 @@ import warnings
 import pytest
 
 import nuboard as nb
-from nuboard._media import points_bytes, pr_curve_bytes
+from nuboard._media import histogram_bytes, points_bytes, pr_curve_bytes
 from nuboard.catalog import effective_status
 from nuboard.reader import RunReader
 
@@ -277,6 +277,11 @@ def test_point_clouds(tmp_path):
     xyz = np.arange(12, dtype="float64").reshape(4, 3)
     run.add_point_cloud("scan", xyz, step=1, colors=np.full((4, 3), 0.5), caption="toy")
     run.add_point_cloud("plain", [(0, 0, 0), (1, 2, 3)], step=1)
+    run.add_point_cloud("named", xyz, step=1, axes=("x (m)", "y (m)", "z (m)"))
+    run.add_point_cloud("shown", xyz, step=1, axes=True)
+
+    with pytest.raises(ValueError, match="three names"):
+        run.add_point_cloud("bad", xyz, axes=("x", "y"))
 
     with pytest.raises(ValueError, match="shape"):
         points_bytes(np.zeros((3, 2)))
@@ -286,14 +291,44 @@ def test_point_clouds(tmp_path):
 
     run.finish()
     r = RunReader(run.path)
-    scan, plain = r.media()
+    scan, plain, named, shown = r.media()
     assert scan.meta["mime"] == "application/x-nuboard-points"
     assert scan.meta["points"] == 4 and scan.meta["colors"] and scan.meta["caption"] == "toy"
     data = r.read_media(scan)
     assert np.frombuffer(data[:48], "<f4").tolist() == list(range(12))
     assert data[48:] == bytes([128] * 12)
     assert np.frombuffer(r.read_media(plain), "<f4").tolist() == [0, 0, 0, 1, 2, 3]
-    assert plain.meta["colors"] is False
+    assert plain.meta["colors"] is False and "axes" not in plain.meta
+    assert named.meta["axes"] == ["x (m)", "y (m)", "z (m)"]
+    assert shown.meta["axes"] == ["x", "y", "z"]
+
+
+def test_histograms():
+    import numpy as np
+
+    run = nb.init("h", capture_env=False)
+    weights = np.array([[0.0, 1.0], [1.0, 3.0], [np.nan, 2.0]])
+    run.add_histogram("w", weights, step=3, bins=3)
+    weights[:] = 0  # the call copied its input
+    run.add_histogram("plain", [1, 2, 2, 3, 10], step=3, bins=[0, 2, 4], weights=[1, 1, 1, 2, 5])
+
+    with pytest.raises(ValueError, match="increasing"):
+        histogram_bytes([1.0], bins=[1, 1])
+
+    run.finish()
+    r = RunReader(run.path)
+    w, plain = r.media()
+    assert w.meta["kind"] == "histogram" and w.meta["bins"] == 3 and w.meta["count"] == 5
+    data = json.loads(r.read_media(w))
+    assert data["edges"] == [0, 1, 2, 3] and data["counts"] == [1, 2, 2]
+    assert data["nonfinite"] == 1 and data["min"] == 0 and data["max"] == 3
+    assert data["mean"] == pytest.approx(1.4)
+    assert data["std"] == pytest.approx(np.std([0, 1, 1, 3, 2]))
+
+    # pure Python, with weights: 10 lies outside the edges
+    data = json.loads(r.read_media(plain))
+    assert data["counts"] == [1, 4] and data["outside"] == 5 and data["count"] == 10
+    assert data["mean"] == pytest.approx((1 + 2 + 2 + 6 + 50) / 10)
 
 
 def test_pr_curves():
