@@ -607,3 +607,21 @@ test('a report with a table and audio notes exports them, with either audio play
   await expect(off.getByText('tonal blip (musical noise)')).toBeVisible();
   await ctx.close();
 });
+
+test('the Columns menu is not clipped by a short runs table', async ({ page }) => {
+  await page.setViewportSize({ width: 1520, height: 760 });
+  await page.goto('/#/runs?project=speech-denoise');
+  await expect(page.locator('.body .row')).toHaveCount(3);
+  await page.getByRole('button', { name: /Columns/ }).click();
+  const menu = page.getByRole('dialog', { name: 'Columns' });
+  const table = (await page.locator('.panel').first().boundingBox())!;
+  const box = (await menu.boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(table.y + table.height + 50);
+  // the part of the menu below the table is drawn on top, not cut off by the table's edge
+  const shown = await menu.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.bottom - 12);
+    return !!hit && el.contains(hit);
+  });
+  expect(shown).toBe(true);
+});

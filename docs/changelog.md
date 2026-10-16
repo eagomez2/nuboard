@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2
+
+- The Columns menu of the runs table floats above the page, so a table with
+  only a few runs no longer cuts it off.
+
 ## 0.10.1
 
 - HTML export draws audio with the viewer's waveform and spectrogram player,
