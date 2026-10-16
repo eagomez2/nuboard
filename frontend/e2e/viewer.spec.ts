@@ -327,7 +327,7 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   const doc = Buffer.concat(html).toString();
   expect(doc).toContain('src="data:image/png;base64,');
   expect(doc).toContain('class="nbtheme"'); // switchable by default
-  expect(doc).toContain('Exported with NuBoard');
+  expect(doc).toMatch(/<footer>Exported with NuBoard \d+\.\d+\.\d+ from /);
   expect(doc).toContain('rel="icon"');
 });
 
@@ -358,7 +358,7 @@ test('several media items go to a report together and export without a network',
   const html = (await import('node:fs')).readFileSync(path, 'utf8');
   expect(html).not.toMatch(/<script[^>]+src=/);
   expect(html).toContain('data-theme="dark"');
-  expect(html).toContain('<span>Figures for the group meeting</span>');
+  expect(html).toContain('<footer>Figures for the group meeting</footer>');
   expect(html).not.toContain('rel="icon"');
   // the file draws both figures with every network request blocked
   const ctx = await browser.newContext({ offline: true });

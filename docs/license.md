@@ -1,6 +1,6 @@
 # License
 
-nuboard is released under the MIT License.
+NuBoard is released under the MIT License.
 
 ```text
 MIT License

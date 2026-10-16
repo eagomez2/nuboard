@@ -1,6 +1,6 @@
 # Importing from TensorBoard
 
-`nuboard import-tensorboard` turns existing TensorBoard logs into nuboard runs,
+`nuboard import-tensorboard` turns existing TensorBoard logs into NuBoard runs,
 so old experiments sit next to new ones in the same viewer and analysis API.
 
 ```bash
@@ -29,7 +29,7 @@ the standard library, so the command works with a plain `pip install nuboard`.
 
 ## What is imported
 
-| TensorBoard | nuboard |
+| TensorBoard | NuBoard |
 | --- | --- |
 | each folder with `events.out.tfevents.*` files | one run, named after its path under `LOGDIR`, finished at its last event |
 | the folder's parent path (`baseline` in `baseline/train`) | the run's group, so `group by group` puts train and validation together |

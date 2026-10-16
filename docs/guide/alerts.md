@@ -1,6 +1,6 @@
 # Health alerts
 
-nuboard checks every run for the problems that waste the most GPU hours, so
+NuBoard checks every run for the problems that waste the most GPU hours, so
 you find them without opening every chart.
 
 | Alert | Checked on | Fires when |

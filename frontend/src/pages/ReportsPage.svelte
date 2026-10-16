@@ -122,8 +122,8 @@
           ],
           hint: 'Switchable follows the reader’s system theme and has a button to change it.',
         },
-        { label: 'Footer', value: defaultFooter(r.project) },
-        { label: `${DISPLAY_NAME} logo in the footer and the tab`, value: prefs.get('exportLogo', '1'), toggle: true },
+        { label: 'Footer', value: defaultFooter(r.project, app.info?.version) },
+        { label: `${DISPLAY_NAME} logo as the tab icon`, value: prefs.get('exportLogo', '1'), toggle: true },
       ],
       { confirm: 'Export', message: 'One self-contained file that opens offline.' },
     );

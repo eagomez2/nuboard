@@ -27,13 +27,13 @@ the [changelog](changelog.md) for what each version added.
    expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
    Alerts already record their rank.
 2. **Media**: three.js point clouds, side-by-side text diffs across steps,
-   notes on audio selections (the player supports them; nuboard does not
+   notes on audio selections (the player supports them; NuBoard does not
    store them yet).
 3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
 4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
 5. ~~**TensorBoard import**~~: done in 0.6 (`nuboard import-tensorboard`). Next:
-   histograms, once nuboard can show distributions.
+   histograms, once NuBoard can show distributions.
 6. Charts: Web Workers for decoding and smoothing, WebGL for very large
    scatters.
 7. Runs table: TanStack Virtual, Bits UI menus and comboboxes (0.2 uses

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2
+
+- Exported reports show the NuBoard logo only as the browser tab icon; the
+  default footer names NuBoard and its version instead.
+- The docs say NuBoard for the app and `nuboard` for the package, command
+  and import.
+
 ## 0.8.1
 
 **Reports**
@@ -100,7 +107,7 @@
 
 **Config files**
 
-- nuboard no longer writes `files/config.json`. `run.add_file(path)` copies
+- NuBoard no longer writes `files/config.json`. `run.add_file(path)` copies
   any file or folder (YAML, TOML, Hydra outputs, ...) into the run's `files/`,
   where the viewer shows and diffs it. The config passed to `init` is still in
   `run.json`.
@@ -158,7 +165,7 @@
 
 **License**
 
-- nuboard is released under the MIT License (`LICENSE`, linked from the
+- NuBoard is released under the MIT License (`LICENSE`, linked from the
   README and the docs).
 
 ## 0.4.3
@@ -166,7 +173,7 @@
 - Charts: **All** and **None** buttons next to the legend, and double-click
   (or Alt-click) on a legend chip to solo that series.
 - Save current view, Set field…, Add to collection and deleting a collection
-  now ask in a dialog that follows the nuboard theme instead of the browser's
+  now ask in a dialog that follows the NuBoard theme instead of the browser's
   own prompt.
 
 ## 0.4.2

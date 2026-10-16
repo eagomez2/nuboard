@@ -37,7 +37,7 @@ smoothing, zoom and hidden series. It writes a line such as
 
 The image is a PNG snapshot of the chart, saved in
 `<project>/reports/files/`, so the report shows the chart in any Markdown
-viewer. In nuboard the title after `chart:` describes the view, and the
+viewer. In NuBoard the title after `chart:` describes the view, and the
 chart is drawn live instead: it follows the theme, updates while runs are
 running, and **Open in Charts** opens it on the Charts page.
 
@@ -50,7 +50,7 @@ scatter) and on the **Timeline** add a PNG snapshot of the plot as shown:
 ![lr sweep](files/findings-5e6f7a8b.png "view:sweeps?project=llm-pretrain&metric=train%2Floss")
 ```
 
-The title after `view:` is the page and its settings; in nuboard the image
+The title after `view:` is the page and its settings; in NuBoard the image
 gets an **Open in Sweeps** (or **Open in Timeline**) button that restores
 that view.
 
@@ -72,9 +72,9 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
 - **.zip** downloads the Markdown with every embedded image and audio
   clip as a file in `files/`, figures and HTML as linked files, chart
   snapshots as images, and logged text inlined, so it reads on GitHub or in any Markdown editor without
-  nuboard.
+  NuBoard.
 - **.html** downloads the report as one self-contained HTML file that opens
-  offline, with no nuboard and no CDN: images, audio clips and snapshots are
+  offline, with no NuBoard and no CDN: images, audio clips and snapshots are
   inlined, logged text and HTML are included, and Plotly and Vega-Lite
   figures stay interactive because their libraries are embedded in the file
   (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
@@ -82,9 +82,9 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   embedded too; if it cannot be reached, the figure is left out with a note.
   Before exporting you pick the **theme** (light, dark, or switchable: it
   follows the reader's system theme and has a button to flip it), edit the
-  **footer** (by default "Exported with NuBoard from …"; empty removes it),
-  and choose whether the NuBoard **logo** appears in the footer and as the
-  tab icon. Figures and charts saved from the Charts page follow the theme:
+  **footer** (by default "Exported with NuBoard 0.8.2 from …", naming the
+  version that exported it; empty removes it), and choose whether the
+  NuBoard **logo** is the browser tab icon. Figures and charts saved from the Charts page follow the theme:
   the charts are drawn live in the file from their data at export time (the
   snapshot is used only if the data cannot be loaded). Sweeps and Timeline
   snapshots are images and keep the colors they were taken with.
