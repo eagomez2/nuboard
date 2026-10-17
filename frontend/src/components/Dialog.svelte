@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tagStyle } from '../lib/colors';
   import { dialog } from '../lib/dialog.svelte';
 
   let el = $state<HTMLDialogElement>();
@@ -19,6 +20,17 @@
       el.close();
     }
   });
+
+  const picked = (v: string) =>
+    v
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  function togglePick(i: number, option: string, order: string[]) {
+    const now = picked(values[i]);
+    const next = now.includes(option) ? now.filter((o) => o !== option) : [...now, option];
+    values[i] = next.sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(', ');
+  }
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -43,7 +55,28 @@
       <h2 id="nb-dialog-title">{req.title}</h2>
       {#if req.message}<p class="msg">{req.message}</p>{/if}
       {#each req.fields as f, i (i)}
-        {#if f.options && f.options.length > 4}
+        {#if f.options && f.multiple}
+          <div class="field" role="group" aria-labelledby="nb-dialog-label-{i}">
+            <span class="label" id="nb-dialog-label-{i}">{f.label}</span>
+            <div class="picks">
+              {#each f.options as o (o.value)}
+                <button
+                  type="button"
+                  class="tagpill"
+                  style={tagStyle(o.value)}
+                  aria-pressed={picked(values[i] ?? '').includes(o.value)}
+                  onclick={() =>
+                    togglePick(
+                      i,
+                      o.value,
+                      f.options!.map((x) => x.value),
+                    )}>{o.label}</button
+                >
+              {/each}
+            </div>
+            {#if f.hint}<span class="hint">{f.hint}</span>{/if}
+          </div>
+        {:else if f.options && f.options.length > 4}
           <div class="field">
             <label class="label" for="nb-dialog-in-{i}">{f.label}</label>
             <select
@@ -87,6 +120,7 @@
             <input
               id="nb-dialog-in-{i}"
               class="input"
+              type={f.inputType ?? 'text'}
               bind:value={values[i]}
               placeholder={f.placeholder}
               list={f.suggestions?.length ? `nb-dialog-list-${i}` : undefined}
@@ -156,6 +190,11 @@
   }
   .seg {
     align-self: flex-start;
+  }
+  .picks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .hint {
     font-size: 12px;

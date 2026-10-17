@@ -7,6 +7,8 @@
   import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
+  import { defineProperty, valueField } from '../lib/properties';
+  import { editTags, knownTags, parseTags } from '../lib/tags';
   import { app } from '../lib/state.svelte';
 
   const ROW = 56;
@@ -40,7 +42,6 @@
       window.removeEventListener('resize', placeMenu);
     };
   });
-  let newField = $state('');
 
   // Property definitions of the listed projects, so edits in the table keep their types
   let defs = $state<Record<string, FieldDef[]>>({});
@@ -51,6 +52,7 @@
         api.fields(p).then((res) => (defs[p] = res.fields));
       }
   });
+  const listedProjects = $derived([...new Set((app.runs?.runs ?? []).map((r) => r.project))]);
   const defOf = (r: RunBrief, name: string) => defs[r.project]?.find((d) => d.name === name);
   /** Parse a value typed in the table for `name` on `r`'s project; a string is a problem to show. */
   function typedValue(r: RunBrief, name: string, raw: string): { value: FieldValue | null } | string {
@@ -125,8 +127,9 @@
 
   // Extra columns picked in the Columns menu: field:<name>, config:<key>, metric:<name>.
   const cols = $derived(router.list('cols'));
+  const definedNames = $derived(new Set(Object.values(defs).flatMap((list) => list.map((d) => d.name))));
   const fieldNames = $derived.by(() => {
-    const names = new Set<string>();
+    const names = new Set<string>(listedProjects.flatMap((p) => (defs[p] ?? []).map((d) => d.name)));
     for (const r of app.runs?.runs ?? []) for (const k of Object.keys(r.fields ?? {})) names.add(k);
     for (const c of cols) if (c.startsWith('field:')) names.add(c.slice(6));
     return [...names].sort();
@@ -147,43 +150,77 @@
     const next = cols.includes(c) ? cols.filter((x) => x !== c) : [...cols, c];
     router.set({ cols: next.join(',') || null });
   }
-  const fieldName = (text: string) => text.trim().replace(/[,\s]+/g, '_');
-  function addField() {
-    const name = fieldName(newField);
-    if (!name) return;
+  const showColumn = (name: string) => {
     if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
-    newField = '';
-    menu = false; // show the new column, whose cells are now editable
+  };
+  const projectsOf = (keys: string[]) =>
+    [...new Set(keys.map((k) => app.runByKey(k)?.project))].filter((p): p is string => !!p).sort();
+
+  // A new property for the listed projects, shown as a column whose cells are editable
+  async function newProperty() {
+    menu = false;
+    const projects = projectsOf((app.runs?.runs ?? []).map((r) => r.key));
+    const def = await defineProperty(projects);
+    if (!def) return;
+    for (const p of projects) defs[p] = (await api.fields(p)).fields;
+    showColumn(def.name);
   }
 
-  // Set one field on every selected run (the column is added if needed)
-  async function setFieldOnSelected() {
+  // Set one property on every selected run; a name not defined yet is defined first
+  async function setPropertyOnSelected() {
+    const keys = [...selected];
+    const n = keys.length;
+    const projects = projectsOf(keys);
+    const defined = [...new Set(projects.flatMap((p) => (defs[p] ?? []).map((d) => d.name)))].sort();
     const shown = cols.filter((c) => c.startsWith('field:')).map((c) => c.slice(6));
-    const n = selected.length;
     const res = await ask(
-      `Set a field on ${n} run${n === 1 ? '' : 's'}`,
+      `Set a property on ${n} run${n === 1 ? '' : 's'}`,
       [
-        { label: 'Field', value: shown[0] ?? fieldNames[0] ?? 'verdict', suggestions: fieldNames },
         {
-          label: 'Value',
-          placeholder: 'e.g. keep, 4, true',
-          hint: 'Numbers and true/false are stored as such. Empty clears the field.',
+          label: 'Property',
+          value: shown.find((f) => defined.includes(f)) ?? defined[0] ?? '',
+          placeholder: 'e.g. verdict',
+          suggestions: [...new Set([...defined, ...fieldNames])].sort(),
+          hint: 'A new name is defined first, with its type.',
         },
       ],
-      { confirm: 'Set field' },
+      { confirm: 'Next' },
     );
-    if (!res) return;
-    const name = fieldName(res[0]);
+    const name = res?.[0].trim();
     if (!name) return;
-    const first = app.runByKey(selected[0]);
-    const typed = first ? typedValue(first, name, res[1]) : { value: parseField(res[1]) };
-    if (typeof typed === 'string') return notice('Not saved', typed);
+    let def = projects.flatMap((p) => defs[p] ?? []).find((d) => d.name === name);
+    const missing = projects.filter((p) => !(defs[p] ?? []).some((d) => d.name === name));
+    if (missing.length) {
+      const made = await defineProperty(missing, {
+        name,
+        type: def?.type,
+        title: def ? `Define ${name} here too` : 'Add a property',
+      });
+      if (!made) return;
+      for (const p of missing) defs[p] = (await api.fields(p)).fields;
+      def = made;
+    }
+    if (!def) return;
+    const first = app.runByKey(keys[0]);
+    const current = keys.every(
+      (k) =>
+        fieldText(app.runByKey(k)?.fields?.[def.name], def.type) === fieldText(first?.fields?.[def.name], def.type),
+    )
+      ? fieldText(first?.fields?.[def.name], def.type)
+      : '';
+    const value = await ask(`Set ${def.name} on ${n} run${n === 1 ? '' : 's'}`, [valueField(def, current)], {
+      confirm: 'Set property',
+      message: def.description,
+    });
+    if (!value) return;
+    const problem = fieldProblem(value[0], def);
+    if (problem) return notice('Not saved', problem);
     try {
-      await api.annotate(selected, { fields: { [name]: typed.value } });
+      await api.annotate(keys, { fields: { [def.name]: parseFieldValue(value[0], def.type) } });
     } catch (e) {
       return notice('Not saved', errText(e));
     }
-    if (!cols.includes(`field:${name}`)) router.set({ cols: [...cols, `field:${name}`].join(',') });
+    showColumn(def.name);
     app.loadRuns();
   }
   function colLabel(c: string) {
@@ -230,6 +267,40 @@
       await api.annotate([r.key], { fields: { [edit.field]: value } });
     } catch (e) {
       r.fields = before;
+      notice('Not saved', errText(e));
+    }
+  }
+  // Add and remove tags on every selected run
+  async function tagSelected() {
+    const keys = [...selected];
+    const n = keys.length;
+    const used = [...new Set(keys.flatMap((k) => app.runByKey(k)?.tags ?? []))].sort();
+    const res = await ask(
+      `Tags of ${n} run${n === 1 ? '' : 's'}`,
+      [
+        {
+          label: 'Add',
+          placeholder: 'e.g. baseline, keep',
+          suggestions: knownTags(),
+          hint: 'Comma or space separated.',
+        },
+        ...(used.length
+          ? [
+              {
+                label: 'Remove',
+                multiple: true,
+                options: used.map((t) => ({ value: t, label: t })),
+                hint: 'Tags of the selected runs; pick the ones to remove.',
+              },
+            ]
+          : []),
+      ],
+      { confirm: 'Save tags' },
+    );
+    if (!res) return;
+    try {
+      await editTags(keys, parseTags(res[0]), parseTags(res[1] ?? ''));
+    } catch (e) {
       notice('Not saved', errText(e));
     }
   }
@@ -355,28 +426,21 @@
           aria-label="Columns"
           style="top:{menuPos.top}px;right:{menuPos.right}px;max-height:{menuPos.maxHeight}px"
         >
-          <div class="label">Custom fields</div>
+          <div class="label">Properties</div>
           {#each fieldNames as f (f)}
             <label class="opt"
               ><input type="checkbox" checked={cols.includes(`field:${f}`)} onchange={() => toggleCol(`field:${f}`)} />
-              <span class="mono">{f}</span></label
+              <span class="mono">{f}</span>
+              {#if !definedNames.has(f)}<span class="untyped" title="Has values but no definition in fields.json"
+                  >untyped</span
+                >{/if}</label
             >
           {/each}
-          <form
-            class="newfield"
-            onsubmit={(e) => {
-              e.preventDefault();
-              addField();
-            }}
-          >
-            <input class="input" placeholder="Field name, e.g. verdict" bind:value={newField} />
-            <button class="btn" aria-label="Add field" disabled={!fieldName(newField)}
-              ><Icon name="plus" size={14} /></button
-            >
-          </form>
+          <button class="btn sm newprop" onclick={newProperty}><Icon name="plus" size={14} /> New property…</button>
           <p class="fieldhint">
-            Type a name and press + to add a column. Then click a cell in a ✎ column to edit it (Enter saves, Esc
-            cancels, empty clears), or select runs and use <b>Set field…</b>.
+            Click a cell in a ✎ column to edit it (Enter saves, Esc cancels, empty clears), or select runs and use <b
+              >Set property…</b
+            >.
           </p>
           <div class="label">Metrics (last value)</div>
           {#each metrics as m (m)}
@@ -433,7 +497,8 @@
       >
         <Icon name="check" size={15} /> Mark reviewed
       </button>
-      <button class="btn" onclick={setFieldOnSelected}>Set field…</button>
+      <button class="btn" onclick={tagSelected}><Icon name="tag" size={15} /> Tags…</button>
+      <button class="btn" onclick={setPropertyOnSelected}>Set property…</button>
       <button class="btn" onclick={addToCollection}>
         <Icon name="collection" size={15} /> Add to collection…
       </button>
@@ -771,14 +836,14 @@
     color: var(--muted);
     max-width: 280px;
   }
-  .newfield {
-    display: flex;
-    gap: 6px;
+  .newprop {
+    height: 28px;
     margin: 4px 0;
+    align-self: flex-start;
   }
-  .newfield .input {
-    flex: 1;
-    height: 30px;
+  .untyped {
+    font-size: 11px;
+    color: var(--faint);
   }
   .colh {
     display: flex;

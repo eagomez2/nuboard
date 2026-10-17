@@ -1,5 +1,8 @@
 # Logging from Python
 
+This guide is a tour of logging; the [Python API](../api/index.md) describes
+every call in detail.
+
 ```python
 import nuboard as nb
 
@@ -89,110 +92,31 @@ need everything on disk at a given point (rarely needed).
 
 ## Text, images, audio, figures, PR curves, distributions, tables, point clouds, HTML
 
+Each kind of media has its own `add_*` method, described in full, with its
+arguments, accepted shapes, storage and an example with the result, in the
+[Media](../api/media.md) reference:
+
 | Method | Accepts |
 | --- | --- |
-| `add_text(key, text, step=None)` | any string |
-| `add_image(key, image, step=None, caption=None)` | PNG/JPEG bytes, a file path, a PIL image, or an `HxW`, `HxWxC` or `CxHxW` array or tensor (uint8, or float in [0, 1]) |
-| `add_audio(key, audio, step=None, sample_rate=None, caption=None)` | a file path (WAV, FLAC, MP3, Ogg/Opus, M4A, WebM), encoded bytes, or a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate` (float in [-1, 1], or int16) |
-| `add_figure(key, fig, step=None)` | Plotly figure or figure dict, Altair chart, Vega-Lite dict, Bokeh figure, matplotlib figure (stored as SVG) |
-| `add_pr_curve(key, labels, predictions, step=None, num_thresholds=201, weights=None)` | labels (bool or 0/1) and scores in [0, 1], as arrays, tensors or lists |
-| `add_histogram(key, values, step=None, bins=50, range=None, weights=None)` | numbers of any shape, as an array, tensor or list; `bins` is a count or the bin edges |
-| `add_table(key, rows, step=None, row_id=None)` | a list of dicts (one per row), a dict of column lists, or a pandas DataFrame; cells are numbers, booleans, strings, None, `nb.Audio(...)` or `nb.Image(...)` |
-| `add_point_cloud(key, points, step=None, colors=None, axes=False, caption=None)` | an `(N, 3)` array, tensor or list of x, y, z positions, with optional `(N, 3)` RGB colors (uint8, or float in [0, 1]); `axes=True` or three names shows the axes |
-| `add_html(key, html, step=None)` | an HTML string; rendered in a sandboxed iframe |
-
-Every method also takes a keyword-only `time=` (a Unix timestamp) to override
-when the item was logged, as `run.log` does; the TensorBoard importer uses it to
-keep the original wall times.
-
-Audio arrays are stored as 16-bit PCM WAV, written with the standard
-library's `wave` module, so logging audio needs nothing beyond NumPy for the
-array itself. Files and bytes are stored as they are: log a FLAC or Opus file
-when size matters (16 kHz mono WAV is 32 KB per second). The sample rate,
-channel count and duration are recorded with each clip.
+| [`add_text`](../api/media.md#add_text) | any string |
+| [`add_image`](../api/media.md#add_image) | an `HxW`, `HxWxC` or `CxHxW` array or tensor, a PIL image, image bytes or a file |
+| [`add_audio`](../api/media.md#add_audio) | a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate`, audio bytes or a file |
+| [`add_figure`](../api/media.md#add_figure) | a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure, or a Plotly or Vega-Lite dict |
+| [`add_pr_curve`](../api/media.md#add_pr_curve) | labels and scores in [0, 1] |
+| [`add_histogram`](../api/media.md#add_histogram) | numbers of any shape |
+| [`add_table`](../api/media.md#add_table) | a list of dicts, a dict of columns or a DataFrame, with `nb.Audio` and `nb.Image` cells |
+| [`add_point_cloud`](../api/media.md#add_point_cloud) | an `(N, 3)` array of positions, with optional colors and axes |
+| [`add_html`](../api/media.md#add_html) | an HTML string |
 
 ```python
+run.add_image("samples/recon", img, step=step)
 run.add_audio("eval/enhanced", model(noisy)[0], step=epoch, sample_rate=16_000)
-run.add_audio("eval/input", "data/noisy/p232_001.flac", step=0, caption="p232_001")
-```
-
-PR curves work as in TensorBoard: true and false positives are counted at
-`num_thresholds` evenly spaced thresholds when you log, so only those counts
-are stored, never the predictions. Log one curve per class:
-
-```python
-for c, name in enumerate(classes):
-    run.add_pr_curve(f"eval/pr/{name}", labels == c, probs[:, c], step=epoch)
-```
-
-Distributions (`add_histogram`, as in TensorBoard) store only the bin counts
-and the values' min, max, mean and standard deviation, so a layer with
-millions of weights takes a few hundred bytes per step. Arrays and tensors are
-binned with NumPy on the writer thread; NaN and infinite values are counted
-but not binned. Log weights, gradients or activations every few epochs:
-
-```python
-for name, p in model.named_parameters():
-    run.add_histogram(f"weights/{name}", p, step=epoch)
-    run.add_histogram(f"grads/{name}", p.grad, step=epoch)
-```
-
-Tables hold per-example results, such as one row per test file with its
-scores. Log the same table at each eval: the viewer matches rows across steps
-by `row_id` (the first column by default) and colors each cell by how it
-changed. Media cells (`nb.Audio`, `nb.Image`, which take the same arguments as
-`add_audio` and `add_image`) are stored like any other media item, so attach
-audio only to the rows worth listening to:
-
-```python
-rows = [{"file": f, "snr_in": snr, "pesq": p, "si_sdr": s} for f, snr, p, s in results]
-for r in sorted(rows, key=lambda r: r["pesq"])[:5]:  # the five worst files
-    r["enhanced"] = nb.Audio(outputs[r["file"]], sample_rate=16_000)
-run.add_table("eval/samples", rows, step=epoch)
-```
-
-Tables are stored as JSON in the media pack (about 50 bytes per row of
-numbers), written with the standard library.
-
-Point clouds are stored as float32 positions (12 bytes per point, plus 3 for
-colors), packed with the standard library. The viewer draws them in a view you
-can rotate, colored by `colors` or else by height (z is up). Projections of
-embeddings work too: reduce them to three dimensions first (PCA, UMAP) and
-color the points by class.
-
-```python
-run.add_point_cloud("lidar/scan", scan[:, :3], step=step, axes=("x (m)", "y (m)", "z (m)"))
-run.add_point_cloud("eval/embeddings", pca3, step=epoch, colors=palette[labels])
-```
-
-The viewer can show x, y and z axes with round values along them on any cloud;
-`axes=True` shows them from the start, and three names label them.
-
-Plotly, Vega-Lite and Bokeh figures stay interactive in the viewer. None of
-these libraries is needed by NuBoard itself: a figure is serialized with its
-own library, and plain dicts work without any of them, so a Vega-Lite spec
-(a dict with a `$schema`) or a Plotly figure dict (`{"data": [...],
-"layout": {...}}`, as `fig.to_dict()` returns) can be logged directly:
-
-```python
-run.add_figure(
-    "eval/per_class",
-    {
-        "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
-        "data": {"values": [{"cls": "cat", "acc": 0.71}, {"cls": "dog", "acc": 0.74}]},
-        "mark": "bar",
-        "encoding": {
-            "x": {"field": "cls", "type": "nominal"},
-            "y": {"field": "acc", "type": "quantitative"},
-        },
-    },
-    step=step,
-)
+run.add_histogram("grads/encoder.weight", p.grad, step=epoch)
 ```
 
 `step` defaults to the last step passed to `log`. Arrays are copied on the
-calling thread and PNG-encoded on the background thread; figures are
-serialized on the calling thread (they are mutable). Media bytes go to
+calling thread and encoded on the background thread; figures are serialized
+on the calling thread (they are mutable). Media bytes go to
 `media.r<rank>.pack`, indexed by frames in the event log.
 
 ## Artifacts

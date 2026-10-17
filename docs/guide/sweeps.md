@@ -11,7 +11,7 @@ any set of runs: a project, a query result or your selection.
   minimum for losses and errors, the maximum otherwise) or its **last** value.
   Lower-is-better metrics are flipped so the best runs are always on top.
 - **Parameters**: every config key whose value differs between the runs, plus
-  custom fields. Keys with `seed` in the name start unselected. Click a chip to
+  properties. Keys with `seed` in the name start unselected. Click a chip to
   add or remove an axis. The bar inside a chip is the parameter's rank
   correlation with the objective: Spearman's ρ for numbers, the correlation
   ratio on ranks for categories. It is a quick hint, not a causal estimate.

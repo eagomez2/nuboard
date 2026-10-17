@@ -1,10 +1,11 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { api, type FieldDef, type FieldType, type FieldValue, type RunBrief } from '../lib/api';
+  import { api, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
   import { tagStyle } from '../lib/colors';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
-  import { FIELD_TYPES, fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
+  import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
   import { app } from '../lib/state.svelte';
+  import { defineProperty } from '../lib/properties';
 
   // Typed properties of one run. Definitions are per project (fields.json), values per run.
   let { run }: { run: RunBrief } = $props();
@@ -92,43 +93,15 @@
     else drafts[d.name] = value;
   }
 
-  const TYPE_LABELS: Record<FieldType, string> = {
-    text: 'Text',
-    number: 'Number',
-    choice: 'Choice (one of a list)',
-    tags: 'Tags (several of a list)',
-    bool: 'Yes / no',
-    date: 'Date',
-    link: 'Link',
-  };
-
   async function addProperty() {
-    const res = await ask(
-      'Add a property',
-      [
-        { label: 'Name', placeholder: 'e.g. dataset, verdict, paper' },
-        {
-          label: 'Type',
-          value: 'text',
-          options: FIELD_TYPES.map((t) => ({ value: t, label: TYPE_LABELS[t] })),
-          hint: 'Choice and tags take a list of options; numbers can have a unit.',
-        },
-        { label: 'Options or unit', placeholder: 'choice/tags: a, b, c · number: unit such as ms' },
-        { label: 'Description', placeholder: 'optional' },
-      ],
-      { confirm: 'Add property', message: `Defined for every run of ${run.project}.` },
-    );
-    if (!res || !res[0].trim()) return;
-    const type = (FIELD_TYPES.includes(res[1].trim() as FieldType) ? res[1].trim() : 'text') as FieldType;
-    const def: FieldDef = { name: res[0].trim(), type };
-    if (type === 'choice' || type === 'tags')
-      def.options = res[2]
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    if (type === 'number' && res[2].trim()) def.unit = res[2].trim();
-    if (res[3].trim()) def.description = res[3].trim();
-    defs = (await api.saveFields(run.project, [...defs.filter((d) => d.name !== def.name), def])).fields;
+    if (await defineProperty([run.project])) await load();
+  }
+  // Give a property that only has values a definition, guessing its type from this run's value
+  async function defineType(d: FieldDef) {
+    const v = run.fields?.[d.name];
+    const type =
+      typeof v === 'number' ? 'number' : typeof v === 'boolean' ? 'bool' : Array.isArray(v) ? 'tags' : 'text';
+    if (await defineProperty([run.project], { name: d.name, type, title: `Define ${d.name}` })) await load();
   }
 
   async function removeProperty(d: FieldDef) {
@@ -173,7 +146,11 @@
         {#if defined(d)}
           <span class="chip type">{d.type}{d.unit ? ` · ${d.unit}` : ''}</span>
         {:else}
-          <span class="chip type" title="Set on this run without a definition in fields.json">untyped</span>
+          <button
+            class="chip type define"
+            title="Set without a definition in fields.json: click to give it a type"
+            onclick={() => defineType(d)}>untyped · define</button
+          >
         {/if}
       </label>
       <div class="val">
@@ -313,6 +290,10 @@
     height: 20px;
     font-size: 11px;
     flex: none;
+  }
+  .define {
+    cursor: pointer;
+    border-style: dashed;
   }
   .val {
     display: flex;

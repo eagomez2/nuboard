@@ -38,33 +38,63 @@ browser's local storage.
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  **Add to collection…**, open them in **Media**, **Compare** up to eight of them, or
+  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in **Media**, **Compare** up to eight of them, or
   **Plot selected**.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
 - **Columns**: add columns for any metric (last value), any config key, or
-  a custom field. The chosen columns are part of the URL.
+  a [property](#properties). The chosen columns are part of the URL.
 - **Notes**: click a notes cell to edit it in place.
-- Stars, notes, review marks, archive flags and custom fields are written to
+- Stars, notes, review marks, archive flags, tags edited in the viewer and
+  property values are written to
   the run's own `annotations.json`, so they move with the run folder.
   Archived runs are hidden unless **show archived** is on.
 
-### Custom fields
+### Tags
 
-Custom fields are your own columns: a verdict, an owner, a score.
+Tags start as the ones passed to `nb.init(tags=...)` and can be changed in
+the viewer at any time:
 
-1. Open **Columns**, type a name under **Custom fields** and press **+** (or
-   Enter). The column appears next to **Run**, marked ✎. Fields that already
-   have values on some run are listed there to show or hide.
-2. Click a cell in that column to edit it: Enter saves, Esc cancels, and an
-   empty value removes the field from that run.
-3. To set the same value on many runs, select them and press **Set field…**.
+- In a run's details, the tag button next to its tags opens an editor: × removes
+  a tag, and typing a name and pressing Enter adds one (tags used by other runs
+  are suggested). **Done** or Esc closes it.
+- To change many runs at once, select them and press **Tags…**. **Add** takes
+  tags separated by commas or spaces, and **Remove** lists the selected runs'
+  tags to pick from. Each run keeps its other tags.
 
-Numbers and `true`/`false` are stored as such, so queries like `score > 3`
-and `verdict = keep` work. Fields can also be used as sweep parameters. From
-Python, read them as `run.fields` and write them with
-`run.set_field("verdict", "keep")` in the [analysis API](analysis.md).
+Once a run's tags are edited in the viewer, the edited list replaces the
+logged one, so a tag set in `nb.init` can be removed too. The logged tags stay
+in `run.json` as they were; the edited list is kept in `annotations.json`.
+
+### Properties
+
+Properties are typed values you set on runs, such as a dataset, a verdict,
+an owner or a link to a paper. A property is defined once per project, with a
+type: text, number (with an optional unit), choice, tags, yes/no, date or
+link. Each run then has its own value, checked against that type.
+
+1. **Define one**: open **Columns** and press **New property…**, or press
+   **Add property** in a run's **Properties** tab. Pick the name, the type,
+   the options of a choice or tags property, and an optional description.
+   From **Columns** the property is shown as a column right away, marked ✎.
+2. **Set it on one run**: click a cell in its ✎ column (Enter saves, Esc
+   cancels, an empty value clears it), or edit it in the run's
+   **Properties** tab.
+3. **Set it on many runs**: select them and press **Set property…**. Pick the
+   property, then its value, with a control that fits the type: buttons for a
+   choice or yes/no, pills for tags, a date picker for a date. A name that is
+   not defined yet is defined first.
+
+**Columns** lists every property of the listed projects, to show or hide.
+Values written without a definition, such as with `Run.set_field` from
+Python, are marked **untyped**; in a run's **Properties** tab, **untyped ·
+define** gives such a property a type.
+
+Properties work in queries (`verdict = "keep"`, `score > 3`,
+`topics has "augmentation"`) and as sweep parameters. From Python, read them
+as `run.fields` and write them with `run.set_field("verdict", "keep")` in the
+[analysis API](analysis.md).
 
 ### Collections
 
@@ -81,7 +111,7 @@ listing run ids, so it can be committed and survives moving the folder.
 ### Run details and compare
 
 Click a run name to open its details above the table, with the run's tags
-under its name: every setting (config,
+under its name (editable, see [Tags](#tags)): every setting (config,
 git commit, host, Python, GPUs, world size, fork origin, artifacts used and
 produced, last value of every metric) and the run's files. A crashed
 run shows its traceback.
@@ -93,17 +123,17 @@ For a single run there are two more tabs:
   the same `![caption](media:<run id>/<key>@<step>)` line as a
   [report](reports.md). The runs table shows the first line; a note of more
   than one line opens here when clicked.
-- **Properties**: typed properties of the run. **Add property** defines one for
+- **Properties**: the run's [properties](#properties). **Add property** defines one for
   the whole project, with a type picked from a menu: text, number (with an optional unit),
-  choice, tags, bool, date or link. A choice is picked from a menu and tags
+  choice, tags, yes/no, date or link. A choice is picked from a menu and tags
   are toggled as colored pills; neither accepts a value outside its options,
   which are added on purpose with **New option…** or **+ option**. Numbers,
   dates and links are checked before saving, and the server rejects values
   that do not fit (from the table, the API or `Run.set_field` too). The bin
   button removes a property: its definition and its value on every run of the
-  project. Values are saved per run as
-  custom fields, so they show up as columns and work in queries
-  (`verdict = "keep"`, `topics has "augmentation"`). Definitions are kept in
+  project. Values are saved in each run's `annotations.json`, so they show up
+  as columns and work in queries (`verdict = "keep"`,
+  `topics has "augmentation"`). Definitions are kept in
   `<project>/fields.json`.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:

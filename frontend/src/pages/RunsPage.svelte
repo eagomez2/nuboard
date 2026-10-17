@@ -99,7 +99,7 @@
     {/each}
     <button class="btn save" onclick={saveView}>Save current view…</button>
     <p class="hint">
-      Each run is its own folder. Stars, notes, review marks and custom fields are written to the run's <code
+      Each run is its own folder. Stars, notes, review marks, tags and properties are written to the run's <code
         >annotations.json</code
       >, so they travel with the folder. Collections and saved views go to <code>&lt;project&gt;/collections/</code> and
       <code>&lt;project&gt;/views/</code>

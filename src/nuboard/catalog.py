@@ -178,8 +178,9 @@ def make_record(
 ) -> dict[str, Any]:
     """Build the flat record the viewer lists for one run.
 
-    Annotations made in the viewer are merged in: tags are combined, and
-    notes in `ann` take precedence over notes in `meta`.
+    Annotations made in the viewer take precedence: tags edited in the viewer
+    (a `tags` list in `ann`) replace the logged ones, and notes in `ann`
+    replace the notes in `meta`.
 
     Args:
         key: Catalog key of the run (its folder name, or its relative path if
@@ -212,7 +213,9 @@ def make_record(
         "heartbeat": beat,
         "duration": (end_for_duration - started) if started and end_for_duration else None,
         "config": meta.get("config") or {},
-        "tags": sorted(set(meta.get("tags") or []) | set(ann.get("tags") or [])),
+        "tags": sorted(
+            set(ann["tags"] if isinstance(ann.get("tags"), list) else meta.get("tags") or [])
+        ),
         "notes": ann.get("notes") if ann.get("notes") is not None else (meta.get("notes") or ""),
         "starred": bool(ann.get("starred")),
         "archived": bool(ann.get("archived")),

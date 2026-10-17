@@ -3,7 +3,7 @@
   import NotesEditor from './NotesEditor.svelte';
   import PropertiesEditor from './PropertiesEditor.svelte';
   import Status from './Status.svelte';
-  import TagPills from './TagPills.svelte';
+  import TagEditor from './TagEditor.svelte';
   import { api, num, type RunDetail } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
   import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
@@ -71,7 +71,7 @@
       id: d.run.id,
       started: fmtDate(d.run.started),
       duration: fmtDuration(d.run.duration),
-      tags: d.run.tags.join(', ') || null,
+      tags: (app.runByKey(d.run.key)?.tags ?? d.run.tags).join(', ') || null, // edited tags show at once
       group: d.run.group,
       'git.commit': m.git?.commit ?? null,
       'git.branch': m.git?.branch ?? null,
@@ -139,7 +139,7 @@
         {multi ? `Compare ${details.length} runs` : 'Run'}
         {#if !multi}<span class="mono">{details.map((d) => d.run.name).join(' · ')}</span>{/if}
       </h2>
-      {#if tags.length}<div class="runtags"><TagPills {tags} /></div>{/if}
+      {#if !multi}<div class="runtags"><TagEditor runKey={details[0].run.key} {tags} /></div>{/if}
     </div>
     {#if details.length === 1}<Status status={details[0].run.status} />{/if}
     <button

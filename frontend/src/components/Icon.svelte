@@ -28,6 +28,7 @@
     edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
     download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
     trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+    tag: 'M3 12V3h9l9 9-9 9zM7.5 7.5h.01',
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',

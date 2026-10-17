@@ -131,29 +131,83 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
 });
 
-test('custom fields: add a column, edit a cell, set a field on selected runs', async ({ page }) => {
+test('properties: define one from Columns, edit a cell, set it on selected runs', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.getByRole('button', { name: /Columns/ }).click();
-  const add = page.getByRole('button', { name: 'Add field' });
-  await expect(add).toBeDisabled();
-  await page.getByPlaceholder('Field name, e.g. verdict').fill('grade');
-  await add.click();
+  await expect(page.locator('.pop .label').first()).toHaveText('Properties');
+  await page.getByRole('button', { name: 'New property…' }).click();
+  let dlg = page.getByRole('dialog', { name: 'Add a property' });
+  await dlg.getByLabel('Name', { exact: true }).fill('grade');
+  await dlg.getByRole('combobox', { name: 'Type' }).selectOption('choice');
+  await dlg.getByLabel('Options or unit').fill('A, B, C');
+  await dlg.getByRole('button', { name: 'Add property' }).click();
   await expect(page).toHaveURL(/cols=field(:|%3A)grade/);
+  // a choice cell is a menu of its options
   await page.getByTitle('Edit grade').first().click();
-  await page.keyboard.type('A');
-  await page.keyboard.press('Enter');
+  await page.locator('.fieldcell select').selectOption('A');
   await expect(page.getByTitle('Edit grade').first()).toHaveText('A');
   const boxes = page.locator('.body .row input[type=checkbox]');
   await boxes.nth(1).check();
   await boxes.nth(2).check();
-  await page.getByRole('button', { name: 'Set field…' }).click();
-  const dlg = page.getByRole('dialog', { name: 'Set a field on 2 runs' });
-  await dlg.getByLabel('Field').fill('grade');
-  await dlg.getByLabel('Value').fill('B');
-  await dlg.getByRole('button', { name: 'Set field' }).click();
+  await page.getByRole('button', { name: 'Set property…' }).click();
+  dlg = page.getByRole('dialog', { name: 'Set a property on 2 runs' });
+  await dlg.getByLabel('Property').fill('grade');
+  await dlg.getByRole('button', { name: 'Next' }).click();
+  dlg = page.getByRole('dialog', { name: 'Set grade on 2 runs' });
+  await dlg.getByRole('button', { name: 'B', exact: true }).click();
+  await dlg.getByRole('button', { name: 'Set property' }).click();
   await expect(dlg).toBeHidden();
   await expect(page.getByTitle('Edit grade').nth(1)).toHaveText('B');
   await expect(page.getByTitle('Edit grade').nth(2)).toHaveText('B');
+  // a name that is not defined yet is defined first, with its type
+  await page.getByRole('button', { name: 'Set property…' }).click();
+  await page.getByRole('dialog').getByLabel('Property').fill('epochs_seen');
+  await page.getByRole('dialog').getByRole('button', { name: 'Next' }).click();
+  dlg = page.getByRole('dialog', { name: 'Add a property' });
+  await expect(dlg.getByLabel('Name', { exact: true })).toHaveValue('epochs_seen');
+  await dlg.getByRole('combobox', { name: 'Type' }).selectOption('number');
+  await dlg.getByRole('button', { name: 'Add property' }).click();
+  dlg = page.getByRole('dialog', { name: 'Set epochs_seen on 2 runs' });
+  await dlg.getByLabel('epochs_seen').fill('many');
+  await dlg.getByRole('button', { name: 'Set property' }).click();
+  await expect(page.getByRole('dialog', { name: 'Not saved' })).toContainText('needs a number');
+  await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  const defs = (await (await page.request.get('/api/fields?project=vit-ablations')).json()).fields;
+  expect(defs.map((d: { name: string }) => d.name)).toEqual(expect.arrayContaining(['grade', 'epochs_seen']));
+});
+
+test('tags: edit one run in its details, and many from the selection', async ({ page }) => {
+  await page.goto('/#/runs?project=ppo-atari');
+  const rows = page.locator('.body .row');
+  const first = rows.first();
+  const logged = await first.locator('.subline .tagpill').allTextContents();
+  expect(logged.length).toBeGreaterThan(0);
+  await first.locator('button.name').click();
+  await page.getByRole('button', { name: 'Edit tags' }).click();
+  await page.getByLabel('Add a tag').fill('best');
+  await page.keyboard.press('Enter');
+  // a logged tag can be removed too
+  await page.getByRole('button', { name: `Remove tag ${logged[0]}` }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  const expected = [...logged.slice(1), 'best'].sort();
+  await expect(page.locator('.cmp .runtags .tagpill')).toHaveText(expected);
+  await expect(first.locator('.subline .tagpill')).toHaveText(expected);
+  // many runs: add one tag and remove another, keeping the rest
+  await rows.nth(0).locator('input[type=checkbox]').first().check();
+  await rows.nth(1).locator('input[type=checkbox]').first().check();
+  await page.getByRole('button', { name: 'Tags…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Tags of 2 runs' });
+  await dlg.getByLabel('Add').fill('shortlist');
+  await dlg.getByRole('button', { name: 'best', exact: true }).click();
+  await dlg.getByRole('button', { name: 'Save tags' }).click();
+  await expect(dlg).toBeHidden();
+  for (const i of [0, 1]) {
+    const tags = await rows.nth(i).locator('.subline .tagpill').allTextContents();
+    expect(tags).toContain('shortlist');
+    expect(tags).not.toContain('best');
+  }
+  await page.reload();
+  await expect(rows.first().locator('.subline .tagpill')).toHaveText([...logged.slice(1), 'shortlist'].sort());
 });
 
 test('chart legend: solo a series, then All and None', async ({ page }) => {
