@@ -9,8 +9,22 @@ nav:
   - Get started: get-started.md
   - Python API:
       - Overview: api/index.md
-      - Runs: api/run.md
-      - Media: api/media.md
+      - nb.init: api/init.md
+      - add_scalar: api/add_scalar.md
+      - add_text: api/add_text.md
+      - add_image: api/add_image.md
+      - add_audio: api/add_audio.md
+      - add_video: api/add_video.md
+      - add_figure: api/add_figure.md
+      - add_pr_curve: api/add_pr_curve.md
+      - add_histogram: api/add_histogram.md
+      - add_table: api/add_table.md
+      - add_point_cloud: api/add_point_cloud.md
+      - add_html: api/add_html.md
+      - add_file: api/add_file.md
+      - add_artifact, use_artifact: api/add_artifact.md
+      - finish, flush, summary: api/finish.md
+      - Coming from TensorBoard: api/tensorboard.md
   - Guides:
       - Logging from Python: guide/logging.md
       - Using the viewer: guide/viewer.md

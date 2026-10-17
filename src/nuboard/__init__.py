@@ -3,7 +3,7 @@
 Example:
     >>> import nuboard as nb
     >>> with nb.init("my-project", config={"lr": 1e-3}) as run:
-    ...     run.log({"loss": 0.5}, step=0)
+    ...     run.add_scalar({"loss": 0.5}, step=0)
 """
 
 from __future__ import annotations

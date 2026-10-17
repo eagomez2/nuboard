@@ -424,15 +424,15 @@ class RunReader:
         return sorted({lf.rank for lf in self.logs.values()})
 
     # -- scalars -------------------------------------------------------------
-    def metric_names(self, rank: int = 0) -> list[str]:
-        """Return the names of the run's scalar metrics, sorted.
+    def scalar_names(self, rank: int = 0) -> list[str]:
+        """Return the keys of the run's scalars, sorted.
 
         Args:
             rank: Process rank. Ignored when reading from `data.parquet`, which
-                lists metrics across all ranks.
+                lists scalars across all ranks.
 
         Returns:
-            The metric names.
+            The scalar keys.
         """
 
         if self.parquet is not None:
@@ -444,6 +444,10 @@ class RunReader:
             names.update(lf.series())
 
         return sorted(names)
+
+    def metric_names(self, rank: int = 0) -> list[str]:
+        """Return the keys of the run's scalars; the same as `scalar_names`."""
+        return self.scalar_names(rank)
 
     def scalars(self, metric: str, rank: int = 0) -> Series:
         """Return one metric at full resolution.
@@ -473,7 +477,7 @@ class RunReader:
         Returns:
             `{metric: (steps, times, values)}`.
         """
-        return {m: self.scalars(m, rank) for m in self.metric_names(rank)}
+        return {m: self.scalars(m, rank) for m in self.scalar_names(rank)}
 
     # -- text and media ---------------------------------------------------------
     def texts(self, key: str | None = None, rank: int = 0) -> list[TextEntry]:

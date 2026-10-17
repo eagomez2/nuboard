@@ -600,7 +600,7 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                     result.ignored[plugin or v.kind] += 1
 
             if scalars:
-                run.log(scalars, step=step, time=t)
+                run.add_scalar(scalars, step=step, time=t)
                 result.scalars += len(scalars)
 
 
@@ -687,6 +687,8 @@ def import_logdir(
                 notes=f"Imported from TensorBoard logs in {folder.resolve()}",
                 run_id=run_id,
                 capture_env=False,
+                system_metrics=False,
+                capture_console=False,
                 _started=started,
             )
         except FileExistsError:

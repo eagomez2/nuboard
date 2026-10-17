@@ -21,7 +21,9 @@ from typing import Any, Literal
 
 from . import _env, _fs
 from . import _format as fmt
+from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
+from ._system import SystemMonitor, parse_groups
 from ._writer import Writer
 from .artifacts import Artifact, add_artifact, resolve_artifact
 
@@ -145,10 +147,14 @@ def _install_excepthook() -> None:
 
     def hook(exc_type, exc, tb):  # type: ignore[no-untyped-def]
         """Finish every active run with the traceback, then call the previous hook."""
-        text = "".join(traceback.format_exception(exc_type, exc, tb))[-4000:]
+        full = "".join(traceback.format_exception(exc_type, exc, tb))
+        text = full[-4000:]
         status = "killed" if issubclass(exc_type, KeyboardInterrupt) else "crashed"
 
         for run in list(_active):
+            if run._console is not None:  # the previous hook prints it after the log is closed
+                run._console.write(full)
+
             run.finish(status=status, exit_code=1, error=text)
 
         previous(exc_type, exc, tb)
@@ -172,10 +178,21 @@ def _records(rows: Any) -> list[dict[Any, Any]]:
 
 
 def _copied(data: Any) -> Any:
-    """Return media data the caller may reuse right away: tensors on the CPU, arrays copied."""
+    """Return media data the caller may reuse right away.
 
-    if hasattr(data, "detach"):
-        data = data.detach().cpu()
+    Tensors become NumPy arrays of their own (detached, moved to the CPU, and
+    upcast to float32 when NumPy has no matching type, as for bfloat16), so a
+    later in-place change to the tensor does not reach the logged item. Arrays
+    are copied; anything else is returned as it is.
+    """
+
+    if hasattr(data, "detach") and hasattr(data, "numpy"):  # torch tensor
+        t = data.detach().cpu()
+
+        if str(t.dtype) == "torch.bfloat16":
+            t = t.float()
+
+        return t.numpy().copy()
 
     if hasattr(data, "copy") and not isinstance(data, (bytes, str)):
         data = data.copy()
@@ -186,7 +203,7 @@ def _copied(data: Any) -> Any:
 class Run:
     """One training run, stored as one self-contained folder.
 
-    Create it with `NAME.init`. `log` and the `add_*` media methods are safe to call
+    Create it with `NAME.init`. `add_scalar` and the other `add_*` methods are safe to call
     from the training loop: they only append to an in-memory queue that a
     background thread writes out.
 
@@ -225,6 +242,12 @@ class Run:
         flush_interval: Seconds between writes by the background thread.
         heartbeat_interval: Seconds between heartbeat updates of `run.json`, which
             the viewer uses to spot dead runs.
+        system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
+            local rank 0 of each machine. True for all of them, False for none,
+            or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
+        system_interval: Seconds between system samples.
+        capture_console: Copy what the script prints to stdout and stderr into
+            `files/output.log`, shown in the viewer's run details.
         _started: Start timestamp override, for tests.
 
     Attributes:
@@ -246,6 +269,7 @@ class Run:
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
+        ValueError: If `system_metrics` names an unknown group.
     """
 
     def __init__(
@@ -266,6 +290,9 @@ class Run:
         compact: bool = True,
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
+        system_metrics: bool | str | Sequence[str] = True,
+        system_interval: float = 30.0,
+        capture_console: bool = True,
         _started: float | None = None,
     ) -> None:
         self.project_dir = project_dir(project, dir)
@@ -281,6 +308,9 @@ class Run:
         self._next_step = 0
         self._last_step = 0
         self._finished = False
+        self._system: SystemMonitor | None = None
+        self._console: ConsoleLog | None = None
+        groups = parse_groups(system_metrics)
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
         name = _fs.sanitize(name or "run")
@@ -343,6 +373,16 @@ class Run:
         _active.append(self)
         atexit.register(self._atexit)
         _install_excepthook()
+
+        if capture_console and (self.dist.is_main or all_ranks):
+            log = "output.log" if self.dist.is_main else f"output.r{self.dist.rank}.log"
+            stamp = _dt.datetime.fromtimestamp(self.started).isoformat(" ", "seconds")
+            self._console = ConsoleLog(
+                self.path / "files" / log, f"[nuboard: session {self.session}, {stamp}]"
+            )
+
+        if groups and self.dist.local_rank == 0:
+            self._system = SystemMonitor(groups, system_interval, self._log_system)
 
     # -- setup ----------------------------------------------------------------
     def _new_run_id(self, runs_dir: Path, name: str) -> str | None:
@@ -531,8 +571,22 @@ class Run:
 
             _fs.atomic_write_json(self.path / "run.json", self._meta)
 
+    def _log_system(self, values: dict[str, float]) -> None:
+        """Queue a system sample at the latest step; called by the system thread.
+
+        It leaves the step counters alone, so `add_scalar` without a step is
+        not affected, and logs from any rank, as only local rank 0 samples.
+        """
+        writer = self._writer or self._ensure_writer()
+
+        if writer is not None:
+            writer.queue.append((0, self._last_step, _now(), values))
+
     def _on_heartbeat(self) -> None:
         """Update the heartbeat time in `run.json`; called by the writer thread."""
+
+        if self._console is not None:
+            self._console.flush()
 
         with self._meta_lock:
             self._meta["heartbeat"] = time.time()
@@ -556,30 +610,47 @@ class Run:
         return self._writer
 
     # -- logging ----------------------------------------------------------------
-    def log(
+    def add_scalar(
         self,
-        data: Mapping[str, Any],
+        key: str | Mapping[str, Any],
+        value: Any = None,
         step: int | None = None,
         *,
         time: float | None = None,
         all_ranks: bool | None = None,
     ) -> None:
-        """Log a dict of scalars.
+        """Log one scalar, or several at the same step.
 
         Non-blocking: values are converted off-thread. On ranks other than 0 the
         call is a no-op unless `all_ranks=True` (here or in `init`).
 
         Args:
-            data: Metric names mapped to scalar values (numbers, NumPy or tensor
-                scalars). Nested dicts are flattened with `/`.
+            key: The scalar's name, such as `"train/loss"`, or a dict of names
+                and values to log several at once. Nested dicts are flattened
+                with `/`.
+            value: The value, for a single name: a number, bool, or NumPy or
+                tensor scalar. With a dict, a value here is taken as `step`.
             step: Training step. Defaults to one more than the previous call.
             time: Unix timestamp of the values. Defaults to now.
             all_ranks: Overrides the run's `all_ranks` setting for this call.
 
+        Raises:
+            TypeError: If `key` is a name and `value` is missing.
+
         Example:
-            >>> for step in range(100):
-            ...     run.log({"train": {"loss": 0.5, "acc": 0.9}}, step=step)
+            >>> run.add_scalar("train/loss", 0.42, step=10)
+            >>> run.add_scalar({"train": {"loss": 0.42, "acc": 0.9}}, step=10)
         """
+
+        if isinstance(key, Mapping):
+            data = dict(key)
+
+            if value is not None and step is None:
+                step = int(value)
+        elif value is None:
+            raise TypeError(f"add_scalar({key!r}) needs a value")
+        else:
+            data = {key: value}
 
         if step is None:
             step = self._next_step
@@ -595,7 +666,25 @@ class Run:
         writer = self._writer or self._ensure_writer()
 
         if writer is not None:
-            writer.queue.append((0, step, _now() if time is None else time, dict(data)))
+            writer.queue.append((0, step, _now() if time is None else time, data))
+
+    def log(
+        self,
+        data: Mapping[str, Any],
+        step: int | None = None,
+        *,
+        time: float | None = None,
+        all_ranks: bool | None = None,
+    ) -> None:
+        """Log several scalars at one step; the same as `add_scalar(data, step=step)`.
+
+        Args:
+            data: Scalar names mapped to values. Nested dicts are flattened with `/`.
+            step: Training step. Defaults to one more than the previous call.
+            time: Unix timestamp of the values. Defaults to now.
+            all_ranks: Overrides the run's `all_ranks` setting for this call.
+        """
+        self.add_scalar(data, step=step, time=time, all_ranks=all_ranks)
 
     def add_text(
         self,
@@ -613,7 +702,7 @@ class Run:
         Args:
             key: Name the text is logged under.
             text: The text; other values are converted with `str`.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             time: Unix timestamp of the item. Defaults to now.
             all_ranks: Log from every rank, not only rank 0.
         """
@@ -645,7 +734,7 @@ class Run:
             key: Name the image is logged under.
             image: PNG/JPEG bytes, a file path, a PIL image, or an HxW, HxWxC or
                 CxHxW array or tensor (uint8, or float in [0, 1]).
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             caption: Optional caption shown in the viewer.
             time: Unix timestamp of the item. Defaults to now.
 
@@ -655,11 +744,7 @@ class Run:
         """
         from ._media import image_bytes
 
-        if hasattr(image, "detach"):
-            image = image.detach().cpu()
-
-        if hasattr(image, "copy") and not isinstance(image, (bytes, str)):
-            image = image.copy()  # the caller may mutate its buffer after we return
+        image = _copied(image)  # the caller may change its tensor or array after we return
 
         self._put_media(
             key, step, lambda: image_bytes(image), {"kind": "image", "caption": caption}, time
@@ -685,24 +770,67 @@ class Run:
             key: Name the audio is logged under.
             audio: A file path (wav, flac, mp3, ogg, opus, m4a), encoded bytes, or a
                 `(samples,)` or `(channels, samples)` array or tensor.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             sample_rate: Sample rate in Hz; required for arrays.
             caption: Optional caption shown in the viewer.
             time: Unix timestamp of the item. Defaults to now.
         """
         from ._media import audio_bytes
 
-        if hasattr(audio, "detach"):
-            audio = audio.detach().cpu()
-
-        if hasattr(audio, "copy") and not isinstance(audio, (bytes, str)):
-            audio = audio.copy()  # the caller may mutate its buffer after we return
+        audio = _copied(audio)  # the caller may change its tensor or array after we return
 
         self._put_media(
             key,
             step,
             lambda: audio_bytes(audio, sample_rate),
             {"kind": "audio", "caption": caption},
+            time,
+        )
+
+    def add_video(
+        self,
+        key: str,
+        video: Any,
+        step: int | None = None,
+        *,
+        fps: float = 4,
+        caption: str | None = None,
+        time: float | None = None,
+    ) -> None:
+        """Log a video, such as a rollout of an agent or a generated clip.
+
+        Files and bytes (MP4, WebM, MOV, Ogg, GIF or animated PNG) are stored as
+        they are. Arrays are encoded as an animated PNG, with the standard
+        library, on the background thread; they are copied, so the caller may
+        reuse its buffer right away. Only rank 0 logs media.
+
+        Args:
+            key: Name the video is logged under.
+            video: A file path, encoded bytes, or a (T, H, W), (T, H, W, C) or
+                (T, C, H, W) array or tensor (uint8, or float in [0, 1]); a
+                (N, T, C, H, W) batch, as TensorBoard takes it, is tiled in a grid.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
+            fps: Frames per second of an array.
+            caption: Optional caption shown in the viewer.
+            time: Unix timestamp of the item. Defaults to now.
+
+        Example:
+            >>> frames = np.random.rand(16, 3, 64, 64)  # (T, C, H, W)
+            >>> run.add_video("rollout", frames, step=10, fps=8)
+        """
+        from ._media import video_bytes
+
+        if hasattr(video, "shape") and not isinstance(video, (bytes, str)):
+            from ._media import video_frames
+
+            video = video_frames(video)  # converted and copied now: uint8 frames
+
+        rate = fps
+        self._put_media(
+            key,
+            step,
+            lambda: video_bytes(video, rate),
+            {"kind": "video", "caption": caption},
             time,
         )
 
@@ -730,7 +858,7 @@ class Run:
         Args:
             key: Name the point cloud is logged under.
             points: An (N, 3) array, tensor or sequence of x, y, z positions.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             colors: Optional (N, 3) RGB colors, uint8 or floats in [0, 1].
             axes: True to show the axes, or their three names (such as
                 `("x (m)", "y (m)", "z (m)")`) to show them with those labels.
@@ -756,16 +884,12 @@ class Run:
             if isinstance(axes, str) or len(names) != 3:
                 raise ValueError("axes takes True or three names, such as ('x', 'y', 'z')")
 
-        if hasattr(points, "detach"):
-            points = points.detach().cpu()
-
-        if hasattr(colors, "detach"):
-            colors = colors.detach().cpu()
-
-        points = points.copy() if hasattr(points, "copy") else list(points)
+        points = _copied(points)
+        points = points if hasattr(points, "shape") else list(points)
 
         if colors is not None:
-            colors = colors.copy() if hasattr(colors, "copy") else list(colors)
+            colors = _copied(colors)
+            colors = colors if hasattr(colors, "shape") else list(colors)
 
         self._put_media(
             key,
@@ -798,7 +922,7 @@ class Run:
             labels: Ground truth, as booleans or 0/1 values (array, tensor or
                 sequence).
             predictions: Scores in [0, 1], one per label.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             num_thresholds: How many thresholds, from 0 to 1 inclusive.
             weights: Optional weight per example.
             time: Unix timestamp of the item. Defaults to now.
@@ -843,7 +967,7 @@ class Run:
         Args:
             key: Name the distribution is logged under.
             values: An array, tensor or sequence of numbers, of any shape.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             bins: Number of equal-width bins, or their edges.
             range: The `(low, high)` the bins span; values outside are counted
                 as `outside`. Defaults to the values' min and max.
@@ -861,7 +985,7 @@ class Run:
                 return None
 
             x = _copied(x)
-            return x.clone() if hasattr(x, "clone") else x if hasattr(x, "__array__") else list(x)
+            return x if hasattr(x, "__array__") else list(x)
 
         v, w = copy(values), copy(weights)
         edges = bins if isinstance(bins, int) else list(bins)
@@ -894,7 +1018,7 @@ class Run:
             key: Name the table is logged under.
             rows: A list of dicts (one per row), a dict of column lists, or a
                 pandas DataFrame.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             row_id: The column that identifies a row across steps. Defaults to
                 the first column.
             time: Unix timestamp of the item. Defaults to now.
@@ -974,7 +1098,7 @@ class Run:
         Args:
             key: Name the figure is logged under.
             figure: The figure, or a Plotly or Vega-Lite spec as a dict.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             time: Unix timestamp of the item. Defaults to now.
 
         Raises:
@@ -995,7 +1119,7 @@ class Run:
         Args:
             key: Name the document is logged under.
             html: The HTML source.
-            step: Training step. Defaults to the step of the latest `log` call.
+            step: Training step. Defaults to the step of the latest `add_scalar` call.
             time: Unix timestamp of the item. Defaults to now.
         """
         data = html.encode("utf-8")
@@ -1022,7 +1146,7 @@ class Run:
             )
 
     def _step(self, step: int | None) -> int:
-        """Return `step`, or the step of the latest `log` call when it is None."""
+        """Return `step`, or the step of the latest `add_scalar` call when it is None."""
         return self._last_step if step is None else step
 
     # -- files --------------------------------------------------------------------
@@ -1182,6 +1306,12 @@ class Run:
 
         atexit.unregister(self._atexit)
 
+        if self._system is not None:
+            self._system.stop()
+
+        if self._console is not None:
+            self._console.close()
+
         if self._writer is not None:
             self._writer.close(status)
 
@@ -1225,9 +1355,13 @@ class Run:
         if exc_type is None:
             self.finish()
         else:
-            text = "".join(traceback.format_exception(exc_type, exc, tb))[-4000:]
+            full = "".join(traceback.format_exception(exc_type, exc, tb))
             status = "killed" if issubclass(exc_type, KeyboardInterrupt) else "crashed"
-            self.finish(status=status, exit_code=1, error=text)
+
+            if self._console is not None:  # Python prints it only after the log is closed
+                self._console.write(full)
+
+            self.finish(status=status, exit_code=1, error=full[-4000:])
 
     def __repr__(self) -> str:
         """Return a short description with the run id and folder."""
@@ -1254,6 +1388,9 @@ def init(
     compact: bool = True,
     flush_interval: float = 1.0,
     heartbeat_interval: float = 10.0,
+    system_metrics: bool | str | Sequence[str] = True,
+    system_interval: float = 30.0,
+    capture_console: bool = True,
     _started: float | None = None,
 ) -> Run:
     """Start (or resume) a run in `<dir>/<project>/runs/<run_id>/`.
@@ -1292,6 +1429,12 @@ def init(
         flush_interval: Seconds between writes by the background thread.
         heartbeat_interval: Seconds between heartbeat updates of `run.json`, which
             the viewer uses to spot dead runs.
+        system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
+            local rank 0 of each machine. True for all of them, False for none,
+            or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
+        system_interval: Seconds between system samples.
+        capture_console: Copy what the script prints to stdout and stderr into
+            `files/output.log`, shown in the viewer's run details.
         _started: Start timestamp override, for tests.
 
     Returns:
@@ -1305,11 +1448,12 @@ def init(
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
+        ValueError: If `system_metrics` names an unknown group.
 
     Example:
         >>> import nuboard as nb
         >>> with nb.init("my-project", name="baseline", config={"lr": 1e-3}) as run:
-        ...     run.log({"loss": 0.5}, step=0)
+        ...     run.add_scalar({"loss": 0.5}, step=0)
     """
     return Run(
         project,
@@ -1327,5 +1471,8 @@ def init(
         compact=compact,
         flush_interval=flush_interval,
         heartbeat_interval=heartbeat_interval,
+        system_metrics=system_metrics,
+        system_interval=system_interval,
+        capture_console=capture_console,
         _started=_started,
     )

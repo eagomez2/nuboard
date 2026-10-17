@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.12.0
+
+**Logging**
+
+- `run.add_scalar` logs scalars, named as in TensorBoard:
+  `run.add_scalar("train/loss", 0.42, step=10)` logs one, and
+  `run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4}, step=10)` several,
+  which covers TensorBoard's `add_scalars` too. `run.log` keeps working as
+  the same call.
+- `run.add_video` logs clips from `(T, H, W, C)`, `(T, C, H, W)` or
+  `(N, T, C, H, W)` arrays and tensors, encoded as looping animated PNGs with
+  no ffmpeg needed, or MP4, WebM, MOV, Ogg and GIF files as they are. The
+  Media page has a **Video** kind with a frame player, and the `ppo-atari`
+  demo logs rollout videos.
+- System scalars: `nb.init` samples CPU, memory and GPU use every 30 seconds
+  into `system/` scalars, from `LOCAL_RANK` 0 of each machine. GPUs are read
+  with `nvidia-smi`, and PyTorch's CUDA and MPS allocators are read when the
+  script has imported torch. Turn it off with `system_metrics=False`, pick
+  groups with `system_metrics=["cpu", "memory", "gpu"]`, and change the rate
+  with `system_interval`.
+- Console capture: what the script prints to stdout and stderr, including
+  the traceback of a crash, is also written to `files/output.log` and shown
+  as **Console** in the run details. Turn it off with
+  `capture_console=False`.
+- PyTorch tensors passed to `add_image`, `add_audio`, `add_histogram`,
+  `add_point_cloud` and `add_video` are copied to NumPy before the call
+  returns, so changing the tensor in place afterwards no longer changes what
+  is logged. `bfloat16` tensors work.
+
+**Naming**
+
+- Docs, labels and the Python API say "scalar" instead of "metric", as
+  TensorBoard does: **All scalars**, **X axis scalar**, **best scalar**.
+  `RunReader.scalar_names` replaces `metric_names`, which stays as an alias.
+- Breaking: `RunHandle.scalars()` and `Project.scalars()` in the analysis API
+  name their first column `key` instead of `metric`.
+- The file format is unchanged, and so are saved views, report charts and
+  query syntax.
+
+**Docs**
+
+- The Python API section has a page per method, all listed in the menu,
+  including `add_video` and the new `nb.init` options.
+
 ## 0.11.0
 
 **Runs table**

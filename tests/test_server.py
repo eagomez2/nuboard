@@ -28,6 +28,7 @@ def client(tmp_path):
 
                 run.add_text("note", "hi", step=1)
                 run.add_file(tmp_path / "config.yaml")
+                print(f"seed {seed}: " + "x" * 3_000_000)  # captured into files/output.log
 
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
 
@@ -89,6 +90,10 @@ def test_annotations_and_files(client):
     )
     assert "lr: 0.001" in client.get(f"/api/runs/{key}/files/config.yaml").text
     assert "format_version" not in client.get(f"/api/runs/{key}/files/%2E%2E/run.json").text
+    head = client.get(f"/api/runs/{key}/files/output.log").text
+    tail = client.get(f"/api/runs/{key}/files/output.log", params={"tail": 1}).text
+    assert head.startswith("[nuboard: session 0") and len(head) == 2_000_000
+    assert not tail.startswith("[nuboard") and tail.endswith("xxx\n")
     import pathlib
 
     from nuboard.server.data import path_inside

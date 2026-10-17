@@ -22,13 +22,13 @@ To add several at once, press **Select for report** above the sections, tick
 the cards whose shown item you want, and press **Add N to report** in the bar
 at the bottom. They are appended in the order you ticked them, each with a
 caption naming its key, step and run. **Open report** in the
-notice jumps to it. Use **best metric** on the Media page first to save the
+notice jumps to it. Use **best scalar** on the Media page first to save the
 item at a run's best step.
 
 ## Adding charts from the Charts page
 
 The bookmark button above the focused chart on the **Charts** page adds that
-chart to a report, as it is shown: the runs, metric, x axis, grouping,
+chart to a report, as it is shown: the runs, scalar, x axis, grouping,
 smoothing, zoom and hidden series. It writes a line such as
 
 ```markdown

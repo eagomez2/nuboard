@@ -397,7 +397,7 @@
       class="input metric mono"
       value={metric}
       onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value })}
-      aria-label="Result metric"
+      aria-label="Result scalar"
     >
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
@@ -442,7 +442,7 @@
               >Set property…</b
             >.
           </p>
-          <div class="label">Metrics (last value)</div>
+          <div class="label">Scalars (last value)</div>
           {#each metrics as m (m)}
             <label class="opt"
               ><input

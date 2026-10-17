@@ -49,7 +49,7 @@ class RunHandle:
 
     @property
     def summary(self) -> dict[str, Any]:
-        """Per-metric summary from `run.json` (last value and step, min, max, counts)."""
+        """Per-scalar summary from `run.json` (last value and step, min, max, counts)."""
         return self.record["summary"]
 
     @property
@@ -149,19 +149,19 @@ class RunHandle:
         names = [c["name"] for c in data["columns"]]
         return [dict(zip(names, row, strict=True)) for row in data["rows"]]
 
-    def scalars(self, metric: str | None = None, rank: int = 0) -> pa.Table:
-        """Return one metric, or all of them, as a long table.
+    def scalars(self, key: str | None = None, rank: int = 0) -> pa.Table:
+        """Return one scalar, or all of them, as a long table.
 
         Args:
-            metric: Metric name. Defaults to every metric the rank logged.
+            key: The scalar's key. Defaults to every scalar the rank logged.
             rank: Which rank's logs to read.
 
         Returns:
-            A table with columns `metric`, `step`, `time` and `value`; empty (with
+            A table with columns `key`, `step`, `time` and `value`; empty (with
             those columns) when there is nothing to return.
         """
         reader = self.reader()
-        names = [metric] if metric else reader.metric_names(rank)
+        names = [key] if key else reader.scalar_names(rank)
         parts = []
 
         for m in names:
@@ -169,7 +169,7 @@ class RunHandle:
             parts.append(
                 pa.table(
                     {
-                        "metric": pa.array([m] * len(s), pa.string()),
+                        "key": pa.array([m] * len(s), pa.string()),
                         "step": s,
                         "time": t,
                         "value": v,
@@ -180,7 +180,7 @@ class RunHandle:
         if not parts:
             return pa.table(
                 {
-                    "metric": pa.array([], pa.string()),
+                    "key": pa.array([], pa.string()),
                     "step": pa.array([], pa.int64()),
                     "time": pa.array([], pa.float64()),
                     "value": pa.array([], pa.float64()),
@@ -279,16 +279,16 @@ class Project:
 
     def scalars(
         self,
-        metric: str,
+        key: str,
         *,
         group_by: str | None = None,
         query: str | None = None,
         rank: int = 0,
     ) -> pa.Table:
-        """Return one metric across runs as a long table.
+        """Return one scalar across runs as a long table.
 
         Args:
-            metric: Metric name.
+            key: The scalar's key.
             group_by: A run field (e.g. `config.lr` or `group`) added as an extra
                 column named after it.
             query: Filter for the runs, in the viewer's query language.
@@ -296,13 +296,13 @@ class Project:
 
         Returns:
             A table with columns `run_id`, `name`, `step`, `time` and `value`, plus
-            `group_by` when given. Runs without the metric are skipped.
+            `group_by` when given. Runs without the scalar are skipped.
         """
         cols: dict[str, list[Any]] = {"run_id": [], "name": [], "step": [], "time": [], "value": []}
         groups: list[Any] = []
 
         for h in self.runs(query):
-            s, t, v = h.reader().scalars(metric, rank)
+            s, t, v = h.reader().scalars(key, rank)
 
             if not len(s):
                 continue
@@ -344,7 +344,7 @@ class Project:
         return pa.table(data)
 
     def summary(self, query: str | None = None) -> pa.Table:
-        """Return one row per run with its config and final metric values.
+        """Return one row per run with its config and the last value of each scalar.
 
         Args:
             query: Filter for the runs, in the viewer's query language.
@@ -352,7 +352,7 @@ class Project:
         Returns:
             A table with `run_id`, `name`, `status`, `project`, one `config.<key>`
             column per flattened config key (non-scalar values as strings) and one
-            column per metric holding its last value.
+            column per scalar holding its last value.
         """
         rows = []
 

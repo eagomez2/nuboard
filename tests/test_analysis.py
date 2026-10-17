@@ -19,7 +19,7 @@ def test_load_scalars_group_by():
     summary = project.summary()
     assert set(summary.column_names) >= {"run_id", "config.lr", "loss"}
     one = project.runs()[0].scalars()
-    assert one.column_names == ["metric", "step", "time", "value"]
+    assert one.column_names == ["key", "step", "time", "value"]
 
 
 def test_set_field_from_python():

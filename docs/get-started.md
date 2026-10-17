@@ -71,7 +71,7 @@ for i in range(0, len(y_train), 32):
     for k in params:
         params[k] -= lr * grads[k]
 
-    run.log({"train/loss": loss, "train/lr": lr}, step=step)
+    run.add_scalar({"train/loss": loss, "train/lr": lr}, step=step)
     step += 1
 ```
 
@@ -82,7 +82,7 @@ reached, so both curves share an x axis:
 hidden_val, probs = forward(params, x_val)
 pred = probs.argmax(1)
 val_loss = float(-np.log(probs[np.arange(len(y_val)), y_val] + 1e-9).mean())
-run.log({"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step)
+run.add_scalar({"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step)
 ```
 
 `run.log` does not wait for the disk, so logging every batch costs
@@ -163,7 +163,7 @@ training runs: it picks up new points every couple of seconds.
 ### Runs
 
 The **Runs** page lists the three runs with their config, tags, the result
-of a metric you pick (here the best `val/acc`) and how long they took. Click a
+of a scalar you pick (here the best `val/acc`) and how long they took. Click a
 run's name for its details: the full config, git commit, installed packages
 and command line, recorded by `nb.init`.
 
@@ -324,14 +324,16 @@ before:
                     for k in params:
                         params[k] -= lr * grads[k]
 
-                    run.log({"train/loss": loss, "train/lr": lr}, step=step)
+                    run.add_scalar({"train/loss": loss, "train/lr": lr}, step=step)
                     step += 1
 
                 # 2. Evaluate once per epoch, at the step training reached
                 hidden_val, probs = forward(params, x_val)
                 pred = probs.argmax(1)
                 val_loss = float(-np.log(probs[np.arange(len(y_val)), y_val] + 1e-9).mean())
-                run.log({"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step)
+                run.add_scalar(
+                    {"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step
+                )
 
                 # 3. Media, every five epochs
                 if epoch % 5 == 4 or epoch == 0:

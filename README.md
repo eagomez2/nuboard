@@ -13,7 +13,7 @@ import nuboard as nb
 with nb.init("my-project", name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
-        run.log({"train/loss": loss}, step=step)  # ~3 µs, never blocks training
+        run.add_scalar({"train/loss": loss}, step=step)  # ~3 µs, never blocks training
 ```
 
 ```bash
@@ -31,7 +31,8 @@ nuboard up experiments        # http://localhost:6070
   frames. The viewer reads a million points in about a tenth of a second and
   lists thousands of runs instantly.
 - **Records what you forget.** Config, git commit and uncommitted diff,
-  installed packages, GPUs, command line and rank, automatically.
+  installed packages, GPUs, command line, rank, console output and CPU, memory
+  and GPU use, automatically.
 - **Crash-safe.** A killed process loses at most the last second of data; torn
   writes are ignored; crashes are marked with their traceback.
 
@@ -39,7 +40,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.11.0-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.12.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -47,25 +48,24 @@ Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
 open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 [installation](docs/installation.md) covers building from source.
 
-## What's in 0.10
+## What's in 0.12
 
 | Area | Included |
 | --- | --- |
-| Python API | `init` (+ resume, fork, ranks), `log`, `add_file`, `add_text`, `add_image`, `add_audio`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`, `add_point_cloud`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager |
+| Python API | `init` (+ resume, fork, ranks), `add_scalar` (alias `log`), `add_file`, `add_text`, `add_image`, `add_audio`, `add_video`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`, `add_point_cloud`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager; system scalars (CPU, memory, GPU) and console capture |
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
-| Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; custom fields, collections and alerts per run |
-| Runs | query language, stars, Markdown notes, archive, typed properties, custom fields, column chooser, collections, saved views, run details and config/file diffs |
-| Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any metric (tokens, epochs), solo or show all series |
-| Media | images, audio (waveform + spectrogram player with notes, or the browser's player), per-example tables compared across steps, PR curves, distributions over steps, point clouds with axes, text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures; filter by kind, a step slider per card, best-metric step, configurable grid |
+| Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; properties, collections and alerts per run |
+| Runs | query language, stars, Markdown notes, archive, typed properties, tag editing, column chooser, collections, saved views, run details and config/file diffs |
+| Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any scalar (tokens, epochs), solo or show all series |
+| Media | images, video, audio (waveform + spectrogram player with notes, or the browser's player), per-example tables compared across steps, PR curves, distributions over steps, point clouds with axes, text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures; filter by kind, a step slider per card, best-scalar step, configurable grid |
 | Reports | Markdown reports that embed logged items, live charts and plot snapshots; export as HTML or a zip, print to PDF |
 | Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
-| Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per metric and rank |
+| Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per scalar and rank |
 | CLI | `nuboard up`, `demo`, `ls`, `compact`, `import-tensorboard` (TensorBoard logs to runs) |
 
-Not yet: multi-GPU rank bands. See the [roadmap](docs/roadmap.md) and the
-[changelog](docs/changelog.md).
+See the [roadmap](docs/roadmap.md) and the [changelog](docs/changelog.md).
 
 ## Documentation
 

@@ -35,8 +35,8 @@ eval/acc exists
 | `fields.<name>` | a property set in the viewer, e.g. `fields.verdict = keep` |
 | `config.<dotted.key>` | any config value, e.g. `config.optim.lr` |
 | `<key>` | a top-level config key, e.g. `lr`, or else a property, e.g. `verdict` (when no other field matches) |
-| `<metric>.<stat>` | summary of a metric: `last`, `min`, `max`, `count`, `step`, `nonfinite`, e.g. `train/loss.min` |
-| `<metric>` | shorthand for `<metric>.last` |
+| `<scalar>.<stat>` | summary of a scalar: `last`, `min`, `max`, `count`, `step`, `nonfinite`, e.g. `train/loss.min` |
+| `<scalar>` | shorthand for `<scalar>.last` |
 
 ## Operators
 

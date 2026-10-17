@@ -5,14 +5,14 @@ you find them without opening every chart.
 
 | Alert | Checked on | Fires when |
 | --- | --- | --- |
-| **Non-finite** | every metric | a value is NaN or ±Inf. The alert gives the first step and how many values were non-finite. |
-| **Spike** | metrics whose name contains `loss` or `grad` | a value jumps more than 10 robust deviations (and at least 15%) above the median of the preceding window. |
-| **Drop** | throughput metrics: names with `per_sec`, `per_s`, `throughput`, `fps`, `tokens_per`, `samples_per`, `steps_per` | the value stays below 70% of the run's median for a sustained stretch (not counting the ramp-up at the start). |
+| **Non-finite** | every scalar | a value is NaN or ±Inf. The alert gives the first step and how many values were non-finite. |
+| **Spike** | scalars whose name contains `loss` or `grad` | a value jumps more than 10 robust deviations (and at least 15%) above the median of the preceding window. |
+| **Drop** | throughput scalars: names with `per_sec`, `per_s`, `throughput`, `fps`, `tokens_per`, `samples_per`, `steps_per` | the value stays below 70% of the run's median for a sustained stretch (not counting the ramp-up at the start). |
 
-Each alert records the metric, the rank, the step where it starts (and ends,
+Each alert records the scalar, the rank, the step where it starts (and ends,
 for spikes and drops), the value, the baseline it was compared with and a
 readable message such as
-`sys/tokens_per_sec dropped 39% below its median from step 18,000 to 18,890`.
+`perf/tokens_per_sec dropped 39% below its median from step 18,000 to 18,890`.
 
 ## Where they show up
 
@@ -20,7 +20,7 @@ readable message such as
   alerts; hover it to read them, click it to open the run's chart. NaN alerts
   make the badge red.
 - **Charts**: a strip under the focused chart lists the alerts of the runs in
-  view. Clicking one focuses its metric and zooms to the step. Spikes and
+  view. Clicking one focuses its scalar and zooms to the step. Spikes and
   drops are shaded on the step axis; NaNs keep their dashed marker.
 - **Timeline**: a dot before a run's bar.
 - **Query language**: `alerts > 0` finds every run with an alert.
@@ -29,7 +29,7 @@ readable message such as
 
 ## How they are computed
 
-Checks run on at most 2,000 bucketed points per metric (mean, minimum and
+Checks run on at most 2,000 bucketed points per scalar (mean, minimum and
 maximum per bucket), so a run with millions of points is scanned in tens of
 milliseconds and a single-step spike still shows through the bucket maximum.
 
