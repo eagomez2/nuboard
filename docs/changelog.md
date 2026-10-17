@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.2
+
+- Fixes `pnpm install` in `frontend/`, which failed with "No matching version
+  found for eslint@^10.13.1": the 0.13.0 version bump had also changed
+  eslint's version range in `package.json`. It is back to `^10.12.0`, as in
+  the lockfile, and a test now checks that `package.json` and
+  `pnpm-lock.yaml` agree and that every version string matches.
+
 ## 0.13.1
 
 - Saved views can be deleted from the Runs page: hover a view in the
