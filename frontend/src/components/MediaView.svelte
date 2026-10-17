@@ -5,6 +5,7 @@
   import PointsView from './PointsView.svelte';
   import PrChart from './PrChart.svelte';
   import TableView from './TableView.svelte';
+  import VideoView from './VideoView.svelte';
   import { api, type AudioNote, type MediaItem } from '../lib/api';
   import { notice } from '../lib/dialog.svelte';
   import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, type AudioOptions } from '../lib/media';
@@ -81,6 +82,8 @@
       {/each}
     </div>
   {/if}
+{:else if item.kind === 'video' || item.mime.startsWith('video/')}
+  <VideoView {url} mime={item.mime} label="{runName} {item.key}" caption={item.caption} />
 {:else if item.mime.startsWith('image/')}
   <img src={url} alt={item.caption ?? item.key} />
   {#if item.caption}<div class="faint cap">{item.caption}</div>{/if}

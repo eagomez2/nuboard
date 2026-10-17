@@ -7,8 +7,8 @@ export interface AudioOptions {
   spectrogram: boolean;
 }
 
-export type MediaKind = 'image' | 'audio' | 'figure' | 'table' | 'points' | 'html' | 'text';
-export const MEDIA_KINDS: MediaKind[] = ['image', 'audio', 'figure', 'table', 'points', 'html', 'text'];
+export type MediaKind = 'image' | 'audio' | 'video' | 'figure' | 'table' | 'points' | 'html' | 'text';
+export const MEDIA_KINDS: MediaKind[] = ['image', 'audio', 'video', 'figure', 'table', 'points', 'html', 'text'];
 
 /** MIME type of tables logged with `add_table`. */
 export const TABLE_MIME = 'application/x-nuboard-table+json';
@@ -27,6 +27,7 @@ export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'text') return 'text';
   if (it.mime === 'text/html' || it.kind === 'html') return 'html';
   if (it.kind === 'audio' || it.mime.startsWith('audio/')) return 'audio';
+  if (it.kind === 'video' || it.mime.startsWith('video/')) return 'video';
   if (it.mime === POINTS_MIME) return 'points';
   if (it.mime === PR_MIME || it.mime === HIST_MIME) return 'figure';
   if (it.mime === TABLE_MIME) return 'table';

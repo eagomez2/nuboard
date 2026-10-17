@@ -1,7 +1,8 @@
-"""Conversion of images, audio, figures, point clouds, PR curves and HTML into media pack bytes.
+"""Conversion of images, audio, video, figures, point clouds, PR curves and HTML into pack bytes.
 
-Standard library only: image arrays are PNG-encoded with `zlib`, audio
-arrays WAV-encoded with `wave`, point clouds packed with `array` and PR
+Standard library only: image arrays are PNG-encoded with `zlib`, video arrays
+as animated PNG the same way (rows filtered with NumPy, which arrays imply),
+audio arrays WAV-encoded with `wave`, point clouds packed with `array` and PR
 curves counted in plain Python; figure libraries are used only if the object
 passed in already comes from them.
 """
@@ -197,6 +198,194 @@ def figure_bytes(fig: Any) -> tuple[bytes, str]:
         return json.dumps(fig).encode("utf-8"), "application/vnd.plotly.v1+json"
 
     raise TypeError(f"unsupported figure type {type(fig).__name__}")
+
+
+# -- video ------------------------------------------------------------------------
+_VIDEO_EXT = {
+    ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".ogv": "video/ogg",
+    ".gif": "image/gif",
+    ".png": "image/apng",
+    ".apng": "image/apng",
+}
+
+
+def _sniff_video(data: bytes) -> str | None:
+    """Guess a video MIME type from the first bytes of `data`, or return None."""
+
+    if data[4:8] == b"ftyp":
+        return "video/quicktime" if data[8:12] == b"qt  " else "video/mp4"
+
+    if data[:4] == b"\x1aE\xdf\xa3":
+        return "video/webm"
+
+    if data[:4] == b"OggS":
+        return "video/ogg"
+
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+
+    if data.startswith(b"\x89PNG") and b"acTL" in data[:4096]:
+        return "image/apng"
+
+    return None
+
+
+def video_frames(arr: Any) -> Any:
+    """Return a video array as uint8 frames of shape (T, H, W, C).
+
+    Args:
+        arr: A (T, H, W), (T, H, W, C) or (T, C, H, W) array or tensor, or a
+            (N, T, C, H, W) batch as TensorBoard takes it, whose N videos are
+            tiled in a grid. C is 1, 3 or 4; floats are read as 0 to 1.
+
+    Returns:
+        A NumPy uint8 array of shape (T, H, W, C).
+
+    Raises:
+        ValueError: If the array is not 3-D to 5-D, or C is not 1, 3 or 4.
+    """
+    import numpy as np  # video arrays only come from code that already has NumPy
+
+    if hasattr(arr, "detach"):  # torch tensor
+        arr = (
+            arr.detach().cpu().float().numpy()
+            if arr.is_floating_point()
+            else arr.detach().cpu().numpy()
+        )
+
+    a = np.asarray(arr)
+
+    if a.ndim == 5:  # (N, T, C, H, W): tile the N videos in a grid
+        n, t, c, h, w = a.shape
+        cols = math.ceil(math.sqrt(n))
+        rows = math.ceil(n / cols)
+        pad = np.zeros((rows * cols - n, t, c, h, w), a.dtype)
+        a = np.concatenate([a, pad]).reshape(rows, cols, t, c, h, w)
+        a = a.transpose(2, 0, 4, 1, 5, 3).reshape(t, rows * h, cols * w, c)
+    elif a.ndim == 4 and a.shape[1] in (1, 3, 4) and a.shape[3] not in (1, 3, 4):
+        a = a.transpose(0, 2, 3, 1)  # (T, C, H, W) -> (T, H, W, C)
+    elif a.ndim == 3:
+        a = a[..., None]
+    elif a.ndim != 4:
+        raise ValueError(f"cannot interpret array of shape {a.shape} as a video")
+
+    if a.shape[3] not in (1, 3, 4):
+        raise ValueError(f"{a.shape[3]} channels; a video takes 1, 3 or 4")
+
+    if a.dtype.kind == "f":
+        a = (np.nan_to_num(a).clip(0, 1) * 255 + 0.5).astype(np.uint8)
+    elif a.dtype != np.uint8:
+        a = a.clip(0, 255).astype(np.uint8)
+
+    return np.ascontiguousarray(a)
+
+
+def encode_apng(frames: Any, fps: float) -> bytes:
+    """Encode uint8 frames of shape (T, H, W, C) as an animated PNG that loops.
+
+    Each row is stored as its difference to the row above (PNG's Up filter),
+    which compresses smooth frames well.
+
+    Args:
+        frames: The frames, as returned by `video_frames`.
+        fps: Frames per second.
+
+    Returns:
+        The APNG file bytes.
+    """
+    import numpy as np
+
+    t, h, w, c = frames.shape
+    color_type = {1: 0, 2: 4, 3: 2, 4: 6}[c]
+    den = max(1, min(65535, round(fps * 100)))
+    out = [
+        b"\x89PNG\r\n\x1a\n",
+        _png_chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, color_type, 0, 0, 0)),
+        _png_chunk(b"acTL", struct.pack(">II", t, 0)),
+    ]
+    seq = 0
+
+    for i, frame in enumerate(frames):
+        rows = frame.reshape(h, w * c)
+        up = rows.copy()
+        up[1:] = rows[1:] - rows[:-1]  # uint8 wraps around, as the filter wants
+        raw = np.concatenate([np.full((h, 1), 2, np.uint8), up], axis=1).tobytes()
+        data = zlib.compress(raw, 6)
+        fctl = struct.pack(">IIIIIHHBB", seq, w, h, 0, 0, 100, den, 0, 0)
+        out.append(_png_chunk(b"fcTL", fctl))
+        seq += 1
+
+        if i == 0:
+            out.append(_png_chunk(b"IDAT", data))
+        else:
+            out.append(_png_chunk(b"fdAT", struct.pack(">I", seq) + data))
+            seq += 1
+
+    out.append(_png_chunk(b"IEND", b""))
+    return b"".join(out)
+
+
+def video_bytes(video: Any, fps: float = 4) -> tuple[bytes, str, dict[str, Any]]:
+    """Convert a video to bytes, its MIME type and playback info.
+
+    Files and bytes are stored as they are, with the format recognized from
+    their first bytes (or, for a file, its extension); arrays are encoded as
+    an animated PNG.
+
+    Args:
+        video: A video file path, encoded video bytes, or an array (see
+            `video_frames`).
+        fps: Frames per second of an array; ignored for files and bytes.
+
+    Returns:
+        `(bytes, mime type, info)`, where `info` holds `fps`, `frames`,
+        `width`, `height` and `duration` for arrays, and is empty otherwise.
+
+    Raises:
+        ValueError: If the file or bytes are not a recognized video format, or
+            the array has an unsupported shape.
+        TypeError: If `video` is none of the supported types.
+    """
+
+    if isinstance(video, (str, os.PathLike)):
+        path = os.fspath(video)
+
+        with open(path, "rb") as f:
+            data = f.read()
+
+        mime = _sniff_video(data) or _VIDEO_EXT.get(os.path.splitext(path)[1].lower())
+
+        if mime is None:
+            raise ValueError(f"unrecognized video file {path!r}")
+
+        return data, mime, {}
+
+    if isinstance(video, (bytes, bytearray, memoryview)):
+        data = bytes(video)
+        mime = _sniff_video(data)
+
+        if mime is None:
+            raise ValueError("unrecognized video bytes; pass a file path or an array")
+
+        return data, mime, {}
+
+    if hasattr(video, "shape"):
+        frames = video_frames(video)
+        t, h, w, _ = frames.shape
+        info = {
+            "fps": fps,
+            "frames": t,
+            "width": w,
+            "height": h,
+            "duration": round(t / fps, 6),
+        }
+        return encode_apng(frames, fps), "image/apng", info
+
+    raise TypeError(f"unsupported video type {type(video).__name__}")
 
 
 # -- audio ------------------------------------------------------------------------

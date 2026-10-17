@@ -7,14 +7,14 @@ falling back to `SLURM_PROCID` / `SLURM_LOCALID` / `SLURM_NTASKS` and
 `OMPI_COMM_WORLD_RANK` / `OMPI_COMM_WORLD_SIZE`.
 
 Call `init` on every rank with the same arguments. **Only rank 0 logs by
-default**; on other ranks `log()` returns immediately. To record a metric on
+default**; on other ranks `log()` returns immediately. To record a scalar on
 every rank (gradient norms, throughput, memory), pass `all_ranks=True` to that
 call, or to `init` to make it the default:
 
 ```python
 run = nb.init("llm", name="ddp", config=cfg)  # every rank
-run.log({"train/loss": loss}, step=step)  # rank 0 only
-run.log({"sys/tokens_per_sec": tps}, step=step, all_ranks=True)
+run.add_scalar({"train/loss": loss}, step=step)  # rank 0 only
+run.add_scalar({"perf/tokens_per_sec": tps}, step=step, all_ranks=True)
 ```
 
 Each rank writes its own `events.r<rank>.s<session>.log` (and
@@ -53,7 +53,11 @@ Each restart writes a new session file. Points from earlier sessions at steps
 ≥ the new session's first step are hidden, so restarting from a checkpoint
 gives a clean curve.
 
-## System metrics
+## System scalars
 
-Per-node GPU metrics via NVML (collected by `LOCAL_RANK 0`) are not
-implemented in 0.1; log them yourself with `all_ranks=True` meanwhile.
+The process with `LOCAL_RANK` 0 on each machine samples that machine's CPU,
+memory and GPUs every 30 seconds and logs them under `system/`, in its own
+rank's event log. A job on 4 machines with 8 GPUs each logs 4 sets, each with
+8 GPUs. Pick a rank in the viewer to see another machine's. See
+[System scalars](../api/init.md#system-scalars) for what is logged and how to
+turn groups off.

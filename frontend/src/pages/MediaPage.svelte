@@ -45,6 +45,7 @@
   const LABELS: Record<MediaKind, string> = {
     image: 'Images',
     audio: 'Audio',
+    video: 'Video',
     figure: 'Figures',
     table: 'Tables',
     points: 'Point clouds',
@@ -55,6 +56,7 @@
     const keys: Record<MediaKind, Set<string>> = {
       image: new Set(),
       audio: new Set(),
+      video: new Set(),
       figure: new Set(),
       table: new Set(),
       points: new Set(),
@@ -357,7 +359,7 @@
       <div class="seg" role="group" aria-label="Step to show">
         <button aria-pressed={mode === 'latest'} onclick={() => router.set({ mmode: null })}>latest</button>
         <button aria-pressed={mode === 'step'} onclick={() => router.set({ mmode: 'step' })}>pick step</button>
-        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>best metric</button>
+        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>best scalar</button>
       </div>
       {#if mode === 'step' && allSteps.length}
         <label class="slider">
@@ -374,7 +376,7 @@
       {:else if mode === 'best'}
         <select
           class="input sm mono metric"
-          aria-label="Metric"
+          aria-label="Scalar"
           value={bestMetric}
           onchange={(e) => router.set({ mmetric: e.currentTarget.value })}
         >

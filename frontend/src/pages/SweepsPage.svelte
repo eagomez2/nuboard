@@ -198,7 +198,7 @@
       class="input mono metric"
       value={metric}
       onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value })}
-      aria-label="Metric"
+      aria-label="Scalar"
     >
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
@@ -235,7 +235,7 @@
   </div>
 
   {#if !runs.length || !metric}
-    <div class="empty">No runs with metrics to compare. Pick a project or loosen the query.</div>
+    <div class="empty">No runs with scalars to compare. Pick a project or loosen the query.</div>
   {:else}
     <div class="params">
       <span class="label">Parameters</span>

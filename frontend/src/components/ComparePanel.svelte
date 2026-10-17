@@ -50,15 +50,47 @@
     Promise.all(ks.map((k) => api.run(k))).then((d) => (details = d));
   });
 
-  const files = $derived([...new Set(details.flatMap((d) => d.files))].sort());
+  // Console logs (files/output.log, output.r<rank>.log) come first, as "Console".
+  const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
+  const files = $derived(
+    [...new Set(details.flatMap((d) => d.files))].sort(
+      (a, b) => Number(isConsole(b)) - Number(isConsole(a)) || a.localeCompare(b),
+    ),
+  );
+  function fileLabel(f: string): string {
+    if (!isConsole(f)) return f;
+    const rank = f.match(/\.r(\d+)\.log$/)?.[1];
+    return rank ? `Console r${rank}` : 'Console';
+  }
+
+  const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, 'g'); // color and cursor codes
+
+  /** Show a console log as a terminal would: no color codes, and `\r` redraws its line (progress bars). */
+  function asTerminal(text: string): string {
+    return text
+      .replace(ANSI, '')
+      .split('\n')
+      .map((line) => {
+        const parts = line.replace(/\r+$/, '').split('\r');
+        return parts[parts.length - 1];
+      })
+      .join('\n');
+  }
+
+  let filePre = $state<HTMLPreElement | null>(null);
+  // A console log is read from its end, like a terminal.
+  $effect(() => {
+    if (filePre && isConsole(tab) && texts.length) filePre.scrollTop = filePre.scrollHeight;
+  });
 
   $effect(() => {
     const t = tab;
     const ds = details;
     if (t === 'settings' || t === 'notes' || t === 'properties' || !ds.length) return;
     loadingFile = true;
-    Promise.all(ds.map((d) => api.file(d.run.key, t))).then((x) => {
-      texts = x;
+    const term = isConsole(t);
+    Promise.all(ds.map((d) => api.file(d.run.key, t, term))).then((x) => {
+      texts = term ? x.map((v) => (v === null ? null : asTerminal(v))) : x;
       loadingFile = false;
     });
   });
@@ -163,7 +195,13 @@
     <button class="tab" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}>All settings</button
     >
     {#each files as f (f)}
-      <button class="tab mono" aria-pressed={tab === f} onclick={() => router.set({ tab: f })}>{f}</button>
+      <button
+        class="tab"
+        class:mono={!isConsole(f)}
+        aria-pressed={tab === f}
+        title={isConsole(f) ? `files/${f}: what the script printed` : undefined}
+        onclick={() => router.set({ tab: f })}>{fileLabel(f)}</button
+      >
     {/each}
     {#if multi}
       <label class="only">
@@ -236,7 +274,7 @@
       {/each}
     </div>
   {:else}
-    <pre class="file mono">{texts[0] ?? '(missing)'}</pre>
+    <pre class="file mono" class:console={isConsole(tab)} bind:this={filePre}>{texts[0] ?? '(missing)'}</pre>
   {/if}
 </div>
 
@@ -416,6 +454,10 @@
     padding: 10px 12px;
     margin: 0;
     white-space: pre;
+  }
+  .file.console {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .error {
     margin: 0;

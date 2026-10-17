@@ -385,7 +385,10 @@ def create_app(
         )
 
     def run_file(request: Request) -> Response:
-        """Return a file from the run's `files/` folder as text (first 2 MB at most)."""
+        """Return a file from the run's `files/` folder as text (2 MB at most).
+
+        The first 2 MB, or with `tail=1` the last 2 MB, as for a long console log.
+        """
         key = request.path_params["key"]
         record_or_404(key)
         path = catalog.path_of(key)
@@ -395,7 +398,13 @@ def create_app(
         if target is None or not target.is_file():
             return PlainTextResponse("not found", 404)
 
-        data = target.read_bytes()[:TEXT_LIMIT]
+        if request.query_params.get("tail") == "1":
+            with target.open("rb") as f:
+                f.seek(max(0, target.stat().st_size - TEXT_LIMIT))
+                data = f.read()
+        else:
+            data = target.read_bytes()[:TEXT_LIMIT]
+
         return PlainTextResponse(data.decode("utf-8", errors="replace"))
 
     async def annotate(request: Request) -> Response:
@@ -494,7 +503,7 @@ def create_app(
 
             if not names:  # live run before its first heartbeat: read the log
                 reader = store.fresh_reader(key)
-                names = reader.metric_names() if reader else []
+                names = reader.scalar_names() if reader else []
 
             for m in names:
                 counts[m] = counts.get(m, 0) + 1

@@ -5,7 +5,7 @@ nuboard up ~/exp          # any folder: one run, one project, or many projects
 ```
 
 The viewer is a single-page app served by a small local Starlette server. All
-data stays on your machine. Every piece of view state (query, page, metric,
+data stays on your machine. Every piece of view state (query, page, scalar,
 x-axis, smoothing, zoom, selection, compared runs) is in the URL, so you can
 bookmark a view, send the link to yourself on another machine, or save it as a
 view file. Per-viewer preferences (theme, default smoothing) live in your
@@ -32,7 +32,7 @@ browser's local storage.
 - **Table**: status, star, name and folder (with the run's collections and its
   tags as colored pills; a tag keeps its color everywhere), the config keys
   that differ between the listed runs, a result column, start time, duration, reviewed mark and
-  notes. Pick the result metric in the toolbar and switch between **best**
+  notes. Pick the result scalar in the toolbar and switch between **best**
   (min for losses and errors, max otherwise) and **last**. Click a column
   header to sort. The list is virtualized, so thousands of runs scroll
   smoothly.
@@ -43,7 +43,7 @@ browser's local storage.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
-- **Columns**: add columns for any metric (last value), any config key, or
+- **Columns**: add columns for any scalar (last value), any config key, or
   a [property](#properties). The chosen columns are part of the URL.
 - **Notes**: click a notes cell to edit it in place.
 - Stars, notes, review marks, archive flags, tags edited in the viewer and
@@ -113,8 +113,14 @@ listing run ids, so it can be committed and survives moving the folder.
 Click a run name to open its details above the table, with the run's tags
 under its name (editable, see [Tags](#tags)): every setting (config,
 git commit, host, Python, GPUs, world size, fork origin, artifacts used and
-produced, last value of every metric) and the run's files. A crashed
+produced, last value of every scalar) and the run's files. A crashed
 run shows its traceback.
+
+**Console** shows what the script printed, captured into `files/output.log`
+by [`capture_console`](../api/init.md#console-output). It opens at the end,
+like a terminal, shows the last 2 MB of a longer log, redraws progress bars
+on one line and removes color codes. With `all_ranks=True`, each rank's log
+has its own tab (**Console r1**, ...).
 
 For a single run there are two more tabs:
 
@@ -140,7 +146,7 @@ With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
 differs. There is a tab for each file the runs saved (such as
 `requirements.txt`, `git.patch`, `command.txt` and any file added with
-[`add_file`](logging.md#config-files)); it shows a line diff between two of the
+[`add_file`](../api/add_file.md)); it shows a line diff between two of the
 runs. With more than two, pick which two from the **diff … against …** menus. **only changes** hides
 identical rows and lines.
 
@@ -152,7 +158,7 @@ identical rows and lines.
 The Charts page plots the selected runs (from **Plot selected**) or, if none
 are selected, every run matching the query.
 
-- **Summary cards**: best value of the focused metric, running runs and last
+- **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
 - **Grouping**: `group by config.optim.lr` in the query (or the **group by**
   menu) draws one line per group with a band: mean ± std (default), mean ± sem,
@@ -167,10 +173,10 @@ are selected, every run matching the query.
   and a marker shape, so series stay distinguishable without color.
 - **X axis**: step, wall time, relative time since the run started, or active
   time (relative time with pauses longer than five minutes removed). The
-  **x by metric** menu plots against any other metric instead, such as
-  `train/tokens` or `epoch`; counter-like metrics are listed first. The x
-  metric is matched to each point by step (interpolated when the two were
-  logged at different steps), and zooming works as usual when the x metric
+  **x by scalar** menu plots against any other scalar instead, such as
+  `train/tokens` or `epoch`; counter-like scalars are listed first. The x
+  scalar is matched to each point by step (interpolated when the two were
+  logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
@@ -195,12 +201,12 @@ are selected, every run matching the query.
   into a [report](reports.md), as it is shown: runs, grouping, smoothing,
   zoom and hidden series. The report draws it live and keeps a PNG copy for
   exports.
-- **All metrics**: a small chart per metric, grouped by prefix (`train/`,
-  `eval/`, `sys/`…). Small charts load as you scroll. Click a title to bring
-  the metric into focus. **Grid** sets the charts per row (fit to width, or 1
+- **All scalars**: a small chart per scalar, grouped by prefix (`train/`,
+  `eval/`, `perf/`…). Small charts load as you scroll. Click a title to bring
+  the scalar into focus. **Grid** sets the charts per row (fit to width, or 1
   to 6) and the rows per section (1 to 6, or all); a section with more charts
   gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
-  **Filter metrics** takes a regular expression (as in TensorBoard, case
+  **Filter scalars** takes a regular expression (as in TensorBoard, case
   insensitive; `loss|acc`, `^train/`) and shows only the matching charts; it
   is kept in the URL as `cfind`.
 - A run that logged NaN gets a dashed marker at the first NaN with a
@@ -244,8 +250,8 @@ preview side by side. See [Reports](reports.md).
 
 ## Media page
 
-Shows images, audio, figures, point clouds, HTML and text logged with
-`add_image`, `add_audio`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`,
+Shows images, audio, video, figures, point clouds, HTML and text logged with
+`add_image`, `add_audio`, `add_video`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`,
 `add_point_cloud`, `add_html` and `add_text`, for the selected runs (or
 the query result, up to 48 runs). Each key is a collapsible section with a card
 per run; every card has its own step slider, as in TensorBoard, so one run can
@@ -254,7 +260,7 @@ be scrolled through its steps while the others stay put.
 - **Runs**: a chip per run, as in the Charts legend. Click one to hide or
   show it, double-click (or Alt-click) to show only that run, and **All** or
   **None** to show or hide every run.
-- **Kinds**: the chips below (Images, Audio, Figures, Tables, Point clouds, HTML, Text) show or
+- **Kinds**: the chips below (Images, Audio, Video, Figures, Tables, Point clouds, HTML, Text) show or
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
@@ -263,8 +269,8 @@ be scrolled through its steps while the others stay put.
 - **by key / by run**: a section per key with a card per run (default), or a
   section per run with a card per key.
 - **Step**: **latest** shows each run's last item; **pick step** moves every
-  card to the item at or before one step; **best metric** moves each run to
-  the item closest to the step where a metric of your choice was lowest or
+  card to the item at or before one step; **best scalar** moves each run to
+  the item closest to the step where a scalar of your choice was lowest or
   highest (for example the best `val/acc`). Moving a card's own slider
   overrides the page-wide step for that card only.
 - **Grid**: **columns** sets the cards per row (fit to width, or 1 to 8) and
@@ -356,6 +362,16 @@ with its names. Each card has its step
 slider, so you can watch a cloud change over training; the zoomed view draws
 it larger. The renderer is a few hundred lines of plain canvas code, so it
 needs no WebGL and works the same in an HTML export.
+
+### Video
+
+A clip logged from frames ([`add_video`](../api/add_video.md) with an array)
+plays in a frame player: play and pause, a slider to step through the frames
+one at a time (it pauses playback), and the frame number and frame rate. It
+loops, as TensorBoard's does. MP4, WebM, MOV and Ogg files play in the
+browser's own video player, muted and looping, with its controls. Moving the
+card's step slider shows the clip of another step, so you can watch a policy
+or a generator improve over training.
 
 ### Audio
 

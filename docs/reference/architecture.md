@@ -3,7 +3,7 @@
 ```text
  training process                         run folder                       viewer process
 ┌────────────────────┐            ┌───────────────────────┐        ┌──────────────────────────┐
-│ run.log(dict)      │ deque      │ run.json   (atomic)   │ stat   │ Catalog (SQLite cache in │
+│ run.add_scalar(dict)      │ deque      │ run.json   (atomic)   │ stat   │ Catalog (SQLite cache in │
 │   └─ append ───────┼──────┐     │ events.r0.s0.log      │◀───────│ ~/.cache, rebuilt freely) │
 │ writer thread      │      └────▶│   N S S T S H S … E   │ read   │ RunReader (NumPy,        │
 │   encode frames    │  append    │ media.r0.pack         │◀───────│   incremental, Parquet)  │
@@ -27,7 +27,7 @@ environment.
   locks, no conversion, no I/O.
 - A daemon writer thread wakes every second (or on `flush()`), drains the
   deque, flattens nested dicts, converts values to float (this is where a
-  tensor's `.item()` runs), assigns metric ids, updates the running summary
+  tensor's `.item()` runs), assigns scalar ids, updates the running summary
   (last/min/max/count/non-finite) and writes one `S` frame holding four
   columns for the whole batch, preceded by any new `N` frames. Columns are
   encoded with `array.array`, byte-swapped on big-endian machines.
@@ -41,17 +41,17 @@ environment.
 
 - `LogFile` keeps a byte offset per log file and decodes only the bytes
   appended since the last call. Frames are walked with `struct`; scalar
-  payloads become NumPy views via `np.frombuffer`. Per-metric arrays come from
-  one stable argsort on metric ids (a radix sort, since ids fit in 8 or 16 bits).
+  payloads become NumPy views via `np.frombuffer`. Per-scalar arrays come from
+  one stable argsort on scalar ids (a radix sort, since ids fit in 8 or 16 bits).
 - `RunReader` merges sessions (later session wins) and prefers
   `data.parquet` when its recorded log sizes match the current ones.
 - `compact.py` writes zoom levels (8× downsampling per level, mean plus
-  min/max envelope) with one row group per (metric, level).
+  min/max envelope) with one row group per (scalar, level).
 - `series.py` holds the NumPy math: equal-count bucketing, x-axis
   transforms (step, wall time, relative, active time), and group aggregation
   (interpolate each run onto a shared grid of about one or two points per
   pixel, then mean/std/min/max/median per grid point, ignoring NaN).
-- `alerts.py` runs the health checks on at most 2,000 buckets per metric:
+- `alerts.py` runs the health checks on at most 2,000 buckets per scalar:
   first non-finite value, spikes against a trailing median and MAD, and
   sustained drops below a fraction of the median. `compact_run` stores the
   result in `run.json`; the server computes it live for running runs and
@@ -100,10 +100,10 @@ version was built in; a laptop is typically 2–3× faster.
 
 | Target | Measured |
 | --- | --- |
-| `log()` of a 50-metric dict well under 50 µs | ~2.5 µs |
+| `log()` of a 50-scalar dict well under 50 µs | ~2.5 µs |
 | 1M scalar points: under 30 MB live | 28 MB of event log |
-| 1M points: under 0.1 s to read | 0.12–0.15 s (decode 0.04 s, per-metric split the rest) |
-| one metric from Parquet under 10 ms | ~7 ms warm, ~60 ms for the first read after opening |
+| 1M points: under 0.1 s to read | 0.12–0.15 s (decode 0.04 s, per-scalar split the rest) |
+| one scalar from Parquet under 10 ms | ~7 ms warm, ~60 ms for the first read after opening |
 | run list of 5,000 runs under 200 ms | ~65–100 ms per refresh; ~0.35 s to open the cached catalog at server start |
 
 The background writer handles roughly 600–700k points per second in this

@@ -23,20 +23,21 @@ the [changelog](changelog.md) for what each version added.
 - **0.9**: tables compared across steps, PR curves, point clouds and audio notes.
 - **0.10**: distributions (histograms) over steps, imported from TensorBoard too;
   axes on point clouds.
+- **0.11**: typed properties in place of free fields, tag editing.
+- **0.12**: `add_scalar` and scalar naming as in TensorBoard, `add_video`,
+  system scalars (CPU, memory, GPU), console capture, PyTorch tensors
+  copied on the calling thread.
 
 ## Next
 
-1. **Multi-GPU view**: rank-0 line with min/mean/max bands across ranks,
-   expandable per rank; per-node system metrics via NVML from `LOCAL_RANK 0`.
-   Alerts already record their rank.
-2. **Media**: side-by-side text diffs across steps; embeddings reduced to 3D
+1. **Media**: side-by-side text diffs across steps; embeddings reduced to 3D
    in the viewer (PCA, t-SNE, UMAP) and drawn with the point cloud view.
-3. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
+2. **Sweeps**: averaging over seeds, distribution heatmaps, WebGL rendering
    for thousands of runs.
-4. **Alerts**: user-defined rules (per metric thresholds) and notifications.
-5. Charts: Web Workers for decoding and smoothing, WebGL for very large
+3. **Alerts**: user-defined rules (per metric thresholds) and notifications.
+4. Charts: Web Workers for decoding and smoothing, WebGL for very large
    scatters.
-6. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
+5. Packaging: publish to PyPI, CI on Linux/macOS/Windows.
 
 ## Known limitations
 

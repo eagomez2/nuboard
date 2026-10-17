@@ -216,8 +216,9 @@ export const api = {
   runs: (q: string, project?: string | null, metrics?: string[] | null) =>
     json<RunsResponse>(`/api/runs?${qs({ q, project, metrics: metrics?.join(',') })}`),
   run: (key: string) => json<RunDetail>(`/api/runs/${encodeURIComponent(key)}`),
-  file: async (key: string, path: string) => {
-    const res = await fetch(`/api/runs/${encodeURIComponent(key)}/files/${path}`);
+  /** A file of the run's `files/` folder as text: its first 2 MB, or its last with `tail`. */
+  file: async (key: string, path: string, tail = false) => {
+    const res = await fetch(`/api/runs/${encodeURIComponent(key)}/files/${path}${tail ? '?tail=1' : ''}`);
     return res.ok ? res.text() : null;
   },
   annotate: (

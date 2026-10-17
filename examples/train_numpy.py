@@ -87,11 +87,13 @@ def train(lr: float, seed: int, epochs: int = 30, batch: int = 64) -> None:
                 p[np.arange(len(idx)), ytr[idx]] -= 1
                 grad = xtr[idx].T @ p / len(idx)
                 w -= lr * grad
-                run.log({"train/loss": loss, "train/grad_norm": np.linalg.norm(grad)}, step=step)
+                run.add_scalar(
+                    {"train/loss": loss, "train/grad_norm": np.linalg.norm(grad)}, step=step
+                )
                 step += 1
 
             pv = softmax(xva @ w)
-            run.log(
+            run.add_scalar(
                 {
                     "val/loss": -np.log(pv[np.arange(len(yva)), yva] + 1e-12).mean(),
                     "val/acc": (pv.argmax(1) == yva).mean(),

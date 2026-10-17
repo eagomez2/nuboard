@@ -101,14 +101,16 @@ def train(lr: float, hidden: int = 64, epochs: int = 30, seed: int = 0) -> None:
                 for k in params:
                     params[k] -= lr * grads[k]
 
-                run.log({"train/loss": loss, "train/lr": lr}, step=step)
+                run.add_scalar({"train/loss": loss, "train/lr": lr}, step=step)
                 step += 1
 
             # 2. Evaluate once per epoch, at the step training reached
             hidden_val, probs = forward(params, x_val)
             pred = probs.argmax(1)
             val_loss = float(-np.log(probs[np.arange(len(y_val)), y_val] + 1e-9).mean())
-            run.log({"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step)
+            run.add_scalar(
+                {"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step
+            )
 
             # 3. Media, every five epochs
             if epoch % 5 == 4 or epoch == 0:

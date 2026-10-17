@@ -52,7 +52,7 @@ Writer-specific details:
   logged as `int64`) are imported as numbers.
 - **PyTorch `SummaryWriter`**: `add_hparams` writes to a timestamped
   sub-folder; it is folded into its run, so the run gets the hyperparameters
-  and the `hparam/...` metrics. `add_scalars("loss", {...})` writes one
+  and the `hparam/...` scalars. `add_scalars("loss", {...})` writes one
   sub-folder per key, as TensorBoard shows them, and each becomes a run.
 - **tensorboardX** and **TensorFlow 1**: scalars, images and audio are read
   from the classic summary fields.

@@ -8,7 +8,7 @@ import nuboard as nb
 
 run = nb.init("project", name="baseline", config=cfg)  # also a context manager
 ds = run.use_artifact("dataset:v2")
-run.log({"loss": loss, "lr": lr}, step=step)  # non-blocking
+run.add_scalar({"loss": loss, "lr": lr}, step=step)  # non-blocking
 run.add_image("samples/recon", img, step=step)
 run.add_text("samples/gen", text, step=step)
 run.add_audio("samples/speech", wav, step=step, sample_rate=16000)
@@ -72,7 +72,7 @@ them between runs in Compare.
 ## `run.log`
 
 ```python
-run.log(data, step=None, *, time=None, all_ranks=None)
+run.add_scalar(data, step=None, *, time=None, all_ranks=None)
 ```
 
 - `data` is a dict of numbers. Nested dicts are flattened with `/`
@@ -85,7 +85,7 @@ run.log(data, step=None, *, time=None, all_ranks=None)
 - `time` overrides the timestamp (useful when importing data).
 - NaN and ±Inf are stored as they are; the viewer flags them.
 
-`log()` only appends to a deque (a few microseconds for a 50-metric dict). A
+`log()` only appends to a deque (a few microseconds for a 50-scalar dict). A
 background thread wakes every `flush_interval` seconds, encodes the batch into
 one columnar frame and appends it to the event log. Call `run.flush()` if you
 need everything on disk at a given point (rarely needed).
@@ -94,19 +94,19 @@ need everything on disk at a given point (rarely needed).
 
 Each kind of media has its own `add_*` method, described in full, with its
 arguments, accepted shapes, storage and an example with the result, in the
-[Media](../api/media.md) reference:
+[Media](../api/index.md) reference:
 
 | Method | Accepts |
 | --- | --- |
-| [`add_text`](../api/media.md#add_text) | any string |
-| [`add_image`](../api/media.md#add_image) | an `HxW`, `HxWxC` or `CxHxW` array or tensor, a PIL image, image bytes or a file |
-| [`add_audio`](../api/media.md#add_audio) | a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate`, audio bytes or a file |
-| [`add_figure`](../api/media.md#add_figure) | a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure, or a Plotly or Vega-Lite dict |
-| [`add_pr_curve`](../api/media.md#add_pr_curve) | labels and scores in [0, 1] |
-| [`add_histogram`](../api/media.md#add_histogram) | numbers of any shape |
-| [`add_table`](../api/media.md#add_table) | a list of dicts, a dict of columns or a DataFrame, with `nb.Audio` and `nb.Image` cells |
-| [`add_point_cloud`](../api/media.md#add_point_cloud) | an `(N, 3)` array of positions, with optional colors and axes |
-| [`add_html`](../api/media.md#add_html) | an HTML string |
+| [`add_text`](../api/add_text.md) | any string |
+| [`add_image`](../api/add_image.md) | an `HxW`, `HxWxC` or `CxHxW` array or tensor, a PIL image, image bytes or a file |
+| [`add_audio`](../api/add_audio.md) | a `(samples,)` or `(channels, samples)` array or tensor with `sample_rate`, audio bytes or a file |
+| [`add_figure`](../api/add_figure.md) | a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure, or a Plotly or Vega-Lite dict |
+| [`add_pr_curve`](../api/add_pr_curve.md) | labels and scores in [0, 1] |
+| [`add_histogram`](../api/add_histogram.md) | numbers of any shape |
+| [`add_table`](../api/add_table.md) | a list of dicts, a dict of columns or a DataFrame, with `nb.Audio` and `nb.Image` cells |
+| [`add_point_cloud`](../api/add_point_cloud.md) | an `(N, 3)` array of positions, with optional colors and axes |
+| [`add_html`](../api/add_html.md) | an HTML string |
 
 ```python
 run.add_image("samples/recon", img, step=step)
@@ -163,7 +163,7 @@ run = nb.init("project", name="lower-lr", fork_from=("20261013-0720_baseline_x5b
 A resumed run writes `events.r0.s1.log`, `s2`, … next to the earlier
 sessions. If you restart from a checkpoint at step 5000, points the old session
 logged at step ≥ 5000 are hidden in favour of the new session's points (per
-metric). A fork copies the parent's points up to the fork step into the new
+scalar). A fork copies the parent's points up to the fork step into the new
 run's folder, so the new folder still never refers to anything outside it.
 
 ## Environment variables

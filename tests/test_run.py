@@ -221,7 +221,7 @@ def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
     files = sorted(os.listdir(r0.path))
     assert "events.r0.s0.log" in files and "events.r1.s0.log" in files
     reader = RunReader(r0.path)
-    assert reader.metric_names(rank=1) == ["grad_norm"]
+    assert reader.scalar_names(rank=1) == ["grad_norm"]
     assert reader.ranks() == [0, 1]
 
 
@@ -488,3 +488,88 @@ def test_artifacts():
     meta = json.loads((run.path / "run.json").read_text())
     assert meta["inputs"] == [{"artifact": "ds", "version": 1}, {"artifact": "ds", "version": 2}]
     assert len(meta["outputs"]) == 2
+
+
+def test_add_scalar_takes_one_value_or_several(tmp_path):
+    run = nb.init("p", dir=tmp_path, capture_env=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.add_scalar({"loss": 0.5, "train": {"acc": 0.7}}, step=1)
+    run.add_scalar({"loss": 0.25}, 2)  # a positional value is the step
+    run.add_scalar("loss", 0.2)  # the next step
+    run.log({"loss": 0.1})  # the same, under its old name
+
+    with pytest.raises(TypeError, match="needs a value"):
+        run.add_scalar("loss")
+
+    run.finish()
+    reader = RunReader(run.path)
+    steps, _, values = reader.scalars("loss")
+    assert steps.tolist() == [0, 1, 2, 3, 4]
+    assert values.tolist() == [1.0, 0.5, 0.25, 0.2, 0.1]
+    assert reader.scalar_names() == ["loss", "train/acc"]
+
+
+def test_video_arrays_batches_and_files(tmp_path):
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from nuboard._media import video_bytes, video_frames
+
+    run = nb.init("p", capture_env=False)
+    clip = np.zeros((6, 8, 10, 3), dtype=np.uint8)
+    clip[:, :, :, 0] = np.arange(6)[:, None, None] * 40
+    run.add_video("clip", clip, step=1, fps=12, caption="red ramp")
+    run.add_video("batch", np.ones((3, 4, 3, 8, 10), dtype="float32"), step=1)  # N,T,C,H,W
+    mp4 = tmp_path / "x.mp4"
+    mp4.write_bytes(b"\x00\x00\x00\x18ftypisom" + bytes(16))
+    run.add_video("file", mp4, step=1)
+
+    with pytest.raises(ValueError, match="unrecognized video"):
+        video_bytes(b"hello")
+
+    run.finish()
+    r = RunReader(run.path)
+    clip_m, batch_m, file_m = r.media()
+    assert clip_m.meta["mime"] == "image/apng" and clip_m.meta["kind"] == "video"
+    assert clip_m.meta["frames"] == 6 and clip_m.meta["fps"] == 12
+    assert clip_m.meta["caption"] == "red ramp"
+    img = Image.open(io.BytesIO(r.read_media(clip_m)))
+    assert img.n_frames == 6 and img.size == (10, 8)
+    img.seek(5)
+    assert img.convert("RGB").getpixel((0, 0)) == (200, 0, 0)
+    assert (batch_m.meta["width"], batch_m.meta["height"]) == (20, 16)  # a 2x2 grid
+    assert file_m.meta["mime"] == "video/mp4"
+    assert video_frames(np.zeros((2, 3, 5, 6))).shape == (2, 5, 6, 3)  # T,C,H,W
+
+
+def test_torch_tensors_are_copied_on_the_calling_thread():
+    torch = pytest.importorskip("torch")
+    import numpy as np
+
+    run = nb.init("p", capture_env=False)
+    img = torch.zeros(3, 4, 5)
+    run.add_image("img", img, step=0)
+    img.fill_(1.0)  # changing the buffer after the call must not change what was logged
+    run.add_scalar("loss", torch.tensor(0.5), step=0)
+    run.add_scalar({"lr": torch.tensor(1e-3, dtype=torch.bfloat16)}, step=0)
+    run.add_histogram("w", torch.randn(100, dtype=torch.bfloat16), step=0)
+    run.add_point_cloud("pc", torch.arange(12.0).reshape(4, 3), step=0)
+    run.add_audio("a", torch.zeros(800), step=0, sample_rate=8000)
+    run.add_video("v", torch.rand(2, 4, 3, 6, 6), step=0)  # N,T,C,H,W
+    run.finish()
+
+    import io
+
+    from PIL import Image
+
+    r = RunReader(run.path)
+    assert r.scalars("loss")[2].tolist() == [0.5]
+    assert abs(r.scalars("lr")[2][0] - 1e-3) < 1e-5
+    by_key = {m.key: m for m in r.media()}
+    assert set(by_key) == {"img", "w", "pc", "a", "v"}
+    pixels = np.asarray(Image.open(io.BytesIO(r.read_media(by_key["img"]))))
+    assert pixels.max() == 0
+    assert np.frombuffer(r.read_media(by_key["pc"]), "<f4").tolist() == list(range(12))
+    assert by_key["v"].meta["frames"] == 4

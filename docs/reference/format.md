@@ -20,12 +20,13 @@ path.
         run.json                          metadata, rewritten atomically
         annotations.json                  viewer-owned: star, notes, tags, archived, reviewed, fields
         events.r<rank>.s<session>.log     append-only event log, one per rank and session
-        media.r<rank>.pack                images, figures and HTML appended back to back
+        media.r<rank>.pack                images, video, figures and HTML appended back to back
         data.parquet                      compacted scalars (written at finish, optional)
         files/
           requirements.txt                installed packages (pip freeze format)
           git.patch                       `git diff HEAD` at start (only if dirty)
           command.txt                     the command line that started the run
+          output.log                      what the script printed (capture_console; rank N: output.rN.log)
           ...                             files and folders added with run.add_file
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
@@ -68,7 +69,7 @@ ignore keys they do not know.
 | `status` | str | `running`, `finished`, `crashed` or `killed`. |
 | `created`, `started`, `ended`, `heartbeat` | float | Unix seconds. `heartbeat` is refreshed every 10 s while running. |
 | `sessions` | list | One `{session, started, ended}` per start or resume. |
-| `summary` | object | Per metric: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
+| `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. |
 | `distributed` | object | `world_size`, `shared_id`. |
@@ -130,12 +131,17 @@ the frame length).
 
 | Kind | Payload | Meaning |
 | --- | --- | --- |
-| `N` | `id:u32, name:utf8` | Declares a key id (metrics, text keys and media keys share one id space per file). Always precedes the first use of the id. |
+| `N` | `id:u32, name:utf8` | Declares a key id (scalars, text keys and media keys share one id space per file). Always precedes the first use of the id. |
 | `S` | `n:u32, metric_id:u32[n], step:i64[n], time:f64[n], value:f64[n]` | A batch of scalars as four columns. |
 | `H` | `time:f64` | Heartbeat. |
 | `T` | `key_id:u32, step:i64, time:f64, text:utf8` | Text sample. |
-| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `audio`, `figure`, `html`), plus `caption` for images and audio, and `sample_rate`, `channels` and `duration` (seconds) for audio when known. |
+| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `audio`, `video`, `figure`, `html`), plus `caption` for images, audio and video, `sample_rate`, `channels` and `duration` (seconds) for audio when known, and `fps`, `frames`, `width`, `height` and `duration` for video encoded from arrays. |
 | `E` | `time:f64, status:utf8` | End of session, written by `finish()`. |
+
+Scalars named `system/...` are the [system samples](../api/init.md#system-scalars)
+of `system_metrics`. They are ordinary `S` frames, written by `LOCAL_RANK` 0
+of each machine into its own rank's log. Their step is the latest training
+step, so several samples can share a step, in time order.
 
 Readers skip unknown kinds, so new frame kinds can be added without a version
 bump.
@@ -153,15 +159,15 @@ up. The writer writes media bytes to the pack and flushes them before the
 ### Merging sessions and ranks
 
 For one rank, sessions are combined in order. When a later session logs a
-metric, every point of that metric with `step >= ` the later session's first
-step for that metric is dropped from the earlier sessions: **the later session
+scalar, every point of that scalar with `step >= ` the later session's first
+step for that scalar is dropped from the earlier sessions: **the later session
 wins on overlapping steps** (a resume from a checkpoint replaces what was
 logged after the checkpoint). Ranks are never merged; each rank is its own
 series and rank 0 is the default.
 
 ## Media pack: `media.r<rank>.pack`
 
-Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), figures (Plotly JSON,
+Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), video (APNG/MP4/WebM/MOV/Ogg/GIF), figures (Plotly JSON,
 Vega-Lite JSON, Bokeh JSON, or SVG for matplotlib), PR curves, distributions, tables, point clouds and HTML documents,
 appended back to back with no framing. Only `M` frames give them meaning, so
 bytes after the last indexed entry (from a crash) are harmless.
@@ -171,6 +177,8 @@ bytes after the last indexed entry (from a crash) are harmless.
 | `image/png`, `image/jpeg`, ... | `add_image` (arrays are PNG-encoded with the standard library) |
 | `audio/wav` | `add_audio` with an array (16-bit PCM, standard library `wave`) or a WAV file |
 | `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/mp4`, `audio/webm` | `add_audio` with a file or bytes of that format, stored unchanged |
+| `image/apng` | `add_video` with an array: an animated PNG, one `fcTL` per frame with the delay `1/fps`, looping, filtered with the PNG Up filter |
+| `video/mp4`, `video/webm`, `video/quicktime`, `video/ogg`, `image/gif` | `add_video` with a file or bytes of that format, stored unchanged |
 | `image/svg+xml` | `add_figure` with a matplotlib figure |
 | `application/vnd.plotly.v1+json` | `add_figure` with a Plotly figure or a figure dict |
 | `application/vnd.vegalite+json` | `add_figure` with an Altair chart or a Vega-Lite dict |
@@ -190,11 +198,11 @@ truth and are never deleted.
 Columns: `metric: string`, `level: int8`, `rank: int32`, `step: int64`,
 `time: float64`, `value: float64`, `vmin: float64`, `vmax: float64`.
 
-- Rows are sorted by metric, zoom level, rank, step, and there is **exactly one
-  row group per (metric, level)**.
+- Rows are sorted by scalar, zoom level, rank, step, and there is **exactly one
+  row group per (scalar, level)**.
 - File key/value metadata `row_groups` holds a JSON map
   `{metric: [[row_group_index, rows], ...]}` indexed by level, so reading one
-  metric at one level is one row-group read. `format_version` is also stored.
+  scalar at one level is one row-group read. `format_version` is also stored.
 - Level 0 is the raw data (`vmin`/`vmax` equal `value`). Level *k* averages
   consecutive buckets of 8^*k* points: `step`/`time` of the bucket's first
   point, `value` = mean of finite values, `vmin`/`vmax` = min/max. Levels stop

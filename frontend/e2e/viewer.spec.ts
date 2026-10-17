@@ -96,7 +96,7 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });
 
-test('charts can use another metric as the x axis', async ({ page }) => {
+test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
   await page.locator('select.xmetric').selectOption('train/tokens');
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
@@ -246,7 +246,7 @@ test('media page filters kinds, sets the grid and picks the best step', async ({
   await expect(page.locator('section.section figure')).toHaveCount(2);
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(page.locator('section.section figure')).toHaveCount(2);
-  await page.getByRole('button', { name: 'best metric' }).click();
+  await page.getByRole('button', { name: 'best scalar' }).click();
   await expect(page).toHaveURL(/mmode=best/);
   await expect(page.locator('figure .step').first()).toContainText('step');
 });
@@ -317,9 +317,9 @@ test('the server refuses a value outside a property', async ({ request }) => {
   expect(await res.text()).toContain('verdict must be one of');
 });
 
-test('all metrics can be filtered with a regex, and run tags are pills', async ({ page }) => {
+test('all scalars can be filtered with a regex, and run tags are pills', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
-  await page.getByRole('textbox', { name: 'Filter metrics' }).fill('^val/');
+  await page.getByRole('textbox', { name: 'Filter scalars' }).fill('^val/');
   await expect(page).toHaveURL(/cfind=%5Eval%2F/);
   await expect(page.locator('.sect-head .label')).toHaveText(['val']);
   await expect(page.getByRole('switch', { name: 'Ignore outliers' })).toBeVisible();
@@ -678,4 +678,31 @@ test('the Columns menu is not clipped by a short runs table', async ({ page }) =
     return !!hit && el.contains(hit);
   });
   expect(shown).toBe(true);
+});
+
+test('videos play frame by frame and step through with the slider', async ({ page }) => {
+  await page.goto('/#/media?project=ppo-atari&mfind=rollout');
+  await expect(page.getByRole('button', { name: 'Video 1' })).toBeVisible();
+  const canvas = page.getByLabel('pong-s0 rollout/episode');
+  await expect(canvas).toBeVisible();
+  await expect.poll(() => drawnPixels(canvas)).toBeGreaterThan(50); // ball, paddle and net on the field
+  const card = page.locator('.vid').filter({ has: canvas });
+  const counter = card.getByText(/\/48 · 15 fps/);
+  const first = await counter.textContent();
+  await expect.poll(() => counter.textContent()).not.toBe(first); // it plays
+  await card.getByRole('button', { name: 'Pause' }).click();
+  await card.getByLabel('Frame').fill('9');
+  await expect(card.getByText('10/48 · 15 fps')).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Play' })).toBeVisible();
+});
+
+test('run details show the console output as a terminal would', async ({ page }) => {
+  await page.goto('/#/runs?project=llm-pretrain');
+  await page.locator('button.name', { hasText: /^lr3e-3-s2$/ }).click();
+  await page.getByRole('button', { name: 'Console', exact: true }).click();
+  const log = page.locator('pre.console');
+  await expect(log).toContainText('FloatingPointError: loss is NaN at step 18420');
+  await expect(log).toContainText('tokenizing shards: 100%|##########| 64/64');
+  await expect(log).not.toContainText('tokenizing shards:  20%'); // \r redrew the line
+  await expect(log).not.toContainText('[33m'); // color codes removed
 });

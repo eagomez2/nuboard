@@ -1,4 +1,4 @@
-"""Synthetic demo workspace: four projects, ~26 runs, media, artifacts and a live run."""
+"""Synthetic demo workspace: four projects, ~26 runs, media, video, artifacts and a live run."""
 
 from __future__ import annotations
 
@@ -76,6 +76,28 @@ def _add_config_file(run: Any, config: dict[str, Any]) -> None:
     run.add_file(path)
 
 
+def _add_console_log(run: Any, lines: list[str]) -> None:
+    """Attach `lines` as `files/output.log`, as `capture_console` would have written it."""
+    path = Path(tempfile.mkdtemp()) / "output.log"
+    path.write_text("".join(lines), "utf-8")
+    run.add_file(path)
+
+
+def _console_head(run: Any, name: str) -> list[str]:
+    """Return the start of an LLM run's console: a header, a progress bar and a warning."""
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(run.started))
+    bar = "".join(
+        f"\rtokenizing shards: {p:3d}%|{'#' * (p // 10):<10}| {p * 64 // 100}/64"
+        for p in range(0, 101, 20)
+    )
+    return [
+        f"[nuboard: session 0, {stamp}]\n",
+        f"run {name}: 8 x H100, bf16, global batch 512 x 2048 tokens\n",
+        bar + "\n",
+        "\x1b[33mUserWarning: flash-attention not found, using sdpa\x1b[0m\n",
+    ]
+
+
 def _lr_at(step: int, lr: float) -> float:
     """Return the learning rate at `step`: 1000 steps of linear warmup, then cosine decay."""
 
@@ -107,12 +129,12 @@ def llm_point(
         rng: Random generator for the noise.
         diverge_at: Step at which the run diverges. Loss and gradient norm grow
             over the 400 steps before it and are NaN from it on.
-        dip_at: Step at which a 900-step throughput and GPU utilization dip starts.
+        dip_at: Step at which a 900-step throughput dip starts.
         spike_at: Step of one bad batch that briefly spikes the loss and gradient norm.
 
     Returns:
         A dict with `train/loss`, `train/grad_norm`, `train/lr`, `train/tokens`,
-        `sys/tokens_per_sec` and `sys/gpu_util`.
+        and `perf/tokens_per_sec`.
     """
     final = LLM_LRS.get(lr, 2.5) + 0.004 * (seed - 2)
     tau = 2600 * (1e-3 / lr) ** 0.45
@@ -123,10 +145,9 @@ def llm_point(
     )
     grad = 0.45 + 1.6 * math.exp(-step / 5000) + abs(rng.gauss(0, 0.05))
     tps = 412_000 + rng.gauss(0, 2500)
-    util = 93 + rng.gauss(0, 1.2)
 
     if dip_at is not None and dip_at <= step < dip_at + 900:
-        tps, util = 261_000 + rng.gauss(0, 4000), 62 + rng.gauss(0, 2)
+        tps = 261_000 + rng.gauss(0, 4000)
 
     if spike_at is not None and spike_at <= step < spike_at + 40:  # one bad batch
         loss += 1.4 * math.exp(-(step - spike_at) / 15)
@@ -144,9 +165,37 @@ def llm_point(
         "train/grad_norm": grad,
         "train/lr": _lr_at(step, lr),
         "train/tokens": step * 512 * 2048,
-        "sys/tokens_per_sec": tps,
-        "sys/gpu_util": util,
+        "perf/tokens_per_sec": tps,
     }
+
+
+def _llm_system(step: int, rng: random.Random, dip: bool = False) -> dict[str, float]:
+    """Return plausible `system/` scalars of one node with two GPUs at `step`.
+
+    With `dip`, GPU utilization drops with the throughput dip of `llm_point`.
+    """
+    warm = min(1.0, step / 400)
+    util = 62 if dip else 96 * warm
+    out = {
+        "system/cpu/percent": 30 + 8 * warm + rng.gauss(0, 2),
+        "system/cpu/process_percent": 160 + 40 * warm + rng.gauss(0, 10),
+        "system/memory/used_gb": 41 + 6 * warm + step / 20_000 + rng.gauss(0, 0.2),
+        "system/memory/percent": (41 + 6 * warm + step / 20_000) / 2.56,
+        "system/memory/process_gb": 18 + 3 * warm + step / 40_000,
+        "system/torch/cuda_allocated_gb": 52.4 * warm + rng.gauss(0, 0.05),
+        "system/torch/cuda_peak_gb": 61.8 * warm,
+    }
+
+    for g in (0, 1):
+        out |= {
+            f"system/gpu{g}/util": min(100.0, util + rng.gauss(0, 2)),
+            f"system/gpu{g}/memory_gb": 66.1 * warm + 0.6,
+            f"system/gpu{g}/memory_percent": (66.1 * warm + 0.6) / 0.8,
+            f"system/gpu{g}/temp_c": 38 + 27 * warm + g + rng.gauss(0, 0.6),
+            f"system/gpu{g}/power_w": 70 + 580 * warm + rng.gauss(0, 15),
+        }
+
+    return out
 
 
 def _llm_runs(root: Path, base: float) -> None:
@@ -162,11 +211,13 @@ def _llm_runs(root: Path, base: float) -> None:
         name="prepare-data",
         dir=root,
         capture_env=False,
+        system_metrics=False,
+        capture_console=False,
         config={"source": "fineweb-edu", "shards": 64},
         tags=["data"],
         _started=base - 4.8 * 3600,
     ) as prep:
-        prep.log({"data/tokens_b": 10.2}, step=0, time=base - 4.8 * 3600 + 30)
+        prep.add_scalar({"data/tokens_b": 10.2}, step=0, time=base - 4.8 * 3600 + 30)
         prep.add_artifact("fineweb-edu", data, type="dataset", metadata={"tokens": "10B"})
         (data / "train.txt").write_text("fineweb-edu sample shard v2\n" * 120, encoding="utf-8")
         prep.add_artifact(
@@ -202,6 +253,8 @@ def _llm_runs(root: Path, base: float) -> None:
             config=_llm_config(lr, seed),
             tags=["sweep", "seeds"],
             group=f"lr={lr:g}",
+            system_metrics=False,
+            capture_console=False,
             _started=started,
         )
         _add_config_file(run, _llm_config(lr, seed))
@@ -209,6 +262,7 @@ def _llm_runs(root: Path, base: float) -> None:
         sec_per_step = 0.22
         t = started
         last = LLM_STEPS
+        console = _console_head(run, name)
 
         for step in range(0, LLM_STEPS + 1, LLM_EVERY):
             t = started + step * sec_per_step
@@ -221,14 +275,25 @@ def _llm_runs(root: Path, base: float) -> None:
                 dip_at=18_000 if (lr == 1e-3 and seed == 1) else None,
                 spike_at=9_000 if (lr == 3e-4 and seed == 3) else None,
             )
-            run.log(point, step=step, time=t)
+            run.add_scalar(point, step=step, time=t)
+
+            if step % 1000 == 0:
+                tps = point["perf/tokens_per_sec"] / 1e3
+                console.append(
+                    f"step {step:>6} | loss {point['train/loss']:.4f} | "
+                    f"lr {point['train/lr']:.2e} | {tps:.0f}k tok/s\n"
+                )
 
             if step % 500 == 0:
-                run.log(
+                run.add_scalar(
                     {"eval/loss": point["train/loss"] + 0.03 + rng.gauss(0, 0.01)},
                     step=step,
                     time=t,
                 )
+
+            if step % 500 == 0:
+                dip = lr == 1e-3 and seed == 1 and 18_000 <= step < 18_900
+                run.add_scalar(_llm_system(step, rng, dip), step=step, time=t)
 
             if step % 5000 == 0:
                 run.add_text("samples/generation", _sample_text(step, rng), step=step)
@@ -236,6 +301,16 @@ def _llm_runs(root: Path, base: float) -> None:
             if crashed and step >= 18_420:
                 last = step
                 break
+
+        if crashed:
+            console.append(
+                "Traceback (most recent call last):\n"
+                '  File "train.py", line 214, in <module>\n'
+                "    check_finite(loss)\n"
+                "FloatingPointError: loss is NaN at step 18420 (rank 5)\n"
+            )
+
+        _add_console_log(run, console)
 
         if crashed:
             run.finish(
@@ -262,6 +337,8 @@ def _llm_runs(root: Path, base: float) -> None:
         name="eval-mmlu",
         dir=root,
         capture_env=False,
+        system_metrics=False,
+        capture_console=False,
         config={"model": "model:v1", "benchmark": "mmlu", "shots": 5},
         tags=["eval"],
         _started=base - 600,
@@ -270,7 +347,7 @@ def _llm_runs(root: Path, base: float) -> None:
         rng = random.Random("eval")
 
         for i, subject in enumerate(("stem", "humanities", "social", "other")):
-            ev.log(
+            ev.add_scalar(
                 {f"eval/mmlu_{subject}": 0.41 + rng.random() * 0.08}, step=i, time=base - 600 + i
             )
 
@@ -460,6 +537,8 @@ def _vit_runs(root: Path, base: float) -> None:
             config=config,
             tags=["ablation"],
             capture_env=False,
+            system_metrics=False,
+            capture_console=False,
             _started=started,
         )
         _add_config_file(run, config)
@@ -468,7 +547,7 @@ def _vit_runs(root: Path, base: float) -> None:
         for epoch in range(101):
             t = started + epoch * 60
             acc = 0.62 + gains[aug] + 0.18 * (1 - math.exp(-epoch / 25)) + rng.gauss(0, 0.004)
-            run.log(
+            run.add_scalar(
                 {
                     "train/loss": 2.2 * math.exp(-epoch / 30)
                     + 0.35
@@ -530,9 +609,7 @@ def _vit_extra(epoch: int, acc: float, rng: random.Random) -> dict[str, float]:
         "train/grad_norm": 1.2 * math.exp(-epoch / 60) + 0.3 + abs(rng.gauss(0, 0.05)),
         "val/top5": min(0.999, acc + 0.12 + rng.gauss(0, 0.002)),
         "val/calibration_error": 0.08 * math.exp(-epoch / 40) + 0.02 + abs(rng.gauss(0, 0.003)),
-        "sys/gpu_util": 0.9 + rng.gauss(0, 0.02),
-        "sys/gpu_mem_gb": 21.5 + rng.gauss(0, 0.1),
-        "sys/images_per_sec": 2400 + rng.gauss(0, 40),
+        "perf/images_per_sec": 2400 + rng.gauss(0, 40),
     }
 
     for i, name in enumerate(_CLASSES):  # one chart per class: a section with many charts
@@ -832,6 +909,8 @@ def _speech_runs(root: Path, base: float) -> None:
             name=model,
             dir=root,
             capture_env=False,
+            system_metrics=False,
+            capture_console=False,
             config={
                 "model": model.split("-")[0],
                 "loss": model.split("-")[1] if "-" in model else "si-sdr",
@@ -849,7 +928,7 @@ def _speech_runs(root: Path, base: float) -> None:
         for epoch in range(31):
             t = started + epoch * 70
             left = floor + (1 - floor) * math.exp(-epoch / 7)  # residual noise gain
-            run.log(
+            run.add_scalar(
                 {
                     "train/loss": 0.4 * left + prng.gauss(0, 0.006),
                     "val/si_sdr": 5 + 14 * (1 - left) - 40 * artifacts + prng.gauss(0, 0.2),
@@ -954,8 +1033,73 @@ def _eval_rows(model: str, epoch: int, left: float) -> list[dict[str, Any]]:
     return rows
 
 
+def _rollout(env: str, skill: float, seed: int) -> Any:
+    """Return a synthetic `(T, H, W, 3)` rollout clip: a ball and a paddle that tracks it.
+
+    Args:
+        env: `"Pong"` or `"Breakout"`; Breakout adds a wall of bricks the ball clears.
+        skill: 0 to 1, how closely the paddle follows the ball.
+        seed: Seeds the ball's start and the paddle's jitter.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    h, w, frames = 84, 84, 48
+    clip = np.zeros((frames, h, w, 3), dtype=np.uint8)
+    clip[:] = (24, 26, 48) if env == "Breakout" else (60, 110, 60)
+    x, y = float(rng.uniform(10, 70)), 20.0
+    vx, vy = 2.2 * rng.choice([-1, 1]), 2.6
+    paddle = w / 2
+    bricks = rng.random((4, 12)) > 0.85 * skill  # a better policy has cleared more of the wall
+
+    for t in range(frames):
+        x, y = x + vx, y + vy
+
+        if x < 2 or x > w - 3:
+            vx, x = -vx, min(max(x, 2), w - 3)
+
+        if y < 2:
+            vy, y = -vy, 2
+
+        if env == "Breakout" and 8 <= y < 20:
+            row, col = int((y - 8) // 3), int(x // 7)
+
+            if bricks[row, col]:
+                bricks[row, col], vy = False, abs(vy)
+
+        target = x if rng.random() < 0.3 + 0.7 * skill else paddle + rng.normal(0, 6)
+        paddle += float(np.clip(target - paddle, -1 - 3 * skill, 1 + 3 * skill))
+
+        if y > h - 8:
+            vy, y = -abs(vy), h - 8
+
+        frame = clip[t]
+
+        if env == "Breakout":
+            palette = [(200, 72, 72), (198, 108, 58), (180, 122, 48), (162, 162, 42)]
+
+            for r, c in zip(*np.nonzero(bricks)):
+                frame[8 + 3 * r : 10 + 3 * r, 7 * c + 1 : 7 * c + 6] = palette[r]
+
+        else:
+            frame[:, w // 2] = (90, 140, 90)
+
+        p = int(np.clip(paddle, 7, w - 8))
+        frame[h - 5 : h - 3, p - 7 : p + 7] = (
+            (230, 230, 230) if env == "Breakout" else (92, 186, 92)
+        )
+        frame[int(y) - 1 : int(y) + 2, int(x) - 1 : int(x) + 2] = (240, 240, 240)
+
+    return clip
+
+
 def _ppo_runs(root: Path, base: float) -> None:
-    """Write the `ppo-atari` project: Pong and Breakout, three seeds each."""
+    """Write the `ppo-atari` project: Pong and Breakout, three seeds each, with rollout videos."""
+
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover
+        np = None
 
     for i, (env, seed) in enumerate((e, s) for e in ("Pong", "Breakout") for s in (0, 1, 2)):
         rng = random.Random(f"{env}{seed}")
@@ -966,6 +1110,8 @@ def _ppo_runs(root: Path, base: float) -> None:
             name=f"{env.lower()}-s{seed}",
             dir=root,
             capture_env=False,
+            system_metrics=False,
+            capture_console=False,
             config={
                 "env": f"ALE/{env}-v5",
                 "algo": "ppo",
@@ -987,7 +1133,7 @@ def _ppo_runs(root: Path, base: float) -> None:
             ret = (-21 + (top + 21) * frac if env == "Pong" else top * frac) + rng.gauss(
                 0, top * 0.04
             )
-            run.log(
+            run.add_scalar(
                 {
                     "charts/episode_return": ret,
                     "losses/value": 0.5 * (1 - frac) + abs(rng.gauss(0, 0.05)),
@@ -997,6 +1143,10 @@ def _ppo_runs(root: Path, base: float) -> None:
                 step=step,
                 time=t,
             )
+
+            if k % 100 == 0 and np is not None:
+                clip = _rollout(env, frac, seed * 1000 + k)
+                run.add_video("rollout/episode", clip, step=step, fps=15, time=t)
 
         run.finish(_ended=t)
 
@@ -1058,16 +1208,18 @@ def live(root: str | Path, stop: threading.Event | None = None, speed: float = 1
             tags=["sweep", "live"],
             group=f"lr={lr:g}",
             capture_env=False,
+            system_metrics=False,
+            capture_console=False,
             heartbeat_interval=3.0,
         )
         step = 0
 
         while step <= LLM_STEPS and not stop.is_set():
             point = llm_point(step, lr, seed, rng)
-            run.log(point, step=step)
+            run.add_scalar(point, step=step)
 
             if step % 500 == 0:
-                run.log({"eval/loss": point["train/loss"] + 0.03}, step=step)
+                run.add_scalar({"eval/loss": point["train/loss"] + 0.03}, step=step)
 
             step += LLM_EVERY
             time.sleep(0.05 / speed)

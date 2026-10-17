@@ -56,7 +56,7 @@ config = {"lr": 3e-4, "batch_size": 64}
 with nb.init("my-project", name="baseline", config=config) as run:
     for step in range(1000):
         loss = train_step()  # your code
-        run.log({"train/loss": loss, "lr": config["lr"]}, step=step)
+        run.add_scalar({"train/loss": loss, "lr": config["lr"]}, step=step)
 ```
 
 Runs go to `./experiments/<project>/runs/<run id>/` unless you pass `dir=` or

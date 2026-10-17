@@ -26,7 +26,7 @@ import nuboard as nb
 with nb.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
-        run.log({"train/loss": loss}, step=step)  # a few µs, never blocks training
+        run.add_scalar({"train/loss": loss}, step=step)  # a few µs, never blocks training
 ```
 
 ```console
@@ -43,7 +43,7 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
 
     ---
 
-    `init`, `log`, `finish`. Config, git commit and diff, installed packages,
+    `init`, `add_scalar`, `finish`. Config, git commit and diff, installed packages,
     GPUs, command line and rank are recorded for you. The logging side uses
     only the Python standard library.
 

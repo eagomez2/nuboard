@@ -265,7 +265,7 @@
   const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 14) / (330 + 14))));
   let gridPages = $state<Record<string, number>>({});
 
-  // Regex filter of the All metrics grid (as in TensorBoard); an invalid pattern matches as plain text.
+  // Regex filter of the All scalars grid (as in TensorBoard); an invalid pattern matches as plain text.
   const metricFind = $derived(router.get('cfind'));
   const metricRe = $derived.by(() => {
     if (!metricFind) return null;
@@ -497,10 +497,10 @@
           const v = (e.currentTarget as HTMLSelectElement).value;
           router.set({ x: v ? `metric:${v}` : null, zoom: null });
         }}
-        aria-label="X axis metric"
-        title="Plot against another metric, matched by step"
+        aria-label="X axis scalar"
+        title="Plot against another scalar, matched by step"
       >
-        <option value="">x by metric…</option>
+        <option value="">x by scalar…</option>
         {#each xCandidates as m (m)}<option value={m}>x = {m}</option>{/each}
       </select>
       <label class="smooth"
@@ -674,11 +674,11 @@
 
   <section class="all">
     <div class="all-head">
-      <h3>All metrics <span class="faint">click one to bring it into focus</span></h3>
+      <h3>All scalars <span class="faint">click one to bring it into focus</span></h3>
       <input
         class="input sm mono cfind"
-        placeholder="Filter metrics (regex)"
-        aria-label="Filter metrics"
+        placeholder="Filter scalars (regex)"
+        aria-label="Filter scalars"
         value={metricFind}
         oninput={(e) => router.set({ cfind: e.currentTarget.value || null })}
       />
@@ -709,7 +709,7 @@
         </select></label
       >
     </div>
-    {#if metricFind && !shownMetrics.length}<p class="faint">No metric matches “{metricFind}”.</p>{/if}
+    {#if metricFind && !shownMetrics.length}<p class="faint">No scalar matches “{metricFind}”.</p>{/if}
     {#each sections as [prefix, list] (prefix)}
       {@const size = gridRows ? perRow * gridRows : list.length}
       {@const pageCount = Math.max(1, Math.ceil(list.length / size))}

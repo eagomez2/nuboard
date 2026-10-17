@@ -341,6 +341,8 @@ async function mediaHtml(
   const meta = `${found.run_name} · ${item.key} · step ${item.step}`;
   let body: string;
   if (item.kind === 'text') body = `<pre>${esc(item.text ?? '')}</pre>`;
+  else if (item.mime.startsWith('video/'))
+    body = `<video src="${await dataUrl(url)}" controls loop muted playsinline></video>`;
   else if (item.mime.startsWith('image/')) body = `<img src="${await dataUrl(url)}" alt="${esc(caption)}">`;
   else if ((item.kind === 'audio' || item.mime.startsWith('audio/')) && player === 'wave') {
     // drawn by the waveform player, which the script at the end puts in the frame
@@ -421,7 +423,7 @@ a{color:var(--link)}code{font:.9em ui-monospace,Menlo,monospace;background:var(-
 pre{background:var(--code);border:1px solid var(--border);border-radius:9px;padding:10px 12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}
 pre code{background:none;padding:0}table{border-collapse:collapse;margin:.8em 0}th,td{border:1px solid var(--border);padding:5px 10px}
 blockquote{margin:.8em 0;padding:.1em 1em;border-left:3px solid var(--border);color:var(--muted)}
-img{max-width:100%;border-radius:8px}figure{margin:1.2em 0}.nbtable{overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px}.nbtable table{margin:0;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}.nbtable th{position:sticky;top:0;background:var(--panel);text-align:left}.nbtable .n{text-align:right;white-space:nowrap}.nbtable td small{color:var(--muted);margin-left:6px;font-size:11px}.nbtable .m{color:var(--faint)}.nbmore{color:var(--faint);font-size:12px}
+img,video{max-width:100%;border-radius:8px}figure{margin:1.2em 0}.nbtable{overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px}.nbtable table{margin:0;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}.nbtable th{position:sticky;top:0;background:var(--panel);text-align:left}.nbtable .n{text-align:right;white-space:nowrap}.nbtable td small{color:var(--muted);margin-left:6px;font-size:11px}.nbtable .m{color:var(--faint)}.nbmore{color:var(--faint);font-size:12px}
 .nbpr svg{display:block;max-width:100%;height:auto}.nbpr small{color:var(--faint);font-size:12px}
 .nbpoints canvas{display:block;width:100%;height:420px;border-radius:8px;background:var(--code)}.nbpoints small{color:var(--faint);font-size:12px}
 .nbnotes{margin:6px 0 0;padding-left:1.4em;font-size:13.5px}.nbtime{font:12px ui-monospace,Menlo,monospace;color:var(--muted);margin-right:4px}.nbwave iframe{display:block;width:100%;height:300px;border:0;background:transparent}.nbnote{font:12px ui-monospace,Menlo,monospace;color:var(--link);background:var(--code);border:1px solid var(--border);border-radius:6px;padding:1px 6px;cursor:pointer;margin-right:4px}

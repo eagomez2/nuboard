@@ -27,17 +27,17 @@ print(project.runs()[0].audio_notes.get("eval/enhanced@30", []))
 # write a property value (None removes it); a running viewer picks it up
 project.runs("where config.optim.lr = 1e-3")[0].set_field("verdict", "keep")
 
-# one metric across runs, long format: run_id, name, step, time, value, config.optim.lr
+# one scalar across runs, long format: run_id, name, step, time, value, config.optim.lr
 table = project.scalars("train/loss", group_by="config.optim.lr", query="where tags has sweep")
 df = table.to_pandas()
 df.groupby(["config.optim.lr", "step"]).value.mean().unstack(0).plot()
 
-# one row per run: id, name, status, flattened config, last value of every metric
+# one row per run: id, name, status, flattened config, last value of every scalar
 summary = project.summary().to_pandas()
 
-# all metrics of one run
+# all scalars of one run
 run = project.run("20261013-0720_lr3e-4-s1_x5bq2k")
-run.scalars()  # metric, step, time, value
+run.scalars()  # columns key, step, time, value
 run.scalars("train/loss")
 ```
 
@@ -59,7 +59,7 @@ server uses:
 from nuboard.reader import RunReader
 
 r = RunReader("experiments/llm-pretrain/runs/20261013-0720_lr3e-4-s1_x5bq2k")
-r.metric_names()  # rank 0 by default
+r.scalar_names()  # rank 0 by default
 steps, times, values = r.scalars("train/loss")
 r.scalars("grad_norm", rank=3)  # another rank
 r.texts("samples/gen")  # TextEntry(key, step, time, text)

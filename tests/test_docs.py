@@ -30,12 +30,19 @@ def test_api_docs_example_runs(page, i, code, tmp_path):
     assert list((tmp_path / "experiments").glob("*/runs/*/run.json"))
 
 
-def test_api_docs_cover_every_logging_method():
-    text = "".join(p.read_text("utf-8") for p in DOCS.PAGES)
+def test_api_docs_have_a_page_for_every_method_in_the_menu():
     import nuboard as nb
 
-    public = [n for n in dir(nb.Run) if n.startswith(("add_", "use_")) or n in ("log", "finish")]
-    assert all(f"## `run.{n}`" in text or f"## `{n}`" in text for n in public), public
+    api = ROOT / "docs" / "api"
+    nav = (ROOT / "mkdocs.yml").read_text("utf-8")
+    text = "".join(p.read_text("utf-8") for p in DOCS.PAGES)
+    public = [n for n in dir(nb.Run) if n.startswith(("add_", "use_")) or n in ("finish", "flush")]
+
+    for n in public:
+        assert (api / f"{n}.md").exists() or f"## `{n}`" in text, n
+
+    for page in api.glob("*.md"):
+        assert f"api/{page.name}" in nav, page.name
 
 
 def test_get_started_page_shows_the_script_as_it_is():

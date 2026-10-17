@@ -7,9 +7,9 @@ any set of runs: a project, a query result or your selection.
 
 ## Objective and parameters
 
-- **Objective**: pick a metric and whether to use its **best** value (the
+- **Objective**: pick a scalar and whether to use its **best** value (the
   minimum for losses and errors, the maximum otherwise) or its **last** value.
-  Lower-is-better metrics are flipped so the best runs are always on top.
+  Lower-is-better scalars are flipped so the best runs are always on top.
 - **Parameters**: every config key whose value differs between the runs, plus
   properties. Keys with `seed` in the name start unselected. Click a chip to
   add or remove an axis. The bar inside a chip is the parameter's rank
