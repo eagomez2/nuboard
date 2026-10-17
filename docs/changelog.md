@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.3
+
+- Fixes `NotADirectoryError: ... runs/.DS_Store/run.json` on macOS: a file
+  where a run, project or artifact folder is expected, such as the
+  `.DS_Store` that Finder leaves in folders it has shown, is now skipped.
+  This broke `nuboard demo` on a folder that already had demo runs, and
+  listing artifacts with a stray file in `artifacts/`.
+
 ## 0.13.2
 
 - Fixes `pnpm install` in `frontend/`, which failed with "No matching version
