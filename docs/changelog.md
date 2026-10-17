@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1
+
+- Saved views can be deleted from the Runs page: hover a view in the
+  workspace list and click **×**, then confirm. The view's file in
+  `<project>/views/` is removed; runs, collections and reports are not
+  touched. The **×** of views and collections also shows when the row has
+  keyboard focus.
+
 ## 0.13.0
 
 - Breaking: `run.log` is removed; `run.add_scalar` is the one way to log
