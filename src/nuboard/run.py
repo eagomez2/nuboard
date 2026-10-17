@@ -25,11 +25,17 @@ from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
 from ._system import SystemMonitor, parse_groups
 from ._writer import Writer
-from .artifacts import Artifact, add_artifact, resolve_artifact
+from .artifacts import Artifact, resolve_artifact, split_ref
+from .artifacts import add_artifact as _add_artifact
 
 _LOG_RE = re.compile(r"^events\.r(\d+)\.s(\d+)\.log$")
 _active: list[Run] = []
 _hook_installed = False
+
+
+def data_root(dir: str | os.PathLike[str] | None) -> Path:
+    """Return the root folder of the projects: `dir`, `$NUBOARD_DIR` or `./experiments`."""
+    return Path(dir or os.environ.get(f"{ENV_PREFIX}_DIR") or DEFAULT_ROOT)
 
 
 def project_dir(project: str | os.PathLike[str] | None, dir: str | os.PathLike[str] | None) -> Path:
@@ -45,7 +51,7 @@ def project_dir(project: str | os.PathLike[str] | None, dir: str | os.PathLike[s
     Returns:
         The project's folder (it may not exist yet).
     """
-    root = Path(dir or os.environ.get(f"{ENV_PREFIX}_DIR") or DEFAULT_ROOT)
+    root = data_root(dir)
     parts = [
         _fs.sanitize(p, "default") for p in re.split(r"[\\/]+", str(project or "default")) if p
     ]
@@ -133,6 +139,16 @@ def _suffix_from(shared_id: str) -> str:
     digest = hashlib.sha1(shared_id.encode("utf-8")).digest()
     alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
     return "".join(alphabet[b % len(alphabet)] for b in digest[:6])
+
+
+def _warn_if_changed(art: Artifact) -> None:
+    """Warn when an artifact version's files are missing or changed since it was made."""
+    problems = art.verify()
+
+    if problems:
+        more = f"; and {len(problems) - 5} more" if len(problems) > 5 else ""
+        shown = "; ".join(problems[:5]) + more
+        warnings.warn(f"artifact {art.ref}: {shown}", stacklevel=3)
 
 
 def _install_excepthook() -> None:
@@ -297,6 +313,7 @@ class Run:
     ) -> None:
         self.project_dir = project_dir(project, dir)
         self.project = self.project_dir.name
+        self._root = data_root(dir)
         self.dist = _env.detect_dist()
         self.all_ranks = all_ranks
         self._compact = compact
@@ -1188,16 +1205,23 @@ class Run:
         *,
         type: str | None = None,
         metadata: dict[str, Any] | None = None,
+        reference: bool = False,
+        checksum: bool = False,
     ) -> Artifact:
         """Copy a file or folder into `artifacts/<name>/v<N>/` with a manifest.
 
         The new version is recorded as an output of this run.
 
         Args:
-            name: Artifact name; it is sanitized to be safe as a folder name.
-            path: File or folder to copy.
+            name: Artifact name, sanitized to be safe as a folder name. A project
+                before a `/`, as in `"datasets/fineweb-edu"`, adds the version to
+                that project instead of this run's.
+            path: File or folder to copy, or to reference.
             type: Optional free-form type, such as `"model"` or `"dataset"`.
             metadata: Optional extra data stored in the manifest.
+            reference: Record where `path` is, with each file's size and
+                modification time, instead of copying it.
+            checksum: With `reference`, also hash every file (SHA-256).
 
         Returns:
             The new artifact version.
@@ -1205,14 +1229,21 @@ class Run:
         Raises:
             FileNotFoundError: If `path` does not exist.
         """
-        art = add_artifact(
-            self.project_dir, name, path, type=type, metadata=metadata, run_id=self.id
+        project, bare, _ = split_ref(name)
+        home = self._artifact_project(project)
+        art = _add_artifact(
+            home,
+            bare,
+            path,
+            type=type,
+            metadata=metadata,
+            run_id=self.id,
+            reference=reference,
+            checksum=checksum,
         )
 
         with self._meta_lock:
-            self._meta.setdefault("outputs", []).append(
-                {"artifact": art.name, "version": art.version}
-            )
+            self._meta.setdefault("outputs", []).append(self._artifact_record(art, project, home))
             self._save_meta()
 
         return art
@@ -1220,9 +1251,13 @@ class Run:
     def use_artifact(self, ref: str) -> Artifact:
         """Resolve an artifact reference and record it as an input of this run.
 
+        A version whose files are missing or changed since it was made (checked by
+        size, without reading them) gives a warning.
+
         Args:
             ref: `"name"` or `"name:latest"` for the newest version, or
-                `"name:v2"` for a specific one.
+                `"name:v2"` for a specific one. A project before the name, as in
+                `"datasets/fineweb-edu:v2"`, looks in that project.
 
         Returns:
             The resolved artifact version.
@@ -1230,15 +1265,30 @@ class Run:
         Raises:
             FileNotFoundError: If the artifact or version does not exist.
         """
-        art = resolve_artifact(self.project_dir, ref)
+        project, _, _ = split_ref(ref)
+        home = self._artifact_project(project)
+        art = resolve_artifact(home, ref)
+        _warn_if_changed(art)
 
         with self._meta_lock:
-            self._meta.setdefault("inputs", []).append(
-                {"artifact": art.name, "version": art.version}
-            )
+            self._meta.setdefault("inputs", []).append(self._artifact_record(art, project, home))
             self._save_meta()
 
         return art
+
+    def _artifact_project(self, project: str | None) -> Path:
+        """Return the folder of the project an artifact name points to; this run's by default."""
+        return self.project_dir if project is None else project_dir(project, self._root)
+
+    def _artifact_record(self, art: Artifact, project: str | None, home: Path) -> dict[str, Any]:
+        """Return the `inputs`/`outputs` entry for `art`, with its project when it is another."""
+        record: dict[str, Any] = {"artifact": art.name, "version": art.version}
+
+        if home.resolve() != self.project_dir.resolve():
+            record["project"] = "/".join(home.relative_to(self._root).parts)
+            record["project_path"] = Path(os.path.relpath(home, self.project_dir)).as_posix()
+
+        return record
 
     # -- lifecycle ----------------------------------------------------------------
     @property
@@ -1458,3 +1508,70 @@ def init(
         capture_console=capture_console,
         _started=_started,
     )
+
+
+def add_artifact(
+    project: str,
+    name: str,
+    path: str | os.PathLike[str],
+    *,
+    type: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    reference: bool = False,
+    checksum: bool = False,
+    dir: str | os.PathLike[str] | None = None,
+) -> Artifact:
+    """Add a new artifact version without a run, such as a dataset no script produced.
+
+    The version has no producing run. Inside a training script, use
+    `Run.add_artifact` so the version is linked to the run.
+
+    Args:
+        project: Project to add it to, as in `init`, such as `"datasets"`.
+        name: Artifact name, sanitized to be safe as a folder name.
+        path: File or folder to copy, or to reference.
+        type: Optional free-form type, such as `"dataset"`.
+        metadata: Optional extra data stored in the manifest.
+        reference: Record where `path` is, with each file's size and modification
+            time, instead of copying it.
+        checksum: With `reference`, also hash every file (SHA-256).
+        dir: Root folder holding the projects, as in `init`.
+
+    Returns:
+        The new artifact version.
+
+    Raises:
+        FileNotFoundError: If `path` does not exist.
+    """
+    return _add_artifact(
+        project_dir(project, dir),
+        name,
+        path,
+        type=type,
+        metadata=metadata,
+        reference=reference,
+        checksum=checksum,
+    )
+
+
+def get_artifact(ref: str, *, dir: str | os.PathLike[str] | None = None) -> Artifact:
+    """Find an artifact version without a run, such as in a notebook.
+
+    Nothing is recorded; inside a run, use `Run.use_artifact` so the run lists
+    the version as an input. Missing or changed files give a warning.
+
+    Args:
+        ref: `"project/name"`, `"project/name:latest"` or `"project/name:v2"`.
+            Without a project, the `"default"` project is used, as in `init`.
+        dir: Root folder holding the projects, as in `init`.
+
+    Returns:
+        The resolved artifact version.
+
+    Raises:
+        FileNotFoundError: If the artifact or version does not exist.
+    """
+    project, _, _ = split_ref(ref)
+    art = resolve_artifact(project_dir(project, dir), ref)
+    _warn_if_changed(art)
+    return art

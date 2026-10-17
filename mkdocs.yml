@@ -22,7 +22,7 @@ nav:
       - add_point_cloud: api/add_point_cloud.md
       - add_html: api/add_html.md
       - add_file: api/add_file.md
-      - add_artifact, use_artifact: api/add_artifact.md
+      - Artifacts: api/add_artifact.md
       - finish, flush, summary: api/finish.md
       - Coming from TensorBoard: api/tensorboard.md
   - Guides:

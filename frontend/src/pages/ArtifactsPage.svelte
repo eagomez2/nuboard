@@ -197,6 +197,10 @@ run.use_artifact("dataset:latest")</pre>
           <div class="title">
             <h2 class="mono trunc" title="{selected.name}:v{selected.version}">{selected.name}:v{selected.version}</h2>
             {#if selected.manifest.type}<span class="chip keep">{selected.manifest.type}</span>{/if}
+            {#if selected.manifest.reference}<span
+                class="chip keep"
+                title="The files stay where they are; NuBoard records their path and fingerprint">reference</span
+              >{/if}
             {#if selected.version === Math.max(...artifacts
                   .filter((a) => a.project === selected.project && a.name === selected.name)
                   .map((a) => a.version))}<span class="chip latest keep">latest</span>{/if}
@@ -208,9 +212,12 @@ run.use_artifact("dataset:latest")</pre>
             <div><span class="label">Created</span><span>{fmtDate(selected.manifest.created)}</span></div>
             <div><span class="label">Size</span><span class="mono">{fmtBytes(selected.size)}</span></div>
             <div><span class="label">Files</span><span class="mono">{selected.manifest.files?.length ?? 0}</span></div>
+            <div>
+              <span class="label">Stored</span><span>{selected.manifest.reference ? 'Reference' : 'Copy'}</span>
+            </div>
             <div><span class="label">Used by</span><span class="mono">{selected.consumers.length} runs</span></div>
           </div>
-          <pre class="mono snippet">run.use_artifact("{selected.name}:v{selected.version}")</pre>
+          <pre class="mono snippet">run.use_artifact("{selected.project}/{selected.name}:v{selected.version}")</pre>
         </div>
 
         <div class="card lineage">
@@ -292,13 +299,19 @@ run.use_artifact("dataset:latest")</pre>
                 <tr>
                   <td class="mono path">{f.path}</td>
                   <td class="mono right keep">{fmtBytes(f.size)}</td>
-                  <td class="mono faint" title={f.sha256}>{f.sha256.slice(0, 12)}…</td>
+                  <td class="mono faint" title={f.sha256 ?? 'Not hashed: checked by size'}
+                    >{f.sha256 ? `${f.sha256.slice(0, 12)}…` : '—'}</td
+                  >
                 </tr>
               {/each}
             </tbody>
           </table>
           <p class="faint small">
-            On disk: <code>{selected.project}/artifacts/{selected.name}/v{selected.version}/files/</code>
+            {#if selected.manifest.reference}
+              References <code>{selected.manifest.reference}</code>; the files are not copied.
+            {:else}
+              On disk: <code>{selected.project}/artifacts/{selected.name}/v{selected.version}/files/</code>
+            {/if}
           </p>
         </div>
       </section>

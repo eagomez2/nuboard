@@ -40,7 +40,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.13.3-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.14.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -52,7 +52,7 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 
 | Area | Included |
 | --- | --- |
-| Python API | `init` (+ resume, fork, ranks), `add_scalar`, `add_file`, `add_text`, `add_image`, `add_audio`, `add_video`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`, `add_point_cloud`, `add_html`, `add_artifact`, `use_artifact`, `finish`, context manager; system scalars (CPU, memory, GPU) and console capture |
+| Python API | `init` (+ resume, fork, ranks), `add_scalar`, `add_file`, `add_text`, `add_image`, `add_audio`, `add_video`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`, `add_point_cloud`, `add_html`, `add_artifact` (copies or references), `use_artifact` (across projects), `nb.add_artifact`, `nb.get_artifact`, `finish`, context manager; system scalars (CPU, memory, GPU) and console capture |
 | Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; properties, collections and alerts per run |
 | Runs | query language, stars, Markdown notes, archive, typed properties, tag editing, column chooser, collections, saved views, run details and config/file diffs |

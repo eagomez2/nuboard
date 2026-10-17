@@ -201,4 +201,5 @@ redrawn on one line and color codes removed.
 | --- | --- |
 | `NUBOARD_DIR` | The default root folder for `nb.init`, `nuboard up` and `nuboard ls`. |
 | `NUBOARD_CACHE_DIR` | Where the viewer keeps its catalog cache. |
+| `NUBOARD_DATA_DIR` | This machine's data folder; references to datasets inside it work on every machine that sets it. See [Data on several machines](../guide/artifacts.md#data-on-several-machines). |
 | `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `SLURM_*`, `OMPI_COMM_WORLD_*` | Rank detection; see [Distributed training](../guide/distributed.md). |

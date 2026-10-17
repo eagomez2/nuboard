@@ -51,7 +51,8 @@ NuBoard.
 | [`add_file`](add_file.md) | a file or folder, such as a config file | Run details |
 | `nb.init(system_metrics=...)` | [CPU, memory and GPU use](init.md#system-scalars) as `system/` scalars | Charts |
 | `nb.init(capture_console=...)` | [what the script prints](init.md#console-output) | Run details › Console |
-| [`add_artifact`, `use_artifact`](add_artifact.md) | versioned datasets and checkpoints, and which runs used them | Artifacts |
+| [`add_artifact`, `use_artifact`](add_artifact.md) | versioned datasets and checkpoints, copied or referenced, and which runs used them | Artifacts |
+| [`nb.add_artifact`, `nb.get_artifact`](add_artifact.md#nbadd_artifact) | the same without a run, such as a shared dataset | Artifacts |
 | [`finish`, `flush`, `summary`](finish.md) | the run's end and status | Runs |
 
 ## Conventions

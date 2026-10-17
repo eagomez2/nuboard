@@ -1,6 +1,6 @@
 [project]
 name = "nuboard"
-version = "0.13.3"
+version = "0.14.0"
 description = "A fast, local, folder-based experiment tracker and viewer for ML training."
 readme = "README.md"
 requires-python = ">=3.10"

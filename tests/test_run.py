@@ -490,6 +490,62 @@ def test_artifacts():
     assert len(meta["outputs"]) == 2
 
 
+def test_reference_artifacts_across_projects(tmp_path):
+    data = tmp_path / "store" / "fineweb"
+    data.mkdir(parents=True)
+    (data / "a.txt").write_text("hello")
+    shared = nb.add_artifact("datasets", "fineweb", data, type="dataset", reference=True)
+    assert shared.manifest["producer_run"] is None
+    assert shared.manifest["reference"] == str(data.resolve())
+    assert "sha256" not in shared.manifest["files"][0]
+    assert not (shared.path / "files").exists()  # nothing copied
+    hashed = nb.add_artifact("datasets", "fineweb", data / "a.txt", reference=True, checksum=True)
+    assert hashed.manifest["files"][0]["sha256"].startswith("2cf24dba")
+    assert hashed.files == data.resolve()  # a file's folder, as for copies
+
+    with nb.init("llm", capture_env=False) as run:
+        used = run.use_artifact("datasets/fineweb:v1")
+        run.add_artifact("registry/model", data / "a.txt", type="checkpoint")
+
+    assert (used.files / "a.txt").read_text() == "hello"
+    meta = json.loads((run.path / "run.json").read_text())
+    entry = {"artifact": "fineweb", "version": 1, "project": "datasets"}
+    assert meta["inputs"] == [{**entry, "project_path": "../datasets"}]
+    assert meta["outputs"][0]["project"] == "registry"
+    assert nb.get_artifact("registry/model").manifest["producer_run"] == run.id
+
+    (data / "a.txt").write_text("changed!")
+
+    with pytest.warns(UserWarning, match=r"fineweb:v1: changed: a\.txt"):
+        nb.get_artifact("datasets/fineweb:v1")
+
+    (data / "a.txt").unlink()
+    assert nb.get_artifact("datasets/fineweb:v1").verify() == ["missing: a.txt"]
+
+
+def test_reference_relative_to_each_machines_data_folder(tmp_path, monkeypatch):
+    for machine in ("laptop", "cluster"):
+        (tmp_path / machine / "fw").mkdir(parents=True)
+        (tmp_path / machine / "fw" / "a.txt").write_text("hello")
+
+    monkeypatch.setenv("NUBOARD_DATA_DIR", str(tmp_path / "laptop"))
+    art = nb.add_artifact("datasets", "fw", tmp_path / "laptop" / "fw", reference=True)
+    assert art.manifest["reference"] == "${NUBOARD_DATA_DIR}/fw"
+    one = nb.add_artifact("datasets", "fw", tmp_path / "laptop" / "fw" / "a.txt", reference=True)
+    assert one.manifest["reference"] == "${NUBOARD_DATA_DIR}/fw/a.txt"
+    monkeypatch.setenv("NUBOARD_DATA_DIR", str(tmp_path / "cluster"))
+    assert nb.get_artifact("datasets/fw:v2").files == tmp_path / "cluster" / "fw"
+    assert nb.get_artifact("datasets/fw:v1").verify() == []  # another copy, other mtimes
+    # any variable works when written in the path
+    monkeypatch.setenv("DATA", str(tmp_path / "laptop"))
+    own = nb.add_artifact("datasets", "fw", "${DATA}/fw", reference=True)
+    assert own.manifest["reference"] == "${DATA}/fw"
+    monkeypatch.delenv("DATA")
+
+    with pytest.warns(UserWarning, match="DATA is not set"):
+        nb.get_artifact("datasets/fw:v3")
+
+
 def test_add_scalar_takes_one_value_or_several(tmp_path):
     run = nb.init("p", dir=tmp_path, capture_env=False)
     run.add_scalar("loss", 1.0, step=0)

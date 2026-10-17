@@ -51,6 +51,9 @@
   });
 
   // Console logs (files/output.log, output.r<rank>.log) come first, as "Console".
+  // An artifact from another project shows with it, as in use_artifact("datasets/fineweb-edu:v2")
+  const artifactRef = (a: { artifact: string; version: number; project?: string }) =>
+    `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}`;
   const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
   const files = $derived(
     [...new Set(details.flatMap((d) => d.files))].sort(
@@ -114,12 +117,8 @@
       gpus: (m.env?.gpus ?? []).map((g: { name: string }) => g.name).join(', ') || null,
       world_size: m.distributed?.world_size ?? 1,
       fork: m.fork ? `${m.fork.run_id} @ ${m.fork.step}` : null,
-      inputs:
-        (m.inputs ?? []).map((a: { artifact: string; version: number }) => `${a.artifact}:v${a.version}`).join(', ') ||
-        null,
-      outputs:
-        (m.outputs ?? []).map((a: { artifact: string; version: number }) => `${a.artifact}:v${a.version}`).join(', ') ||
-        null,
+      inputs: (m.inputs ?? []).map(artifactRef).join(', ') || null,
+      outputs: (m.outputs ?? []).map(artifactRef).join(', ') || null,
     };
     for (const [k, v] of Object.entries(flatten(m.config ?? {}))) out[`config.${k}`] = v;
     for (const [k, s] of Object.entries(d.run.summary ?? {})) out[`last.${k}`] = fmtNum(num(s.last), 6);
