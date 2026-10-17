@@ -30,7 +30,7 @@ path.
           ...                             files and folders added with run.add_file
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
-      files/...                           the artifact's files
+      files/...                           the artifact's files (absent for a reference)
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
@@ -73,7 +73,7 @@ ignore keys they do not know.
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. |
 | `distributed` | object | `world_size`, `shared_id`. |
-| `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`. |
+| `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
 | `exit` | object/null | `{code, error}`; `error` holds the last 4,000 characters of the traceback. |
 | `compacted` | object | Written after compaction: `{bytes: {log file: size}, time}`. |
@@ -222,16 +222,48 @@ renaming it into place, so a version is either complete or absent.
 
 ```json
 {
-  "name": "fineweb-edu", "version": 2, "type": "dataset",
-  "metadata": {"tokens": "12B"},
-  "files": [{"path": "train.txt", "size": 3240, "sha256": "…"}],
-  "created": 1791970000.0, "producer_run": "20261014-0831_prepare-data_k2x9mf"
+  "name": "model", "version": 1, "type": "checkpoint",
+  "metadata": {"step": 25000},
+  "files": [{"path": "model.safetensors", "size": 2048, "sha256": "…"}],
+  "created": 1791970000.0, "producer_run": "20261014-0831_lr1e-3-s1_k2x9mf"
 }
 ```
 
+A **reference** version (`reference=True`) has no `files/` folder. Its
+manifest records where the files are and a fingerprint of each one:
+
+```json
+{
+  "name": "fineweb-edu", "version": 2, "type": "dataset",
+  "metadata": {"tokens": "12B"},
+  "reference": "/data/fineweb-edu/2026-10",
+  "root": "/data/fineweb-edu/2026-10",
+  "files": [{"path": "train.txt", "size": 3240, "mtime_ns": 1792279527703318788}],
+  "created": 1791970000.0, "producer_run": null
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `reference` | Path of the file or folder that was referenced: absolute, or starting with an environment variable, as in `${NUBOARD_DATA_DIR}/fineweb-edu/2026-10`, which readers expand with their own environment. |
+| `root` | The folder `files[].path` is relative to: `reference` for a folder, its parent for a file. |
+| `files[].mtime_ns` | Modification time in nanoseconds, for information. Readers compare `size` to detect changes, since copies on other machines have their own times. |
+| `files[].sha256` | Present for every copied file, and for referenced files only with `checksum=True`. |
+| `producer_run` | `null` for a version added with `nb.add_artifact`, outside a run. |
+
 Runs record what they used and produced in `run.json` (`inputs`, `outputs`).
-Artifacts are per project, so a run folder copied alone keeps its record of
-which artifact versions it used but not the artifact files.
+An entry for an artifact of another project adds `project`, its name relative
+to the root folder, and `project_path`, the path from the run's project
+folder to that project's folder, which is what the viewer resolves:
+
+```json
+{"artifact": "fineweb-edu", "version": 2, "project": "datasets", "project_path": "../datasets"}
+```
+
+A project may hold only artifacts and no runs, such as a `datasets` project.
+A run folder copied alone keeps its record of which artifact versions it used
+but not the artifact files, and a reference keeps only the path, so the data
+has to stay where it was for the version to be usable.
 
 ## Collections: `collections/<name>.json`
 

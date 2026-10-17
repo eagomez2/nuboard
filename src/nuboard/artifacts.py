@@ -1,4 +1,18 @@
-"""Versioned artifacts: `<project>/artifacts/<name>/v<N>/` plus `manifest.json`."""
+"""Versioned artifacts: `<project>/artifacts/<name>/v<N>/` plus `manifest.json`.
+
+A version either holds a copy of its files in `files/`, or is a reference: it
+records where the files live (`reference`) and a fingerprint of each file
+(size and modification time, plus SHA-256 when asked), and copies nothing.
+A referenced path may contain environment variables, as in
+`${NUBOARD_DATA_DIR}/fineweb-edu`, which are expanded where the artifact is
+used, so the same version points at each machine's own copy of the data. A
+path inside `$NUBOARD_DATA_DIR` is stored that way automatically.
+
+References to an artifact (`ref`) are `"name"`, `"name:latest"` or
+`"name:v<N>"`, optionally after a project, as in `"datasets/fineweb-edu:v2"`:
+everything before the last `/` is the project, resolved against the same root
+folder as the run's own project.
+"""
 
 from __future__ import annotations
 
@@ -12,8 +26,12 @@ from pathlib import Path
 from typing import Any
 
 from . import _fs
+from ._meta import ENV_PREFIX
 
 _VERSION_RE = re.compile(r"^v(\d+)$")
+DATA_ENV = f"{ENV_PREFIX}_DATA_DIR"
+"""Environment variable naming each machine's data folder, for portable references."""
+_UNSET_RE = re.compile(r"\$\{?(\w+)")
 
 
 @dataclass(frozen=True)
@@ -40,9 +58,124 @@ class Artifact:
         return f"{self.name}:v{self.version}"
 
     @property
+    def reference(self) -> Path | None:
+        """The referenced file or folder, or None if the version holds a copy.
+
+        Environment variables in the stored path, such as `${NUBOARD_DATA_DIR}`,
+        are expanded with this machine's values.
+        """
+        ref = self.manifest.get("reference")
+        return Path(os.path.expandvars(ref)) if ref else None
+
+    @property
     def files(self) -> Path:
-        """Folder holding the artifact's files."""
-        return self.path / "files"
+        """Folder holding the artifact's files.
+
+        For a copy this is `<version>/files/`; for a reference to a folder it is
+        that folder, and for a reference to one file the folder holding it, so
+        `files / <name>` reaches each listed file either way.
+        """
+        ref = self.reference
+
+        if ref is None:
+            return self.path / "files"
+
+        return Path(os.path.expandvars(self.manifest.get("root") or str(ref)))
+
+    def verify(self) -> list[str]:
+        """Check the files against the manifest by size, without reading them.
+
+        Modification times are recorded but not compared, since a copy of the
+        data on another machine usually has its own.
+
+        Returns:
+            One line per file that is missing or whose size changed since the
+            version was made, or a single line naming an environment variable
+            the reference needs and this machine does not set; empty when
+            everything matches.
+        """
+        unset = _UNSET_RE.search(os.path.expandvars(self.manifest.get("reference") or ""))
+
+        if unset:
+            return [f"{unset.group(1)} is not set: the files are under ${{{unset.group(1)}}}"]
+
+        problems = []
+        root = self.files
+
+        for f in self.manifest.get("files") or []:
+            try:
+                st = (root / f["path"]).stat()
+            except OSError:
+                problems.append(f"missing: {f['path']}")
+                continue
+
+            if st.st_size != f.get("size"):
+                problems.append(f"changed: {f['path']}")
+
+        return problems
+
+
+def split_ref(ref: str) -> tuple[str | None, str, str]:
+    """Split an artifact reference into project, name and version.
+
+    Args:
+        ref: Such as `"model"`, `"model:v3"` or `"datasets/fineweb-edu:latest"`.
+
+    Returns:
+        `(project, name, version)`; `project` is None when `ref` names none, and
+        `version` is `""` when `ref` gives none.
+    """
+    path, _, version = ref.partition(":")
+    project, _, name = path.strip("/").rpartition("/")
+    return project or None, name, version
+
+
+def _portable(path: Path) -> str:
+    """Return `path` as `${NUBOARD_DATA_DIR}/...` when it is inside that folder, else as is."""
+    data = os.environ.get(DATA_ENV)
+
+    if data:
+        try:
+            rel = path.relative_to(Path(data).resolve())
+        except ValueError:
+            pass
+        else:
+            return "/".join(["${" + DATA_ENV + "}", *rel.parts])
+
+    return str(path)
+
+
+def find_artifact_projects(root: Path, max_depth: int = 8) -> list[Path]:
+    """Find the folders under `root` that hold an `artifacts/` folder.
+
+    `runs/` and `artifacts/` folders and hidden folders are not searched.
+
+    Args:
+        root: The folder to search.
+        max_depth: How many levels below `root` to search.
+
+    Returns:
+        The project folders, sorted.
+    """
+    found = []
+    todo = [(root, 0)]
+
+    while todo:
+        d, depth = todo.pop()
+
+        try:
+            with os.scandir(d) as it:
+                subdirs = [e for e in it if e.is_dir(follow_symlinks=False)]
+        except OSError:
+            continue
+
+        for e in subdirs:
+            if e.name == "artifacts":
+                found.append(Path(d))
+            elif depth < max_depth and not e.name.startswith(".") and e.name != "runs":
+                todo.append((Path(e.path), depth + 1))
+
+    return sorted(found)
 
 
 def _versions(adir: Path) -> list[int]:
@@ -73,12 +206,15 @@ def add_artifact(
     type: str | None = None,
     metadata: dict[str, Any] | None = None,
     run_id: str | None = None,
+    reference: bool = False,
+    checksum: bool = False,
 ) -> Artifact:
-    """Copy a file or folder into a new version of an artifact.
+    """Copy a file or folder into a new version of an artifact, or reference it.
 
     The files are copied into a staging folder, listed in `manifest.json` with their
     size and SHA-256, and the folder is then renamed to `v<N>`. The rename is atomic,
-    so concurrent writers each get their own version number.
+    so concurrent writers each get their own version number. With `reference`, the
+    staging folder holds only the manifest, which records where the files are.
 
     Args:
         project_dir: The project's folder.
@@ -88,6 +224,13 @@ def add_artifact(
         type: Optional free-form type, such as `"model"` or `"dataset"`.
         metadata: Optional extra data stored in the manifest.
         run_id: Id of the run that produced the artifact, if any.
+        reference: Record where `src` is instead of copying it. Each file's size and
+            modification time are recorded, which is quick even for large datasets.
+            Environment variables in `src`, such as `"${DATA}/fineweb"`, are kept
+            in the stored path and expanded where the artifact is used; a path
+            inside `$NUBOARD_DATA_DIR` is stored relative to it.
+        checksum: With `reference`, also hash each file (SHA-256), which reads all
+            of the data. Copies are always hashed.
 
     Returns:
         The new version.
@@ -98,7 +241,8 @@ def add_artifact(
             another writer claiming the same version.
     """
     name = _fs.sanitize(name, "artifact")
-    src = Path(src)
+    raw = os.fspath(src)
+    src = Path(os.path.expandvars(raw))
 
     if not src.exists():
         raise FileNotFoundError(src)
@@ -108,23 +252,39 @@ def add_artifact(
     staging = adir / f".staging-{_fs.random_suffix()}"
     files_dir = staging / "files"
 
-    if src.is_dir():
+    extra: dict[str, Any] = {}
+
+    if reference:
+        src = src.resolve()
+        files_dir = src if src.is_dir() else src.parent
+        listed = sorted(files_dir.rglob("*")) if src.is_dir() else [src]
+        staging.mkdir()
+        stored = raw.rstrip("/\\") if "$" in raw else _portable(src)
+        root = stored if src.is_dir() else str(Path(stored).parent)
+        extra = {"reference": stored, "root": root}
+    elif src.is_dir():
         shutil.copytree(src, files_dir)
+        listed = sorted(files_dir.rglob("*"))
     else:
         files_dir.mkdir(parents=True)
         shutil.copy2(src, files_dir / src.name)
+        listed = [files_dir / src.name]
 
     entries = []
 
-    for p in sorted(files_dir.rglob("*")):
+    for p in listed:
         if p.is_file():
-            entries.append(
-                {
-                    "path": p.relative_to(files_dir).as_posix(),
-                    "size": p.stat().st_size,
-                    "sha256": _sha256(p),
-                }
-            )
+            st = p.stat()
+            rel = p.relative_to(files_dir).as_posix()
+            entry: dict[str, Any] = {"path": rel, "size": st.st_size}
+
+            if reference:
+                entry["mtime_ns"] = st.st_mtime_ns
+
+            if not reference or checksum:
+                entry["sha256"] = _sha256(p)
+
+            entries.append(entry)
 
     while True:  # claim the next version number; rename is atomic
         version = (_versions(adir) or [0])[-1] + 1
@@ -136,6 +296,7 @@ def add_artifact(
             "files": entries,
             "created": time.time(),
             "producer_run": run_id,
+            **extra,
         }
         _fs.atomic_write_json(staging / "manifest.json", manifest)
 
@@ -155,7 +316,8 @@ def resolve_artifact(project_dir: Path, ref: str) -> Artifact:
     Args:
         project_dir: The project's folder.
         ref: `"name"` or `"name:latest"` for the newest version, or `"name:v<N>"`
-            for a specific one.
+            for a specific one. A project in `ref` is ignored here; callers pick
+            `project_dir` from it.
 
     Returns:
         The matching version.
@@ -164,7 +326,7 @@ def resolve_artifact(project_dir: Path, ref: str) -> Artifact:
         FileNotFoundError: If the artifact has no versions or the requested version
             does not exist.
     """
-    name, _, version = ref.partition(":")
+    _, name, version = split_ref(ref)
     adir = project_dir / "artifacts" / name
     versions = _versions(adir)
 

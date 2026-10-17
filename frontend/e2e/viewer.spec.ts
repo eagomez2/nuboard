@@ -96,6 +96,17 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });
 
+test('a shared dataset is a reference used from other projects', async ({ page }) => {
+  // vit-ablations lists the datasets project's imagenet-100, which its runs use
+  await page.goto('/#/artifacts?project=vit-ablations');
+  await expect(page.getByRole('heading', { name: 'imagenet-100:v1' })).toBeVisible();
+  await expect(page.locator('.chip', { hasText: 'reference' })).toBeVisible();
+  await expect(page.locator('.snippet')).toHaveText('run.use_artifact("datasets/imagenet-100:v1")');
+  await expect(page.getByText('Logged outside a run.')).toBeVisible();
+  await expect(page.getByText(/References .*shared-data\/imagenet-100; the files are not copied/)).toBeVisible();
+  await expect(page.locator('g.node.run')).toHaveCount(8);
+});
+
 test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
   await page.locator('select.xmetric').selectOption('train/tokens');

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.14.0
+
+- Reference artifacts: `add_artifact(..., reference=True)` records where a
+  file or folder is, with each file's size and modification time, and copies
+  nothing, for datasets that live on shared storage. `checksum=True` also
+  hashes every file. `use_artifact` warns when a version's files are missing
+  or changed in size since it was made, and `Artifact.verify()` lists them.
+- References work across machines: a path inside `$NUBOARD_DATA_DIR`, or one
+  written with any environment variable (`"${IMAGENET}/train"`), is stored
+  with the variable and expanded where the artifact is used, so one version
+  points at the laptop's copy on the laptop and the cluster's on the
+  cluster.
+- Artifacts across projects: `run.use_artifact("datasets/fineweb-edu:v2")`
+  uses an artifact of the `datasets` project from a run in any other project,
+  and `run.add_artifact("datasets/fineweb-edu", ...)` adds one there. The
+  run's `inputs` and `outputs` record the other project (`project`,
+  `project_path`). An artifact name can no longer contain `/`.
+- `nb.add_artifact(project, name, path, ...)` adds a version without a run,
+  such as a dataset no script produced, and `nb.get_artifact(ref)` finds one
+  without recording it, such as in a notebook.
+- Artifacts page: projects that hold only artifacts are listed, a project's
+  list includes the artifacts its runs used from other projects, references
+  show where their files are, and the `use_artifact` line names the project.
+  Run details show another project's artifact as `project/name:vN`.
+- The demo keeps its datasets in `shared-data/`, registered as references in
+  a `datasets` project that `llm-pretrain` and `vit-ablations` use.
+- The [Artifacts guide](guide/artifacts.md) now explains how to organize
+  datasets, checkpoints and projects.
+
 ## 0.13.3
 
 - Fixes `NotADirectoryError: ... runs/.DS_Store/run.json` on macOS: a file

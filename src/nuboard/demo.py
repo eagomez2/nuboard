@@ -1,4 +1,8 @@
-"""Synthetic demo workspace: four projects, ~26 runs, media, video, artifacts and a live run."""
+"""Synthetic demo workspace: four projects, ~26 runs, media, video, artifacts and a live run.
+
+Datasets live outside the projects, in `shared-data/`, and are registered as
+reference artifacts of a `datasets` project that the training projects use.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ from . import _fs
 from .cells import Audio
 from .collection import save_collection
 from .reports import save_fields, save_report, save_snapshot
-from .run import init
+from .run import add_artifact, init
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
 LLM_STEPS = 25_000
@@ -198,13 +202,34 @@ def _llm_system(step: int, rng: random.Random, dip: bool = False) -> dict[str, f
     return out
 
 
+def _shared_data(root: Path, name: str, files: dict[str, str]) -> Path:
+    """Write a small dataset under `<root>/shared-data/<name>/` unless it is there already.
+
+    It is left alone when it exists, so the reference artifacts of an earlier
+    `generate` keep matching their files.
+    """
+    folder = root / "shared-data" / name
+
+    for rel, text in files.items():
+        path = folder / rel
+
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    return folder
+
+
 def _llm_runs(root: Path, base: float) -> None:
     """Write the `llm-pretrain` project: data prep, a 12-run lr/seed sweep, an eval run.
 
     Also saves two collections and sets custom fields on some runs.
     """
-    data = Path(tempfile.mkdtemp())
-    (data / "train.txt").write_text("fineweb-edu sample shard\n" * 100, encoding="utf-8")
+    shards = {
+        "2026-09": "fineweb-edu sample shard\n" * 100,
+        "2026-10": "fineweb-edu sample shard v2\n" * 120,
+    }
+    folders = [_shared_data(root, f"fineweb-edu/{k}", {"train.txt": v}) for k, v in shards.items()]
 
     with init(
         "llm-pretrain",
@@ -218,10 +243,20 @@ def _llm_runs(root: Path, base: float) -> None:
         _started=base - 4.8 * 3600,
     ) as prep:
         prep.add_scalar({"data/tokens_b": 10.2}, step=0, time=base - 4.8 * 3600 + 30)
-        prep.add_artifact("fineweb-edu", data, type="dataset", metadata={"tokens": "10B"})
-        (data / "train.txt").write_text("fineweb-edu sample shard v2\n" * 120, encoding="utf-8")
+        # the data stays in shared-data/; the datasets project only records it
         prep.add_artifact(
-            "fineweb-edu", data, type="dataset", metadata={"tokens": "12B", "dedup": True}
+            "datasets/fineweb-edu",
+            folders[0],
+            type="dataset",
+            metadata={"tokens": "10B"},
+            reference=True,
+        )
+        fineweb = prep.add_artifact(
+            "datasets/fineweb-edu",
+            folders[1],
+            type="dataset",
+            metadata={"tokens": "12B", "dedup": True},
+            reference=True,
         )
         prep.finish(_ended=base - 4.8 * 3600 + 120)
 
@@ -258,7 +293,7 @@ def _llm_runs(root: Path, base: float) -> None:
             _started=started,
         )
         _add_config_file(run, _llm_config(lr, seed))
-        run.use_artifact("fineweb-edu:v2")
+        run.use_artifact(f"datasets/{fineweb.ref}")
         sec_per_step = 0.22
         t = started
         last = LLM_STEPS
@@ -519,6 +554,18 @@ def _vit_runs(root: Path, base: float) -> None:
     """Write the `vit-ablations` project: four augmentations times two seeds, with media."""
     gains = {"none": 0.0, "randaug": 0.021, "mixup": 0.015, "cutmix": 0.026}
     ids: dict[str, str] = {}
+    # registered once, by hand rather than by a run, as data downloaded elsewhere often is
+    images = add_artifact(
+        "datasets",
+        "imagenet-100",
+        _shared_data(
+            root, "imagenet-100", {f"train/shard-{i:02d}.tar": f"{i}" * 64 for i in range(4)}
+        ),
+        type="dataset",
+        metadata={"classes": 100, "images": 126689},
+        reference=True,
+        dir=root,
+    )
     curves: dict[str, list[float]] = {}
 
     for i, (aug, seed) in enumerate((a, s) for a in gains for s in (0, 1)):
@@ -545,6 +592,7 @@ def _vit_runs(root: Path, base: float) -> None:
             _started=started,
         )
         _add_config_file(run, config)
+        run.use_artifact(f"datasets/{images.ref}")
         t = started
 
         for epoch in range(101):

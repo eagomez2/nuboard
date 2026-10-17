@@ -33,7 +33,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__, _fs
 from .._meta import FORMAT_VERSION, NAME
-from ..artifacts import list_artifacts
+from ..artifacts import find_artifact_projects, list_artifacts
 from ..catalog import Catalog
 from ..collection import delete_collection, list_collections, save_collection
 from ..query import QueryError, parse
@@ -693,52 +693,78 @@ def create_app(
     def artifacts(request: Request) -> Response:
         """Return artifact versions with the runs that produced and used them.
 
-        Query parameter `project` limits the list to one project.
+        Artifacts are found in every folder under the root that has an
+        `artifacts/` folder, including projects without runs, such as a project
+        of shared datasets. A run's `inputs` and `outputs` may point at another
+        project (`project_path`, relative to the run's project).
+
+        Query parameter `project` limits the list to the artifacts of one project
+        and those its runs produced or used.
         """
-        rows = catalog.runs()
+        root = catalog.root.resolve()
+
+        def name_of(folder: Path) -> str | None:
+            """Return the project name of a folder under the root, or None outside it."""
+
+            try:
+                rel = folder.resolve().relative_to(root)
+            except ValueError:
+                return None
+
+            return rel.as_posix() if rel.parts else root.name
+
         users: dict[tuple[str, str, int], list[str]] = {}
         makers: dict[tuple[str, str, int], list[str]] = {}
         by_id: dict[tuple[str, str], str] = {}
+        project_of: dict[str, str] = {}
 
-        for r in rows:
+        for r in catalog.runs():
             by_id[(r["project"], r["id"])] = r["key"]
+            project_of[r["key"]] = r["project"]
+            run_path = catalog.path_of(r["key"])
 
-            for ref in r.get("inputs") or []:
-                k = (r["project"], ref.get("artifact"), ref.get("version"))
-                users.setdefault(k, []).append(r["key"])
+            for field, into in (("inputs", users), ("outputs", makers)):
+                for ref in r.get(field) or []:
+                    project: str | None = r["project"]
 
-            for ref in r.get("outputs") or []:
-                k = (r["project"], ref.get("artifact"), ref.get("version"))
-                makers.setdefault(k, []).append(r["key"])
+                    if ref.get("project_path") and run_path is not None:
+                        project = name_of(run_path.parent.parent / ref["project_path"])
+
+                    if project is not None:
+                        k = (project, ref.get("artifact"), ref.get("version"))
+                        into.setdefault(k, []).append(r["key"])
 
         out = []
         want = request.query_params.get("project")
 
-        for p in catalog.projects():
-            if want and p["name"] != want:
-                continue
+        for pdir in find_artifact_projects(root):
+            project = name_of(pdir)
 
-            pdir = project_dir(p["name"])
-
-            if pdir is None:
+            if project is None:
                 continue
 
             for a in list_artifacts(pdir):
-                k = (p["name"], a.name, a.version)
+                k = (project, a.name, a.version)
                 producer = makers.get(k) or []
+                consumers = users.get(k, [])
                 pid = a.manifest.get("producer_run")
 
-                if not producer and pid and (p["name"], pid) in by_id:
-                    producer = [by_id[(p["name"], pid)]]
+                if not producer and pid and (project, pid) in by_id:
+                    producer = [by_id[(project, pid)]]
+
+                linked = {project_of.get(key) for key in [*producer, *consumers]}
+
+                if want and want != project and want not in linked:
+                    continue
 
                 out.append(
                     {
-                        "project": p["name"],
+                        "project": project,
                         "name": a.name,
                         "version": a.version,
                         "manifest": a.manifest,
                         "producers": producer,
-                        "consumers": users.get(k, []),
+                        "consumers": consumers,
                         "size": sum(int(f.get("size") or 0) for f in a.manifest.get("files") or []),
                     }
                 )

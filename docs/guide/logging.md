@@ -126,14 +126,16 @@ on the calling thread (they are mutable). Media bytes go to
 ```python
 art = run.add_artifact("model", "ckpt/", type="checkpoint", metadata={"step": 1000})
 art.ref  # "model:v3"
-ds = run.use_artifact("dataset:v2")  # or "dataset", "dataset:latest"
+ds = run.use_artifact("datasets/fineweb-edu:v2")  # another project's; or "model", "model:latest"
 ds.files  # Path to the files
-ds.manifest  # sha256 and size per file, type, metadata, producing run
+ds.manifest  # size and sha256 (or modification time) per file, type, metadata, producing run
 ```
 
 Artifacts live in `<project>/artifacts/<name>/v<N>/`; versions are numbered
 automatically and created atomically. `add_artifact` copies the files on the
 calling thread, so avoid calling it inside a hot loop with large checkpoints.
+With `reference=True` it records where the files are instead, for datasets
+that stay on shared storage; `nb.add_artifact` does the same without a run.
 The viewer's [Artifacts page](artifacts.md) shows every version with the runs
 that produced and used it.
 
@@ -174,4 +176,5 @@ run's folder, so the new folder still never refers to anything outside it.
 | --- | --- |
 | `NUBOARD_DIR` | Default root folder for `init`, `serve` and `ls`. |
 | `NUBOARD_CACHE_DIR` | Where the viewer keeps its catalog cache. |
+| `NUBOARD_DATA_DIR` | This machine's data folder; references to datasets inside it work on every machine that sets it. See [Data on several machines](artifacts.md#data-on-several-machines). |
 | `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `SLURM_*`, `OMPI_COMM_WORLD_*` | Rank detection (see [Distributed training](distributed.md)). |

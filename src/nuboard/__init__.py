@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from ._meta import FORMAT_VERSION, NAME
 from .artifacts import Artifact
 from .cells import Audio, Image
-from .run import Run, init
+from .run import Run, add_artifact, get_artifact, init
 
 try:
     __version__ = _metadata.version(NAME)
@@ -57,6 +57,8 @@ __all__ = [
     "Image",
     "Run",
     "__version__",
+    "add_artifact",
+    "get_artifact",
     "init",
     "load",
 ]

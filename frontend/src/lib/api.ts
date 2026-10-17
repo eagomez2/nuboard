@@ -56,7 +56,8 @@ export interface Collection {
 export interface ArtifactFile {
   path: string;
   size: number;
-  sha256: string;
+  sha256?: string;
+  mtime_ns?: number;
 }
 
 export interface ArtifactVersion {
@@ -72,6 +73,8 @@ export interface ArtifactVersion {
     files?: ArtifactFile[];
     created?: number;
     producer_run?: string | null;
+    reference?: string;
+    root?: string;
   };
 }
 

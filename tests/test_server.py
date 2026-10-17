@@ -193,6 +193,27 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
     assert art[0]["producers"] == [bad["key"]] and art[0]["consumers"] == [runs["user"]["key"]]
 
 
+def test_artifacts_of_a_project_without_runs(client, tmp_path):
+    (tmp_path / "data.txt").write_text("x")
+    nb.add_artifact("datasets", "corpus", tmp_path / "data.txt", reference=True)
+
+    with nb.init("llm", name="train", capture_env=False) as run:
+        run.use_artifact("datasets/corpus")
+        run.add_scalar({"loss": 1.0}, step=0)
+
+    with nb.init("vision", name="other", capture_env=False) as run:
+        run.add_scalar({"loss": 1.0}, step=0)
+
+    client.get("/api/runs")  # the catalog picks up the new runs
+    art = client.get("/api/artifacts").json()["artifacts"]
+    assert [(a["project"], a["name"]) for a in art] == [("datasets", "corpus")]
+    assert art[0]["producers"] == [] and len(art[0]["consumers"]) == 1
+    assert art[0]["manifest"]["reference"].endswith("data.txt")
+    # a project's list also has the artifacts its runs used from other projects
+    assert len(client.get("/api/artifacts?project=llm").json()["artifacts"]) == 1
+    assert client.get("/api/artifacts?project=vision").json()["artifacts"] == []
+
+
 def test_x_axis_by_another_metric(client):
     with nb.init("sweep", name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):

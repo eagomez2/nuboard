@@ -28,6 +28,8 @@ the [changelog](changelog.md) for what each version added.
   system scalars (CPU, memory, GPU), console capture, PyTorch tensors
   copied on the calling thread.
 - **0.13**: `run.log` removed in favor of `run.add_scalar`.
+- **0.14**: shared datasets: reference artifacts, artifacts used across
+  projects, and `nb.add_artifact` / `nb.get_artifact` without a run.
 
 ## Next
 
