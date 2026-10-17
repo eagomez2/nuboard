@@ -29,6 +29,8 @@ browser's local storage.
 - **Workspace** (left): every project found under the folder, with run counts,
   its collections and its saved views. **Save current view…** writes the
   current URL state to `<project>/views/<name>.json`, which you can commit.
+  Click a view to open it. The **×** that appears on hover deletes a view or
+  a collection, after asking; the runs themselves are not touched.
 - **Table**: status, star, name and folder (with the run's collections and its
   tags as colored pills; a tag keeps its color everywhere), the config keys
   that differ between the listed runs, a result column, start time, duration, reviewed mark and

@@ -833,13 +833,20 @@ def create_app(
 
         return path_inside(catalog.root, name)
 
-    def view_get(request: Request) -> Response:
-        """Return a saved view of a project, or a 404 error."""
+    def view_item(request: Request) -> Response:
+        """Return a saved view of a project (`GET`) or delete it (`DELETE`).
+
+        Returns the view, or `{"deleted": <name>}`; an unknown view is a 404 error.
+        """
         pdir = project_dir(request.path_params["project"])
         target = path_inside(pdir / "views", request.path_params["name"]) if pdir else None
 
-        if target is None or not target.is_file():
+        if target is None or not target.is_file() or target.suffix != ".json":
             return JSON({"error": "no such view"}, status_code=404)
+
+        if request.method == "DELETE":
+            target.unlink()
+            return JSON({"deleted": target.name})
 
         return JSON(_fs.read_json(target, {}))
 
@@ -1198,7 +1205,7 @@ def create_app(
         Route("/api/collections", collections),
         Route("/api/collections", collection_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),
-        Route("/api/views/{project:path}/{name}", view_get),
+        Route("/api/views/{project:path}/{name}", view_item, methods=["GET", "DELETE"]),
         Route("/api/best", best_steps),
         Route("/api/media/ref", media_ref),
         Route("/api/reports", reports),

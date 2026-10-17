@@ -706,3 +706,23 @@ test('run details show the console output as a terminal would', async ({ page })
   await expect(log).not.toContainText('tokenizing shards:  20%'); // \r redrew the line
   await expect(log).not.toContainText('[33m'); // color codes removed
 });
+
+test('a saved view is deleted after confirming', async ({ page }) => {
+  await page.goto('/#/runs?project=ppo-atari');
+  await page.getByRole('button', { name: 'Save current view…' }).click();
+  await page.getByRole('dialog').getByLabel('Name').fill('to-delete');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+  const row = page.getByRole('button', { name: 'views/to-delete.json' });
+  await expect(row).toBeVisible();
+  const del = page.getByRole('button', { name: 'Delete view to-delete.json' });
+  await row.hover();
+  await del.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Delete the saved view "to-delete"?');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(row).toBeVisible(); // cancelling keeps it
+  await row.hover();
+  await del.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(row).toBeHidden();
+});

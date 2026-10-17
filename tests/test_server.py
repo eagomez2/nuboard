@@ -115,6 +115,12 @@ def test_views_round_trip(client):
     assert r.json()["saved"] == "lr-bands.json"
     view = client.get("/api/views/sweep/lr-bands.json").json()
     assert view == {"page": "charts", "params": {"q": "group by lr"}}
+    assert "lr-bands.json" in client.get("/api/info").json()["projects"][0]["views"]
+    assert client.delete("/api/views/sweep/lr-bands.json").json() == {"deleted": "lr-bands.json"}
+    assert client.get("/api/views/sweep/lr-bands.json").status_code == 404
+    assert client.delete("/api/views/sweep/lr-bands.json").status_code == 404
+    assert client.get("/api/info").json()["projects"][0]["views"] == []
+    assert client.delete("/api/views/sweep/%2E%2E%2Fruns").status_code == 404  # stays in views/
 
 
 def test_custom_fields_and_query(client):

@@ -35,6 +35,17 @@
     app.loadRuns();
   }
 
+  async function removeView(projectName: string, view: string) {
+    const ok = await confirmAction(
+      `Delete the saved view "${view.replace(/\.json$/, '')}"?`,
+      `This deletes ${projectName}/views/${view}. Runs, collections and reports are not touched.`,
+      { confirm: 'Delete', danger: true },
+    );
+    if (!ok) return;
+    await fetch(`/api/views/${encodeURIComponent(projectName)}/${encodeURIComponent(view)}`, { method: 'DELETE' });
+    app.loadInfo();
+  }
+
   async function saveView() {
     const target = project || app.info?.projects[0]?.name;
     if (!target) return;
@@ -91,10 +102,13 @@
         </div>
       {/each}
       {#each p.views as v (v)}
-        <button class="item view" onclick={() => openView(p.name, v)} title="Saved view (views/{v})">
-          <Icon name="file" size={15} />
-          <span class="grow">views/{v}</span>
-        </button>
+        <div class="item coll view">
+          <button class="collbtn" onclick={() => openView(p.name, v)} title="Saved view (views/{v})">
+            <Icon name="file" size={15} />
+            <span class="grow">views/{v}</span>
+          </button>
+          <button class="del" aria-label="Delete view {v}" onclick={() => removeView(p.name, v)}>×</button>
+        </div>
       {/each}
     {/each}
     <button class="btn save" onclick={saveView}>Save current view…</button>
@@ -179,7 +193,8 @@
     padding: 0 8px;
     visibility: hidden;
   }
-  .coll:hover .del {
+  .coll:hover .del,
+  .coll:focus-within .del {
     visibility: visible;
   }
   .view {
