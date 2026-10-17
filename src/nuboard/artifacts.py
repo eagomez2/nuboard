@@ -65,7 +65,7 @@ class Artifact:
         are expanded with this machine's values.
         """
         ref = self.manifest.get("reference")
-        return Path(os.path.expandvars(ref)) if ref else None
+        return _expand(ref) if ref else None
 
     @property
     def files(self) -> Path:
@@ -80,7 +80,7 @@ class Artifact:
         if ref is None:
             return self.path / "files"
 
-        return Path(os.path.expandvars(self.manifest.get("root") or str(ref)))
+        return _expand(self.manifest.get("root") or str(ref))
 
     def verify(self) -> list[str]:
         """Check the files against the manifest by size, without reading them.
@@ -130,13 +130,18 @@ def split_ref(ref: str) -> tuple[str | None, str, str]:
     return project or None, name, version
 
 
+def _expand(path: str) -> Path:
+    """Return `path` with environment variables and a leading `~` expanded."""
+    return Path(os.path.expanduser(os.path.expandvars(path)))
+
+
 def _portable(path: Path) -> str:
     """Return `path` as `${NUBOARD_DATA_DIR}/...` when it is inside that folder, else as is."""
     data = os.environ.get(DATA_ENV)
 
     if data:
         try:
-            rel = path.relative_to(Path(data).resolve())
+            rel = path.relative_to(_expand(data).resolve())
         except ValueError:
             pass
         else:
@@ -242,7 +247,7 @@ def add_artifact(
     """
     name = _fs.sanitize(name, "artifact")
     raw = os.fspath(src)
-    src = Path(os.path.expandvars(raw))
+    src = _expand(raw)
 
     if not src.exists():
         raise FileNotFoundError(src)
