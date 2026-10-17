@@ -59,7 +59,7 @@
     return v !== null && Number.isFinite(v) ? v : null;
   }
 
-  // Parameters: config keys whose values differ between runs, plus custom fields.
+  // Parameters: config keys whose values differ between runs, plus properties.
   const candidates = $derived.by(() => {
     const seen = new Map<string, Set<string>>();
     const add = (k: string, v: unknown) => {

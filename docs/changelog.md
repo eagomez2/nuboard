@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.11.0
+
+**Runs table**
+
+- Tags can be edited in the viewer. In a run's details, the tag button under
+  its name removes a tag with × and adds one by typing, with the project's
+  tags suggested. **Tags…** in the selection bar adds and removes tags on
+  every selected run, keeping each run's other tags. Once edited, a run's tags
+  replace the ones it logged, so those can be removed too; `run.json` keeps
+  the logged ones.
+- Custom fields and properties are now one thing, properties. **Set field…**
+  is now **Set property…**: it picks a property, then its value with a control
+  that fits its type (buttons for a choice or yes/no, pills for tags, a date
+  picker), and a new name is defined with its type first. **Columns** lists
+  every property of the listed projects under **Properties**, marks values
+  without a definition as untyped, and **New property…** defines one and shows
+  it as a column. In a run's Properties tab, **untyped · define** gives such a
+  value a type. The stored format is unchanged.
+
+**Docs**
+
+- A **Python API** section describes every call, in the style of PyTorch's
+  `SummaryWriter` reference: its signature, parameters, the shapes and dtypes
+  it accepts, what it stores and how big, what the viewer shows, a complete
+  example and a picture of the result. It ends with a table mapping each
+  `SummaryWriter` method to NuBoard.
+- **Get started** walks through training a small NumPy network on a spiral
+  with three learning rates, logging scalars, images, PR curves,
+  distributions, a point cloud and a table, then reading them in the viewer.
+  The script is `examples/get_started.py`.
+- The examples in the API pages run as tests, so they stay correct.
+
 ## 0.10.2
 
 - The Columns menu of the runs table floats above the page, so a table with

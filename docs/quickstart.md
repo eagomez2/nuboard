@@ -12,7 +12,7 @@ keeps logging:
 
 - **llm-pretrain**: a learning-rate sweep with three seeds per rate, one run
   that diverges to NaN, one with a loss spike and one with a throughput drop,
-  a dataset and checkpoint lineage, two collections and a few custom fields.
+  a dataset and checkpoint lineage, two collections and a few properties.
 - **vit-ablations**: an augmentation ablation with images and HTML reports.
 - **ppo-atari**: PPO on two Atari games.
 
@@ -28,8 +28,9 @@ demo only writes the folder; view it later with `nuboard up demo-runs`.
 1. **Runs.** Pick `llm-pretrain` in the workspace list. Runs with a warning
    badge have health alerts; hover the badge to read them. Type
    `where status = crashed` in the query bar, then clear it and try
-   `train/loss.min < 2.3`. Open **Columns** and tick the `verdict` custom
-   field; click a cell to edit it.
+   `train/loss.min < 2.3`. Open **Columns** and tick the `verdict`
+   property; click a cell to edit it. Select a few runs and press **Tags…**
+   to tag them.
 2. **Collections.** Click **shortlist** under the project. Select a few more
    runs and press **Add to collection…**.
 3. **Charts.** Type `where tags has "sweep" group by config.optim.lr` and open
@@ -66,7 +67,8 @@ nuboard up experiments
 ```
 
 The repository's `examples/` folder has `quickstart.py` and `train_numpy.py`,
-a small NumPy training loop with a learning-rate sweep.
+a small NumPy training loop with a learning-rate sweep, and `get_started.py`, the
+script of [Get started](get-started.md).
 
 ## Command line
 

@@ -14,7 +14,7 @@ runs = project.runs('where tags has "sweep" and status = finished')
 for r in runs:
     print(r.id, r.config["optim"]["lr"], r.summary["train/loss"]["min"])
 
-# custom fields, collections and health alerts set in the viewer
+# properties, collections and health alerts set in the viewer
 for r in project.runs('collections has "shortlist"'):
     print(r.name, r.fields.get("verdict"), r.collections, [a["message"] for a in r.alerts()])
 
@@ -24,7 +24,7 @@ worst = sorted(project.runs()[0].table("eval/samples"), key=lambda r: r["pesq"])
 # notes added to audio in the viewer, by "<media key>@<step>"
 print(project.runs()[0].audio_notes.get("eval/enhanced@30", []))
 
-# write a custom field (None removes it); a running viewer picks it up
+# write a property value (None removes it); a running viewer picks it up
 project.runs("where config.optim.lr = 1e-3")[0].set_field("verdict", "keep")
 
 # one metric across runs, long format: run_id, name, step, time, value, config.optim.lr

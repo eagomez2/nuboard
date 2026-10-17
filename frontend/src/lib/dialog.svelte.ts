@@ -9,6 +9,10 @@ export interface DialogField {
   suggestions?: string[];
   /** Pick one of these instead of typing (buttons up to four, else a menu); the value is the option's `value`. */
   options?: { value: string; label: string }[];
+  /** With `options`: pick any number of them; the value lists the picked ones, joined by `, `. */
+  multiple?: boolean;
+  /** The text box's `type`, such as `date` or `url`. */
+  inputType?: 'text' | 'date' | 'url';
   /** A switch instead of a text box; the value is `'1'` or `'0'`. */
   toggle?: boolean;
 }

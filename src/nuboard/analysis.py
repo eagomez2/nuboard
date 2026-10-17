@@ -25,7 +25,7 @@ class RunHandle:
 
     Attributes:
         record: The run's catalog record, as the viewer sees it: id, name, status,
-            config, summary, tags, notes, custom fields and more.
+            config, summary, tags, notes, property values and more.
         path: The run's folder.
     """
 

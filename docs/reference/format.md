@@ -86,9 +86,10 @@ shown as **lost** (the process died without running its exit handlers, e.g.
 
 Owned by the viewer, written atomically: `starred` (bool), `archived` (bool),
 `reviewed` (bool), `notes` (Markdown str, overrides `run.json` notes in the
-viewer), `tags` (list, merged with `run.json` tags), `fields` (object of custom
-fields and property values: string, number, boolean or list-of-string values;
-lists hold the values of `tags` properties), `audio_notes` (object keyed by
+viewer), `tags` (list; once tags are edited in the viewer, this list replaces the
+`run.json` tags, which keep what was logged), `fields` (object of property
+values: string, number, boolean or list-of-string values; lists hold the
+values of `tags` properties), `audio_notes` (object keyed by
 `<media key>@<step>` of rank 0, each a list of `{id, start, end, text}` notes on
 sections of that audio item, times in seconds). Keeping these inside the run
 folder means they travel with the run.

@@ -64,6 +64,16 @@ def test_scalars_arrow_grouped(client):
     assert 99 <= xs[0] <= 100 and 200 <= xs[-1] <= 201
 
 
+def test_tags_edited_in_the_viewer_replace_the_logged_ones(client):
+    keys = [r["key"] for r in client.get("/api/runs").json()["runs"]]
+    assert client.get(f"/api/runs/{keys[0]}").json()["run"]["tags"] == ["sweep"]
+    client.post("/api/runs/annotate", json={"keys": keys[:1], "patch": {"tags": ["best", "keep"]}})
+    assert client.get(f"/api/runs/{keys[0]}").json()["run"]["tags"] == ["best", "keep"]
+    assert client.get(f"/api/runs/{keys[1]}").json()["run"]["tags"] == ["sweep"]
+    client.post("/api/runs/annotate", json={"keys": keys[:1], "patch": {"tags": []}})
+    assert client.get(f"/api/runs/{keys[0]}").json()["run"]["tags"] == []
+
+
 def test_annotations_and_files(client):
     key = client.get("/api/runs").json()["runs"][0]["key"]
     r = client.post(

@@ -51,8 +51,8 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
 
     ---
 
-    A run is a folder you can copy, rsync, zip or delete. Stars, notes and
-    custom fields live next to the data in `annotations.json`, so they move
+    A run is a folder you can copy, rsync, zip or delete. Stars, notes, tags and
+    properties live next to the data in `annotations.json`, so they move
     with it.
 
 -   :material-chart-bell-curve-cumulative:{ .lg .middle } __Grouped charts__

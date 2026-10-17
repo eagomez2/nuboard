@@ -6,6 +6,11 @@ nav:
   - About: index.md
   - Installation: installation.md
   - Quickstart: quickstart.md
+  - Get started: get-started.md
+  - Python API:
+      - Overview: api/index.md
+      - Runs: api/run.md
+      - Media: api/media.md
   - Guides:
       - Logging from Python: guide/logging.md
       - Using the viewer: guide/viewer.md
