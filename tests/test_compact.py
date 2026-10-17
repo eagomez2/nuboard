@@ -17,7 +17,7 @@ def make_run(n=20_000, compact=True):
     run = nb.init("p", capture_env=False, compact=compact)
 
     for s in range(n):
-        run.log({"loss": 1.0 / (s + 1), "lr": 0.1}, step=s)
+        run.add_scalar({"loss": 1.0 / (s + 1), "lr": 0.1}, step=s)
 
     run.finish()
     return run
@@ -64,7 +64,7 @@ def test_one_metric_read_is_fast():
 def test_stale_parquet_is_ignored_after_resume():
     run = make_run(100)
     again = nb.init("p", run_id=run.id, resume="must", capture_env=False, compact=False)
-    again.log({"loss": -1.0}, step=100)
+    again.add_scalar({"loss": -1.0}, step=100)
     again.finish()
     reader = RunReader(run.path)
     assert reader.parquet is None  # logs grew: compacted data no longer covers them
@@ -77,7 +77,7 @@ def test_million_points_read_quickly():
     run = nb.init("p", capture_env=False, compact=False)
 
     for s in range(100_000):
-        run.log({f"m{i}": float(s) for i in range(10)}, step=s)
+        run.add_scalar({f"m{i}": float(s) for i in range(10)}, step=s)
 
     run.finish()
     t0 = time.perf_counter()

@@ -27,6 +27,7 @@ the [changelog](changelog.md) for what each version added.
 - **0.12**: `add_scalar` and scalar naming as in TensorBoard, `add_video`,
   system scalars (CPU, memory, GPU), console capture, PyTorch tensors
   copied on the calling thread.
+- **0.13**: `run.log` removed in favor of `run.add_scalar`.
 
 ## Next
 

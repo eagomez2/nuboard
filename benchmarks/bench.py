@@ -31,7 +31,7 @@ def main() -> None:
     t0 = time.perf_counter()
 
     for step in range(n):
-        run.log(data, step=step)
+        run.add_scalar(data, step=step)
 
     per_call = (time.perf_counter() - t0) / n
     t1 = time.perf_counter()
@@ -45,7 +45,7 @@ def main() -> None:
     run = nb.init("bench", name="million", dir=root, capture_env=False, compact=False)
 
     for step in range(100_000):
-        run.log({f"m{i}": step * 0.5 + i for i in range(10)}, step=step)
+        run.add_scalar({f"m{i}": step * 0.5 + i for i in range(10)}, step=step)
 
     run.finish()
     size = sum(p.stat().st_size for p in run.path.glob("events.*"))

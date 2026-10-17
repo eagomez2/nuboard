@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0
+
+- Breaking: `run.log` is removed; `run.add_scalar` is the one way to log
+  scalars. Replace `run.log(data, step=s)` with `run.add_scalar(data, step=s)`,
+  which takes the same dict and keyword arguments. The docs, examples, tests
+  and benchmarks use `add_scalar` throughout.
+
 ## 0.12.0
 
 **Logging**
@@ -8,7 +15,7 @@
   `run.add_scalar("train/loss", 0.42, step=10)` logs one, and
   `run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4}, step=10)` several,
   which covers TensorBoard's `add_scalars` too. `run.log` keeps working as
-  the same call.
+  the same call (removed in 0.13.0).
 - `run.add_video` logs clips from `(T, H, W, C)`, `(T, C, H, W)` or
   `(N, T, C, H, W)` arrays and tensors, encoded as looping animated PNGs with
   no ffmpeg needed, or MP4, WebM, MOV, Ogg and GIF files as they are. The

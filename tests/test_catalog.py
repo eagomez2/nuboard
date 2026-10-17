@@ -23,7 +23,7 @@ def test_find_runs_any_folder_shape(tmp_path):
 
 def test_refresh_detects_changes_and_rebuilds_cache(tmp_path):
     run = nb.init("a", capture_env=False)
-    run.log({"x": 1}, step=0)
+    run.add_scalar({"x": 1}, step=0)
     run.finish()
     cat = Catalog(tmp_path / "exp", cache=tmp_path / "cache")
     assert cat.refresh() == {run.id}

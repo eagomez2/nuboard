@@ -24,7 +24,7 @@ def client(tmp_path):
                 capture_env=False,
             ) as run:
                 for s in range(500):
-                    run.log({"loss": 1 / (s + 1) + lr * seed}, step=s)
+                    run.add_scalar({"loss": 1 / (s + 1) + lr * seed}, step=s)
 
                 run.add_text("note", "hi", step=1)
                 run.add_file(tmp_path / "config.yaml")
@@ -166,7 +166,7 @@ def test_collections(client, tmp_path):
 def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
     with nb.init("sweep", name="bad", capture_env=False) as run:
         for s in range(400):
-            run.log({"loss": float("nan") if s >= 300 else 1.0}, step=s)
+            run.add_scalar({"loss": float("nan") if s >= 300 else 1.0}, step=s)
 
         src = tmp_path / "w.bin"
         src.write_bytes(b"x")
@@ -174,7 +174,7 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
 
     with nb.init("sweep", name="user", capture_env=False) as run:
         run.use_artifact("weights:latest")
-        run.log({"loss": 1.0}, step=0)
+        run.add_scalar({"loss": 1.0}, step=0)
 
     runs = {r["name"]: r for r in client.get("/api/runs").json()["runs"]}
     bad = runs["bad"]
@@ -190,7 +190,7 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
 def test_x_axis_by_another_metric(client):
     with nb.init("sweep", name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
-            run.log({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
+            run.add_scalar({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
 
     key = next(r["key"] for r in client.get("/api/runs").json()["runs"] if r["name"] == "tok")
     res = client.get("/api/scalars", params={"runs": key, "metric": "loss", "x": "metric:tokens"})
@@ -348,7 +348,7 @@ def test_property_definitions_and_tag_values(client):
 def test_runs_with_the_same_name_get_distinct_series(tmp_path):
     for _ in range(2):
         with nb.init("dup", name="same", dir=tmp_path / "exp", capture_env=False) as run:
-            run.log({"loss": 1.0}, step=0)
+            run.add_scalar({"loss": 1.0}, step=0)
 
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
 

@@ -22,7 +22,7 @@
 Standard library only, so `pip install nuboard` adds nothing to a training
 environment.
 
-- `log()` resolves the step, then appends `(kind, step, time, dict(data))` to a
+- `add_scalar()` resolves the step, then appends `(kind, step, time, dict(data))` to a
   `collections.deque`. That is the whole cost on the training thread: no
   locks, no conversion, no I/O.
 - A daemon writer thread wakes every second (or on `flush()`), drains the
@@ -100,7 +100,7 @@ version was built in; a laptop is typically 2–3× faster.
 
 | Target | Measured |
 | --- | --- |
-| `log()` of a 50-scalar dict well under 50 µs | ~2.5 µs |
+| `add_scalar()` of a 50-scalar dict well under 50 µs | ~2.5 µs |
 | 1M scalar points: under 30 MB live | 28 MB of event log |
 | 1M points: under 0.1 s to read | 0.12–0.15 s (decode 0.04 s, per-scalar split the rest) |
 | one scalar from Parquet under 10 ms | ~7 ms warm, ~60 ms for the first read after opening |
