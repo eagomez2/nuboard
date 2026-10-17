@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1
+
+- A leading `~` is expanded in artifact paths and in `NUBOARD_DATA_DIR`, so
+  `nb.add_artifact("datasets", "fineweb-edu", "~/data/fineweb-edu", reference=True)`
+  works as written.
+
 ## 0.14.0
 
 - Reference artifacts: `add_artifact(..., reference=True)` records where a

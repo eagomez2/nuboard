@@ -536,6 +536,11 @@ def test_reference_relative_to_each_machines_data_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("NUBOARD_DATA_DIR", str(tmp_path / "cluster"))
     assert nb.get_artifact("datasets/fw:v2").files == tmp_path / "cluster" / "fw"
     assert nb.get_artifact("datasets/fw:v1").verify() == []  # another copy, other mtimes
+    monkeypatch.setenv("HOME", str(tmp_path / "laptop"))
+    monkeypatch.setenv("NUBOARD_DATA_DIR", "~")  # as a shell profile may leave it
+    home = nb.add_artifact("datasets", "fw", "~/fw", reference=True)
+    assert home.manifest["reference"] == "${NUBOARD_DATA_DIR}/fw"
+    assert home.files == tmp_path / "laptop" / "fw"
     # any variable works when written in the path
     monkeypatch.setenv("DATA", str(tmp_path / "laptop"))
     own = nb.add_artifact("datasets", "fw", "${DATA}/fw", reference=True)
@@ -543,7 +548,7 @@ def test_reference_relative_to_each_machines_data_folder(tmp_path, monkeypatch):
     monkeypatch.delenv("DATA")
 
     with pytest.warns(UserWarning, match="DATA is not set"):
-        nb.get_artifact("datasets/fw:v3")
+        nb.get_artifact("datasets/fw:v4")
 
 
 def test_add_scalar_takes_one_value_or_several(tmp_path):
