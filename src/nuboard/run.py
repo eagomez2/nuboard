@@ -342,7 +342,7 @@ class Run:
                 self.id, self.path, self.session = "", runs_dir, 0
                 self.config = _config_to_dict(config)
                 self._meta = {}
-                self._finished = True  # every log call becomes a no-op
+                self._finished = True  # every add_* call becomes a no-op
                 return
 
             run_id = new_id
@@ -667,24 +667,6 @@ class Run:
 
         if writer is not None:
             writer.queue.append((0, step, _now() if time is None else time, data))
-
-    def log(
-        self,
-        data: Mapping[str, Any],
-        step: int | None = None,
-        *,
-        time: float | None = None,
-        all_ranks: bool | None = None,
-    ) -> None:
-        """Log several scalars at one step; the same as `add_scalar(data, step=step)`.
-
-        Args:
-            data: Scalar names mapped to values. Nested dicts are flattened with `/`.
-            step: Training step. Defaults to one more than the previous call.
-            time: Unix timestamp of the values. Defaults to now.
-            all_ranks: Overrides the run's `all_ranks` setting for this call.
-        """
-        self.add_scalar(data, step=step, time=time, all_ranks=all_ranks)
 
     def add_text(
         self,

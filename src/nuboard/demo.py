@@ -1192,7 +1192,7 @@ def live(root: str | Path, stop: threading.Event | None = None, speed: float = 1
     Args:
         root: Folder holding the demo workspace.
         stop: Event that ends the loop. Without one, the loop never ends.
-        speed: Speed-up factor; at 1.0 a log call happens every 0.05 s.
+        speed: Speed-up factor; at 1.0 an `add_scalar` call happens every 0.05 s.
     """
     stop = stop or threading.Event()
     seed = 4

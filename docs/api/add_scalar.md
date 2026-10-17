@@ -13,9 +13,6 @@ run.add_scalar("train/loss", 0.42, step=10)  # one
 run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4}, step=10)  # several
 ```
 
-`run.log(data, step=None)` is the same as `run.add_scalar(data, step=step)`
-and keeps working.
-
 **Parameters**
 
 - **key** (*str or dict*): the scalar's name, such as `"train/loss"`. To log

@@ -21,7 +21,7 @@ from nuboard.reader import RunReader
 
 def test_init_creates_self_contained_folder(tmp_path):
     with nb.init("proj", name="base line:1", config={"lr": 1e-3, "opt": {"b": [0.9, 0.95]}}) as run:
-        run.log({"loss": 1.0, "nested": {"acc": 0.5}}, step=0)
+        run.add_scalar({"loss": 1.0, "nested": {"acc": 0.5}}, step=0)
 
     assert run.path.parent.parent == tmp_path / "exp" / "proj"
     assert re.fullmatch(r"\d{8}-\d{4}_base-line-1_[a-z2-9]{6}", run.id)
@@ -80,17 +80,17 @@ def test_add_file_rejects_unsafe_names(tmp_path):
 
 def test_log_values_and_steps(tmp_path):
     run = nb.init("p", capture_env=False)
-    run.log({"a": 1})  # step 0
-    run.log({"a": 2})  # step 1
-    run.log({"a": 3}, step=10)
-    run.log({"a": 4})  # step 11
+    run.add_scalar({"a": 1})  # step 0
+    run.add_scalar({"a": 2})  # step 1
+    run.add_scalar({"a": 3}, step=10)
+    run.add_scalar({"a": 4})  # step 11
     import numpy as np
 
-    run.log({"np": np.float32(1.5), "flag": True, "nan": float("nan")}, step=12)
+    run.add_scalar({"np": np.float32(1.5), "flag": True, "nan": float("nan")}, step=12)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        run.log({"bad": "text"}, step=13)
+        run.add_scalar({"bad": "text"}, step=13)
         run.flush()
 
     assert any("cannot convert" in str(w.message) for w in caught)
@@ -112,7 +112,7 @@ def test_log_is_fast():
     t0 = time.perf_counter()
 
     for step in range(n):
-        run.log(data, step=step)
+        run.add_scalar(data, step=step)
 
     per_call = (time.perf_counter() - t0) / n
     run.finish()
@@ -122,7 +122,7 @@ def test_log_is_fast():
 def test_exception_marks_run_crashed():
     with pytest.raises(RuntimeError):
         with nb.init("p", capture_env=False) as run:
-            run.log({"x": 1}, step=0)
+            run.add_scalar({"x": 1}, step=0)
             raise RuntimeError("boom")
 
     meta = json.loads((run.path / "run.json").read_text())
@@ -137,7 +137,7 @@ def test_process_killed_without_finish_keeps_flushed_data(tmp_path):
         import nuboard as nb
         run = nb.init("p", dir={str(tmp_path / "crash")!r}, capture_env=False, flush_interval=0.05)
         for i in range(1000):
-            run.log({{"loss": 1.0 / (i + 1)}}, step=i)
+            run.add_scalar({{"loss": 1.0 / (i + 1)}}, step=i)
         run.flush()
         print(run.path, flush=True)
         os._exit(1)  # no finish(), no atexit: like SIGKILL or a node failure
@@ -157,7 +157,7 @@ def test_resume_new_session_later_wins():
     run = nb.init("p", name="r", capture_env=False)
 
     for s in range(10):
-        run.log({"loss": 10.0 - s}, step=s)
+        run.add_scalar({"loss": 10.0 - s}, step=s)
 
     run.finish()
 
@@ -168,7 +168,7 @@ def test_resume_new_session_later_wins():
     assert again.session == 1
 
     for s in range(5, 8):  # restarted from a checkpoint at step 5
-        again.log({"loss": 100.0 + s}, step=s)
+        again.add_scalar({"loss": 100.0 + s}, step=s)
 
     again.finish()
     steps, _, values = RunReader(run.path).scalars("loss")
@@ -189,11 +189,11 @@ def test_fork_copies_history_up_to_step():
     parent = nb.init("p", capture_env=False)
 
     for s in range(10):
-        parent.log({"loss": float(s)}, step=s)
+        parent.add_scalar({"loss": float(s)}, step=s)
 
     parent.finish()
     child = nb.init("p", fork_from=(parent.id, 4), capture_env=False)
-    child.log({"loss": 40.0}, step=5)
+    child.add_scalar({"loss": 40.0}, step=5)
     child.finish()
     steps, _, values = RunReader(child.path).scalars("loss")
     assert list(steps) == [0, 1, 2, 3, 4, 5]
@@ -210,9 +210,9 @@ def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
     monkeypatch.setenv("RANK", "1")
     r1 = nb.init("dist", name="ddp", capture_env=False)
     assert r0.path == r1.path
-    r0.log({"loss": 1.0}, step=0)
-    r1.log({"loss": 2.0}, step=0)  # ignored: rank 1, not all_ranks
-    r1.log({"grad_norm": 3.0}, step=0, all_ranks=True)
+    r0.add_scalar({"loss": 1.0}, step=0)
+    r1.add_scalar({"loss": 2.0}, step=0)  # ignored: rank 1, not all_ranks
+    r1.add_scalar({"grad_norm": 3.0}, step=0, all_ranks=True)
     (tmp_path / "config.yaml").write_text("lr: 0.001\n", "utf-8")
     assert r1.add_file(tmp_path / "config.yaml") is None  # only rank 0 copies
     assert not (r1.path / "files" / "config.yaml").exists()
@@ -232,7 +232,7 @@ def test_nonzero_rank_without_shared_id_is_a_quiet_no_op(monkeypatch):
     with pytest.warns(RuntimeWarning, match="will not log"):
         run = nb.init("dist2", capture_env=False)
 
-    run.log({"x": 1.0}, step=0, all_ranks=True)
+    run.add_scalar({"x": 1.0}, step=0, all_ranks=True)
     run.finish()
     assert not (run.project_dir / "runs").exists()
 
@@ -496,10 +496,12 @@ def test_add_scalar_takes_one_value_or_several(tmp_path):
     run.add_scalar({"loss": 0.5, "train": {"acc": 0.7}}, step=1)
     run.add_scalar({"loss": 0.25}, 2)  # a positional value is the step
     run.add_scalar("loss", 0.2)  # the next step
-    run.log({"loss": 0.1})  # the same, under its old name
+    run.add_scalar({"loss": 0.1})  # the same, under its old name
 
     with pytest.raises(TypeError, match="needs a value"):
         run.add_scalar("loss")
+
+    assert not hasattr(run, "log")  # removed in 0.13; add_scalar is the one way
 
     run.finish()
     reader = RunReader(run.path)

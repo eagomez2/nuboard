@@ -7,7 +7,7 @@ falling back to `SLURM_PROCID` / `SLURM_LOCALID` / `SLURM_NTASKS` and
 `OMPI_COMM_WORLD_RANK` / `OMPI_COMM_WORLD_SIZE`.
 
 Call `init` on every rank with the same arguments. **Only rank 0 logs by
-default**; on other ranks `log()` returns immediately. To record a scalar on
+default**; on other ranks `add_scalar()` returns immediately. To record a scalar on
 every rank (gradient norms, throughput, memory), pass `all_ranks=True` to that
 call, or to `init` to make it the default:
 

@@ -62,7 +62,7 @@ in the Runs table and can be queried, such as `where config.lr > 0.1`.
 
 ## Log scalars
 
-Log the loss of every batch with `run.log`, at a step that counts batches:
+Log the loss of every batch with `run.add_scalar`, at a step that counts batches:
 
 ```python
 for i in range(0, len(y_train), 32):
@@ -85,7 +85,7 @@ val_loss = float(-np.log(probs[np.arange(len(y_val)), y_val] + 1e-9).mean())
 run.add_scalar({"val/loss": val_loss, "val/acc": float((pred == y_val).mean())}, step=step)
 ```
 
-`run.log` does not wait for the disk, so logging every batch costs
+`run.add_scalar` does not wait for the disk, so logging every batch costs
 microseconds. The part of each key before the `/` makes a section in the
 viewer: `train` and `val`.
 

@@ -69,26 +69,28 @@ base name or the relative name you give, and returns the destination path.
 Only rank 0 copies. The viewer lists these files in the run details and diffs
 them between runs in Compare.
 
-## `run.log`
+## `run.add_scalar`
 
 ```python
-run.add_scalar(data, step=None, *, time=None, all_ranks=None)
+run.add_scalar(key, value=None, step=None, *, time=None, all_ranks=None)
 ```
 
-- `data` is a dict of numbers. Nested dicts are flattened with `/`
-  (`{"train": {"loss": 1}}` logs `train/loss`). Values may be Python numbers,
-  bools, NumPy scalars or 0-d tensors; conversion to float happens on the
-  background thread. Strings are skipped with a one-time warning; use
-  `add_text`.
+- `run.add_scalar("train/loss", 0.42)` logs one scalar, and
+  `run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4})` several at the same
+  step. Nested dicts are flattened with `/` (`{"train": {"loss": 1}}` logs
+  `train/loss`). Values may be Python numbers, bools, NumPy scalars or 0-d
+  tensors; conversion to float happens on the background thread. Strings are
+  skipped with a one-time warning; use `add_text`.
 - `step` defaults to one more than the previous call's step. Pass it
-  explicitly when you log several dicts per step.
+  explicitly when you log several times per step.
 - `time` overrides the timestamp (useful when importing data).
 - NaN and ±Inf are stored as they are; the viewer flags them.
 
-`log()` only appends to a deque (a few microseconds for a 50-scalar dict). A
-background thread wakes every `flush_interval` seconds, encodes the batch into
-one columnar frame and appends it to the event log. Call `run.flush()` if you
-need everything on disk at a given point (rarely needed).
+`add_scalar()` only appends to a deque (a few microseconds for a 50-scalar
+dict). A background thread wakes every `flush_interval` seconds, encodes the
+batch into one columnar frame and appends it to the event log. Call
+`run.flush()` if you need everything on disk at a given point (rarely needed).
+See [`add_scalar`](../api/add_scalar.md) for the full reference.
 
 ## Text, images, audio, figures, PR curves, distributions, tables, point clouds, HTML
 
