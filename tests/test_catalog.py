@@ -4,6 +4,7 @@ import json
 import time
 
 import nuboard as nb
+from nuboard.artifacts import list_artifacts
 from nuboard.catalog import SCHEMA_VERSION, Catalog, find_runs
 
 
@@ -75,3 +76,25 @@ def test_5000_runs_list_quickly(tmp_path):
     warm.refresh()
     assert len(warm.runs()) == 5000
     assert time.perf_counter() - t0 < 2.0  # 200 ms target on a laptop SSD; CI is slower
+
+
+def test_stray_files_such_as_ds_store_are_skipped(tmp_path):
+    run = nb.init("a", capture_env=False)
+    run.add_scalar({"x": 1}, step=0)
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "w.bin").write_bytes(b"0")
+    run.add_artifact("ds", src, type="dataset")
+    run.finish()
+    root = tmp_path / "exp"
+
+    for d in [root, *(p for p in root.rglob("*") if p.is_dir())]:
+        (d / ".DS_Store").write_bytes(b"\0Bud1")  # what macOS Finder leaves behind
+
+    assert [r for _, r in find_runs(root)] == [run.path.resolve()]
+    assert Catalog(root, cache=tmp_path / "cache").refresh() == {run.id}
+    assert [r.id for r in nb.load(root / "a").runs()] == [run.id]
+    assert [a.name for a in list_artifacts(root / "a")] == ["ds"]
+    again = nb.init("a", capture_env=False)
+    assert again.use_artifact("ds").version == 1
+    again.finish()

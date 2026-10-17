@@ -375,6 +375,9 @@ def _llm_runs(root: Path, base: float) -> None:
     }
 
     for path in (project / "runs").iterdir():
+        if not path.is_dir():  # such as macOS's .DS_Store
+            continue
+
         meta = _fs.read_json(path / "run.json", {})
 
         if meta.get("name") in verdicts:

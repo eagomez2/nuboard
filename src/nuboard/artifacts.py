@@ -48,7 +48,7 @@ class Artifact:
 def _versions(adir: Path) -> list[int]:
     """Return the version numbers present in an artifact folder, in ascending order."""
 
-    if not adir.exists():
+    if not adir.is_dir():
         return []
 
     return sorted(int(m.group(1)) for e in os.listdir(adir) if (m := _VERSION_RE.match(e)))

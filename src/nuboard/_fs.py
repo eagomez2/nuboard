@@ -104,7 +104,8 @@ def read_json(path: str | os.PathLike[str], default: Any = None) -> Any:
 
     Args:
         path: File to read.
-        default: Returned when the file does not exist or is not valid JSON.
+        default: Returned when the file does not exist (or a parent is a file,
+            such as macOS's `.DS_Store`) or is not valid JSON.
 
     Returns:
         The decoded value, or `default`.
@@ -113,7 +114,7 @@ def read_json(path: str | os.PathLike[str], default: Any = None) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, NotADirectoryError, json.JSONDecodeError):
         return default
 
 
