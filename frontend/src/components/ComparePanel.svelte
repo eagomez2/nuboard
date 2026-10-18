@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FilesView from './FilesView.svelte';
   import Icon from './Icon.svelte';
   import NotesEditor from './NotesEditor.svelte';
   import PropertiesEditor from './PropertiesEditor.svelte';
@@ -89,7 +90,7 @@
   $effect(() => {
     const t = tab;
     const ds = details;
-    if (t === 'settings' || t === 'notes' || t === 'properties' || !ds.length) return;
+    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || !ds.length) return;
     loadingFile = true;
     const term = isConsole(t);
     Promise.all(ds.map((d) => api.file(d.run.key, t, term))).then((x) => {
@@ -176,7 +177,7 @@
     <button
       class="btn btn-ghost close"
       aria-label="Close"
-      onclick={() => router.set({ cmp: null, tab: null, pair: null })}><Icon name="x" size={16} /></button
+      onclick={() => router.set({ cmp: null, tab: null, pair: null, file: null })}><Icon name="x" size={16} /></button
     >
   </div>
 
@@ -192,6 +193,12 @@
       >
     {/if}
     <button class="tab" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}>All settings</button
+    >
+    <button
+      class="tab"
+      aria-pressed={tab === 'filetree'}
+      title="Every file in the run folder: browse, preview, diff and download"
+      onclick={() => router.set({ tab: 'filetree' })}>Files</button
     >
     {#each files as f (f)}
       <button
@@ -220,6 +227,20 @@
     <NotesEditor run={details[0].run} />
   {:else if tab === 'properties' && details.length === 1}
     <PropertiesEditor run={details[0].run} />
+  {:else if tab === 'filetree'}
+    {#if multi && details.length > 2}
+      <p class="muted small">
+        Diff
+        <select class="input sm mono" aria-label="Left run" value={pairIdx[0]} onchange={(e) => setPair(0, e)}>
+          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+        </select>
+        against
+        <select class="input sm mono" aria-label="Right run" value={pairIdx[1]} onchange={(e) => setPair(1, e)}>
+          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+        </select>
+      </p>
+    {/if}
+    <FilesView {details} {pairIdx} {onlyChanges} colors={COLORS} />
   {:else if tab === 'settings'}
     <div class="settings mono">
       {#if multi}
@@ -233,7 +254,7 @@
         </div>
       {/if}
       {#each settingRows as row (row.k)}
-        <div class="srow" class:diff={row.diff} style="grid-template-columns: {cols}; min-width: {rowWidth}">
+        <div class="srow" class:changed={row.diff} style="grid-template-columns: {cols}; min-width: {rowWidth}">
           <span class="k">{row.k}</span>
           {#each row.vals as v, i (i)}<span class="v" title={v}>{v}</span>{/each}
         </div>
@@ -379,7 +400,8 @@
     border-radius: 2px;
     flex: none;
   }
-  .srow.diff {
+  /* not `.diff`: that class is the file diff view, whose border and grid it picked up */
+  .srow.changed {
     background: var(--diff-del);
   }
   .k {

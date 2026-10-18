@@ -51,6 +51,8 @@ from ..reports import (
     save_snapshot,
 )
 from .data import Store, path_inside
+from .runfiles import IMAGE_SUFFIXES, list_files
+from .tensorfiles import inspect_file
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 ANNOTATION_FIELDS = {
@@ -406,6 +408,78 @@ def create_app(
             data = target.read_bytes()[:TEXT_LIMIT]
 
         return PlainTextResponse(data.decode("utf-8", errors="replace"))
+
+    def run_folder_file(request: Request) -> Path | None:
+        """The file a request names inside a run folder, or None (also for symlinks out)."""
+        key = request.path_params["key"]
+        record_or_404(key)
+        path = catalog.path_of(key)
+        assert path is not None
+        target = path_inside(path, request.path_params["path"])
+        return target if target is not None and target.is_file() else None
+
+    def run_tree(request: Request) -> Response:
+        """List every file of a run folder with its size, date and kind (for the Files tab)."""
+        key = request.path_params["key"]
+        record_or_404(key)
+        path = catalog.path_of(key)
+        assert path is not None
+        return JSON(list_files(path))
+
+    def run_text(request: Request) -> Response:
+        """Return any file of a run folder as text: its first (or with `tail=1` last) 2 MB."""
+        target = run_folder_file(request)
+
+        if target is None:
+            return PlainTextResponse("not found", 404)
+
+        size = target.stat().st_size
+
+        with target.open("rb") as f:
+            if request.query_params.get("tail") == "1":
+                f.seek(max(0, size - TEXT_LIMIT))
+
+            data = f.read(TEXT_LIMIT)
+
+        return PlainTextResponse(
+            data.decode("utf-8", errors="replace"),
+            headers={"X-Truncated": "1" if size > TEXT_LIMIT else "0"},
+        )
+
+    def run_raw(request: Request) -> Response:
+        """Send a run file as is: images inline, anything else (or with `download=1`) as a download.
+
+        Nothing is ever served as HTML or script, so a logged file cannot run in
+        the viewer's origin.
+        """
+        target = run_folder_file(request)
+
+        if target is None:
+            return PlainTextResponse("not found", 404)
+
+        image = IMAGE_SUFFIXES.get(target.suffix.lower())
+        download = request.query_params.get("download") == "1" or image is None
+        return FileResponse(
+            target,
+            media_type=image or "application/octet-stream",
+            filename=target.name if download else None,
+            content_disposition_type="attachment" if download else "inline",
+            # Checkpoints can be GBs: send them as they are, not gzipped on the fly
+            headers={
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "sandbox",
+                "Content-Encoding": "identity",
+            },
+        )
+
+    async def run_inspect(request: Request) -> Response:
+        """Describe the tensors in a checkpoint or array file of a run, without loading them."""
+        target = run_folder_file(request)
+
+        if target is None:
+            return JSON({"error": "not found"}, status_code=404)
+
+        return JSON(await run_in_threadpool(inspect_file, target))
 
     async def annotate(request: Request) -> Response:
         """Update annotations of one run (`PATCH`) or of the runs in `keys` (`POST`).
@@ -1230,6 +1304,10 @@ def create_app(
         Route("/api/runs/{key}", run_detail),
         Route("/api/runs/{key}", annotate, methods=["PATCH"]),
         Route("/api/runs/{key}/files/{path:path}", run_file),
+        Route("/api/runs/{key}/tree", run_tree),
+        Route("/api/runs/{key}/text/{path:path}", run_text),
+        Route("/api/runs/{key}/raw/{path:path}", run_raw),
+        Route("/api/runs/{key}/inspect/{path:path}", run_inspect),
         Route("/api/runs/{key}/media", media_list),
         Route("/api/runs/{key}/audio-notes", set_audio_notes, methods=["PUT"]),
         Route("/api/runs/{key}/media/{index:int}", media_blob),

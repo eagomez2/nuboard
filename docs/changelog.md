@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.2
+
+- Run details and Compare have a **Files** tab that lists every file in the
+  run folder as a tree, with the number of files and their size per folder.
+  NuBoard's own data files are hidden unless asked for. Text files (logs,
+  YAML, JSON, CSV, patches, code) are shown, up to their first 2 MB, and
+  diffed side by side between two runs; images are shown; every file can be downloaded.
+- Checkpoints (`.pt`, `.pth`, `.ckpt`, `.bin`, `.safetensors`, `.npy`,
+  `.npz`) list their keys as a tree with each tensor's shape, dtype and size,
+  plus the total parameter count. Between runs the keys are diffed (added,
+  removed, changed shape or dtype). PyTorch is not needed, and no code in a
+  checkpoint ever runs: the pickle is read with every class replaced by an
+  inert placeholder. A malformed, cut-off or hostile file shows what could be
+  read and why the rest could not, and never stops the viewer.
+- Compare: the All settings table has the same borders as the other tables.
+  Changed rows were picking up the file diff's styles.
+
 ## 0.15.1
 
 - Ctrl+C stops `nuboard up` at once, even with a viewer tab open. Before, the

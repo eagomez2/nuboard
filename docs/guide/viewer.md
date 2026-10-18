@@ -124,6 +124,18 @@ like a terminal, shows the last 2 MB of a longer log, redraws progress bars
 on one line and removes color codes. With `all_ranks=True`, each rank's log
 has its own tab (**Console r1**, ...).
 
+**Files** lists everything in the run folder as a tree, with how many files
+each folder holds and their size. NuBoard's own data files (`run.json`,
+`data.parquet`, event logs) are hidden until **NuBoard data** is switched
+on. Pick a file to see it: text files are shown (diffed side by side
+between two runs), images are drawn, and every file has a download link.
+Checkpoints (`.pt`, `.pth`, `.ckpt`, `.bin`, `.safetensors`, `.npy`,
+`.npz`) list their keys as a tree with each tensor's shape, dtype and size,
+and the total parameter count; with two runs the keys are diffed. Reading a
+checkpoint needs no PyTorch and never runs code stored in it, and a file
+that is cut off or malformed shows what could be read and why the rest
+could not.
+
 For a single run there are two more tabs:
 
 - **Notes**: Markdown notes for the run, with a preview. Notes can use
