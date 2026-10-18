@@ -1207,6 +1207,7 @@ class Run:
         metadata: dict[str, Any] | None = None,
         reference: bool = False,
         checksum: bool = False,
+        description: str | None = None,
     ) -> Artifact:
         """Copy a file or folder into `artifacts/<name>/v<N>/` with a manifest.
 
@@ -1222,6 +1223,7 @@ class Run:
             reference: Record where `path` is, with each file's size and
                 modification time, instead of copying it.
             checksum: With `reference`, also hash every file (SHA-256).
+            description: Optional free text saying what this version is.
 
         Returns:
             The new artifact version.
@@ -1240,6 +1242,7 @@ class Run:
             run_id=self.id,
             reference=reference,
             checksum=checksum,
+            description=description,
         )
 
         with self._meta_lock:
@@ -1519,6 +1522,7 @@ def add_artifact(
     metadata: dict[str, Any] | None = None,
     reference: bool = False,
     checksum: bool = False,
+    description: str | None = None,
     dir: str | os.PathLike[str] | None = None,
 ) -> Artifact:
     """Add a new artifact version without a run, such as a dataset no script produced.
@@ -1535,6 +1539,7 @@ def add_artifact(
         reference: Record where `path` is, with each file's size and modification
             time, instead of copying it.
         checksum: With `reference`, also hash every file (SHA-256).
+        description: Optional free text saying what this version is.
         dir: Root folder holding the projects, as in `init`.
 
     Returns:
@@ -1551,6 +1556,7 @@ def add_artifact(
         metadata=metadata,
         reference=reference,
         checksum=checksum,
+        description=description,
     )
 
 

@@ -40,7 +40,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.14.1-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.15.0-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -63,7 +63,7 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
 | Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per scalar and rank |
-| CLI | `nuboard up`, `demo`, `ls`, `compact`, `import-tensorboard` (TensorBoard logs to runs) |
+| CLI | `nuboard up`, `demo`, `ls`, `compact`, `artifact add`/`ls`/`show`, `import-tensorboard` (TensorBoard logs to runs) |
 
 See the [roadmap](docs/roadmap.md) and the [changelog](docs/changelog.md).
 

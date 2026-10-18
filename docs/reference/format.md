@@ -223,9 +223,11 @@ renaming it into place, so a version is either complete or absent.
 ```json
 {
   "name": "model", "version": 1, "type": "checkpoint",
+  "description": "Final checkpoint of the lr=1e-3 seed 1 run",
   "metadata": {"step": 25000},
   "files": [{"path": "model.safetensors", "size": 2048, "sha256": "…"}],
-  "created": 1791970000.0, "producer_run": "20261014-0831_lr1e-3-s1_k2x9mf"
+  "created": 1791970000.0, "producer_run": "20261014-0831_lr1e-3-s1_k2x9mf",
+  "created_by": {"user": "esteban", "host": "gpu-box", "command": "train.py --lr 1e-3"}
 }
 ```
 
@@ -249,7 +251,9 @@ manifest records where the files are and a fingerprint of each one:
 | `root` | The folder `files[].path` is relative to: `reference` for a folder, its parent for a file. |
 | `files[].mtime_ns` | Modification time in nanoseconds, for information. Readers compare `size` to detect changes, since copies on other machines have their own times. |
 | `files[].sha256` | Present for every copied file, and for referenced files only with `checksum=True`. |
-| `producer_run` | `null` for a version added with `nb.add_artifact`, outside a run. |
+| `producer_run` | `null` for a version added with `nb.add_artifact` or `nuboard artifact add`, outside a run. |
+| `description` | Free text saying what the version is; `""` when none was given. Since 0.15. |
+| `created_by` | `{user, host, command}`: who created the version, on which machine, with which command line. `user` is `null` when the environment has no user name. Since 0.15. |
 
 Runs record what they used and produced in `run.json` (`inputs`, `outputs`).
 An entry for an artifact of another project adds `project`, its name relative

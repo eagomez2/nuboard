@@ -1,4 +1,4 @@
-"""Command line: `NAME up`, `NAME demo`, `NAME compact`, `NAME ls`."""
+"""Command line: `NAME up`, `NAME demo`, `NAME compact`, `NAME ls`, `NAME artifact`."""
 
 from __future__ import annotations
 
@@ -149,7 +149,8 @@ def main(argv: list[str] | None = None) -> None:
     Subcommands: `up` (start the viewer), `demo` (write a demo workspace and
     optionally serve it with a live run), `compact` (write `data.parquet` for
     finished runs), `ls` (list runs, optionally filtered by a query),
-    `import-tensorboard` (import TensorBoard logs) and `version`.
+    `artifact` (add, list and show artifact versions), `import-tensorboard`
+    (import TensorBoard logs) and `version`.
 
     Args:
         argv: Command line arguments without the program name. Defaults to
@@ -206,9 +207,17 @@ def main(argv: list[str] | None = None) -> None:
         help="tag for the imported runs; repeat for several (default: tensorboard)",
     )
 
+    from . import _artifact_cli
+
+    _artifact_cli.add_parser(sub, ENV_PREFIX, DEFAULT_ROOT)
     sub.add_parser("version", help="print the version")
 
     args = parser.parse_args(argv)
+
+    if args.cmd == "artifact":
+        from . import _artifact_cli
+
+        raise SystemExit(_artifact_cli.main(args))
 
     if args.cmd == "up":
         up(args.dir or _default_dir(), args.host, args.port, args.open)

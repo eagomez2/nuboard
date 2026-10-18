@@ -78,6 +78,9 @@ script of [Get started](get-started.md).
 | `nuboard demo [DIR] [--up] [--open]` | Write the demo workspace (default `demo-runs/`). |
 | `nuboard ls [DIR] [-q QUERY]` | List runs, filtered with the [query language](reference/query.md). |
 | `nuboard compact DIR [--force]` | Write `data.parquet` and health alerts for ended runs that lack them. |
+| `nuboard artifact add [PROJECT/NAME] [PATH] [--ref\|--copy] [-t TYPE] [-d TEXT] [-m KEY=VALUE]…` | Add an artifact version; asks for what is missing. See [From the command line](guide/artifacts.md#from-the-command-line). |
+| `nuboard artifact ls [PROJECT]` | List artifact versions. |
+| `nuboard artifact show PROJECT/NAME[:vN]` | Show a version and check that its files still match. |
 | `nuboard version` | Print the version. |
 
 `python -m nuboard …` works too. The server binds to `127.0.0.1` by default

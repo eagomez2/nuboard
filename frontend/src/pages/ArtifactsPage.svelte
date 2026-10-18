@@ -205,11 +205,21 @@ run.use_artifact("dataset:latest")</pre>
                   .filter((a) => a.project === selected.project && a.name === selected.name)
                   .map((a) => a.version))}<span class="chip latest keep">latest</span>{/if}
           </div>
+          {#if selected.manifest.description}<p class="desc">{selected.manifest.description}</p>{/if}
           <div class="facts">
             <div class="fact-name">
               <span class="label">Project</span><span class="trunc" title={selected.project}>{selected.project}</span>
             </div>
             <div><span class="label">Created</span><span>{fmtDate(selected.manifest.created)}</span></div>
+            {#if selected.manifest.created_by?.user || selected.manifest.created_by?.host}
+              <div class="fact-name">
+                <span class="label">By</span><span class="trunc" title={selected.manifest.created_by?.command ?? ''}
+                  >{[selected.manifest.created_by?.user, selected.manifest.created_by?.host]
+                    .filter(Boolean)
+                    .join('@')}</span
+                >
+              </div>
+            {/if}
             <div><span class="label">Size</span><span class="mono">{fmtBytes(selected.size)}</span></div>
             <div><span class="label">Files</span><span class="mono">{selected.manifest.files?.length ?? 0}</span></div>
             <div>
@@ -435,6 +445,12 @@ run.use_artifact("dataset:latest")</pre>
   .latest {
     color: var(--accent);
     background: var(--accent-soft);
+  }
+  .desc {
+    margin: 0;
+    font-size: 14px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
   .facts {
     display: flex;
