@@ -407,3 +407,15 @@ def test_chart_snapshots_are_served_and_exported(client):
     assert f"![loss]({path})" in zf.read("Charts.md").decode()
     assert zf.read(path) == png
     assert client.get("/api/reports/sweep/files/..%2Fruns").status_code == 404
+
+
+def test_live_stream_ends_when_the_server_stops(tmp_path):
+    # An open tab must not keep Ctrl+C from stopping `nuboard up`
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    calls = iter([False, True])
+    app.state.stopping = lambda: next(calls, True)
+
+    with TestClient(app) as c:
+        body = c.get("/api/stream").text
+
+    assert body.startswith("retry: 3000\nevent: hello\n")

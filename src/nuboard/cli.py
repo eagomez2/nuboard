@@ -103,7 +103,17 @@ def up(
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    # Open live-update streams end once Ctrl+C sets should_exit; the timeout
+    # bounds the wait for any other request still in flight
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=host, port=port, log_level="warning", timeout_graceful_shutdown=3)
+    )
+    app.state.stopping = lambda: server.should_exit
+
+    try:
+        server.run()
+    except KeyboardInterrupt:  # uvicorn re-raises the Ctrl+C once it has shut down
+        pass
 
 
 def _import_tensorboard(

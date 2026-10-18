@@ -6,7 +6,7 @@
   import { api, type Alert, type ChartData } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtNum, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -276,6 +276,17 @@
     }
   });
   const shownMetrics = $derived(metricRe ? metrics.filter((m) => metricRe.test(m)) : metrics);
+  // Sections fold like on the Media page; the choice is kept in localStorage per prefix.
+  // Unset, all are open when there are few, else the first three; a filter opens every match.
+  let folded = $state<Record<string, boolean>>(prefs.get('chartFolds', {}));
+  function sectionOpen(prefix: string, i: number): boolean {
+    if (metricFind) return true;
+    return folded[prefix] === undefined ? sections.length <= 6 || i < 3 : !folded[prefix];
+  }
+  function setFolded(next: Record<string, boolean>) {
+    folded = next;
+    prefs.set('chartFolds', next);
+  }
   const sections = $derived.by(() => {
     const map = new Map<string, string[]>();
     for (const m of shownMetrics) {
@@ -357,6 +368,78 @@
       }
     return [...keys.entries()].filter(([, s]) => s.size > 1 && s.size < runs.length).map(([k]) => `config.${k}`);
   });
+  // ---- metric picker for the focus chart: every scalar, searchable ----
+  let pickOpen = $state(false);
+  let pickFind = $state('');
+  let pickIndex = $state(0);
+  let pickEl = $state<HTMLElement>();
+  let pickInput = $state<HTMLInputElement>();
+  $effect(() => {
+    if (pickOpen) pickInput?.focus();
+  });
+  const pickList = $derived.by(() => {
+    const q = pickFind.trim().toLowerCase();
+    return (q ? metrics.filter((m) => m.toLowerCase().includes(q)) : metrics).slice(0, 300);
+  });
+  function pick(m: string) {
+    router.set({ metric: m, zoom: null });
+    pickOpen = false;
+    pickFind = '';
+  }
+  function pickKey(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = pickList.length;
+      if (n) pickIndex = (pickIndex + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+      pickEl?.querySelector(`[data-i="${pickIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && pickList[pickIndex]) pick(pickList[pickIndex]);
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      pickOpen = false;
+    }
+  }
+  $effect(() => {
+    if (!pickOpen) return;
+    const close = (e: PointerEvent) => {
+      if (!pickEl?.contains(e.target as Node)) pickOpen = false;
+    };
+    window.addEventListener('pointerdown', close, true);
+    return () => window.removeEventListener('pointerdown', close, true);
+  });
+
+  // ---- legend: with many series, a filter and only the first few chips until expanded ----
+  const LEGEND_MAX = 12;
+  const LEGEND_SHOWN = 10;
+  let legendFind = $state('');
+  let legendOpen = $state(false);
+  // A series matches on its label, its runs' names and their config, such as `lr=3e-4`
+  const seriesText = $derived.by(() => {
+    const byKey = new Map(runs.map((r) => [r.key, r]));
+    return new Map(
+      (focusData?.series ?? []).map((s) => {
+        const parts = [s.label];
+        for (const key of s.runs) {
+          const r = byKey.get(key);
+          if (!r) continue;
+          parts.push(r.name);
+          for (const [k, v] of Object.entries(r.config))
+            parts.push(`${k}=${fmtValue(v)}`, `${k.split('.').slice(-1)[0]}=${fmtValue(v)}`);
+        }
+        return [s.label, parts.join('\n').toLowerCase()];
+      }),
+    );
+  });
+  const legendMatch = (label: string) => {
+    const q = legendFind.trim().toLowerCase();
+    return !q || (seriesText.get(label) ?? label.toLowerCase()).includes(q);
+  };
+  const legendItems = $derived.by(() => {
+    const all = (focusData?.series ?? []).map((s, i) => ({ s, i }));
+    if (all.length <= LEGEND_MAX) return all;
+    const shown = all.filter(({ s }) => legendMatch(s.label));
+    return legendFind.trim() || legendOpen ? shown : shown.slice(0, LEGEND_SHOWN);
+  });
+  const legendMatching = $derived(seriesLabels.filter(legendMatch));
   const groupLabel = (g: string | null) => (g ? g.split('.').slice(-1)[0] : '');
   const seriesTitle = (label: string) => (groupBy ? `${groupLabel(groupBy)} ${label}` : label);
 </script>
@@ -438,7 +521,26 @@
           >
         </div>
       {/if}
-      {#each focusData?.series ?? [] as s, i (s.label)}
+      {#if seriesLabels.length > LEGEND_MAX}
+        <input
+          class="input sm mono legendfind"
+          placeholder="Filter series, e.g. lr=3e-4"
+          aria-label="Filter series"
+          bind:value={legendFind}
+          onkeydown={(e) => e.key === 'Escape' && (legendFind = '')}
+        />
+        {#if legendFind.trim()}
+          <span class="faint small legendcount">{legendMatching.length} of {seriesLabels.length}</span>
+          <button
+            class="btn btn-ghost sm"
+            disabled={!legendMatching.length}
+            title="Show only the series that match, hide the rest"
+            onclick={() => (hidden = new Set(seriesLabels.filter((l) => !legendMatching.includes(l))))}
+            >Only these</button
+          >
+        {/if}
+      {/if}
+      {#each legendItems as { s, i } (s.label)}
         <button
           class="chip legend-chip"
           class:off={hidden.has(s.label)}
@@ -454,6 +556,11 @@
           <span class="mono" class:errc={s.nonfinite}>· {s.nonfinite ? 'NaN' : fmtNum(s.last)}</span>
         </button>
       {/each}
+      {#if seriesLabels.length > LEGEND_MAX && !legendFind.trim()}
+        <button class="btn btn-ghost sm legendmore" onclick={() => (legendOpen = !legendOpen)}
+          >{legendOpen ? 'Show fewer' : `+${seriesLabels.length - LEGEND_SHOWN} more`}</button
+        >
+      {/if}
     </div>
     <div class="knobs">
       <select
@@ -567,6 +674,49 @@
             onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
           >
         {/each}
+        {#if metrics.length > tabs.length}
+          <div class="picker" bind:this={pickEl}>
+            <button
+              class="btn btn-ghost sm"
+              aria-expanded={pickOpen}
+              title="Pick any of the {metrics.length} scalars"
+              onclick={() => {
+                pickOpen = !pickOpen;
+                pickIndex = 0;
+              }}><Icon name="search" size={14} /> All {metrics.length}</button
+            >
+            {#if pickOpen}
+              <div class="card pickpop" role="dialog" aria-label="Pick a scalar">
+                <input
+                  class="input sm mono"
+                  placeholder="Search scalars"
+                  aria-label="Search scalars"
+                  bind:this={pickInput}
+                  bind:value={pickFind}
+                  oninput={() => (pickIndex = 0)}
+                  onkeydown={pickKey}
+                />
+                <div class="picklist" role="listbox" aria-label="Scalars">
+                  {#each pickList as m, i (m)}
+                    <button
+                      class="pickopt mono"
+                      role="option"
+                      data-i={i}
+                      aria-selected={i === pickIndex}
+                      class:on={m === focus}
+                      title={m}
+                      onmouseenter={() => (pickIndex = i)}
+                      onclick={() => pick(m)}>{m}</button
+                    >
+                  {:else}
+                    <p class="faint small">No scalar matches “{pickFind}”.</p>
+                  {/each}
+                </div>
+                {#if pickList.length === 300}<p class="faint small">Showing the first 300; type to narrow.</p>{/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
         <span class="note">
           {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>reset zoom</button>{/if}
           {loading
@@ -708,16 +858,35 @@
           <option value="0">all</option>
         </select></label
       >
+      {#if sections.length > 1}
+        <button
+          class="btn btn-ghost sm"
+          onclick={() => setFolded(Object.fromEntries(sections.map(([p]) => [p, false])))}>Expand all</button
+        >
+        <button class="btn btn-ghost sm" onclick={() => setFolded(Object.fromEntries(sections.map(([p]) => [p, true])))}
+          >Collapse all</button
+        >
+      {/if}
     </div>
     {#if metricFind && !shownMetrics.length}<p class="faint">No scalar matches “{metricFind}”.</p>{/if}
-    {#each sections as [prefix, list] (prefix)}
+    {#each sections as [prefix, list], si (prefix)}
+      {@const open = sectionOpen(prefix, si)}
       {@const size = gridRows ? perRow * gridRows : list.length}
       {@const pageCount = Math.max(1, Math.ceil(list.length / size))}
       {@const page = Math.min(gridPages[prefix] ?? 0, pageCount - 1)}
       <div class="sect">
         <div class="sect-head">
-          <div class="label trunc" title={prefix}>{prefix}</div>
-          {#if pageCount > 1}
+          <button
+            class="fold"
+            aria-expanded={open}
+            title={prefix}
+            onclick={() => setFolded({ ...folded, [prefix]: open })}
+          >
+            <span class="chev" class:closed={!open}><Icon name="chevron" size={16} /></span>
+            <span class="label trunc">{prefix}</span>
+            <span class="faint nchart">{list.length} chart{list.length === 1 ? '' : 's'}</span>
+          </button>
+          {#if open && pageCount > 1}
             <span class="pager">
               <button
                 class="btn btn-ghost sm"
@@ -735,33 +904,33 @@
             </span>
           {/if}
         </div>
-        <div
-          class="grid"
-          bind:clientWidth={gridWidth}
-          style={gridCols ? `grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))` : ''}
-        >
-          {#each list.slice(page * size, page * size + size) as m (m)}
-            <SmallChart
-              metric={m}
-              runs={runKeys}
-              x={xKind}
-              group={groupBy}
-              {agg}
-              {smoothing}
-              {showRaw}
-              {robust}
-              {hidden}
-              {highlight}
-              {colorOf}
-              themeVersion={app.themeVersion}
-              {tick}
-              onFocus={() => {
-                router.set({ metric: m, zoom: null });
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-            />
-          {/each}
-        </div>
+        {#if open}<div
+            class="grid"
+            bind:clientWidth={gridWidth}
+            style={gridCols ? `grid-template-columns: repeat(${gridCols}, minmax(0, 1fr))` : ''}
+          >
+            {#each list.slice(page * size, page * size + size) as m (m)}
+              <SmallChart
+                metric={m}
+                runs={runKeys}
+                x={xKind}
+                group={groupBy}
+                {agg}
+                {smoothing}
+                {showRaw}
+                {robust}
+                {hidden}
+                {highlight}
+                {colorOf}
+                themeVersion={app.themeVersion}
+                {tick}
+                onFocus={() => {
+                  router.set({ metric: m, zoom: null });
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            {/each}
+          </div>{/if}
       </div>
     {/each}
   </section>
@@ -952,6 +1121,61 @@
     box-shadow: var(--lift);
     max-width: 100%;
   }
+  .small {
+    font-size: 12px;
+  }
+  .legendfind {
+    width: 220px;
+    align-self: center;
+  }
+  .legendcount {
+    align-self: center;
+  }
+  .legendmore {
+    align-self: center;
+  }
+  .picker {
+    position: relative;
+  }
+  .pickpop {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 20;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: var(--lift);
+  }
+  .picklist {
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .pickopt {
+    border: 0;
+    background: none;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: none;
+  }
+  .pickopt[aria-selected='true'] {
+    background: var(--panel-2);
+  }
+  .pickopt.on {
+    color: var(--accent);
+    font-weight: 600;
+  }
   .legend-chip.off {
     opacity: 0.4;
   }
@@ -1132,6 +1356,31 @@
   }
   .sect-head .label {
     min-width: 0;
+  }
+  .fold {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: none;
+    padding: 0;
+    min-width: 0;
+    text-align: left;
+  }
+  .fold .label {
+    margin: 4px 0;
+  }
+  .nchart {
+    flex: none;
+    font-size: 12px;
+  }
+  .chev {
+    display: inline-grid;
+    color: var(--muted);
+    transition: transform 0.15s;
+  }
+  .chev.closed {
+    transform: rotate(-90deg);
   }
   .pager {
     margin-left: auto;
