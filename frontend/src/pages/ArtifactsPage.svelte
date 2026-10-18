@@ -2,7 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Status from '../components/Status.svelte';
   import { api, type ArtifactVersion } from '../lib/api';
-  import { fmtAgo, fmtDate, fmtValue } from '../lib/format';
+  import { fmtAgo, fmtBytes, fmtDate, fmtValue } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -144,17 +144,6 @@
     return `M${x0},${y0} C${mid},${y0} ${mid},${y1} ${x1},${y1}`;
   }
 
-  function fmtBytes(n: number): string {
-    if (n < 1024) return `${n} B`;
-    const units = ['KB', 'MB', 'GB', 'TB'];
-    let v = n / 1024;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
-  }
   function openNode(n: { kind: string; ref: string }) {
     if (n.kind === 'artifact') router.set({ art: n.ref });
     else router.go('runs', { cmp: n.ref });

@@ -788,3 +788,17 @@ test('any scalar can be picked for the main chart, and sections fold', async ({ 
     'false',
   );
 });
+
+test('the Files tab lists run files and diffs a text file between two runs', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(2).check();
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  const tree = page.getByRole('tree', { name: 'Run files' });
+  await expect(tree.getByRole('treeitem', { name: /^files\// })).toBeVisible();
+  await tree.getByRole('treeitem', { name: /config\.yaml/ }).click();
+  await expect(page).toHaveURL(/file=files(%2F|\/)config\.yaml/);
+  await expect(page.locator('.files .diff .line.del').first()).toBeVisible();
+});

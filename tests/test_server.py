@@ -419,3 +419,48 @@ def test_live_stream_ends_when_the_server_stops(tmp_path):
         body = c.get("/api/stream").text
 
     assert body.startswith("retry: 3000\nevent: hello\n")
+
+
+def test_run_folder_files_are_listed_previewed_and_downloaded(tmp_path):
+    import struct
+
+    run = nb.init("ckpts", capture_env=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    folder = run.path
+    (folder / "checkpoints").mkdir()
+    header = json.dumps({"w": {"dtype": "F32", "shape": [2, 3], "data_offsets": [0, 24]}}).encode()
+    (folder / "checkpoints" / "ema.safetensors").write_bytes(
+        struct.pack("<Q", len(header)) + header + b"\0" * 24
+    )
+    (folder / "checkpoints" / "broken.pth").write_bytes(b"\x80\x02garbage")
+    (folder / "notes.html").write_text("<script>alert(1)</script>")
+    (tmp_path / "secret.txt").write_text("outside")
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        key = c.get("/api/runs").json()["runs"][0]["key"]
+        tree = c.get(f"/api/runs/{key}/tree").json()
+        files = {f["path"]: f for f in tree["files"]}
+        assert files["checkpoints/ema.safetensors"]["kind"] == "tensors"
+        assert files["run.json"]["internal"]
+        assert tree["count"] == len(files)
+
+        info = c.get(f"/api/runs/{key}/inspect/checkpoints/ema.safetensors").json()
+        assert info["entries"][0]["shape"] == [2, 3] and info["error"] is None
+        broken = c.get(f"/api/runs/{key}/inspect/checkpoints/broken.pth")
+        assert broken.status_code == 200 and broken.json()["error"]
+
+        assert c.get(f"/api/runs/{key}/text/notes.html").text.startswith("<script>")
+        raw = c.get(f"/api/runs/{key}/raw/notes.html")
+        # never served as a page of the viewer's origin
+        assert raw.headers["content-type"] == "application/octet-stream"
+        assert raw.headers["content-disposition"].startswith("attachment")
+        assert raw.headers["content-security-policy"] == "sandbox"
+
+        for bad in ("../../../secret.txt", "..%2F..%2F..%2Fsecret.txt", "%2E%2E/%2E%2E/x"):
+            for kind in ("raw", "text", "inspect"):
+                assert "outside" not in c.get(f"/api/runs/{key}/{kind}/{bad}").text
+
+        assert c.get(f"/api/runs/{key}/raw/..%2F..%2F..%2Fsecret.txt").status_code == 404
+        assert c.get(f"/api/runs/{key}/text/nope.txt").status_code == 404

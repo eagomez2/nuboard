@@ -152,6 +152,35 @@ export interface RunDetail {
   media: Record<string, { kind: string; count: number }>;
 }
 
+export interface RunFile {
+  path: string;
+  size: number;
+  mtime: number;
+  kind: 'text' | 'image' | 'tensors' | 'other';
+  internal: boolean;
+}
+
+export interface RunTree {
+  files: RunFile[];
+  count: number;
+  bytes: number;
+  truncated: boolean;
+}
+
+export type TensorEntry =
+  | { path: string[]; kind: 'tensor'; shape: number[]; dtype: string; bytes: number | null }
+  | { path: string[]; kind: 'value'; type: string; value: string | null };
+
+export interface TensorInfo {
+  format: string;
+  entries: TensorEntry[];
+  tensors: number;
+  params: number;
+  bytes: number;
+  truncated: boolean;
+  error: string | null;
+}
+
 export interface MediaItem {
   key: string;
   step: number;
@@ -216,6 +245,8 @@ const qs = (params: Record<string, string | number | null | undefined>) =>
     Object.entries(params).filter(([, v]) => v !== null && v !== undefined && v !== '') as [string, string][],
   ).toString();
 
+const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+
 export const api = {
   info: () => json<Info>('/api/info'),
   runs: (q: string, project?: string | null, metrics?: string[] | null) =>
@@ -226,6 +257,19 @@ export const api = {
     const res = await fetch(`/api/runs/${encodeURIComponent(key)}/files/${path}${tail ? '?tail=1' : ''}`);
     return res.ok ? res.text() : null;
   },
+  /** Every file of a run folder, with size, date and kind. */
+  tree: (key: string) => json<RunTree>(`/api/runs/${encodeURIComponent(key)}/tree`),
+  /** Any file of a run folder as text (first 2 MB); `truncated` when it is longer. */
+  text: async (key: string, path: string): Promise<{ text: string; truncated: boolean } | null> => {
+    const res = await fetch(`/api/runs/${encodeURIComponent(key)}/text/${encodePath(path)}`);
+    return res.ok ? { text: await res.text(), truncated: res.headers.get('X-Truncated') === '1' } : null;
+  },
+  /** URL of a run file as is; with `download`, saved instead of shown. */
+  rawUrl: (key: string, path: string, download = false) =>
+    `/api/runs/${encodeURIComponent(key)}/raw/${encodePath(path)}${download ? '?download=1' : ''}`,
+  /** The tensors in a checkpoint or array file, read from its headers. */
+  inspect: (key: string, path: string) =>
+    json<TensorInfo>(`/api/runs/${encodeURIComponent(key)}/inspect/${encodePath(path)}`),
   annotate: (
     keys: string[],
     patch: Partial<Pick<RunBrief, 'starred' | 'archived' | 'reviewed' | 'notes' | 'tags'>> & {
