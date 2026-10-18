@@ -30,6 +30,8 @@ the [changelog](changelog.md) for what each version added.
 - **0.13**: `run.log` removed in favor of `run.add_scalar`.
 - **0.14**: shared datasets: reference artifacts, artifacts used across
   projects, and `nb.add_artifact` / `nb.get_artifact` without a run.
+- **0.15**: `nuboard artifact add`, `ls` and `show`; artifact descriptions and
+  who created each version.
 
 ## Next
 

@@ -75,6 +75,8 @@ export interface ArtifactVersion {
     producer_run?: string | null;
     reference?: string;
     root?: string;
+    description?: string;
+    created_by?: { user?: string | null; host?: string | null; command?: string | null };
   };
 }
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.0
+
+- `nuboard artifact add` adds an artifact version from the command line.
+  Give every value as a flag, or run it in a terminal and it asks for what is
+  missing, one field at a time. Each answer is checked as you enter it (the
+  project and name, that the path exists and holds files, the store, the
+  type, a non-empty description), `<` goes back a field, metadata can be
+  added, edited and deleted with its type shown, and nothing is written until
+  you confirm the review. Without a terminal or with `--no-input` it never
+  asks; every invalid or missing flag is reported at once. `--dry-run`
+  checks without writing.
+- `nuboard artifact ls` lists artifact versions, and `nuboard artifact show`
+  prints one and checks its files.
+- Artifact versions have a `description` (`add_artifact(..., description=)`),
+  and the manifest records who created each one (`created_by`: user, host and
+  command). The Artifacts page shows both.
+
 ## 0.14.1
 
 - A leading `~` is expanded in artifact paths and in `NUBOARD_DATA_DIR`, so

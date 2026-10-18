@@ -16,10 +16,14 @@ folder as the run's own project.
 
 from __future__ import annotations
 
+import getpass
 import hashlib
 import os
 import re
+import shlex
 import shutil
+import socket
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,6 +134,17 @@ def split_ref(ref: str) -> tuple[str | None, str, str]:
     return project or None, name, version
 
 
+def _created_by() -> dict[str, str | None]:
+    """Return who and what is creating a version: user, host and command line."""
+
+    try:
+        user: str | None = getpass.getuser()
+    except Exception:  # no user name in the environment, as in some containers
+        user = None
+
+    return {"user": user, "host": socket.gethostname(), "command": shlex.join(sys.argv)}
+
+
 def _expand(path: str) -> Path:
     """Return `path` with environment variables and a leading `~` expanded."""
     return Path(os.path.expanduser(os.path.expandvars(path)))
@@ -213,6 +228,7 @@ def add_artifact(
     run_id: str | None = None,
     reference: bool = False,
     checksum: bool = False,
+    description: str | None = None,
 ) -> Artifact:
     """Copy a file or folder into a new version of an artifact, or reference it.
 
@@ -236,9 +252,13 @@ def add_artifact(
             inside `$NUBOARD_DATA_DIR` is stored relative to it.
         checksum: With `reference`, also hash each file (SHA-256), which reads all
             of the data. Copies are always hashed.
+        description: Optional free text saying what this version is.
 
     Returns:
         The new version.
+
+    The manifest also records who created the version (`created_by`: user,
+    host and command line).
 
     Raises:
         FileNotFoundError: If `src` does not exist.
@@ -297,10 +317,12 @@ def add_artifact(
             "name": name,
             "version": version,
             "type": type,
+            "description": description or "",
             "metadata": metadata or {},
             "files": entries,
             "created": time.time(),
             "producer_run": run_id,
+            "created_by": _created_by(),
             **extra,
         }
         _fs.atomic_write_json(staging / "manifest.json", manifest)

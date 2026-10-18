@@ -57,6 +57,76 @@ A reference stores each file's size and modification time, which takes a
 moment even for terabytes. Add `checksum=True` to also hash every file, which
 reads all of the data once.
 
+### From the command line
+
+`nuboard artifact add` registers a version without writing Python. Give
+everything as flags, as in a script or a cluster job:
+
+```bash
+nuboard artifact add datasets/fineweb-edu ~/data/fineweb-edu/2026-10 --ref \
+    --type dataset --description "FineWeb-Edu, Oct 2026 snapshot, deduplicated" \
+    --meta tokens=12B --meta dedup=true --meta rows=1200000
+```
+
+Or run `nuboard artifact add` alone (or with some of the flags) in a
+terminal, and it asks for the rest one field at a time. Every answer is
+checked as soon as you enter it, so a mistake is caught on the spot and asked
+again:
+
+```text
+$ nuboard artifact add
+Project/name (such as datasets/fineweb-edu): fineweb-edu
+  ✗ give the project too, as in datasets/fineweb-edu
+Project/name (such as datasets/fineweb-edu): datasets/fineweb-edu
+  ✓ will be fineweb-edu:v3
+Path (the file or folder; ~ and $VARS work): ~/data/fineweb-edu/2026-10
+  ✓ 1,204 files, 812 GB
+Store (copy, or reference to leave the files where they are) [copy]: reference
+Type (dataset | model | checkpoint | report | other): dataset
+Description (what this version is): FineWeb-Edu, Oct 2026 snapshot, deduplicated
+Hash every file? (y reads all the data once; n is quick) [n]:
+Metadata (optional)
+  key=value adds or replaces · 2 key=value edits line 2 · -2 deletes line 2 · key:int=5 sets the type · < back · Enter when done
+metadata> tokens=12B
+  1  tokens = "12B"  (text)
+metadata> rows=1200000
+  1  tokens = "12B"  (text)
+  2  rows = 1200000  (int)
+metadata>
+
+Review
+  1  name         datasets/fineweb-edu  (new version v3)
+  2  path         ~/data/fineweb-edu/2026-10  (1,204 files, 812 GB)
+  3  store        reference
+  4  type         dataset
+  5  description  FineWeb-Edu, Oct 2026 snapshot, deduplicated
+  6  checksum     no
+  7  metadata     tokens="12B" (text), rows=1200000 (int)
+Write it? y = write · 1-7 = change · < back · q = quit: y
+Added datasets/fineweb-edu:v3 (reference, 1,204 files, 812 GB)
+Use it with: run.use_artifact("datasets/fineweb-edu:v3")
+```
+
+- **`<`** goes back one field; earlier answers are kept as the defaults.
+- **Metadata** values are typed as you enter them: whole numbers are ints,
+  other numbers floats, `true` and `false` booleans, and the rest text.
+  `key:str=0001`, `key:int=…`, `key:float=…`, `key:bool=…` and `key:json=[…]`
+  set the type yourself.
+- **The review** lists everything; enter a field's number to change it.
+  Nothing is written until you answer `y`, and `q` or Ctrl-C leaves without
+  writing.
+
+Required are the name, the path, `--ref` or `--copy`, the type (`dataset`,
+`model`, `checkpoint`, `report` or `other`) and the description. Without a
+terminal, or with `--no-input`, a missing value is an error rather than a
+question, and every invalid flag is reported at once. `--meta-file meta.json`
+reads metadata from a JSON object, `--checksum` hashes referenced files, and
+`--dry-run` checks everything without writing.
+
+`nuboard artifact ls [PROJECT]` lists the versions, and
+`nuboard artifact show datasets/fineweb-edu:v3` prints one, with who added
+it, and checks that its files are still there and unchanged.
+
 ## Using them
 
 ```python

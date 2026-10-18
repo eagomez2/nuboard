@@ -249,6 +249,7 @@ def _llm_runs(root: Path, base: float) -> None:
             folders[0],
             type="dataset",
             metadata={"tokens": "10B"},
+            description="FineWeb-Edu, September 2026 snapshot",
             reference=True,
         )
         fineweb = prep.add_artifact(
@@ -256,6 +257,7 @@ def _llm_runs(root: Path, base: float) -> None:
             folders[1],
             type="dataset",
             metadata={"tokens": "12B", "dedup": True},
+            description="FineWeb-Edu, October 2026 snapshot, deduplicated",
             reference=True,
         )
         prep.finish(_ended=base - 4.8 * 3600 + 120)
@@ -359,7 +361,11 @@ def _llm_runs(root: Path, base: float) -> None:
                 ckpt = Path(tempfile.mkdtemp())
                 (ckpt / "model.safetensors").write_bytes(b"\0" * 2048)
                 run.add_artifact(
-                    "model", ckpt, type="checkpoint", metadata={"step": last, "eval/loss": 2.37}
+                    "model",
+                    ckpt,
+                    type="checkpoint",
+                    metadata={"step": last, "eval/loss": 2.37},
+                    description="Final checkpoint of the lr=1e-3 seed 1 run",
                 )
 
             run.finish(_ended=t)
@@ -388,7 +394,13 @@ def _llm_runs(root: Path, base: float) -> None:
 
         report = Path(tempfile.mkdtemp())
         (report / "mmlu.json").write_text('{"accuracy": 0.447}', encoding="utf-8")
-        ev.add_artifact("eval-report", report, type="report", metadata={"mmlu": 0.447})
+        ev.add_artifact(
+            "eval-report",
+            report,
+            type="report",
+            metadata={"mmlu": 0.447},
+            description="MMLU results of model:v1",
+        )
         ev.finish(_ended=base - 300)
 
     # a hand-picked collection and a few custom fields, as a reviewer would leave them
@@ -563,6 +575,7 @@ def _vit_runs(root: Path, base: float) -> None:
         ),
         type="dataset",
         metadata={"classes": 100, "images": 126689},
+        description="ImageNet-100 training split, as downloaded",
         reference=True,
         dir=root,
     )

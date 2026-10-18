@@ -33,6 +33,9 @@ Versions are numbered automatically and created atomically.
   [Data on several machines](../guide/artifacts.md#data-on-several-machines).
 - **checksum** (*bool*): with `reference`, also hash every file (SHA-256).
   This reads all of the data once. Copies are always hashed.
+- **description** (*str*, optional): what this version is, shown on the
+  Artifacts page. The manifest also records who created the version, on
+  which machine and with which command (`created_by`).
 
 **Returns** an `Artifact` with `ref` (such as `"model:v3"`), `files` (the
 folder holding the files), `reference` (the referenced path, or None for a
