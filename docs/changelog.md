@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.15.1
+
+- Ctrl+C stops `nuboard up` at once, even with a viewer tab open. Before, the
+  open live-update connection kept the server waiting forever.
+- The run table never cuts values off: every column is as wide as its widest
+  value, and a table wider than the window scrolls sideways. All config keys
+  that differ between runs are shown, not only the first eight. Notes are the
+  one column still capped; their full text is in the notes editor.
+- The Columns menu has a search box, so a column is easy to find among many
+  scalars and config keys.
+- Charts: the big chart has an **All N** picker that searches every scalar,
+  so any of them can be brought into focus. With more than 12 series, the
+  legend shows the first 10 and a "+N more" button, plus a filter that
+  matches run names and config values (`lr=3e-4`, `layers=24`); **Only
+  these** hides every series that does not match.
+- Charts: scalar sections fold like Media sections, with Expand all and
+  Collapse all. With more than six sections only the first three start open;
+  what you open or close is remembered.
+
 ## 0.15.0
 
 - `nuboard artifact add` adds an artifact version from the command line.

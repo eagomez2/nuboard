@@ -661,7 +661,9 @@ test('a report with a table and audio notes exports them, with either audio play
   const player = off.frameLocator('.nbwave iframe').first();
   await expect(player.locator('#waveform canvas').first()).toBeVisible();
   await expect(player.locator('#notes-lane')).toBeVisible();
-  await expect.poll(async () => (await off.locator('.nbwave iframe').first().boundingBox())!.height).toBeGreaterThan(200);
+  await expect
+    .poll(async () => (await off.locator('.nbwave iframe').first().boundingBox())!.height)
+    .toBeGreaterThan(200);
   await expect(off.locator('.nbnotes li')).toHaveCount(2);
   await expect(off.locator('audio')).toHaveCount(0);
 
@@ -736,4 +738,53 @@ test('a saved view is deleted after confirming', async ({ page }) => {
   await del.click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
   await expect(row).toBeHidden();
+});
+
+test('run table cells are never cut off, and the Columns menu is searchable', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto('/#/runs');
+  await expect(page.locator('.body .row').first()).toBeVisible();
+  // a table wider than the window scrolls sideways instead of clipping its cells
+  const table = page.locator('.table');
+  expect(await table.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const clipped = await page
+    .locator('.body .config, .body .name, .body .path')
+    .evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).length);
+  expect(clipped).toBe(0);
+  await table.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+  await expect(page.locator('.head').getByText('Notes')).toBeInViewport();
+
+  await page.getByRole('button', { name: /Columns/ }).click();
+  const menu = page.getByRole('dialog', { name: 'Columns' });
+  const all = await menu.locator('.opt').count();
+  await page.keyboard.type('loss');
+  await expect(menu.getByText(/ of \d+ match/)).toBeVisible();
+  const found = await menu.locator('.opt').count();
+  expect(found).toBeGreaterThan(0);
+  expect(found).toBeLessThan(all);
+  for (const t of await menu.locator('.opt .mono').allTextContents()) expect(t).toContain('loss');
+});
+
+test('any scalar can be picked for the main chart, and sections fold', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations');
+  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.keyboard.type('per_class');
+  const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
+  await expect(options.first()).toContainText('per_class');
+  const name = (await options.first().textContent())!;
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}`));
+  await expect(page.getByRole('dialog', { name: 'Pick a scalar' })).toHaveCount(0);
+
+  const sect = page.locator('.sect').filter({ hasText: 'per_class' });
+  const fold = sect.locator('.fold');
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(sect.locator('.small')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.sect').filter({ hasText: 'per_class' }).locator('.fold')).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
 });

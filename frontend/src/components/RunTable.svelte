@@ -10,6 +10,7 @@
   import { defineProperty, valueField } from '../lib/properties';
   import { editTags, knownTags, parseTags } from '../lib/tags';
   import { app } from '../lib/state.svelte';
+  import { fonts, textWidth } from '../lib/measure.svelte';
 
   const ROW = 56;
   const MAX_COMPARE = 8;
@@ -20,6 +21,12 @@
   let fieldEdit = $state<{ key: string; field: string } | null>(null);
   let fieldDraft = $state('');
   let menu = $state(false);
+  let colFind = $state('');
+  let colFindEl = $state<HTMLInputElement>();
+  $effect(() => {
+    if (menu) colFindEl?.focus();
+  });
+  const colMatch = (name: string) => !colFind || name.toLowerCase().includes(colFind.trim().toLowerCase());
   // The Columns menu is fixed to the window, under its button, so a short table cannot clip it
   let menuButton = $state<HTMLButtonElement | null>(null);
   let menuPos = $state({ top: 0, right: 0, maxHeight: 420 });
@@ -119,10 +126,7 @@
         if (!values.has(k)) values.set(k, new Set());
         values.get(k)!.add(JSON.stringify(v));
       }
-    return [...values.entries()]
-      .filter(([, s]) => s.size > 1)
-      .map(([k]) => k)
-      .slice(0, 8);
+    return [...values.entries()].filter(([, s]) => s.size > 1).map(([k]) => k);
   });
 
   // Extra columns picked in the Columns menu: field:<name>, config:<key>, metric:<name>.
@@ -139,12 +143,59 @@
     for (const r of (app.runs?.runs ?? []).slice(0, 2000)) for (const k of Object.keys(r.config)) keys.add(k);
     return [...keys].sort();
   });
+  // Columns are as wide as their widest value, so nothing is cut off; a table wider
+  // than the window scrolls sideways. Notes are the one exception: they are capped.
+  const pills = (tags: string[], max: number) =>
+    tags.slice(0, max).reduce((w, t) => w + textWidth(t, 11, false, 550) + 20, 0) +
+    (tags.length > max ? textWidth(`+${tags.length - max}`, 11) + 4 : 0);
+  const widths = $derived.by(() => {
+    void fonts.ready;
+    const all = (app.runs?.runs ?? []).filter((r) => showArchived || !r.archived);
+    let run = 220;
+    let config = textWidth('CONFIG', 11.5, false, 600) + 12;
+    let res = 170;
+    let notes = 120;
+    const extra = cols.map((c) => textWidth(colLabel(c), 11.5, true) + 30);
+    for (const r of all) {
+      const name =
+        textWidth(r.name, 13.5, true, 600) +
+        (r.alerts?.length ? textWidth(String(r.alerts.length), 11, true, 600) + 37 : 0) +
+        (r.collections ?? []).reduce((w, c) => w + textWidth(c, 11) + 26, 0);
+      const sub = (r.tags.length ? pills(r.tags, 3) + 6 : 0) + textWidth(`${r.path}/`, 11.5, true);
+      run = Math.max(run, name, sub);
+      const shown = varying.filter((k) => k in r.config);
+      config = Math.max(
+        config,
+        shown.reduce((w, k) => w + textWidth(`${short(k)}=${fmtValue(r.config[k])}`, 12, true), 0) +
+          10 * Math.max(0, shown.length - 1),
+      );
+      const value = result(r);
+      if (value !== null)
+        res = Math.max(res, textWidth(`${metric} ↓`, 11.5, true) + 8 + textWidth(fmtNum(value), 14, true));
+      notes = Math.max(notes, textWidth(notePreview(r.notes ?? ''), 13));
+      cols.forEach((c, i) => {
+        const v = c.startsWith('field:') ? r.fields?.[c.slice(6)] : undefined;
+        const w = Array.isArray(v) && v.length ? pills(v.map(String), 3) : textWidth(cell(r, c), 12.5, true);
+        extra[i] = Math.max(extra[i], w);
+      });
+    }
+    return {
+      run: Math.ceil(run) + 4,
+      config: Math.ceil(config) + 4,
+      res: Math.ceil(res) + 4,
+      notes: Math.min(480, notes + 4),
+      extra,
+    };
+  });
   const template = $derived(
-    `30px 26px 96px minmax(220px, 2.2fr)` +
-      cols.map((c) => (c.startsWith('field:') ? ' 120px' : ' 100px')).join('') +
-      ` minmax(180px, 2fr) 170px 84px 80px 76px minmax(120px, 1.2fr)`,
+    `30px 26px 96px ${widths.run}px` +
+      widths.extra.map((w, i) => ` ${Math.max(cols[i].startsWith('field:') ? 120 : 80, Math.ceil(w) + 4)}px`).join('') +
+      ` ${widths.config}px ${widths.res}px 84px 80px 76px ${widths.notes}px`,
   );
-  const width = $derived(1120 + cols.length * 120);
+  // The sum of the columns, the gaps between them and the row padding
+  const width = $derived(
+    template.split(' ').reduce((w, c) => w + parseFloat(c), 0) + 10 * (template.split(' ').length - 1) + 28,
+  );
 
   function toggleCol(c: string) {
     const next = cols.includes(c) ? cols.filter((x) => x !== c) : [...cols, c];
@@ -426,8 +477,20 @@
           aria-label="Columns"
           style="top:{menuPos.top}px;right:{menuPos.right}px;max-height:{menuPos.maxHeight}px"
         >
+          <input
+            class="input sm mono colfind"
+            placeholder="Search columns"
+            aria-label="Search columns"
+            bind:this={colFindEl}
+            bind:value={colFind}
+            onkeydown={(e) => e.key === 'Escape' && (colFind ? (colFind = '') : (menu = false))}
+          />
+          {#if colFind}
+            {@const n = [...fieldNames, ...metrics, ...configKeys].filter(colMatch).length}
+            <span class="faint small">{n} of {fieldNames.length + metrics.length + configKeys.length} match</span>
+          {/if}
           <div class="label">Properties</div>
-          {#each fieldNames as f (f)}
+          {#each fieldNames.filter(colMatch) as f (f)}
             <label class="opt"
               ><input type="checkbox" checked={cols.includes(`field:${f}`)} onchange={() => toggleCol(`field:${f}`)} />
               <span class="mono">{f}</span>
@@ -442,8 +505,8 @@
               >Set property…</b
             >.
           </p>
-          <div class="label">Scalars (last value)</div>
-          {#each metrics as m (m)}
+          {#if !colFind || metrics.some(colMatch)}<div class="label">Scalars (last value)</div>{/if}
+          {#each metrics.filter(colMatch) as m (m)}
             <label class="opt"
               ><input
                 type="checkbox"
@@ -453,8 +516,8 @@
               <span class="mono">{m}</span></label
             >
           {/each}
-          <div class="label">Config</div>
-          {#each configKeys as k (k)}
+          {#if !colFind || configKeys.some(colMatch)}<div class="label">Config</div>{/if}
+          {#each configKeys.filter(colMatch) as k (k)}
             <label class="opt"
               ><input
                 type="checkbox"
@@ -746,7 +809,10 @@
     font-weight: 600;
     margin-right: 8px;
   }
+  /* display is set here because Tailwind's `table` utility (display: table) also
+     matches this class, and a CSS table ignores overflow, so it never scrolled */
   .table {
+    display: block;
     overflow-x: auto;
   }
   .row {
@@ -818,6 +884,13 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+  .colfind {
+    flex: none;
+    margin-bottom: 2px;
+  }
+  .small {
+    font-size: 12px;
   }
   .pop .label {
     margin: 8px 0 4px;
@@ -971,9 +1044,6 @@
   .mname {
     color: var(--faint);
     font-size: 11.5px;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .bad {

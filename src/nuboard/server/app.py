@@ -1152,7 +1152,8 @@ def create_app(
     async def stream(request: Request) -> Response:
         """Return a server-sent event stream: `hello`, then `runs` and `data` change events.
 
-        A keep-alive comment is sent after 15 s without events.
+        A keep-alive comment is sent after 15 s without events. The stream ends
+        when the server shuts down, so Ctrl+C does not wait for open tabs.
         """
         queue: asyncio.Queue[str] = asyncio.Queue()
         hub.queues.add(queue)
@@ -1164,11 +1165,19 @@ def create_app(
                 hello = json.dumps({"version": catalog.version})
                 yield f"retry: 3000\nevent: hello\ndata: {hello}\n\n"
 
-                while True:
+                idle = 0.0
+
+                # Checked twice a second, so the server can stop while a tab is open
+                while not request.app.state.stopping():
                     try:
-                        yield await asyncio.wait_for(queue.get(), timeout=15)
+                        yield await asyncio.wait_for(queue.get(), timeout=0.5)
+                        idle = 0.0
                     except asyncio.TimeoutError:
-                        yield ": keep-alive\n\n"
+                        idle += 0.5
+
+                        if idle >= 15:
+                            idle = 0.0
+                            yield ": keep-alive\n\n"
             finally:
                 hub.queues.discard(queue)
 
@@ -1262,6 +1271,7 @@ def create_app(
         exception_handlers={_NotFound: not_found},
     )
     app.state.store = store
+    app.state.stopping = lambda: False  # `up` replaces it with the server's shutdown flag
     return app
 
 
