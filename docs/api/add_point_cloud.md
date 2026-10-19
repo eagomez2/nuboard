@@ -25,7 +25,7 @@ for colors, packed with the standard library.
 
 **In the viewer** point clouds are drawn in a view you can rotate (drag), pan
 (shift-drag), zoom (click, then scroll) and reset (double-click). z is up.
-**axes** draws the three axes from the cloud's lowest corner, with round
+**Axes** draws the three axes from the cloud's lowest corner, with round
 values along them. The renderer is plain canvas code, so it needs no WebGL
 and works the same in an HTML export. Point clouds are listed under
 **Point clouds**.

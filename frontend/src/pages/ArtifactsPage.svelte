@@ -188,11 +188,11 @@ run.use_artifact("dataset:latest")</pre>
             {#if selected.manifest.type}<span class="chip keep">{selected.manifest.type}</span>{/if}
             {#if selected.manifest.reference}<span
                 class="chip keep"
-                title="The files stay where they are; NuBoard records their path and fingerprint">reference</span
+                title="The files stay where they are; NuBoard records their path and fingerprint">Reference</span
               >{/if}
             {#if selected.version === Math.max(...artifacts
                   .filter((a) => a.project === selected.project && a.name === selected.name)
-                  .map((a) => a.version))}<span class="chip latest keep">latest</span>{/if}
+                  .map((a) => a.version))}<span class="chip latest keep">Latest</span>{/if}
           </div>
           {#if selected.manifest.description}<p class="desc">{selected.manifest.description}</p>{/if}
           <div class="facts">
@@ -221,7 +221,7 @@ run.use_artifact("dataset:latest")</pre>
 
         <div class="card lineage">
           <div class="sh">
-            <span class="label">Lineage</span><span class="faint">upstream on the left, downstream on the right</span>
+            <span class="label">Lineage</span><span class="faint">Upstream on the left, downstream on the right</span>
           </div>
           <div class="scroll">
             <svg width={graph.width} height={graph.height} role="img" aria-label="Lineage graph">

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { cap } from '../lib/format';
+
   let { status }: { status: string } = $props();
 </script>
 
@@ -7,7 +9,7 @@
   {:else if status === 'crashed' || status === 'killed'}<span class="x">✕</span>
   {:else if status === 'lost'}<span class="x">?</span>
   {:else}<span class="dot"></span>{/if}
-  {status}
+  {cap(status)}
 </span>
 
 <style>

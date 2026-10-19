@@ -526,7 +526,7 @@
                 download
                 title="Download {details[i].run.name}'s copy"><Icon name="download" size={14} /> Download</a
               >
-            {:else}<span class="faint">not in {details[i].run.name}</span>{/if}
+            {:else}<span class="faint">Not in {details[i].run.name}</span>{/if}
           </span>
         {/each}
       </div>
@@ -616,7 +616,7 @@
         {#if multi}
           <div class="tdiff mono">
             <div class="trow head">
-              <span>key</span><span>{details[shownIdx[0]].run.name}</span><span>{details[shownIdx[1]].run.name}</span>
+              <span>Key</span><span>{details[shownIdx[0]].run.name}</span><span>{details[shownIdx[1]].run.name}</span>
             </div>
             {#each tensorDiff.slice(0, tensorLimit) as row (row.k)}
               <div class="trow {row.status}">
@@ -633,7 +633,7 @@
             >{/if}
         {:else if infos[0]?.entries.length}
           <div class="ttree mono" role="tree" aria-label="Tensors">
-            <div class="tnode head"><span>key</span><span>shape</span><span>dtype</span><span>size</span></div>
+            <div class="tnode head"><span>Key</span><span>Shape</span><span>Dtype</span><span>Size</span></div>
             {#each tensorRows.slice(0, tensorLimit) as n (n.id)}
               {@const open = tensorOpen.has(n.id) || !!tensorFind}
               {@const leaf = n.kids ? null : n.leaf}

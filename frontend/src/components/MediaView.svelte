@@ -67,8 +67,8 @@
   <pre class="text mono">{item.text}</pre>
 {:else if item.mime === 'text/html'}
   <div class="seg htmlseg" role="group" aria-label="Show HTML as">
-    <button aria-pressed={htmlView === 'output'} onclick={() => (htmlView = 'output')}>output</button>
-    <button aria-pressed={htmlView === 'code'} onclick={() => (htmlView = 'code')}>code</button>
+    <button aria-pressed={htmlView === 'output'} onclick={() => (htmlView = 'output')}>Output</button>
+    <button aria-pressed={htmlView === 'code'} onclick={() => (htmlView = 'code')}>Code</button>
   </div>
   {#if htmlView === 'output'}
     <iframe title="{runName} {item.key}" sandbox="allow-scripts" src={url}></iframe>

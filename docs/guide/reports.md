@@ -22,7 +22,7 @@ To add several at once, press **Select for report** above the sections, tick
 the cards whose shown item you want, and press **Add N to report** in the bar
 at the bottom. They are appended in the order you ticked them, each with a
 caption naming its key, step and run. **Open report** in the
-notice jumps to it. Use **best scalar** on the Media page first to save the
+notice jumps to it. Use **Best scalar** on the Media page first to save the
 item at a run's best step.
 
 ## Adding charts from the Charts page
@@ -57,7 +57,7 @@ that view.
 ## Writing
 
 The **Reports** page lists the reports of every project. **New** creates one;
-**write**, **split** and **preview** switch between the editor, both side by
+**Write**, **Split** and **Preview** switch between the editor, both side by
 side, and the rendered page. Changes are saved a moment after you stop typing
 (or with Ctrl+S / ⌘+S). Headings, lists, tables, links, code blocks and
 images all work; HTML in the Markdown is sanitized.
@@ -80,7 +80,7 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
   cdn.bokeh.org once, while exporting, for the figure's exact version and
   embedded too; if it cannot be reached, the figure is left out with a note.
-  Before exporting you pick the **theme** (light, dark, or switchable: it
+  Before exporting you pick the **Theme** (light, dark, or switchable: it
   follows the reader's system theme and has a button to flip it), edit the
   **footer** (by default "Exported with NuBoard 0.8.2 from …", naming the
   version that exported it; empty removes it), and choose whether the

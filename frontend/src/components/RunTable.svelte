@@ -453,8 +453,8 @@
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
     <div class="seg" role="group" aria-label="Result">
-      <button aria-pressed={resultMode === 'best'} onclick={() => router.set({ res: null })}>best</button>
-      <button aria-pressed={resultMode === 'last'} onclick={() => router.set({ res: 'last' })}>last</button>
+      <button aria-pressed={resultMode === 'best'} onclick={() => router.set({ res: null })}>Best</button>
+      <button aria-pressed={resultMode === 'last'} onclick={() => router.set({ res: 'last' })}>Last</button>
     </div>
     <label class="toggle">
       <button
@@ -464,7 +464,7 @@
         aria-label="Show archived"
         onclick={() => router.set({ archived: showArchived ? null : '1' })}
       ></button>
-      show archived
+      Show archived
     </label>
     <div class="colmenu">
       <button class="btn" bind:this={menuButton} aria-expanded={menu} onclick={() => (menu = !menu)}>
@@ -495,7 +495,7 @@
               ><input type="checkbox" checked={cols.includes(`field:${f}`)} onchange={() => toggleCol(`field:${f}`)} />
               <span class="mono">{f}</span>
               {#if !definedNames.has(f)}<span class="untyped" title="Has values but no definition in fields.json"
-                  >untyped</span
+                  >Untyped</span
                 >{/if}</label
             >
           {/each}
@@ -666,8 +666,8 @@
                     >
                       <option value="">—</option>
                       {#if fd.type === 'bool'}
-                        <option value="true">yes</option>
-                        <option value="false">no</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
                       {:else}
                         {#each fd.options ?? [] as o (o)}<option value={o}>{o}</option>{/each}
                       {/if}
@@ -744,7 +744,7 @@
                   class:faint={!r.notes}
                   onclick={() => startNote(r)}
                   title={r.notes?.includes('\n') ? 'Open notes' : 'Edit note'}
-                  >{notePreview(r.notes ?? '') || (r.status === 'crashed' ? 'add a note…' : '—')}</button
+                  >{notePreview(r.notes ?? '') || (r.status === 'crashed' ? 'Add a note…' : '—')}</button
                 >
               {/if}
             </span>

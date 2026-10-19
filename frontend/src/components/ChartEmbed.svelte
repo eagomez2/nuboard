@@ -77,7 +77,7 @@
   {:else if failed && src}
     <img {src} alt={caption} />
   {:else if failed}
-    <div class="missing faint mono">chart unavailable</div>
+    <div class="missing faint mono">Chart unavailable</div>
   {:else}
     <div class="missing faint">Loading…</div>
   {/if}

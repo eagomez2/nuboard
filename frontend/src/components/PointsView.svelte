@@ -65,9 +65,9 @@
   <div class="hint faint">
     <span class="left"
       ><span class="mono">{count.toLocaleString()} points</span>
-      <button class="axes" aria-pressed={showAxes} onclick={() => (toggled = !showAxes)}>axes</button></span
+      <button class="axes" aria-pressed={showAxes} onclick={() => (toggled = !showAxes)}>Axes</button></span
     >
-    <span>drag to rotate · shift-drag to pan · click, then scroll to zoom · double-click to reset</span>
+    <span>Drag to rotate · shift-drag to pan · click, then scroll to zoom · double-click to reset</span>
   </div>
   {#if error}<p class="faint error">{error}</p>{/if}
 </div>

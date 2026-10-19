@@ -53,7 +53,7 @@
 <!-- No allow-same-origin: the figure cannot reach the viewer's page or its API. -->
 <iframe bind:this={frame} {title} sandbox="allow-scripts allow-downloads" src="./figure.html" style="height:{height}px"
 ></iframe>
-<a class="dl" href={url} download>download spec ({mime.replace('application/', '')})</a>
+<a class="dl" href={url} download>Download spec ({mime.replace('application/', '')})</a>
 
 <style>
   iframe {

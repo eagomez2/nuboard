@@ -75,3 +75,6 @@ export function defaultMetric(metrics: string[]): string {
     m === 'loss' ? 0 : m === 'train/loss' ? 1 : /(^|\/)loss$/.test(m) ? 2 : /loss/.test(m) ? 3 : 4;
   return [...metrics].sort((a, b) => rank(a) - rank(b))[0] ?? '';
 }
+
+/** The text with its first letter capitalized, for showing a value such as a run status as a label. */
+export const cap = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);

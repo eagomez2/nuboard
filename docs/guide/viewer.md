@@ -34,8 +34,8 @@ browser's local storage.
 - **Table**: status, star, name and folder (with the run's collections and its
   tags as colored pills; a tag keeps its color everywhere), the config keys
   that differ between the listed runs, a result column, start time, duration, reviewed mark and
-  notes. Pick the result scalar in the toolbar and switch between **best**
-  (min for losses and errors, max otherwise) and **last**. Click a column
+  notes. Pick the result scalar in the toolbar and switch between **Best**
+  (min for losses and errors, max otherwise) and **Last**. Click a column
   header to sort. The list is virtualized, so thousands of runs scroll
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
@@ -51,7 +51,7 @@ browser's local storage.
 - Stars, notes, review marks, archive flags, tags edited in the viewer and
   property values are written to
   the run's own `annotations.json`, so they move with the run folder.
-  Archived runs are hidden unless **show archived** is on.
+  Archived runs are hidden unless **Show archived** is on.
 
 ### Tags
 
@@ -90,7 +90,7 @@ link. Each run then has its own value, checked against that type.
 
 **Columns** lists every property of the listed projects, to show or hide.
 Values written without a definition, such as with `Run.set_field` from
-Python, are marked **untyped**; in a run's **Properties** tab, **untyped ·
+Python, are marked **Untyped**; in a run's **Properties** tab, **Untyped ·
 define** gives such a property a type.
 
 Properties work in queries (`verdict = "keep"`, `score > 3`,
@@ -164,7 +164,7 @@ For a single run there are two more tabs:
   the whole project, with a type picked from a menu: text, number (with an optional unit),
   choice, tags, yes/no, date or link. A choice is picked from a menu and tags
   are toggled as colored pills; neither accepts a value outside its options,
-  which are added on purpose with **New option…** or **+ option**. Numbers,
+  which are added on purpose with **New option…** or **+ Option**. Numbers,
   dates and links are checked before saving, and the server rejects values
   that do not fit (from the table, the API or `Run.set_field` too). The bin
   button removes a property: its definition and its value on every run of the
@@ -176,7 +176,7 @@ For a single run there are two more tabs:
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
 differs. **Files** and pinned tabs show a line diff between two of the
-runs. With more than two, pick which two from the **diff … against …** menus. **only changes** hides
+runs. With more than two, pick which two from the **Diff … against …** menus. **Only changes** hides
 identical rows and lines.
 
 ## Charts page
@@ -189,7 +189,7 @@ are selected, every run matching the query.
 
 - **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
-- **Grouping**: `group by config.optim.lr` in the query (or the **group by**
+- **Grouping**: `group by config.optim.lr` in the query (or the **Group by**
   menu) draws one line per group with a band: mean ± std (default), mean ± sem,
   mean with min–max, or median with min–max (`agg` in the query, or the band
   menu). Runs are interpolated onto a shared x grid on the server before
@@ -202,13 +202,13 @@ are selected, every run matching the query.
   and a marker shape, so series stay distinguishable without color.
 - **X axis**: step, wall time, relative time since the run started, or active
   time (relative time with pauses longer than five minutes removed). The
-  **x by scalar** menu plots against any other scalar instead, such as
+  **X by scalar** menu plots against any other scalar instead, such as
   `train/tokens` or `epoch`; counter-like scalars are listed first. The x
   scalar is matched to each point by step (interpolated when the two were
   logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
-  **raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
+  **Raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
 - **Points**: a dot on each curve at the logged point under the cursor, so
   you can see where the real data points are (as in TensorBoard). When the
   cursor is pinned (click the chart), the dots stay. Kept in the URL as
@@ -295,18 +295,18 @@ be scrolled through its steps while the others stay put.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
   `confusion|per_class`. While it is set, the count next to it shows how many
   keys match, and keys that do not match are hidden.
-- **by key / by run**: a section per key with a card per run (default), or a
+- **By key / by run**: a section per key with a card per run (default), or a
   section per run with a card per key.
-- **Step**: **latest** shows each run's last item; **pick step** moves every
-  card to the item at or before one step; **best scalar** moves each run to
+- **Step**: **Latest** shows each run's last item; **Pick step** moves every
+  card to the item at or before one step; **Best scalar** moves each run to
   the item closest to the step where a scalar of your choice was lowest or
   highest (for example the best `val/acc`). Moving a card's own slider
   overrides the page-wide step for that card only.
-- **Grid**: **columns** sets the cards per row (fit to width, or 1 to 8) and
-  **rows** how many rows each section shows per page (1 to 6, or all); a
+- **Grid**: **Columns** sets the cards per row (fit to width, or 1 to 8) and
+  **Rows** how many rows each section shows per page (1 to 6, or all); a
   section with more cards gets a pager. Both are remembered.
 - **Expand all** and **Collapse all** fold the sections; with many keys only
-  the first three start open. **show runs without the key** adds an empty
+  the first three start open. **Show runs without the key** adds an empty
   card for runs that never logged it.
 
 Each card can open its item large, download it, or **add it to a report**
@@ -317,11 +317,11 @@ the URL (`mkinds`, `mfind`, `mby`, `mmode`, `mstep`, `mmetric`, `mdir`,
 
 Logged HTML runs in a sandboxed iframe (`sandbox="allow-scripts"`, no
 same-origin access) and is served with a matching `Content-Security-Policy`.
-**output / code** above it switches to the HTML source, with line numbers.
+**Output / code** above it switches to the HTML source, with line numbers.
 Matplotlib figures are stored as SVG and shown as images. Plotly, Vega-Lite
 and Bokeh figures are interactive (hover, zoom, pan, export), each in its own
 sandboxed iframe, and follow the light or dark theme. Every figure also has a
-**download spec** link for the raw JSON.
+**Download spec** link for the raw JSON.
 
 | Library | Rendered with | Network |
 | --- | --- | --- |
@@ -339,9 +339,9 @@ downloadable.
 
 Tables (`add_table`) take the whole width of the section. Each run's card has
 its step slider, and every number is compared with the same row at the
-**previous step** or the **first step** (or **nothing**): the cell is tinted
+**Previous step** or the **First step** (or **Nothing**): the cell is tinted
 green when it got better and orange when it got worse, darker for bigger
-changes, with the change next to the value (**color + Δ**, **color** or
+changes, with the change next to the value (**Color + Δ**, **Color** or
 **Δ**). A column counts as better when lower if its name looks like a loss or
 error (`loss`, `error`, `wer`, ...), and when higher otherwise; the arrow next
 to each column name says which.
@@ -352,7 +352,7 @@ to each column name says which.
   `snr_in < 0 and noise = babble`; other text matches the row id.
 - The summary counts the rows that improved or got worse on the sorted column
   (or the first column that changed), with its mean and change.
-- **trend** draws that column for each row across the logged steps.
+- **Trend** draws that column for each row across the logged steps.
 - Click a row for its values at every step and its media: an audio cell opens
   in the waveform player, with notes.
 
@@ -374,7 +374,7 @@ its run's histogram at the chosen step, filled in the run's color, with the
 step logged before it as a dashed outline, so you see how it moved. The y axis
 is density, so steps and runs with different ranges or bin counts compare
 fairly. Hover for the bin under the pointer and its share of the values.
-**over steps** switches the card to TensorBoard's distributions view: the
+**Over steps** switches the card to TensorBoard's distributions view: the
 median as a line and bands holding 68%, 86% and all of the values at every
 logged step (up to 150, sampled evenly), with the chosen step marked. A chart
 above the cards overlays every run's histogram at the chosen step. In an HTML
@@ -384,7 +384,7 @@ export a distribution is drawn as a picture with the step before it.
 
 Point clouds are drawn in a view you can rotate (drag), pan (shift-drag or
 right-drag), zoom (click the view, then scroll) and reset (double-click),
-colored by their logged colors or else by height. **axes** under the view
+colored by their logged colors or else by height. **Axes** under the view
 draws the x, y and z axes from the cloud's lowest corner, with round values
 along them; they start shown when the cloud was logged with `axes`, labeled
 with its names. Each card has its step
@@ -404,10 +404,10 @@ or a generator improve over training.
 
 ### Audio
 
-Audio has two players, switched with **player** above the grid (the choice is
+Audio has two players, switched with **Audio** above the grid (the choice is
 remembered):
 
-- **waveform** (default): waveform and spectrogram of every channel, with a
+- **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
   and full screen (`F`). The spectrogram is computed in the browser (Hann
@@ -416,13 +416,13 @@ remembered):
   follow each other's zoom, scroll, cursor and selection, and starting one
   pauses the others, so you can listen to the same passage across runs.
   Space plays and pauses; arrow keys seek. Next to the player switch,
-  **colors** picks the spectrogram colormap (theme, viridis, magma or gray),
-  **frequency** its scale (linear, log or mel), **window** the FFT size (256
-  to 4096 samples; the hop is a quarter of it), and **spectrogram** hides it
+  **Colors** picks the spectrogram colormap (theme, viridis, magma or gray),
+  **Frequency** its scale (linear, log or mel), **Window** the FFT size (256
+  to 4096 samples; the hop is a quarter of it), and **Spectrogram** hides it
   to show only waveforms. The choices are remembered in the browser and kept
   in the URL (`cmap`, `fscale`, `fft`, `spec`), so a shared link shows the
   same view.
-- **simple**: the browser's own audio controls, as in TensorBoard.
+- **Simple**: the browser's own audio controls, as in TensorBoard.
 
 **Notes**: in the waveform player, select a section and press **Note** (or
 `N`), type, and press Enter. Notes show in a lane above the waveform; click

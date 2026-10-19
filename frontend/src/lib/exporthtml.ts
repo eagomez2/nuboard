@@ -388,16 +388,16 @@ async function mediaHtml(
     const prev = items
       .filter((m) => m.key === item.key && m.mime === HIST_MIME && m.step < item.step && m.index !== undefined)
       .pop();
-    const series: HistSeries[] = [{ name: `step ${item.step}`, color: 'var(--s1)', data, fill: true }];
+    const series: HistSeries[] = [{ name: `Step ${item.step}`, color: 'var(--s1)', data, fill: true }];
     if (prev) {
       const old = (await (await fetch(api.mediaUrl(found.run, prev.index!))).json()) as HistData;
-      series.push({ name: `step ${prev.step}`, color: 'var(--faint)', data: old, dashed: true });
+      series.push({ name: `Step ${prev.step}`, color: 'var(--faint)', data: old, dashed: true });
     }
     const stats = [
       data.mean != null ? `mean ${fmtTick(data.mean)}` : '',
       data.std != null ? `std ${fmtTick(data.std)}` : '',
       `n ${data.count.toLocaleString()}`,
-      prev ? `dashed: step ${prev.step}` : '',
+      prev ? `Dashed: step ${prev.step}` : '',
     ].filter(Boolean);
     body = `<div class="nbpr">${histSvg(series, 640, 280)}<small>${esc(stats.join(' · '))}</small></div>`;
   } else if (item.mime === POINTS_MIME) {

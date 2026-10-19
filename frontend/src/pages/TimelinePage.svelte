@@ -4,7 +4,7 @@
   import Status from '../components/Status.svelte';
   import { api, type ArtifactVersion, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
-  import { fmtDate, fmtDuration } from '../lib/format';
+  import { cap, fmtDate, fmtDuration } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
@@ -215,13 +215,13 @@
     <div class="seg" role="group" aria-label="Color by">
       {#each ['status', 'project', 'group'] as c (c)}
         <button aria-pressed={colorBy === c} onclick={() => router.set({ color: c === 'status' ? null : c })}
-          >{c}</button
+          >{cap(c)}</button
         >
       {/each}
     </div>
     <div class="seg" role="group" aria-label="Layout">
-      <button aria-pressed={!packed} onclick={() => router.set({ layout: null })}>one row per run</button>
-      <button aria-pressed={packed} onclick={() => router.set({ layout: 'packed' })}>packed</button>
+      <button aria-pressed={!packed} onclick={() => router.set({ layout: null })}>One row per run</button>
+      <button aria-pressed={packed} onclick={() => router.set({ layout: 'packed' })}>Packed</button>
     </div>
     {#if router.get('tz')}<button class="btn" onclick={() => router.set({ tz: null })}>Reset zoom</button>{/if}
     <button
@@ -263,7 +263,7 @@
         {/each}
         {#if now >= range[0] && now <= range[1]}
           <line class="now" x1={xOf(now)} x2={xOf(now)} y1={AXIS - 6} y2={height} />
-          <text class="nowlabel" x={xOf(now) - 4} y={16} text-anchor="end">now</text>
+          <text class="nowlabel" x={xOf(now) - 4} y={16} text-anchor="end">Now</text>
         {/if}
         {#each lanes.headers as h (h.project)}
           <text class="project" x={8} y={AXIS + h.lane * ROW + 16}
@@ -344,7 +344,7 @@
     <div class="trow"><Status status={hover.run.status} /> <span class="faint">{hover.run.project}</span></div>
     <div class="trow">Started {fmtDate(hover.run.started)}</div>
     <div class="trow">Duration {fmtDuration(endOf(hover.run) - (hover.run.started ?? 0))}</div>
-    {#if hover.run.group}<div class="trow faint">group {hover.run.group}</div>{/if}
+    {#if hover.run.group}<div class="trow faint">Group {hover.run.group}</div>{/if}
     {#each hover.run.alerts ?? [] as a, i (i)}<div class="trow warn">{a.message}</div>{/each}
   </div>
 {/if}

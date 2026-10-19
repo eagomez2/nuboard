@@ -37,14 +37,14 @@
     ...(previous
       ? [
           {
-            name: `step ${previous.step.toLocaleString()}`,
+            name: `Step ${previous.step.toLocaleString()}`,
             color: 'var(--faint)',
             url: api.mediaUrl(runKey, previous.index!),
             dashed: true,
           },
         ]
       : []),
-    { name: `step ${item.step.toLocaleString()}`, color, url: api.mediaUrl(runKey, item.index!), fill: true },
+    { name: `Step ${item.step.toLocaleString()}`, color, url: api.mediaUrl(runKey, item.index!), fill: true },
   ]);
 
   $effect(() => {
@@ -77,8 +77,8 @@
 
 <div class="hv">
   <div class="modes" role="group" aria-label="Distribution view">
-    <button aria-pressed={!over} onclick={() => (over = false)}>at step</button>
-    <button aria-pressed={over} disabled={history.length < 2} onclick={() => (over = true)}>over steps</button>
+    <button aria-pressed={!over} onclick={() => (over = false)}>At step</button>
+    <button aria-pressed={over} disabled={history.length < 2} onclick={() => (over = true)}>Over steps</button>
   </div>
   {#if over}
     <div class="bands" bind:clientWidth={width} style="height:{height}px">
@@ -95,10 +95,10 @@
       {#if tip}
         <span class="rule" style="left:{tip.x}px;top:{HIST_BOX.top}px;bottom:{HIST_BOX.bottom}px"></span>
         <div class="tip" class:left={tip.x > width / 2} style="left:{tip.x}px;top:{HIST_BOX.top + 8}px">
-          <b>step {tip.row.step.toLocaleString()}</b>
-          <span class="mono">median {fmtTick(tip.row.q[3])}</span>
+          <b>Step {tip.row.step.toLocaleString()}</b>
+          <span class="mono">Median {fmtTick(tip.row.q[3])}</span>
           <span class="mono">16–84% {fmtTick(tip.row.q[2])} to {fmtTick(tip.row.q[4])}</span>
-          <span class="mono faint">min {fmtTick(tip.row.q[0])} · max {fmtTick(tip.row.q[6])}</span>
+          <span class="mono faint">Min {fmtTick(tip.row.q[0])} · max {fmtTick(tip.row.q[6])}</span>
         </div>
       {/if}
     </div>

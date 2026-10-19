@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.4
+
+- Labels start with a capital letter everywhere in the viewer: toggles,
+  buttons and menus (**Best** / **Last**, **Show archived**, **No grouping**,
+  **Wall time**, **Ignore outliers**, **Log y**, **Pick step**, **Waveform**,
+  **One row per run**, **Packed**, ...), hints, tooltips and run statuses
+  (**Finished**, **Running**, **Crashed**). Only the first word is
+  capitalized. Names that come from your data (scalars, config keys, run
+  names, tags, captions) are shown as written, and queries still use
+  lowercase statuses (`status = "finished"`).
+
 ## 0.15.3
 
 - Files tab: the tree is on top, full width, about 12 rows tall with its own

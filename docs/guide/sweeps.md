@@ -7,8 +7,8 @@ any set of runs: a project, a query result or your selection.
 
 ## Objective and parameters
 
-- **Objective**: pick a scalar and whether to use its **best** value (the
-  minimum for losses and errors, the maximum otherwise) or its **last** value.
+- **Objective**: pick a scalar and whether to use its **Best** value (the
+  minimum for losses and errors, the maximum otherwise) or its **Last** value.
   Lower-is-better scalars are flipped so the best runs are always on top.
 - **Parameters**: every config key whose value differs between the runs, plus
   properties. Keys with `seed` in the name start unselected. Click a chip to

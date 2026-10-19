@@ -245,13 +245,13 @@
 <div class="tv">
   <div class="bar">
     <div class="seg" role="group" aria-label="Compare with">
-      <button aria-pressed={compare === 'prev'} onclick={() => (compare = 'prev')}>previous step</button>
-      <button aria-pressed={compare === 'first'} onclick={() => (compare = 'first')}>first step</button>
-      <button aria-pressed={compare === 'none'} onclick={() => (compare = 'none')}>nothing</button>
+      <button aria-pressed={compare === 'prev'} onclick={() => (compare = 'prev')}>Previous step</button>
+      <button aria-pressed={compare === 'first'} onclick={() => (compare = 'first')}>First step</button>
+      <button aria-pressed={compare === 'none'} onclick={() => (compare = 'none')}>Nothing</button>
     </div>
     <div class="seg" role="group" aria-label="Show change as">
-      <button aria-pressed={mode === 'both'} onclick={() => (mode = 'both')}>color + Δ</button>
-      <button aria-pressed={mode === 'color'} onclick={() => (mode = 'color')}>color</button>
+      <button aria-pressed={mode === 'both'} onclick={() => (mode = 'both')}>Color + Δ</button>
+      <button aria-pressed={mode === 'color'} onclick={() => (mode = 'color')}>Color</button>
       <button aria-pressed={mode === 'delta'} onclick={() => (mode = 'delta')}>Δ</button>
     </div>
     <input
@@ -271,7 +271,7 @@
       <span><b>{filtered.length.toLocaleString()}</b> of {table.rows.length.toLocaleString()} rows</span>
       {#if summary}
         <span
-          >mean {columns[primary].name} <b>{summary.mean.toFixed(Math.max(2, digits(primary)))}</b>
+          >Mean {columns[primary].name} <b>{summary.mean.toFixed(Math.max(2, digits(primary)))}</b>
           {#if summary.delta !== null}
             <span class="pill {better(primary, summary.delta) ? 'up' : 'down'}"
               >{summary.delta >= 0 ? '+' : '−'}{Math.abs(summary.delta).toFixed(digits(primary))}</span
@@ -281,7 +281,7 @@
         {#if base && against}
           <span><b>{summary.up}</b> improved</span>
           <span><b class="bad">{summary.down}</b> got worse</span>
-          <span class="faint">since step {against.step.toLocaleString()}</span>
+          <span class="faint">Since step {against.step.toLocaleString()}</span>
         {/if}
       {/if}
       {#if filterError}<span class="bad">{filterError}</span>{/if}
@@ -303,7 +303,7 @@
                 >
               </th>
             {/each}
-            {#if trendIndex.length > 1 && primary >= 0}<th>trend <span class="dir">{columns[primary].name}</span></th
+            {#if trendIndex.length > 1 && primary >= 0}<th>Trend <span class="dir">{columns[primary].name}</span></th
               >{/if}
           </tr>
         </thead>
@@ -374,7 +374,7 @@
             <table>
               <thead
                 ><tr
-                  ><th>step</th>{#each columns as c (c.name)}{#if c.type === 'number'}<th class="num">{c.name}</th
+                  ><th>Step</th>{#each columns as c (c.name)}{#if c.type === 'number'}<th class="num">{c.name}</th
                       >{/if}{/each}</tr
                 ></thead
               >

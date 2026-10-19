@@ -30,7 +30,7 @@ with NumPy on the background thread. Lists are binned in pure Python.
 **In the viewer** distributions are listed under **Figures**. Each card
 draws the histogram at the chosen step, filled in the run's color, with the
 step logged before it as a dashed outline. The y axis is density, so steps
-and runs with different ranges or bin counts compare fairly. **over steps**
+and runs with different ranges or bin counts compare fairly. **Over steps**
 switches to TensorBoard's distributions view: the median as a line, and bands
 holding 68%, 86% and all of the values at each step. A chart above the cards
 overlays every run's histogram at the chosen step.
