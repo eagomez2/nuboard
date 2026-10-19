@@ -125,16 +125,33 @@ on one line and removes color codes. With `all_ranks=True`, each rank's log
 has its own tab (**Console r1**, ...).
 
 **Files** lists everything in the run folder as a tree, with how many files
-each folder holds and their size. NuBoard's own data files (`run.json`,
+each folder holds and their size; `files/` (what `init` and
+[`add_file`](../api/add_file.md) save, such as `config.yaml`, `git.patch`
+and `command.txt`) starts open, other folders start folded. The tree is
+about 12 rows tall and scrolls on its own; drag its corner to make it
+taller. A long name loses its middle, so its end stays readable, and the
+full path shows on hover. NuBoard's own data files (`run.json`,
 `data.parquet`, event logs) are hidden until **NuBoard data** is switched
-on. Pick a file to see it: text files are shown (diffed side by side
-between two runs), images are drawn, and every file has a download link.
+on. Pick a file to see it below the tree: text files are shown (diffed side
+by side between two runs), images are drawn, and every file has a download
+link.
 Checkpoints (`.pt`, `.pth`, `.ckpt`, `.bin`, `.safetensors`, `.npy`,
 `.npz`) list their keys as a tree with each tensor's shape, dtype and size,
 and the total parameter count; with two runs the keys are diffed. Reading a
 checkpoint needs no PyTorch and never runs code stored in it, and a file
 that is cut off or malformed shows what could be read and why the rest
 could not.
+
+**Pins** turn files into tabs of their own, next to **Files**. The pin
+button on a file (shown on hover) pins its path. A filter with `*` or `?`
+is a pattern over whole paths (`*` within a folder, `**` across folders),
+and **Pin pattern** pins it: `checkpoints/*/best_*.pth` shows each run's
+own best checkpoint, newest first with a menu for the others, so runs whose
+file names differ are still compared side by side. Pins are saved in
+`<project>/pins.json`, so everyone viewing that data folder sees the same
+tabs, in every run of the project; a pin only shows as a tab where a run has
+a file it names. **Unpin** in a pinned tab, or the pin button in the tree,
+removes it.
 
 For a single run there are two more tabs:
 
@@ -158,9 +175,7 @@ For a single run there are two more tabs:
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
-differs. There is a tab for each file the runs saved (such as
-`requirements.txt`, `git.patch`, `command.txt` and any file added with
-[`add_file`](../api/add_file.md)); it shows a line diff between two of the
+differs. **Files** and pinned tabs show a line diff between two of the
 runs. With more than two, pick which two from the **diff … against …** menus. **only changes** hides
 identical rows and lines.
 

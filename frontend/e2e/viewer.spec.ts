@@ -17,7 +17,8 @@ test('compare two runs shows a config diff', async ({ page }) => {
   await boxes.nth(0).check();
   await boxes.nth(2).check();
   await page.getByRole('button', { name: 'Compare' }).click();
-  await page.getByRole('button', { name: 'config.yaml' }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('treeitem', { name: /config\.yaml/ }).click();
   await expect(page.locator('.line.del').first()).toBeVisible();
 });
 
@@ -28,7 +29,7 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await page.getByRole('button', { name: 'Compare' }).click();
   await expect(page.getByRole('heading', { name: /Compare 4 runs/ })).toBeInViewport();
   await expect(page.locator('.srow.head .run')).toHaveCount(4);
-  await page.getByRole('button', { name: 'config.yaml' }).click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
   await page.getByRole('combobox', { name: 'Right run' }).selectOption({ index: 3 });
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
@@ -801,4 +802,40 @@ test('the Files tab lists run files and diffs a text file between two runs', asy
   await tree.getByRole('treeitem', { name: /config\.yaml/ }).click();
   await expect(page).toHaveURL(/file=files(%2F|\/)config\.yaml/);
   await expect(page.locator('.files .diff .line.del').first()).toBeVisible();
+});
+
+test('files are pinned as tabs for every run of the project, by path or by pattern', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(2).check();
+  await page.getByRole('button', { name: 'Compare' }).click();
+  const tabs = page.locator('.tabs .tab');
+  await expect(tabs.filter({ hasText: 'config.yaml' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+
+  const row = page.getByRole('treeitem', { name: /config\.yaml/ });
+  await row.hover();
+  await row.getByRole('button', { name: 'Pin files/config.yaml' }).click();
+  await tabs.filter({ hasText: 'config.yaml' }).click();
+  await expect(page).toHaveURL(/tab=pin(%3A|:)files/);
+  await expect(page.locator('.files .diff .line.del').first()).toBeVisible();
+  await expect(page.getByRole('tree', { name: 'Run files' })).toHaveCount(0);
+
+  // shared through the project folder: a fresh page shows the same pin on another run
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.locator('.body .row .name').nth(1).click();
+  await expect(tabs.filter({ hasText: 'config.yaml' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByLabel('Filter files').fill('files/*.yaml');
+  await page.getByRole('button', { name: 'Pin pattern' }).click();
+  await tabs.filter({ hasText: '*.yaml' }).click();
+  await expect(page.locator('.files .file')).toContainText(':');
+
+  for (const pin of ['files/*.yaml', 'files/config.yaml']) {
+    await tabs.filter({ hasText: pin.split('/')[1] }).click();
+    await page.getByRole('button', { name: 'Unpin' }).first().click();
+  }
+  await expect(tabs.filter({ hasText: 'yaml' })).toHaveCount(0);
 });

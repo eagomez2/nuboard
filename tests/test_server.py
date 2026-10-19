@@ -464,3 +464,29 @@ def test_run_folder_files_are_listed_previewed_and_downloaded(tmp_path):
 
         assert c.get(f"/api/runs/{key}/raw/..%2F..%2F..%2Fsecret.txt").status_code == 404
         assert c.get(f"/api/runs/{key}/text/nope.txt").status_code == 404
+
+
+def test_pins_are_shared_in_the_project_folder(tmp_path):
+    run = nb.init("pinned", capture_env=False)
+    run.finish()
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    pin = lambda **body: c.post("/api/pins", json={"project": "pinned", **body})  # noqa: E731
+
+    with TestClient(app) as c:
+        assert c.get("/api/pins", params={"project": "pinned"}).json() == {"pins": []}
+        assert pin(add="files/config.yaml").json()["pins"] == ["files/config.yaml"]
+        assert pin(add="/checkpoints/*/best_*.pth").json()["pins"][1] == "checkpoints/*/best_*.pth"
+        assert pin(add="files/config.yaml").json()["pins"] == [
+            "files/config.yaml",
+            "checkpoints/*/best_*.pth",
+        ]
+        assert pin(remove="files/config.yaml").json()["pins"] == ["checkpoints/*/best_*.pth"]
+
+        for bad in ("../secret", "a/../../b", "", "/"):
+            assert pin(add=bad).status_code == 400
+
+        assert pin(add="x").json()["pins"] == ["checkpoints/*/best_*.pth", "x"]
+        assert c.post("/api/pins", json={"project": "nope", "add": "x"}).status_code == 400
+
+    saved = json.loads((tmp_path / "exp" / "pinned" / "pins.json").read_text())
+    assert saved == {"pins": ["checkpoints/*/best_*.pth", "x"]}

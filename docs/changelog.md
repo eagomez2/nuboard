@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.3
+
+- Files tab: the tree is on top, full width, about 12 rows tall with its own
+  scroll bar and a corner to drag it taller; the preview and diffs use the
+  full width below it. Long names lose their middle rather than their end,
+  and the full path shows on hover. `files/` starts open, other folders
+  folded.
+- The row of tabs no longer has a tab for every file in `files/`; Console
+  stays. Instead, any file can be **pinned** as a tab, by path or by a
+  pattern such as `checkpoints/*/best_*.pth`, which picks each run's own
+  match (newest first) so differently named files are compared side by
+  side. Pins are shared by everyone through `<project>/pins.json`.
+
 ## 0.15.2
 
 - Run details and Compare have a **Files** tab that lists every file in the

@@ -32,6 +32,7 @@
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+    pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v7',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>
