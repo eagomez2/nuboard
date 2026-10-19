@@ -195,7 +195,7 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
     if (hidden.has(x.label) || !x.x.length) return [];
     const y = smooth(x.y);
     ys.push(Float64Array.from(y));
-    const band = x.lo.some((v, k) => Number.isFinite(v) && v !== x.y[k]) && (x.n ?? 1) > 1;
+    const band = (x.band || (x.n ?? 1) > 1) && x.lo.some((v, k) => Number.isFinite(v) && v !== x.y[k]);
     return [
       {
         label: x.label,

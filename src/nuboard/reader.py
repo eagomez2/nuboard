@@ -248,6 +248,27 @@ def merge_sessions(parts: list[Series]) -> Series:
     return s, t, v
 
 
+def align(steps: np.ndarray, at: np.ndarray, values: np.ndarray) -> np.ndarray:
+    """Pick, for each of `steps`, the value logged at that same step.
+
+    Args:
+        steps: Steps to align to.
+        at: Steps of `values`, sorted.
+        values: Values to pick from.
+
+    Returns:
+        One value per step; NaN where `at` has no such step.
+    """
+    out = np.full(len(steps), np.nan)
+
+    if len(at):
+        idx = np.minimum(np.searchsorted(at, steps), len(at) - 1)
+        hit = at[idx] == steps
+        out[hit] = values[idx[hit]]
+
+    return out
+
+
 class ParquetData:
     """Reads `data.parquet` written by `NAME.compact.compact_run`.
 
@@ -424,26 +445,30 @@ class RunReader:
         return sorted({lf.rank for lf in self.logs.values()})
 
     # -- scalars -------------------------------------------------------------
-    def scalar_names(self, rank: int = 0) -> list[str]:
+    def scalar_names(self, rank: int = 0, bands: bool = False) -> list[str]:
         """Return the keys of the run's scalars, sorted.
 
         Args:
             rank: Process rank. Ignored when reading from `data.parquet`, which
                 lists scalars across all ranks.
+            bands: Also return the companion scalars that hold band bounds
+                (see `bounds`).
 
         Returns:
             The scalar keys.
         """
 
         if self.parquet is not None:
-            return self.parquet.metric_names()
+            names = self.parquet.metric_names()
+        else:
+            found: set[str] = set()
 
-        names: set[str] = set()
+            for lf in self._logs_for(rank):
+                found.update(lf.series())
 
-        for lf in self._logs_for(rank):
-            names.update(lf.series())
+            names = sorted(found)
 
-        return sorted(names)
+        return names if bands else [n for n in names if "\x1f" not in n]
 
     def metric_names(self, rank: int = 0) -> list[str]:
         """Return the keys of the run's scalars; the same as `scalar_names`."""
@@ -468,16 +493,37 @@ class RunReader:
         with self.lock:
             return merge_sessions([lf.series().get(metric, _EMPTY) for lf in self._logs_for(rank)])
 
-    def all_scalars(self, rank: int = 0) -> dict[str, Series]:
+    def all_scalars(self, rank: int = 0, bands: bool = False) -> dict[str, Series]:
         """Return every metric at full resolution.
 
         Args:
             rank: Process rank.
+            bands: Also return the companion scalars that hold band bounds.
 
         Returns:
             `{metric: (steps, times, values)}`.
         """
-        return {m: self.scalars(m, rank) for m in self.scalar_names(rank)}
+        return {m: self.scalars(m, rank) for m in self.scalar_names(rank, bands)}
+
+    def bounds(self, metric: str, rank: int = 0) -> tuple[np.ndarray, np.ndarray] | None:
+        """Return the band of a metric logged with `low` and `high`, at full resolution.
+
+        Args:
+            metric: Metric name.
+            rank: Process rank.
+
+        Returns:
+            `(low, high)` aligned with the steps of `scalars(metric)`, NaN at
+            steps without bounds; None if the metric has no band.
+        """
+        steps = self.scalars(metric, rank)[0]
+        low = self.scalars(metric + fmt.BAND_LOW, rank)
+        high = self.scalars(metric + fmt.BAND_HIGH, rank)
+
+        if not len(low[0]) and not len(high[0]):
+            return None
+
+        return align(steps, low[0], low[2]), align(steps, high[0], high[2])
 
     # -- text and media ---------------------------------------------------------
     def texts(self, key: str | None = None, rank: int = 0) -> list[TextEntry]:

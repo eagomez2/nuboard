@@ -107,7 +107,7 @@
       const color = colorOf(s.label, i);
       const dim = highlight !== null && highlight !== s.label;
       const smooth = smoothing > 0 ? ema(s.y, smoothing) : s.y;
-      const hasBand = s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]) && (s.n ?? 1) > 1;
+      const hasBand = (s.band || (s.n ?? 1) > 1) && s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]);
       const cols: (number | null)[][] = [];
       if (showRaw && smoothing > 0) {
         cols.push(clean(s.y));

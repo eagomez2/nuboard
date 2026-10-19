@@ -143,6 +143,12 @@ of `system_metrics`. They are ordinary `S` frames, written by `LOCAL_RANK` 0
 of each machine into its own rank's log. Their step is the latest training
 step, so several samples can share a step, in time order.
 
+A scalar logged with `low` and `high` writes them as two companion scalars
+in the same `S` frame, named `<key>` followed by the unit separator `0x1f`
+and `low` or `high` (`"val/loss\x1flow"`). Readers draw them as the band of
+`<key>` and leave them out of scalar lists and the `summary` in `run.json`.
+Older readers show them as two extra scalars.
+
 Readers skip unknown kinds, so new frame kinds can be added without a version
 bump.
 

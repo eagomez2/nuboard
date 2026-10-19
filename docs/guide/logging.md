@@ -72,7 +72,7 @@ them between runs in Compare.
 ## `run.add_scalar`
 
 ```python
-run.add_scalar(key, value=None, step=None, *, time=None, all_ranks=None)
+run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None, all_ranks=None)
 ```
 
 - `run.add_scalar("train/loss", 0.42)` logs one scalar, and
@@ -83,6 +83,9 @@ run.add_scalar(key, value=None, step=None, *, time=None, all_ranks=None)
   skipped with a one-time warning; use `add_text`.
 - `step` defaults to one more than the previous call's step. Pass it
   explicitly when you log several times per step.
+- `low` and `high` (optional, together) give a range around the value, such
+  as mean ± std over an epoch's batches; the chart shades it around the line.
+  Leave them out for a plain scalar.
 - `time` overrides the timestamp (useful when importing data).
 - NaN and ±Inf are stored as they are; the viewer flags them.
 

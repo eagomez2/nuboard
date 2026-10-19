@@ -227,7 +227,9 @@ class Writer:
                 steps.append(step)
                 times.append(t)
                 values.append(v)
-                self._update_summary(name, step, v)
+
+                if "\x1f" not in name:  # band bounds stay out of the summary
+                    self._update_summary(name, step, v)
 
         if ids:
             out.append(fmt.scalars_frame(ids, steps, times, values))
@@ -364,7 +366,9 @@ class Writer:
                             steps.append(step)
                             times.append(t)
                             values.append(v)
-                            self._update_summary(name, step, v)
+
+                            if "\x1f" not in name:  # band bounds stay out of the summary
+                                self._update_summary(name, step, v)
                     elif kind == _TEXT:
                         _, key, step, t, text = item
                         out.append(fmt.text_frame(self._id(key, out), step, t, text))

@@ -810,6 +810,8 @@
             <span class="mono ival keep">{fmtNum(v.value)}</span>
             {#if groupBy && v.lo !== null && v.hi !== null && agg === 'std'}<span class="mono faint keep"
                 >±{fmtNum((v.hi - v.lo) / 2, 2)}</span
+              >{:else if !groupBy && focusData?.series[v.series]?.band && v.lo !== null && v.hi !== null && Number.isFinite(v.lo) && Number.isFinite(v.hi)}<span
+                class="mono faint keep">{fmtNum(v.lo)} to {fmtNum(v.hi)}</span
               >{/if}
           </div>
           <div class="bar"><span style="width:{v.frac * 100}%; background:{colorOf(v.label, v.series)}"></span></div>

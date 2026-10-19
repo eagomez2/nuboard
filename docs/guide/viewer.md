@@ -201,6 +201,11 @@ are selected, every run matching the query.
   menu). Runs are interpolated onto a shared x grid on the server before
   aggregating, so runs with different logging steps combine correctly.
   Without grouping, each run is one line (up to 60; group to see more).
+- **Logged ranges**: a scalar logged with `low` and `high` (see
+  [`add_scalar`](../api/add_scalar.md)) is drawn with a shaded band around
+  each run's line, smoothed along with it, and the inspector shows the range
+  after the value. When runs are grouped, the band is the spread across runs
+  instead.
 - **Legend chips**: hover to highlight a series, click to hide it, and
   double-click (or Alt-click) to show only that series; soloing it again shows
   them all. **All** and **None** before the chips show or hide every series, so

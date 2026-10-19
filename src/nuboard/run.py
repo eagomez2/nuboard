@@ -633,6 +633,8 @@ class Run:
         value: Any = None,
         step: int | None = None,
         *,
+        low: Any = None,
+        high: Any = None,
         time: float | None = None,
         all_ranks: bool | None = None,
     ) -> None:
@@ -648,26 +650,38 @@ class Run:
             value: The value, for a single name: a number, bool, or NumPy or
                 tensor scalar. With a dict, a value here is taken as `step`.
             step: Training step. Defaults to one more than the previous call.
+            low: Optional lower bound, such as `mean - std`. Given together
+                with `high`, the viewer shades the range around the line.
+            high: Optional upper bound, such as `mean + std`.
             time: Unix timestamp of the values. Defaults to now.
             all_ranks: Overrides the run's `all_ranks` setting for this call.
 
         Raises:
-            TypeError: If `key` is a name and `value` is missing.
+            TypeError: If `key` is a name and `value` is missing, if only one of
+                `low` and `high` is given, or if they are given with a dict.
 
         Example:
             >>> run.add_scalar("train/loss", 0.42, step=10)
             >>> run.add_scalar({"train": {"loss": 0.42, "acc": 0.9}}, step=10)
+            >>> run.add_scalar("val/loss", mean, step=epoch, low=mean - std, high=mean + std)
         """
 
         if isinstance(key, Mapping):
+            if low is not None or high is not None:
+                raise TypeError("add_scalar takes low and high only with a single name")
+
             data = dict(key)
 
             if value is not None and step is None:
                 step = int(value)
         elif value is None:
             raise TypeError(f"add_scalar({key!r}) needs a value")
-        else:
+        elif low is None and high is None:
             data = {key: value}
+        elif low is None or high is None:
+            raise TypeError(f"add_scalar({key!r}) needs both low and high, or neither")
+        else:
+            data = {key: value, key + fmt.BAND_LOW: low, key + fmt.BAND_HIGH: high}
 
         if step is None:
             step = self._next_step

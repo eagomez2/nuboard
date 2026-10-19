@@ -490,3 +490,43 @@ def test_pins_are_shared_in_the_project_folder(tmp_path):
 
     saved = json.loads((tmp_path / "exp" / "pinned" / "pins.json").read_text())
     assert saved == {"pins": ["checkpoints/*/best_*.pth", "x"]}
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_scalar_bands_are_drawn_per_run_and_hidden_as_metrics(tmp_path, compact):
+    with nb.init("bands", name="b", capture_env=False, compact=compact) as run:
+        for s in range(5000):
+            run.add_scalar("loss", 1.0, step=s, low=0.5, high=2.0)
+            run.add_scalar("acc", 0.9, step=s)
+
+    with nb.init("bands", name="plain", capture_env=False, compact=compact) as run:
+        for s in range(5000):
+            run.add_scalar("loss", 1.5, step=s)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        runs = c.get("/api/runs").json()["runs"]
+        keys = ",".join(r["key"] for r in runs)
+        assert set(next(r for r in runs if r["name"] == "b")["summary"]) == {"loss", "acc"}
+        metrics = c.get("/api/metrics", params={"runs": keys}).json()["metrics"]
+        assert [m["name"] for m in metrics] == ["acc", "loss"]
+
+        res = c.get("/api/scalars", params={"runs": keys, "metric": "loss", "points": 200})
+        table = pa.ipc.open_stream(res.content).read_all()
+        series = json.loads(table.schema.metadata[b"series"])
+        assert {s["label"]: s["band"] for s in series} == {"b": True, "plain": False}
+        banded = series.index(next(s for s in series if s["band"]))
+        rows = [r for r in table.to_pylist() if r["series"] == banded]
+        assert rows and all(r["lo"] == 0.5 and r["hi"] == 2.0 and r["y"] == 1.0 for r in rows)
+
+        zoomed = c.get(
+            "/api/scalars",
+            params={"runs": keys, "metric": "loss", "x": "metric:acc", "xmin": 0, "xmax": 1},
+        )
+        meta = json.loads(pa.ipc.open_stream(zoomed.content).read_all().schema.metadata[b"series"])
+        assert [s["band"] for s in meta] == [True]  # only the banded run logged acc
+
+        grouped = c.get("/api/scalars", params={"runs": keys, "metric": "loss", "group": "project"})
+        meta = json.loads(pa.ipc.open_stream(grouped.content).read_all().schema.metadata[b"series"])
+        assert "band" not in meta[0] and meta[0]["n"] == 2  # groups keep the spread across runs
