@@ -121,7 +121,11 @@ run shows its traceback.
 **Console** shows what the script printed, captured into `files/output.log`
 by [`capture_console`](../api/init.md#console-output). It opens at the end,
 like a terminal, shows the last 2 MB of a longer log, redraws progress bars
-on one line and removes color codes. With `all_ranks=True`, each rank's log
+on one line and draws color codes as colors (the 16 terminal colors follow
+the light or dark theme; 256-color and true-color codes, bold, dim, italic
+and underline are drawn too). **Raw** shows the text as stored, with each
+escape character as `␛`. The file itself keeps the codes, so `less -R` in a
+terminal shows the same colors. With `all_ranks=True`, each rank's log
 has its own tab (**Console r1**, ...).
 
 **Files** lists everything in the run folder as a tree, with how many files
@@ -134,7 +138,9 @@ full path shows on hover. NuBoard's own data files (`run.json`,
 `data.parquet`, event logs) are hidden until **NuBoard data** is switched
 on. Pick a file to see it below the tree: text files are shown (diffed side
 by side between two runs), images are drawn, and every file has a download
-link.
+link. A text file with color codes or progress bars, such as a log, is
+drawn like **Console**, with the same **Raw** switch, and diffed by its
+visible text only.
 Checkpoints (`.pt`, `.pth`, `.ckpt`, `.bin`, `.safetensors`, `.npy`,
 `.npz`) list their keys as a tree with each tensor's shape, dtype and size,
 and the total parameter count; with two runs the keys are diffed. Reading a

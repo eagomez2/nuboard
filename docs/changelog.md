@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.5
+
+- Console logs show their colors. Color codes (the 16 terminal colors,
+  256-color and true color, bold, dim, italic, underline, inverse) are drawn
+  instead of removed, with terminal colors that suit the light and dark
+  themes. **Raw** shows the text as stored. The log file is unchanged.
+- In the Files tab and pinned tabs, any text file with color codes or
+  progress bars (such as `output.log` or your own `.log` files) is drawn the
+  same way instead of showing the codes, and two runs' logs are diffed by
+  their visible text, so a change of color alone is not a difference.
+
 ## 0.15.4
 
 - Labels start with a capital letter everywhere in the viewer: toggles,

@@ -714,11 +714,14 @@ test('run details show the console output as a terminal would', async ({ page })
   await page.goto('/#/runs?project=llm-pretrain');
   await page.locator('button.name', { hasText: /^lr3e-3-s2$/ }).click();
   await page.getByRole('button', { name: 'Console', exact: true }).click();
-  const log = page.locator('pre.console');
+  const log = page.locator('pre.term');
   await expect(log).toContainText('FloatingPointError: loss is NaN at step 18420');
   await expect(log).toContainText('tokenizing shards: 100%|##########| 64/64');
   await expect(log).not.toContainText('tokenizing shards:  20%'); // \r redrew the line
-  await expect(log).not.toContainText('[33m'); // color codes removed
+  await expect(log).not.toContainText('[33m'); // color codes drawn, not shown
+  await expect(log.locator('span[style*="--ansi-3"]')).toContainText('UserWarning: flash-attention not found');
+  await page.getByRole('switch', { name: 'Raw' }).click();
+  await expect(log).toContainText('␛[33mUserWarning');
 });
 
 test('a saved view is deleted after confirming', async ({ page }) => {
