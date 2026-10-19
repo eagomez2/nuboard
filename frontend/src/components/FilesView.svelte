@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Icon from './Icon.svelte';
+  import Terminal from './Terminal.svelte';
+  import { isTerminalText, stripAnsi } from '../lib/ansi';
   import { api, type RunDetail, type RunFile, type RunTree, type TensorEntry, type TensorInfo } from '../lib/api';
   import { sideBySide } from '../lib/diff';
   import { fmtBytes, fmtDate, fmtNum } from '../lib/format';
@@ -235,8 +237,12 @@
     return out;
   }
 
+  // Terminal output (color codes, progress bars) is drawn as a terminal shows it, and diffed by its visible text
+  const showsTerminal = $derived(!multi && !!texts[0] && isTerminalText(texts[0].text));
+  let raw = $state(false);
+  const visible = (t: string) => (isTerminalText(t) ? stripAnsi(t) : pretty(t));
   const diffRows = $derived(
-    multi && texts.length === 2 ? sideBySide(pretty(texts[0]?.text ?? ''), pretty(texts[1]?.text ?? '')) : [],
+    multi && texts.length === 2 ? sideBySide(visible(texts[0]?.text ?? ''), visible(texts[1]?.text ?? '')) : [],
   );
   const shownDiff = $derived(
     onlyChanges
@@ -498,6 +504,12 @@
         {:else}
           <span class="path mono" title={picked}>{picked}</span>
         {/if}
+        {#if showsTerminal}
+          <label class="tg small" title="The text as stored, with its color codes"
+            ><button class="switch" role="switch" aria-checked={raw} aria-label="Raw" onclick={() => (raw = !raw)}
+            ></button>Raw</label
+          >
+        {/if}
       </div>
       <div class="vhead">
         {#each shownIdx as i (i)}
@@ -570,7 +582,11 @@
           </div>
           {#if table.length >= 1000}<p class="faint small">The first 1,000 rows.</p>{/if}
         {:else}
-          <pre class="file mono">{texts[0] ? pretty(texts[0].text) : '(could not be read)'}</pre>
+          {#if showsTerminal}
+            <Terminal text={texts[0]!.text} {raw} />
+          {:else}
+            <pre class="file mono">{texts[0] ? pretty(texts[0].text) : '(could not be read)'}</pre>
+          {/if}
         {/if}
         {#if texts.some((t) => t?.truncated)}<p class="faint small">
             Only the first 2 MB is shown; download the file for all of it.

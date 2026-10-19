@@ -5,6 +5,8 @@
   import PropertiesEditor from './PropertiesEditor.svelte';
   import Status from './Status.svelte';
   import TagEditor from './TagEditor.svelte';
+  import Terminal from './Terminal.svelte';
+  import { isTerminalText, stripAnsi } from '../lib/ansi';
   import { api, num, type RunDetail, type RunTree } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
   import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
@@ -29,7 +31,10 @@
     return ok(a) && ok(b) && a !== b ? [a, b] : [0, 1];
   });
   const pair = $derived(multi ? pairIdx.map((i) => details[i]) : []);
-  const pairTexts = $derived(multi && texts.length === details.length ? pairIdx.map((i) => texts[i]) : []);
+  // Logs are diffed by what a terminal shows, so color codes alone are no change
+  const plainTexts = $derived(texts.map((t) => (t !== null && isTerminalText(t) ? stripAnsi(t) : t)));
+  const pairTexts = $derived(multi && texts.length === details.length ? pairIdx.map((i) => plainTexts[i]) : []);
+  let raw = $state(false);
   const COLORS = [
     'var(--s1)',
     'var(--s2)',
@@ -78,6 +83,8 @@
   const artifactRef = (a: { artifact: string; version: number; project?: string }) =>
     `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}`;
   const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
+  const fileTab = $derived(!['settings', 'notes', 'properties', 'filetree'].includes(tab) && !pinOf(tab));
+  const showsTerminal = $derived(!multi && fileTab && (isConsole(tab) || (!!texts[0] && isTerminalText(texts[0]))));
   // Other files are in the Files tab, or pinned
   const files = $derived([...new Set(details.flatMap((d) => d.files))].filter(isConsole).sort());
   function fileLabel(f: string): string {
@@ -86,26 +93,6 @@
     return rank ? `Console r${rank}` : 'Console';
   }
 
-  const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, 'g'); // color and cursor codes
-
-  /** Show a console log as a terminal would: no color codes, and `\r` redraws its line (progress bars). */
-  function asTerminal(text: string): string {
-    return text
-      .replace(ANSI, '')
-      .split('\n')
-      .map((line) => {
-        const parts = line.replace(/\r+$/, '').split('\r');
-        return parts[parts.length - 1];
-      })
-      .join('\n');
-  }
-
-  let filePre = $state<HTMLPreElement | null>(null);
-  // A console log is read from its end, like a terminal.
-  $effect(() => {
-    if (filePre && isConsole(tab) && texts.length) filePre.scrollTop = filePre.scrollHeight;
-  });
-
   $effect(() => {
     const t = tab;
     const ds = details;
@@ -113,7 +100,7 @@
     loadingFile = true;
     const term = isConsole(t);
     Promise.all(ds.map((d) => api.file(d.run.key, t, term))).then((x) => {
-      texts = term ? x.map((v) => (v === null ? null : asTerminal(v))) : x;
+      texts = x;
       loadingFile = false;
     });
   });
@@ -246,6 +233,11 @@
         ></button>
         Only changes
       </label>
+    {:else if showsTerminal && !loadingFile}
+      <label class="only" title="The text as stored, with its color codes">
+        <button class="switch" role="switch" aria-checked={raw} aria-label="Raw" onclick={() => (raw = !raw)}></button>
+        Raw
+      </label>
     {/if}
   </div>
 
@@ -320,7 +312,11 @@
       {/each}
     </div>
   {:else}
-    <pre class="file mono" class:console={isConsole(tab)} bind:this={filePre}>{texts[0] ?? '(missing)'}</pre>
+    {#if showsTerminal && texts[0] != null}
+      <Terminal text={texts[0]} {raw} follow />
+    {:else}
+      <pre class="file mono">{texts[0] ?? '(missing)'}</pre>
+    {/if}
   {/if}
 </div>
 
@@ -505,10 +501,6 @@
     padding: 10px 12px;
     margin: 0;
     white-space: pre;
-  }
-  .file.console {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .error {
     margin: 0;
