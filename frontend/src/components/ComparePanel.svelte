@@ -5,9 +5,11 @@
   import PropertiesEditor from './PropertiesEditor.svelte';
   import Status from './Status.svelte';
   import TagEditor from './TagEditor.svelte';
-  import { api, num, type RunDetail } from '../lib/api';
+  import { api, num, type RunDetail, type RunTree } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
   import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
+  import { pinMatches } from '../lib/pattern';
+  import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -51,16 +53,33 @@
     Promise.all(ks.map((k) => api.run(k))).then((d) => (details = d));
   });
 
+  // Each run's file listing, kept with the runs it belongs to so a new set of runs never mixes with the last
+  let loaded = $state<{ keys: string; trees: (RunTree | null)[] }>({ keys: '', trees: [] });
+  const runKeys = $derived(details.map((d) => d.run.key).join(','));
+  const trees = $derived(loaded.keys === runKeys ? loaded.trees : []);
+  $effect(() => {
+    const ks = runKeys;
+    if (!ks) return;
+    Promise.all(ks.split(',').map((k) => api.tree(k).catch(() => null))).then((t) => (loaded = { keys: ks, trees: t }));
+  });
+
+  // Pinned files are tabs, shared by everyone through each project's pins.json; a pin
+  // shows only where one of the runs has a file it names
+  const projects = $derived([...new Set(details.map((d) => d.run.project))]);
+  $effect(() => {
+    for (const p of projects) pins.load(p);
+  });
+  const pinTabs = $derived(pins.of(projects).filter((p) => trees.some((t) => pinMatches(p, t?.files ?? []).length)));
+  const pinOf = (t: string) => (t.startsWith('pin:') ? t.slice(4) : null);
+  const pinLabel = (p: string) => p.split('/').pop() || p;
+
   // Console logs (files/output.log, output.r<rank>.log) come first, as "Console".
   // An artifact from another project shows with it, as in use_artifact("datasets/fineweb-edu:v2")
   const artifactRef = (a: { artifact: string; version: number; project?: string }) =>
     `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}`;
   const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
-  const files = $derived(
-    [...new Set(details.flatMap((d) => d.files))].sort(
-      (a, b) => Number(isConsole(b)) - Number(isConsole(a)) || a.localeCompare(b),
-    ),
-  );
+  // Other files are in the Files tab, or pinned
+  const files = $derived([...new Set(details.flatMap((d) => d.files))].filter(isConsole).sort());
   function fileLabel(f: string): string {
     if (!isConsole(f)) return f;
     const rank = f.match(/\.r(\d+)\.log$/)?.[1];
@@ -90,7 +109,7 @@
   $effect(() => {
     const t = tab;
     const ds = details;
-    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || !ds.length) return;
+    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || pinOf(t) || !ds.length) return;
     loadingFile = true;
     const term = isConsole(t);
     Promise.all(ds.map((d) => api.file(d.run.key, t, term))).then((x) => {
@@ -194,19 +213,26 @@
     {/if}
     <button class="tab" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}>All settings</button
     >
-    <button
-      class="tab"
-      aria-pressed={tab === 'filetree'}
-      title="Every file in the run folder: browse, preview, diff and download"
-      onclick={() => router.set({ tab: 'filetree' })}>Files</button
-    >
     {#each files as f (f)}
       <button
         class="tab"
-        class:mono={!isConsole(f)}
         aria-pressed={tab === f}
-        title={isConsole(f) ? `files/${f}: what the script printed` : undefined}
+        title={`files/${f}: what the script printed`}
         onclick={() => router.set({ tab: f })}>{fileLabel(f)}</button
+      >
+    {/each}
+    <button
+      class="tab"
+      aria-pressed={tab === 'filetree'}
+      title="Every file in the run folder: browse, preview, diff, download and pin"
+      onclick={() => router.set({ tab: 'filetree' })}>Files</button
+    >
+    {#each pinTabs as p (p)}
+      <button
+        class="tab mono"
+        aria-pressed={tab === `pin:${p}`}
+        title="Pinned: {p}"
+        onclick={() => router.set({ tab: `pin:${p}` })}><Icon name="pin" size={12} /> {pinLabel(p)}</button
       >
     {/each}
     {#if multi}
@@ -227,7 +253,7 @@
     <NotesEditor run={details[0].run} />
   {:else if tab === 'properties' && details.length === 1}
     <PropertiesEditor run={details[0].run} />
-  {:else if tab === 'filetree'}
+  {:else if tab === 'filetree' || pinOf(tab)}
     {#if multi && details.length > 2}
       <p class="muted small">
         Diff
@@ -240,7 +266,7 @@
         </select>
       </p>
     {/if}
-    <FilesView {details} {pairIdx} {onlyChanges} colors={COLORS} />
+    <FilesView {details} {trees} {pairIdx} {onlyChanges} colors={COLORS} pin={pinOf(tab)} />
   {:else if tab === 'settings'}
     <div class="settings mono">
       {#if multi}
@@ -338,6 +364,10 @@
     align-items: center;
   }
   .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
     border: 1px solid var(--border);
     background: var(--panel-2);
     border-radius: 8px;

@@ -343,6 +343,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project, fields }),
     }),
+  /** Files pinned as tabs in run details, shared by everyone in `<project>/pins.json`. */
+  pins: (project: string) => json<{ pins: string[] }>(`/api/pins?${qs({ project })}`),
+  pin: (project: string, change: { add?: string; remove?: string }) =>
+    fetch('/api/pins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, ...change }),
+    }).then(async (res) => {
+      const body = (await res.json().catch(() => ({}))) as { pins?: string[]; error?: string };
+      if (!res.ok || !body.pins) throw new Error(body.error ?? `${res.status}`);
+      return body.pins;
+    }),
 
   async chart(p: {
     runs: string[];

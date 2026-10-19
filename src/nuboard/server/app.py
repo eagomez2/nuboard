@@ -51,7 +51,7 @@ from ..reports import (
     save_snapshot,
 )
 from .data import Store, path_inside
-from .runfiles import IMAGE_SUFFIXES, list_files
+from .runfiles import IMAGE_SUFFIXES, change_pins, list_files, read_pins
 from .tensorfiles import inspect_file
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -1223,6 +1223,39 @@ def create_app(
 
         return JSON({"fields": fields})
 
+    def pins_get(request: Request) -> Response:
+        """Return the pinned files of the `project` query parameter."""
+        pdir = project_dir(request.query_params.get("project", ""))
+        return JSON({"pins": read_pins(pdir) if pdir else []})
+
+    async def pins_save(request: Request) -> Response:
+        """Pin or unpin one file of a project (JSON body: `project`, and `add` or `remove`)."""
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        add = body.get("add")
+        remove = body.get("remove")
+
+        try:
+            pins = change_pins(
+                pdir,
+                add=str(add) if add is not None else None,
+                remove=str(remove) if remove is not None else None,
+            )
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+        except OSError as exc:
+            return JSON({"error": f"pins.json could not be saved: {exc}"}, status_code=409)
+
+        return JSON({"pins": pins})
+
     async def stream(request: Request) -> Response:
         """Return a server-sent event stream: `hello`, then `runs` and `data` change events.
 
@@ -1329,6 +1362,8 @@ def create_app(
         Route("/api/reports/{project:path}/{name}", report_get),
         Route("/api/fields", fields_get),
         Route("/api/fields", fields_save, methods=["POST"]),
+        Route("/api/pins", pins_get),
+        Route("/api/pins", pins_save, methods=["POST"]),
         Route("/api/stream", stream),
         Route("/", index),
     ]

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
+from .. import _fs
 from .tensorfiles import SUFFIXES as TENSOR_SUFFIXES
 
 MAX_FILES = 20_000  # files listed per run; the count and size still cover every file
@@ -18,6 +20,9 @@ TEXT_SUFFIXES = {
 }  # fmt: skip
 IMAGE_SUFFIXES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                   ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}  # fmt: skip
+
+MAX_PINS = 200
+_pins_lock = threading.Lock()
 
 # Files NuBoard writes itself, at the top of a run folder
 _INTERNAL = re.compile(
@@ -120,3 +125,60 @@ def list_files(run_dir: Path) -> dict[str, Any]:
             )
 
     return {"files": files, "count": count, "bytes": total, "truncated": count > len(files)}
+
+
+def read_pins(project_dir: Path) -> list[str]:
+    """Return a project's pinned files from `pins.json`.
+
+    A pin is a path inside a run folder (`files/config.yaml`) or a pattern
+    where `*` matches within a folder, `**` across folders and `?` one character.
+    """
+    data = _fs.read_json(project_dir / "pins.json", {}) or {}
+    pins = data.get("pins") if isinstance(data, dict) else None
+    return [p for p in pins or [] if isinstance(p, str) and _valid_pin(p)]
+
+
+def clean_pin(pin: str) -> str:
+    """Normalize a pin; raise ValueError for one that cannot name a run file."""
+    p = pin.strip().replace("\\", "/").strip("/")
+
+    if not p or len(p) > 512 or any(part in ("", ".", "..") for part in p.split("/")):
+        raise ValueError(f"not a path inside a run folder: {pin!r}")
+
+    return p
+
+
+def _valid_pin(pin: str) -> bool:
+    try:
+        return clean_pin(pin) == pin
+    except ValueError:
+        return False
+
+
+def change_pins(project_dir: Path, add: str | None = None, remove: str | None = None) -> list[str]:
+    """Add and/or remove one pin in `pins.json` and return the pins as written.
+
+    Each change re-reads the file, so pins added by others since are kept.
+
+    Raises:
+        ValueError: If `add` is not a valid pin, or the project has `MAX_PINS` already.
+        OSError: If `pins.json` cannot be written.
+    """
+
+    with _pins_lock:
+        pins = read_pins(project_dir)
+
+        if remove is not None:
+            pins = [p for p in pins if p != remove.strip().strip("/")]
+
+        if add is not None:
+            pin = clean_pin(add)
+
+            if pin not in pins:
+                if len(pins) >= MAX_PINS:
+                    raise ValueError(f"a project has at most {MAX_PINS} pins")
+
+                pins.append(pin)
+
+        _fs.atomic_write_json(project_dir / "pins.json", {"pins": pins})
+        return pins

@@ -1,33 +1,40 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Icon from './Icon.svelte';
   import { api, type RunDetail, type RunFile, type RunTree, type TensorEntry, type TensorInfo } from '../lib/api';
   import { sideBySide } from '../lib/diff';
   import { fmtBytes, fmtDate, fmtNum } from '../lib/format';
+  import { isPattern, patternRegex, pinMatches } from '../lib/pattern';
+  import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
 
   // Every file of the shown runs' folders: a tree to browse, with a preview of the
-  // picked file. Text files are diffed between two runs, checkpoints are listed
+  // picked file below. Text files are diffed between two runs, checkpoints are listed
   // tensor by tensor (read from their headers), anything else can be downloaded.
+  // With `pin`, only the file(s) that pin names are shown, without the tree.
   let {
     details,
+    trees,
     pairIdx,
     onlyChanges,
     colors,
-  }: { details: RunDetail[]; pairIdx: number[]; onlyChanges: boolean; colors: string[] } = $props();
+    pin = null,
+  }: {
+    details: RunDetail[];
+    trees: (RunTree | null)[];
+    pairIdx: number[];
+    onlyChanges: boolean;
+    colors: string[];
+    pin?: string | null;
+  } = $props();
 
   const multi = $derived(details.length >= 2);
-  // The listings, kept with the runs they belong to so a new set of runs never mixes with the last
-  let loaded = $state<{ keys: string; trees: (RunTree | null)[] }>({ keys: '', trees: [] });
-  const runKeys = $derived(details.map((d) => d.run.key).join(','));
-  const trees = $derived(loaded.keys === runKeys ? loaded.trees : []);
+  const projects = $derived([...new Set(details.map((d) => d.run.project))]);
+  const pinned = $derived(pins.of(projects));
   let showInternal = $state(false);
   let find = $state('');
-  let closed = $state(new Set<string>());
-
-  $effect(() => {
-    const keys = runKeys;
-    Promise.all(keys.split(',').map((k) => api.tree(k).catch(() => null))).then((t) => (loaded = { keys, trees: t }));
-  });
+  // Folders opened or closed by hand; `files/` and the picked file's folders start open
+  let toggled = $state(new Set<string>());
 
   // path -> the file in each run (null where a run lacks it)
   const byPath = $derived.by(() => {
@@ -47,7 +54,7 @@
   const shownPaths = $derived(
     [...byPath.keys()]
       .filter((p) => showInternal || !byPath.get(p)!.some((f) => f?.internal))
-      .filter((p) => !find || p.toLowerCase().includes(find.toLowerCase()))
+      .filter((p) => !find || (findRe ? findRe.test(p) : p.toLowerCase().includes(find.toLowerCase())))
       .sort((a, b) => {
         // folders before files at each level, then by name
         const pa = a.split('/');
@@ -62,6 +69,8 @@
         return pa.length - pb.length;
       }),
   );
+  // A filter with `*` or `?` is a pattern over whole paths, and can be pinned
+  const findRe = $derived(isPattern(find.trim()) ? patternRegex(find.trim().replace(/^\/+/, '')) : null);
   const internalCount = $derived([...byPath.values()].filter((fs) => fs.some((f) => f?.internal)).length);
 
   type Row =
@@ -92,49 +101,79 @@
         }
         row.count++;
         row.size += size;
-        if (closed.has(dir) && !find) hidden = true;
+        if (!isOpen(dir) && !find) hidden = true;
       }
       if (!hidden) out.push({ kind: 'file', path: p, name: parts[parts.length - 1], depth: parts.length - 1, files });
     }
     return out;
   });
+  function isOpen(dir: string): boolean {
+    return (dir === 'files' || dir.startsWith('files/')) !== toggled.has(dir);
+  }
+  // A file picked from a link opens the folders it is in
+  $effect(() => {
+    const parts = picked.split('/').slice(0, -1);
+    untrack(() => {
+      const shut = parts.map((_, i) => parts.slice(0, i + 1).join('/')).filter((d) => !isOpen(d));
+      if (!shut.length) return;
+      const next = new Set(toggled);
+      for (const d of shut) if (!next.delete(d)) next.add(d);
+      toggled = next;
+    });
+  });
+  // The tree is as tall as its rows, up to about 12, until resized by hand
+  let treeH = $state<number | null>(null);
+  const autoH = $derived(Math.min(290, Math.max(90, rows.length * 23 + 12)));
   function toggleDir(path: string) {
-    const next = new Set(closed);
+    const next = new Set(toggled);
     if (next.has(path)) next.delete(path);
     else next.add(path);
-    closed = next;
+    toggled = next;
   }
+  const middle = (name: string) => (name.length > 28 ? [name.slice(0, -14), name.slice(-14)] : [name, '']);
 
   // ---- the picked file ----
-  const picked = $derived(router.get('file'));
-  const pickedFiles = $derived(byPath.get(picked) ?? []);
+  const picked = $derived(pin ? '' : router.get('file'));
+  // A pin names one file per run: its path, or a pattern's newest match unless another is chosen
+  const matches = $derived(pin ? details.map((_, i) => pinMatches(pin, trees[i]?.files ?? [])) : []);
+  let choice = $state<Record<number, string>>({});
+  $effect(() => {
+    void pin;
+    choice = {};
+  });
+  const pickedFiles: (RunFile | null)[] = $derived(
+    pin ? matches.map((m, i) => m.find((f) => f.path === choice[i]) ?? m[0] ?? null) : (byPath.get(picked) ?? []),
+  );
   const pickedKind = $derived(pickedFiles.find(Boolean)?.kind ?? null);
+  const pickedPath = $derived(pickedFiles.find(Boolean)?.path ?? '');
   // The runs whose copy is shown: the diffed pair, or the one run
   const shownIdx = $derived(multi ? (pairIdx.every((i) => i < details.length) ? pairIdx : [0, 1]) : [0]);
   let texts = $state<({ text: string; truncated: boolean } | null)[]>([]);
   let infos = $state<(TensorInfo | null)[]>([]);
   let loading = $state(false);
+  let request = 0;
 
   $effect(() => {
-    const path = picked;
     const kind = pickedKind;
     const ds = shownIdx.map((i) => details[i]);
-    const has = shownIdx.map((i) => !!pickedFiles[i]);
+    const paths = shownIdx.map((i) => pickedFiles[i]?.path ?? null);
+    const req = ++request;
     texts = [];
     infos = [];
-    if (!path || !kind || !ds.every(Boolean)) return;
+    if (!kind || !paths.some(Boolean) || !ds.every(Boolean)) return;
     if (kind === 'text') {
       loading = true;
-      Promise.all(ds.map((d, i) => (has[i] ? api.text(d.run.key, path) : null))).then((t) => {
-        if (picked === path) texts = t;
+      Promise.all(ds.map((d, i) => (paths[i] ? api.text(d.run.key, paths[i]) : null))).then((t) => {
+        if (req !== request) return;
+        texts = t;
         loading = false;
       });
     } else if (kind === 'tensors') {
       loading = true;
       Promise.all(
         ds.map((d, i) =>
-          has[i]
-            ? api.inspect(d.run.key, path).catch((e): TensorInfo => ({
+          paths[i]
+            ? api.inspect(d.run.key, paths[i]).catch((e): TensorInfo => ({
                 format: '',
                 entries: [],
                 tensors: 0,
@@ -146,13 +185,14 @@
             : null,
         ),
       ).then((x) => {
-        if (picked === path) infos = x;
+        if (req !== request) return;
+        infos = x;
         loading = false;
       });
     }
   });
 
-  const ext = $derived(picked.split('.').pop()?.toLowerCase() ?? '');
+  const ext = $derived(pickedPath.split('.').pop()?.toLowerCase() ?? '');
 
   /** JSON pretty-printed, everything else as is. */
   function pretty(text: string): string {
@@ -220,7 +260,7 @@
   let tensorOpen = $state(new Set<string>());
   let tensorLimit = $state(500);
   $effect(() => {
-    void picked;
+    void pickedPath;
     tensorLimit = 500;
   });
 
@@ -309,96 +349,180 @@
           ? `${fmtNum(n / 1e3, 3)}K`
           : String(n);
 
+  /** A path without the folders every match shares. */
+  function shortName(path: string, all: RunFile[]): string {
+    const dirs = all.map((f) => f.path.split('/').slice(0, -1));
+    let n = 0;
+    while (dirs.every((d) => n < d.length && d[n] === dirs[0][n])) n++;
+    return path.split('/').slice(n).join('/');
+  }
+
+  async function unpin() {
+    if (!pin) return;
+    await pins.set(projects, pin, false);
+    router.set({ tab: 'filetree' });
+  }
+
   const totals = $derived(
     trees.map((t) => (t ? `${t.count} file${t.count === 1 ? '' : 's'} · ${fmtBytes(t.bytes)}` : '…')),
   );
 </script>
 
 <div class="files">
-  <aside class="tree">
-    <div class="treehead">
-      {#each details as d, i (d.run.key)}
-        <span class="total" title={d.run.path}
-          >{#if multi}<i style="background:{colors[i % colors.length]}"></i>{/if}{totals[i] ?? '…'}</span
-        >
-      {/each}
-      <input class="input sm mono" placeholder="Filter files" aria-label="Filter files" bind:value={find} />
-      {#if internalCount}
-        <label class="tg small"
-          ><button
-            class="switch"
-            role="switch"
-            aria-checked={showInternal}
-            aria-label="Show NuBoard data"
-            onclick={() => (showInternal = !showInternal)}
-          ></button>NuBoard data ({internalCount})</label
-        >
-      {/if}
-    </div>
-    <div class="treebody mono" role="tree" aria-label="Run files">
-      {#each rows as r (r.kind + r.path)}
-        {#if r.kind === 'dir'}
-          <button
-            class="node dir"
-            role="treeitem"
-            aria-selected="false"
-            aria-expanded={!closed.has(r.path) || !!find}
-            style="padding-left:{8 + r.depth * 14}px"
-            onclick={() => toggleDir(r.path)}
+  {#if !pin}
+    <div class="tree">
+      <div class="treehead">
+        {#each details as d, i (d.run.key)}
+          <span class="total" title={d.run.path}
+            >{#if multi}<i style="background:{colors[i % colors.length]}"></i>{/if}{totals[i] ?? '…'}</span
           >
-            <span class="chev" class:shut={closed.has(r.path) && !find}><Icon name="chevron" size={13} /></span>
-            <span class="nm">{r.name}/</span>
-            <span class="meta">{r.count} · {fmtBytes(r.size)}</span>
-          </button>
-        {:else}
-          {@const f = r.files.find(Boolean)!}
-          {@const differs = multi && new Set(r.files.map((x) => (x ? x.size : -1))).size > 1}
+        {/each}
+        <input
+          class="input sm mono find"
+          placeholder="Filter files, or a pattern such as checkpoints/*/best_*.pth"
+          aria-label="Filter files"
+          bind:value={find}
+        />
+        {#if findRe && shownPaths.length}
           <button
-            class="node"
-            role="treeitem"
-            aria-selected={picked === r.path}
-            style="padding-left:{22 + r.depth * 14}px"
-            title={r.path}
-            onclick={() => router.set({ file: r.path })}
+            class="btn btn-ghost sm"
+            title="Show the files matching {find.trim()} as a tab in every run of this project"
+            onclick={() => pins.set(projects, find.trim(), true)}
+            disabled={pinned.includes(find.trim().replace(/^\/+/, ''))}
+            ><Icon name="pin" size={14} />
+            {pinned.includes(find.trim().replace(/^\/+/, '')) ? 'Pinned' : 'Pin pattern'}</button
           >
-            <span class="nm">{r.name}</span>
-            {#if multi}
-              <span class="present">
-                {#each r.files as x, i (i)}<i
-                    class:off={!x}
-                    style="background:{colors[i % colors.length]}"
-                    title={x ? `${details[i].run.name}: ${fmtBytes(x.size)}` : `not in ${details[i].run.name}`}
-                  ></i>{/each}
-              </span>
-              {#if differs}<span class="chg" title="Sizes differ between runs">≠</span>{/if}
-            {/if}
-            <span class="meta">{fmtBytes(f.size)}</span>
-          </button>
         {/if}
-      {:else}
-        <p class="faint pad">{trees.length ? (find ? `No file matches “${find}”.` : 'No files.') : 'Loading…'}</p>
-      {/each}
+        {#if internalCount}
+          <label class="tg small"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={showInternal}
+              aria-label="Show NuBoard data"
+              onclick={() => (showInternal = !showInternal)}
+            ></button>NuBoard data ({internalCount})</label
+          >
+        {/if}
+      </div>
+      <div
+        class="treebody mono"
+        role="tree"
+        aria-label="Run files"
+        tabindex="-1"
+        style="height:{treeH ?? autoH}px"
+        onpointerup={(e) => {
+          const h = (e.currentTarget as HTMLElement).offsetHeight;
+          if (h !== (treeH ?? autoH)) treeH = h;
+        }}
+      >
+        {#each rows as r (r.kind + r.path)}
+          {#if r.kind === 'dir'}
+            <button
+              class="node dir"
+              role="treeitem"
+              aria-selected="false"
+              aria-expanded={isOpen(r.path) || !!find}
+              style="padding-left:{8 + r.depth * 14}px"
+              title={r.path + '/'}
+              onclick={() => toggleDir(r.path)}
+            >
+              <span class="chev" class:shut={!isOpen(r.path) && !find}><Icon name="chevron" size={13} /></span>
+              <span class="nm">{r.name}/</span>
+              <span class="meta">{r.count} · {fmtBytes(r.size)}</span>
+            </button>
+          {:else}
+            {@const f = r.files.find(Boolean)!}
+            {@const differs = multi && new Set(r.files.map((x) => (x ? x.size : -1))).size > 1}
+            {@const [head, tail] = middle(r.name)}
+            {@const isPinned = pinned.includes(r.path)}
+            <div
+              class="node"
+              role="treeitem"
+              tabindex="0"
+              aria-selected={picked === r.path}
+              style="padding-left:{22 + r.depth * 14}px"
+              title={r.path}
+              onclick={() => router.set({ file: r.path })}
+              onkeydown={(e) => e.key === 'Enter' && router.set({ file: r.path })}
+            >
+              <span class="nm"
+                ><span class="h">{head}</span>{#if tail}<span class="t">{tail}</span>{/if}</span
+              >
+              {#if multi}
+                <span class="present">
+                  {#each r.files as x, i (i)}<i
+                      class:off={!x}
+                      style="background:{colors[i % colors.length]}"
+                      title={x ? `${details[i].run.name}: ${fmtBytes(x.size)}` : `not in ${details[i].run.name}`}
+                    ></i>{/each}
+                </span>
+                {#if differs}<span class="chg" title="Sizes differ between runs">≠</span>{/if}
+              {/if}
+              <span class="meta">{fmtBytes(f.size)}</span>
+              <button
+                class="pinbtn"
+                class:on={isPinned}
+                aria-label={isPinned ? `Unpin ${r.path}` : `Pin ${r.path}`}
+                title={isPinned ? 'Unpin: remove its tab' : 'Pin: show it as a tab in every run of this project'}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  pins.set(projects, r.path, !isPinned);
+                }}><Icon name="pin" size={13} /></button
+              >
+            </div>
+          {/if}
+        {:else}
+          <p class="faint pad">{trees.length ? (find ? `No file matches “${find}”.` : 'No files.') : 'Loading…'}</p>
+        {/each}
+      </div>
     </div>
-  </aside>
+  {/if}
 
   <section class="view">
-    {#if !picked || !pickedFiles.some(Boolean)}
+    {#if !pickedFiles.some(Boolean)}
       <p class="faint pad">
-        Pick a file to see it here. Text files show their content (diffed between runs), checkpoints list their tensors,
-        and every file can be downloaded.
+        {#if pin}
+          No file matches <span class="mono">{pin}</span> in {multi ? 'these runs' : 'this run'}.
+          <button class="btn btn-ghost sm" onclick={unpin}>Unpin</button>
+        {:else}
+          Pick a file above to see it here. Text files show their content (diffed between runs), checkpoints list their
+          tensors, and every file can be downloaded.
+        {/if}
       </p>
     {:else}
       <div class="vhead">
-        <span class="path mono" title={picked}>{picked}</span>
+        {#if pin}
+          <span class="path pinpath mono" title={pin}><Icon name="pin" size={13} /> {pin}</span>
+          <button class="btn btn-ghost sm" onclick={unpin}>Unpin</button>
+        {:else}
+          <span class="path mono" title={picked}>{picked}</span>
+        {/if}
+      </div>
+      <div class="vhead">
         {#each shownIdx as i (i)}
           {@const f = pickedFiles[i]}
           <span class="fmeta">
             {#if multi}<i style="background:{colors[i % colors.length]}"></i>{/if}
+            {#if pin && (matches[i]?.length ?? 0) > 1}
+              <select
+                class="input sm mono"
+                aria-label="File of {details[i].run.name}"
+                value={f?.path}
+                onchange={(e) => (choice = { ...choice, [i]: (e.currentTarget as HTMLSelectElement).value })}
+              >
+                {#each matches[i] as m (m.path)}<option value={m.path} title={m.path}
+                    >{shortName(m.path, matches[i])}</option
+                  >{/each}
+              </select>
+            {:else if pin && f}
+              <span class="pf mono" title={f.path}>{f.path}</span>
+            {/if}
             {#if f}
-              {fmtBytes(f.size)} · {fmtDate(f.mtime)}
+              <span class="nowrap">{fmtBytes(f.size)} · {fmtDate(f.mtime)}</span>
               <a
                 class="btn btn-ghost sm"
-                href={api.rawUrl(details[i].run.key, picked, true)}
+                href={api.rawUrl(details[i].run.key, f.path, true)}
                 download
                 title="Download {details[i].run.name}'s copy"><Icon name="download" size={14} /> Download</a
               >
@@ -455,8 +579,8 @@
         <div class="imgs">
           {#each shownIdx as i (i)}
             {#if pickedFiles[i]}<img
-                src={api.rawUrl(details[i].run.key, picked)}
-                alt="{picked} of {details[i].run.name}"
+                src={api.rawUrl(details[i].run.key, pickedFiles[i].path)}
+                alt="{pickedFiles[i].path} of {details[i].run.name}"
               />{/if}
           {/each}
         </div>
@@ -556,15 +680,9 @@
 
 <style>
   .files {
-    display: grid;
-    grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
-    gap: 12px;
-    min-height: 320px;
-  }
-  @media (max-width: 900px) {
-    .files {
-      grid-template-columns: minmax(0, 1fr);
-    }
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
   .tree,
   .view {
@@ -575,8 +693,13 @@
   }
   .treehead {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+  }
+  .find {
+    flex: 1 1 260px;
+    max-width: 520px;
   }
   .total,
   .fmeta,
@@ -616,10 +739,13 @@
     margin: 0;
     color: var(--warn);
   }
+  /* about 12 rows; the corner handle makes it taller */
   .treebody {
     border: 1px solid var(--border);
     border-radius: 10px;
-    max-height: 520px;
+    height: 290px;
+    min-height: 90px;
+    resize: vertical;
     overflow: auto;
     font-size: 12.5px;
     padding: 4px 0;
@@ -635,6 +761,7 @@
     padding: 3px 10px;
     color: var(--text);
     font: inherit;
+    cursor: pointer;
   }
   .node:hover {
     background: var(--panel-2);
@@ -651,6 +778,36 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* a long name loses its middle, so the end (step, epoch, suffix) stays readable */
+  .node .nm {
+    display: flex;
+  }
+  .nm .h {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nm .t {
+    flex: none;
+  }
+  .pinbtn {
+    flex: none;
+    display: inline-grid;
+    border: 0;
+    background: none;
+    padding: 1px 2px;
+    color: var(--faint);
+    opacity: 0;
+    cursor: pointer;
+  }
+  .node:hover .pinbtn,
+  .node:focus-within .pinbtn,
+  .pinbtn.on {
+    opacity: 1;
+  }
+  .pinbtn.on {
+    color: var(--accent);
   }
   .meta {
     margin-left: auto;
@@ -695,6 +852,22 @@
   }
   .fmeta a {
     height: 26px;
+  }
+  .fmeta select,
+  .pf {
+    max-width: min(70ch, 60vw);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pinpath {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .nowrap {
+    white-space: nowrap;
   }
   .file {
     font-size: 12.5px;
