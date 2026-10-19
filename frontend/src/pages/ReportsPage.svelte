@@ -213,11 +213,11 @@
         <span class="faint small mono path" title="{current.project}/reports/{current.name}.md"
           >{current.project}/reports/{current.name}.md</span
         >
-        <span class="faint small state">{saving ? 'saving…' : text === savedText ? 'saved' : 'editing'}</span>
+        <span class="faint small state">{saving ? 'Saving…' : text === savedText ? 'Saved' : 'Editing'}</span>
         <div class="seg" role="group" aria-label="View">
-          <button aria-pressed={view === 'write'} onclick={() => router.set({ rview: 'write' })}>write</button>
-          <button aria-pressed={view === 'split'} onclick={() => router.set({ rview: null })}>split</button>
-          <button aria-pressed={view === 'preview'} onclick={() => router.set({ rview: 'preview' })}>preview</button>
+          <button aria-pressed={view === 'write'} onclick={() => router.set({ rview: 'write' })}>Write</button>
+          <button aria-pressed={view === 'split'} onclick={() => router.set({ rview: null })}>Split</button>
+          <button aria-pressed={view === 'preview'} onclick={() => router.set({ rview: 'preview' })}>Preview</button>
         </div>
         <a
           class="btn sm"

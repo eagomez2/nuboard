@@ -59,7 +59,7 @@
   {#if tip && hoverX !== null}
     <span class="rule" style="left:{hoverX}px;top:{HIST_BOX.top}px;bottom:{HIST_BOX.bottom}px"></span>
     <div class="tip" class:left={hoverX > width / 2} style="left:{hoverX}px;top:{HIST_BOX.top + 8}px">
-      <span class="mono faint">value {fmtTick(tip.v)}</span>
+      <span class="mono faint">Value {fmtTick(tip.v)}</span>
       {#each tip.rows as r, i (i)}
         <span class="mono"
           ><i style="background:{r.s.color}"></i>{r.s.name}: {fmtTick(r.a)} to {fmtTick(r.b)} · {fmtCount(r.n)} ({(
@@ -76,7 +76,7 @@
       <span
         ><i class:dashed={s.dashed} style="background:{s.color}"></i>{s.name}
         <span class="mono faint"
-          >{s.data.mean != null ? `mean ${fmtTick(s.data.mean)}` : ''}{s.data.std != null
+          >{s.data.mean != null ? `Mean ${fmtTick(s.data.mean)}` : ''}{s.data.std != null
             ? ` · std ${fmtTick(s.data.std)}`
             : ''}{s.data.mean != null ? ' · ' : ''}n {fmtCount(s.data.count)}{s.data.nonfinite
             ? ` · ${fmtCount(s.data.nonfinite)} NaN/inf`

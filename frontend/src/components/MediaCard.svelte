@@ -75,7 +75,7 @@
     {/if}
     <i class="dot" style="background:{color}"></i>
     <span class="mono name" title="{run.name}&#10;{run.path}">{title}</span>
-    {#if it}<span class="faint mono step">step {it.step.toLocaleString()}</span>{/if}
+    {#if it}<span class="faint mono step">Step {it.step.toLocaleString()}</span>{/if}
     {#if it}
       <span class="acts">
         {#if zoomable}
@@ -99,7 +99,7 @@
     {/if}
   </figcaption>
   {#if !it}
-    <div class="none faint">nothing logged under this key</div>
+    <div class="none faint">Nothing logged under this key</div>
   {:else}
     <MediaView runKey={run.key} runName={run.name} item={it} {player} {audioOptions} group={it.key} {color} />
   {/if}

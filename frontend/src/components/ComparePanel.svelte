@@ -244,7 +244,7 @@
           aria-label="Only changes"
           onclick={() => router.set({ changes: onlyChanges ? null : '1' })}
         ></button>
-        only changes
+        Only changes
       </label>
     {/if}
   </div>
@@ -271,7 +271,7 @@
     <div class="settings mono">
       {#if multi}
         <div class="srow head" style="grid-template-columns: {cols}; min-width: {rowWidth}">
-          <span class="k">run</span>
+          <span class="k">Run</span>
           {#each details as d, i (d.run.key)}
             <span class="v run" title={d.run.name}
               ><i style="background:{COLORS[i % COLORS.length]}"></i>{d.run.name}</span
@@ -293,7 +293,7 @@
       <span class="mono">files/{tab}</span> · {changed} changed line{changed === 1 ? '' : 's'} · saved by init into each run
       folder
       {#if details.length > 2}
-        · diff
+        · Diff
         <select class="input sm mono" aria-label="Left run" value={pairIdx[0]} onchange={(e) => setPair(0, e)}>
           {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
         </select>

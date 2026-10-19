@@ -203,10 +203,10 @@
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
     <div class="seg" role="group" aria-label="Statistic">
-      <button aria-pressed={stat === 'best'} onclick={() => router.set({ stat: null })}>best</button>
-      <button aria-pressed={stat === 'last'} onclick={() => router.set({ stat: 'last' })}>last</button>
+      <button aria-pressed={stat === 'best'} onclick={() => router.set({ stat: null })}>Best</button>
+      <button aria-pressed={stat === 'last'} onclick={() => router.set({ stat: 'last' })}>Last</button>
     </div>
-    <span class="muted">{lower ? 'lower is better' : 'higher is better'} · {kept.length} of {runs.length} runs</span>
+    <span class="muted">{lower ? 'Lower is better' : 'Higher is better'} · {kept.length} of {runs.length} runs</span>
     <span class="grow"></span>
     {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}
     <button
@@ -327,7 +327,7 @@
             />
           </g>
         {/each}
-        <text class="sub" x={xOf(axes.length - 1)} y={TOP + h + 22} text-anchor="middle">missing / NaN</text>
+        <text class="sub" x={xOf(axes.length - 1)} y={TOP + h + 22} text-anchor="middle">Missing / NaN</text>
       </svg>
       <p class="hint">
         Drag along an axis to keep only the runs in that range; click an axis to clear its filter. Line color goes from
@@ -362,19 +362,19 @@
     {/if}
     <span class="label">Grid</span>
     <label class="opt"
-      ><span class="faint">columns</span>
+      ><span class="faint">Columns</span>
       <select
         class="input sm"
         aria-label="Plot columns"
         value={String(gridCols)}
         onchange={(e) => setGrid('scols', e.currentTarget.value)}
       >
-        <option value="0">fit</option>
+        <option value="0">Fit</option>
         {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
       </select></label
     >
     <label class="opt"
-      ><span class="faint">rows</span>
+      ><span class="faint">Rows</span>
       <select
         class="input sm"
         aria-label="Plot rows per page"
@@ -382,7 +382,7 @@
         onchange={(e) => setGrid('srows', e.currentTarget.value)}
       >
         {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
-        <option value="0">all</option>
+        <option value="0">All</option>
       </select></label
     >
   </div>
@@ -397,7 +397,7 @@
         <div class="sh">
           <span class="mono trunc" title={p}>{short(p)}</span>
           {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint keep"
-              >correlation {fmtNum(scores.get(p)!, 2)}</span
+              >Correlation {fmtNum(scores.get(p)!, 2)}</span
             >{/if}
           <button
             class="icon"

@@ -22,7 +22,7 @@
 >
   <img src="./logo.svg" alt="" width="56" height="56" />
   <h2 id="nb-about-title">{DISPLAY_NAME}</h2>
-  <p class="mono version">version {app.info?.version ?? '…'}</p>
+  <p class="mono version">Version {app.info?.version ?? '…'}</p>
   <p class="tagline">Experiment tracking that lives in a folder.</p>
   <p class="fine">{COPYRIGHT}</p>
   <p class="fine">Released under the {LICENSE}.</p>

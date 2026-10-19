@@ -149,7 +149,7 @@
           <button
             class="chip type define"
             title="Set without a definition in fields.json: click to give it a type"
-            onclick={() => defineType(d)}>untyped · define</button
+            onclick={() => defineType(d)}>Untyped · define</button
           >
         {/if}
       </label>
@@ -157,8 +157,8 @@
         {#if d.type === 'bool'}
           <select id="prop-{d.name}" class="input" bind:value={drafts[d.name]}>
             <option value="">—</option>
-            <option value="true">yes</option>
-            <option value="false">no</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
           </select>
         {:else if d.type === 'date'}
           <input id="prop-{d.name}" class="input" type="date" bind:value={drafts[d.name]} />
@@ -207,7 +207,7 @@
               >
             {/each}
             <button type="button" class="btn btn-ghost sm addopt" onclick={() => addOption(d)}
-              ><Icon name="plus" size={12} /> option</button
+              ><Icon name="plus" size={12} /> Option</button
             >
           </div>
         {:else if d.type === 'link'}
@@ -219,7 +219,7 @@
             aria-invalid={!!problems[d.name]}
             bind:value={drafts[d.name]}
           />
-          {#if drafts[d.name]}<a class="open" href={drafts[d.name]} target="_blank" rel="noopener noreferrer">open</a
+          {#if drafts[d.name]}<a class="open" href={drafts[d.name]} target="_blank" rel="noopener noreferrer">Open</a
             >{/if}
         {:else}
           <input

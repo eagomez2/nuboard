@@ -68,8 +68,8 @@
     <span class="dot" style="left:{tip.x}px;top:{tip.y}px;background:{tip.s.color}"></span>
     <div class="tip" class:left={tip.x > width / 2} style="left:{tip.x}px;top:{tip.y}px">
       <b>{tip.s.name}</b>
-      <span class="mono">threshold {tip.d.thresholds[tip.i].toFixed(3)}</span>
-      <span class="mono">precision {tip.d.precision[tip.i].toFixed(3)} · recall {tip.d.recall[tip.i].toFixed(3)}</span>
+      <span class="mono">Threshold {tip.d.thresholds[tip.i].toFixed(3)}</span>
+      <span class="mono">Precision {tip.d.precision[tip.i].toFixed(3)} · recall {tip.d.recall[tip.i].toFixed(3)}</span>
       <span class="mono faint"
         >TP {fmt(tip.d.tp[tip.i])} · FP {fmt(tip.d.fp[tip.i])} · TN {fmt(tip.d.tn[tip.i])} · FN {fmt(
           tip.d.fn[tip.i],

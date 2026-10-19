@@ -260,7 +260,7 @@ test('media page filters kinds, sets the grid and picks the best step', async ({
   await expect(page.locator('section.section figure')).toHaveCount(2);
   await page.getByRole('button', { name: 'best scalar' }).click();
   await expect(page).toHaveURL(/mmode=best/);
-  await expect(page.locator('figure .step').first()).toContainText('step');
+  await expect(page.locator('figure .step').first()).toContainText('Step');
 });
 
 test('add a media item to a report, then open and export it', async ({ page }) => {
@@ -390,7 +390,7 @@ test('media legend shows and hides runs, and HTML items show their code', async 
   await expect(cards).toHaveCount(1);
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await expect(cards).toHaveCount(8);
-  await cards.first().getByRole('button', { name: 'code', exact: true }).click();
+  await cards.first().getByRole('button', { name: 'Code', exact: true }).click();
   const code = cards.first().getByRole('region', { name: /HTML source/ });
   await expect(code).toContainText('Eval report');
   await expect(code.locator('.ln').nth(2)).toHaveText('3');
@@ -503,7 +503,7 @@ test('about window and chart points', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
   await page.getByRole('button', { name: 'About NuBoard' }).click();
   const about = page.getByRole('dialog', { name: 'NuBoard' });
-  await expect(about).toContainText(/version \d+\.\d+\.\d+/);
+  await expect(about).toContainText(/Version \d+\.\d+\.\d+/);
   await expect(about).toContainText('MIT License');
   await expect(about.getByRole('link', { name: 'Documentation' })).toBeVisible();
   await about.getByRole('button', { name: 'Close' }).click();
@@ -584,19 +584,19 @@ test('distributions overlay every run, compare steps and show quantiles over ste
   await page.goto('/#/media?project=vit-ablations&mfind=logit_margin');
   const all = page.getByRole('img', { name: /Distributions of eval\/logit_margin for all runs/ });
   await expect(all.locator('path')).toHaveCount(8);
-  await expect(page.getByText(/^cutmix-s0 · step 100 mean -?\d/)).toBeVisible();
+  await expect(page.getByText(/^cutmix-s0 · step 100 Mean -?\d/)).toBeVisible();
   // a card draws its step filled and the step before it dashed
   const card = page.getByRole('img', { name: 'Distribution of cutmix-s0 eval/logit_margin at step 100' });
   await expect(card.locator('path[stroke-dasharray]')).toHaveCount(1);
   await card.scrollIntoViewIfNeeded();
   const box = (await card.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
-  await expect(page.getByText(/^step 100: .+ to .+ · [\d,]+ \(\d+\.\d%\)$/)).toBeVisible();
+  await expect(page.getByText(/^Step 100: .+ to .+ · [\d,]+ \(\d+\.\d%\)$/)).toBeVisible();
   await page.locator('.hv').filter({ has: card }).getByRole('button', { name: 'over steps' }).click();
   const bands = page.getByRole('img', { name: 'Distribution of cutmix-s0 eval/logit_margin over steps' });
   await expect(bands.locator('polygon')).toHaveCount(3);
   await bands.hover();
-  await expect(page.getByText(/^median -?\d/)).toBeVisible();
+  await expect(page.getByText(/^Median -?\d/)).toBeVisible();
 });
 
 test('PR curves overlay every run and show counts on hover', async ({ page }) => {
@@ -615,7 +615,7 @@ test('PR curves overlay every run and show counts on hover', async ({ page }) =>
       return [p.x * m.a + m.e, p.y * m.d + m.f];
     });
   await page.mouse.move(x, y);
-  await expect(page.getByText(/^threshold 0\.\d{3}$/)).toBeVisible();
+  await expect(page.getByText(/^Threshold 0\.\d{3}$/)).toBeVisible();
   await expect(page.getByText(/^TP \d+ · FP \d+ · TN \d+ · FN \d+$/)).toBeVisible();
 });
 
@@ -624,7 +624,7 @@ test('tables compare steps, sort, filter and open a row', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Tables 1' })).toBeVisible();
   const card = page.locator('.tv').first();
   await expect(card.getByText(/^40 of 40 rows$/)).toBeVisible();
-  await expect(card.getByText(/since step 20/)).toBeVisible();
+  await expect(card.getByText(/Since step 20/)).toBeVisible();
   await card.getByRole('button', { name: /^pesq/ }).click();
   await expect(card.locator('th[aria-sort="ascending"]')).toHaveText(/pesq/);
   await expect(card.locator('td.heat[style*="color-mix"]').first()).toBeVisible();

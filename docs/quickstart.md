@@ -39,8 +39,8 @@ demo only writes the folder; view it later with `nuboard up demo-runs`.
    zoom, double-click to reset.
 4. **Sweeps.** Open Sweeps with the query cleared. Drag along the `optim.lr`
    axis to keep a range of runs and read the best runs below.
-5. **Timeline.** See when each run ran, switch to **packed** to see how many
-   ran at once, and color by **group**.
+5. **Timeline.** See when each run ran, switch to **Packed** to see how many
+   ran at once, and color by **Group**.
 6. **Artifacts.** `fineweb-edu:v2` shows its lineage: the run that prepared
    it, the twelve runs that trained on it, the checkpoint one of them saved and
    the evaluation that used the checkpoint.

@@ -332,12 +332,13 @@
     if (xKind === 'time') return { name: '', value: new Date(x * 1000).toLocaleTimeString() };
     if (xKind === 'relative' || xKind === 'active') return { name: '', value: fmtDuration(x) };
     if (xMetric) return { name: xMetric, value: fmtNum(x) };
-    return { name: 'step', value: Math.round(x).toLocaleString() };
+    return { name: 'Step', value: Math.round(x).toLocaleString() };
   }
   const xRead = $derived.by(() => {
     if (cursorX !== null) return { prefix: '', ...fmtX(cursorX) };
     if (!lastValues.length) return { prefix: '', name: '', value: '—' };
-    return { prefix: 'latest ·', ...fmtX(Math.max(...lastValues.map((v) => v.x))) };
+    const last = fmtX(Math.max(...lastValues.map((v) => v.x)));
+    return { prefix: 'Latest ·', ...last, name: last.name === 'Step' ? 'step' : last.name };
   });
   function setSmooth(v: number) {
     prefs.set('smooth', v);
@@ -465,7 +466,7 @@
     <div class="card stat">
       <div class="label lrow">
         <span class="trunc" title="Best {focus || 'metric'}">Best {focus || 'metric'}</span>
-        <span class="faint keep">({lower ? 'lowest' : 'highest'} last)</span>
+        <span class="faint keep">({lower ? 'Lowest' : 'Highest'} last)</span>
       </div>
       <div class="big mono">{best ? fmtNum(best.last) : '—'}</div>
       {#if best}
@@ -479,7 +480,7 @@
     <div class="card stat">
       <div class="label">Running</div>
       <div class="big mono">{running.length} <span class="faint">/ {runs.length}</span></div>
-      <div class="sub">{running.length ? `last heartbeat ${fmtAgo(lastBeat)} · updates live` : 'no live runs'}</div>
+      <div class="sub">{running.length ? `Last heartbeat ${fmtAgo(lastBeat)} · updates live` : 'No live runs'}</div>
     </div>
     <div class="card stat">
       <div class="label">Non-finite values</div>
@@ -491,7 +492,7 @@
               title="{r.name}: {r.nonfinite.join(', ')}"
               ><span class="trunc nfname">{r.name}:</span><span class="trunc nfmetric">{r.nonfinite[0]}</span></span
             >{/each}
-        {:else}no NaN or Inf logged{/if}
+        {:else}No NaN or Inf logged{/if}
       </div>
     </div>
     <div class="card stat">
@@ -499,9 +500,9 @@
       <div class="big mono">{runKeys.length} <span class="faint">run{runKeys.length === 1 ? '' : 's'}</span></div>
       <div class="sub nowrap">
         {#if groupBy}
-          <span class="trunc" title="grouped by {groupBy}">grouped by {groupBy}</span>
+          <span class="trunc" title="Grouped by {groupBy}">Grouped by {groupBy}</span>
         {:else}
-          {runs.length > MAX_LINES ? `first ${MAX_LINES} of ${runs.length}; group to see all` : 'one line per run'}
+          {runs.length > MAX_LINES ? `First ${MAX_LINES} of ${runs.length}; group to see all` : 'One line per run'}
         {/if}
       </div>
     </div>
@@ -570,9 +571,9 @@
         onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
         aria-label="Group by"
       >
-        <option value="none">no grouping</option>
+        <option value="none">No grouping</option>
         {#each [...new Set([...(groupBy ? [groupBy] : []), ...groupOptions])] as g (g)}<option value={g}
-            >group by {g}</option
+            >Group by {g}</option
           >{/each}
       </select>
       {#if groupBy}
@@ -582,15 +583,15 @@
           onchange={(e) => router.set({ agg: (e.currentTarget as HTMLSelectElement).value })}
           aria-label="Band"
         >
-          <option value="std">mean ± std</option>
-          <option value="sem">mean ± sem</option>
-          <option value="minmax">mean · min–max</option>
-          <option value="median">median · min–max</option>
-          <option value="none">mean only</option>
+          <option value="std">Mean ± std</option>
+          <option value="sem">Mean ± sem</option>
+          <option value="minmax">Mean · min–max</option>
+          <option value="median">Median · min–max</option>
+          <option value="none">Mean only</option>
         </select>
       {/if}
       <div class="seg" role="group" aria-label="X axis">
-        {#each [['step', 'step'], ['time', 'wall time'], ['relative', 'relative'], ['active', 'active time']] as [k, label] (k)}
+        {#each [['step', 'Step'], ['time', 'Wall time'], ['relative', 'Relative'], ['active', 'Active time']] as [k, label] (k)}
           <button aria-pressed={xKind === k} onclick={() => router.set({ x: k === 'step' ? null : k, zoom: null })}
             >{label}</button
           >
@@ -607,11 +608,11 @@
         aria-label="X axis scalar"
         title="Plot against another scalar, matched by step"
       >
-        <option value="">x by scalar…</option>
-        {#each xCandidates as m (m)}<option value={m}>x = {m}</option>{/each}
+        <option value="">X by scalar…</option>
+        {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
       </select>
       <label class="smooth"
-        >smooth
+        >Smooth
         <input
           type="range"
           min="0"
@@ -629,7 +630,7 @@
           aria-checked={showRaw}
           aria-label="Show raw"
           onclick={() => router.set({ raw: showRaw ? '0' : null })}
-        ></button>raw</label
+        ></button>Raw</label
       >
       <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
         ><button
@@ -638,7 +639,7 @@
           aria-checked={showDots}
           aria-label="Points"
           onclick={() => router.set({ dots: showDots ? '0' : null })}
-        ></button>points</label
+        ></button>Points</label
       >
       <label
         class="tg"
@@ -649,7 +650,7 @@
           aria-checked={robust}
           aria-label="Ignore outliers"
           onclick={() => router.set({ robust: robust ? '0' : null })}
-        ></button>ignore outliers</label
+        ></button>Ignore outliers</label
       >
       <label class="tg"
         ><button
@@ -658,7 +659,7 @@
           aria-checked={logY}
           aria-label="Log y"
           onclick={() => router.set({ log: logY ? null : '1' })}
-        ></button>log y</label
+        ></button>Log y</label
       >
     </div>
   </section>
@@ -718,14 +719,14 @@
           </div>
         {/if}
         <span class="note">
-          {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>reset zoom</button>{/if}
+          {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>Reset zoom</button>{/if}
           {loading
             ? 'loading…'
             : groupBy
               ? agg === 'std'
                 ? 'mean ± std'
                 : agg
-              : 'drag to zoom · double-click to reset'}
+              : 'Drag to zoom · double-click to reset'}
           <button
             class="btn btn-ghost sm icon-btn"
             title="Add this chart to a report"
@@ -778,7 +779,7 @@
               <Icon name="alert" size={13} />
               <span class="mono aname">{a.name}</span>
               <span class="amsg">{a.alert.message}</span>
-              {#if a.alert.rank}<span class="mono faint keep">rank {a.alert.rank}</span>{/if}
+              {#if a.alert.rank}<span class="mono faint keep">Rank {a.alert.rank}</span>{/if}
             </button>
           {/each}
           {#if alerts.length > 12}<span class="faint">+{alerts.length - 12} more</span>{/if}
@@ -788,7 +789,7 @@
     <aside class="card inspector">
       <div class="ih">
         <span class="label">Inspector</span><span class="faint"
-          >{pinned ? 'pinned · click chart to release' : 'hover · click to pin'}</span
+          >{pinned ? 'Pinned · click chart to release' : 'Hover · click to pin'}</span
         >
       </div>
       <div class="ix mono">
@@ -798,7 +799,7 @@
       </div>
       <div class="im">
         <span class="mono trunc" title={focus}>{focus}</span><span class="faint keep"
-          >{lower ? 'lowest first' : 'highest first'}</span
+          >{lower ? 'Lowest first' : 'Highest first'}</span
         >
       </div>
       {#each inspector as v (v.label)}
@@ -824,7 +825,7 @@
 
   <section class="all">
     <div class="all-head">
-      <h3>All scalars <span class="faint">click one to bring it into focus</span></h3>
+      <h3>All scalars <span class="faint">Click one to bring it into focus</span></h3>
       <input
         class="input sm mono cfind"
         placeholder="Filter scalars (regex)"
@@ -835,19 +836,19 @@
       {#if metricFind}<span class="faint small">{shownMetrics.length} of {metrics.length}</span>{/if}
       <span class="label">Grid</span>
       <label class="opt"
-        ><span class="faint">columns</span>
+        ><span class="faint">Columns</span>
         <select
           class="input sm"
           aria-label="Chart columns"
           value={String(gridCols)}
           onchange={(e) => setGrid('ccols', e.currentTarget.value)}
         >
-          <option value="0">fit</option>
+          <option value="0">Fit</option>
           {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
         </select></label
       >
       <label class="opt"
-        ><span class="faint">rows</span>
+        ><span class="faint">Rows</span>
         <select
           class="input sm"
           aria-label="Chart rows per page"
@@ -855,7 +856,7 @@
           onchange={(e) => setGrid('crows', e.currentTarget.value)}
         >
           {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
-          <option value="0">all</option>
+          <option value="0">All</option>
         </select></label
       >
       {#if sections.length > 1}

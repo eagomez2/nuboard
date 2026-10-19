@@ -349,17 +349,17 @@
       />
       {#if find}<span class="faint small">{byKey.size} of {keyTotal}</span>{/if}
       <div class="seg" role="group" aria-label="Arrange by">
-        <button aria-pressed={by === 'key'} onclick={() => router.set({ mby: null })}>by key</button>
-        <button aria-pressed={by === 'run'} onclick={() => router.set({ mby: 'run' })}>by run</button>
+        <button aria-pressed={by === 'key'} onclick={() => router.set({ mby: null })}>By key</button>
+        <button aria-pressed={by === 'run'} onclick={() => router.set({ mby: 'run' })}>By run</button>
       </div>
     </div>
 
     <div class="row">
       <span class="label">Step</span>
       <div class="seg" role="group" aria-label="Step to show">
-        <button aria-pressed={mode === 'latest'} onclick={() => router.set({ mmode: null })}>latest</button>
-        <button aria-pressed={mode === 'step'} onclick={() => router.set({ mmode: 'step' })}>pick step</button>
-        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>best scalar</button>
+        <button aria-pressed={mode === 'latest'} onclick={() => router.set({ mmode: null })}>Latest</button>
+        <button aria-pressed={mode === 'step'} onclick={() => router.set({ mmode: 'step' })}>Pick step</button>
+        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>Best scalar</button>
       </div>
       {#if mode === 'step' && allSteps.length}
         <label class="slider">
@@ -371,7 +371,7 @@
             aria-label="Step"
             oninput={(e) => router.set({ mstep: allSteps[Number(e.currentTarget.value)] })}
           />
-          <span class="mono">step {pickedStep.toLocaleString()}</span>
+          <span class="mono">Step {pickedStep.toLocaleString()}</span>
         </label>
       {:else if mode === 'best'}
         <select
@@ -383,27 +383,27 @@
           {#each metricNames as m (m)}<option value={m}>{m}</option>{/each}
         </select>
         <div class="seg" role="group" aria-label="Best is">
-          <button aria-pressed={bestDir === 'min'} onclick={() => router.set({ mdir: 'min' })}>lowest</button>
-          <button aria-pressed={bestDir === 'max'} onclick={() => router.set({ mdir: 'max' })}>highest</button>
+          <button aria-pressed={bestDir === 'min'} onclick={() => router.set({ mdir: 'min' })}>Lowest</button>
+          <button aria-pressed={bestDir === 'max'} onclick={() => router.set({ mdir: 'max' })}>Highest</button>
         </div>
         <span class="faint small">each run shows the item logged closest to its best step</span>
       {/if}
       <span class="spacer"></span>
       <span class="label">Grid</span>
       <label class="opt"
-        ><span class="faint">columns</span>
+        ><span class="faint">Columns</span>
         <select
           class="input sm"
           aria-label="Columns"
           value={String(cols)}
           onchange={(e) => setGrid('mcols', e.currentTarget.value)}
         >
-          <option value="0">fit</option>
+          <option value="0">Fit</option>
           {#each [1, 2, 3, 4, 5, 6, 8] as n (n)}<option value={String(n)}>{n}</option>{/each}
         </select></label
       >
       <label class="opt"
-        ><span class="faint">rows</span>
+        ><span class="faint">Rows</span>
         <select
           class="input sm"
           aria-label="Rows per page"
@@ -411,7 +411,7 @@
           onchange={(e) => setGrid('mrows', e.currentTarget.value)}
         >
           {#each [1, 2, 3, 4, 6] as n (n)}<option value={String(n)}>{n}</option>{/each}
-          <option value="0">all</option>
+          <option value="0">All</option>
         </select></label
       >
     </div>
@@ -420,39 +420,39 @@
       <div class="row">
         <span class="label">Audio</span>
         <div class="seg">
-          <button aria-pressed={player === 'wave'} onclick={() => setPlayer('wave')}>waveform</button>
-          <button aria-pressed={player === 'simple'} onclick={() => setPlayer('simple')}>simple</button>
+          <button aria-pressed={player === 'wave'} onclick={() => setPlayer('wave')}>Waveform</button>
+          <button aria-pressed={player === 'simple'} onclick={() => setPlayer('simple')}>Simple</button>
         </div>
         {#if player === 'wave'}
           <label class="opt"
-            ><span class="faint">colors</span>
+            ><span class="faint">Colors</span>
             <select
               class="input sm"
               aria-label="Spectrogram colors"
               value={audioOptions.colormap}
               onchange={(e) => setOpt('cmap', e.currentTarget.value)}
             >
-              <option value="theme">theme</option>
-              <option value="viridis">viridis</option>
-              <option value="magma">magma</option>
-              <option value="gray">gray</option>
+              <option value="theme">Theme</option>
+              <option value="viridis">Viridis</option>
+              <option value="magma">Magma</option>
+              <option value="gray">Gray</option>
             </select></label
           >
           <label class="opt"
-            ><span class="faint">frequency</span>
+            ><span class="faint">Frequency</span>
             <select
               class="input sm"
               aria-label="Frequency scale"
               value={audioOptions.scale}
               onchange={(e) => setOpt('fscale', e.currentTarget.value)}
             >
-              <option value="linear">linear</option>
-              <option value="logarithmic">log</option>
-              <option value="mel">mel</option>
+              <option value="linear">Linear</option>
+              <option value="logarithmic">Log</option>
+              <option value="mel">Mel</option>
             </select></label
           >
           <label class="opt"
-            ><span class="faint">window</span>
+            ><span class="faint">Window</span>
             <select
               class="input sm mono"
               aria-label="FFT window"
@@ -470,10 +470,10 @@
               aria-label="Spectrogram"
               onclick={() => setOpt('spec', audioOptions.spectrogram ? '0' : '1')}
             ></button>
-            <span class="faint">spectrogram</span></label
+            <span class="faint">Spectrogram</span></label
           >
           <span class="faint small"
-            >players follow each other's zoom and selection · space plays · ctrl + wheel zooms</span
+            >Players follow each other's zoom and selection · space plays · ctrl + wheel zooms</span
           >
         {/if}
       </div>
@@ -495,7 +495,7 @@
         aria-label="Show runs without this key"
         onclick={() => router.set({ mempty: showEmpty ? null : '1' })}
       ></button>
-      <span class="faint">show runs without the key</span></label
+      <span class="faint">Show runs without the key</span></label
     >
     <span class="spacer"></span>
     <button
@@ -581,7 +581,7 @@
           </div>
           {#if mode === 'best' && by === 'key'}
             <p class="faint small bestnote">
-              best {bestMetric}:
+              Best {bestMetric}:
               {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{i ? ' · ' : ''}{c
                     .run.name}
                   {fmtNum(best[c.run.key].value)} at step {best[c.run.key].step.toLocaleString()}{/if}{/each}
