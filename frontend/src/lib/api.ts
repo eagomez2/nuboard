@@ -217,6 +217,8 @@ export interface SeriesMeta {
   runs: string[];
   group: unknown;
   n?: number;
+  /** Logged with `low` and `high`: `lo` and `hi` are those bounds, drawn as a band. */
+  band?: boolean;
   last: number | null;
   nonfinite: boolean;
 }

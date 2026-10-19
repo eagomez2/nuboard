@@ -12,10 +12,11 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 
+from .. import _format as fmt
 from ..alerts import check_run
 from ..catalog import Catalog
 from ..query import resolve
-from ..reader import RunReader
+from ..reader import RunReader, align
 from ..series import aggregate, bucket_envelope, x_values
 
 MAX_READERS = 256
@@ -163,7 +164,7 @@ class Store:
         points: int,
         xmin: float | None,
         xmax: float | None,
-    ) -> tuple[np.ndarray, ...] | None:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool] | None:
         """Load one run's series of `metric` at a resolution that suits the chart.
 
         For compacted runs, the coarsest Parquet level that still has at least
@@ -182,9 +183,11 @@ class Store:
             xmax: Upper end of the zoom range in x units, or None.
 
         Returns:
-            A tuple `(x, y, lo, hi)` of arrays, where `lo` and `hi` bound the
-            values each point summarizes (equal to `y` for raw data), or None if
-            the run is unknown or has no data for `metric`.
+            A tuple `(x, y, lo, hi, band)`, or None if the run is unknown or has
+            no data for `metric`. When `band` is True the metric was logged with
+            `low` and `high`, and `lo` and `hi` are those bounds (NaN where a
+            point has none). Otherwise they bound the values each point
+            summarizes (equal to `y` for raw data).
         """
 
         if x_kind.startswith("metric:"):
@@ -227,9 +230,19 @@ class Store:
             s, t, v, lo, hi = pq.read(metric, level, rank)
             lo = np.where(np.isnan(lo), v, lo)
             hi = np.where(np.isnan(hi), v, hi)
+            band = bool(pq.levels(metric + fmt.BAND_LOW) or pq.levels(metric + fmt.BAND_HIGH))
+
+            if band:  # the outer edges of the bounds each point summarizes
+                lo = _level_bound(pq.read(metric + fmt.BAND_LOW, level, rank), s, 3)
+                hi = _level_bound(pq.read(metric + fmt.BAND_HIGH, level, rank), s, 4)
         else:
             s, t, v = reader.scalars(metric, rank)
             lo = hi = v
+            bounds = reader.bounds(metric, rank)
+            band = bounds is not None
+
+            if bounds is not None:
+                lo, hi = bounds
 
         if len(s) == 0:
             return None
@@ -242,7 +255,7 @@ class Store:
             sl = slice(max(i0, 0), min(i1, len(x)))
             x, v, lo, hi = x[sl], v[sl], lo[sl], hi[sl]
 
-        return x, v, lo, hi
+        return x, v, lo, hi, band
 
     def _series_against(
         self,
@@ -253,7 +266,7 @@ class Store:
         points: int,
         xmin: float | None,
         xmax: float | None,
-    ) -> tuple[np.ndarray, ...] | None:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool] | None:
         """`metric` with another metric (e.g. tokens seen) as x, matched by step.
 
         The x metric is interpolated at each step of `metric`. When it only
@@ -292,7 +305,7 @@ class Store:
         if data is None:
             return None
 
-        steps, v, lo, hi = data
+        steps, v, lo, hi, band = data
         x = np.interp(steps, xs_f, xv, left=np.nan, right=np.nan)
         keep = np.isfinite(x)
 
@@ -309,7 +322,7 @@ class Store:
             order = np.argsort(x, kind="stable")
             x, v, lo, hi = x[order], v[order], lo[order], hi[order]
 
-        return x, v, lo, hi
+        return x, v, lo, hi, band
 
     def chart(
         self,
@@ -349,7 +362,9 @@ class Store:
             (index into the series metadata), `x`, `y`, `lo` and `hi`. The schema
             metadata holds `metric`, `x` and `series`, a JSON list with each
             series' label, runs, group value, group size (`n`, grouped only),
-            last finite value and whether it has non-finite values.
+            whether `lo` and `hi` are logged bounds to draw as a band (`band`,
+            ungrouped only), last finite value and whether it has non-finite
+            values.
         """
         series_meta: list[dict[str, Any]] = []
         cols: dict[str, list[np.ndarray]] = {c: [] for c in ("series", "x", "y", "lo", "hi")}
@@ -368,7 +383,7 @@ class Store:
             for name, arr in (("x", x), ("y", y), ("lo", lo), ("hi", hi)):
                 cols[name].append(np.asarray(arr, "f8"))
 
-        loaded: dict[str, tuple[np.ndarray, ...]] = {}
+        loaded: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]] = {}
 
         for key in keys:
             data = self.raw_series(key, metric, x_kind, rank, points, xmin, xmax)
@@ -380,7 +395,7 @@ class Store:
             names = {key: (self.catalog.get(key) or {}).get("name", key) for key in loaded}
             counts = collections.Counter(names.values())
 
-            for key, (x, v, lo, hi) in loaded.items():
+            for key, (x, v, lo, hi, band) in loaded.items():
                 xb, yb, lob, hib = bucket_envelope(x, v, lo, hi, points)
                 label = names[key]
 
@@ -388,7 +403,7 @@ class Store:
                     label = f"{label} ({key.rsplit('_', 1)[-1]})"
 
                 add(
-                    {"label": label, "runs": [key], "group": None},
+                    {"label": label, "runs": [key], "group": None, "band": band},
                     xb,
                     yb,
                     lob,
@@ -461,6 +476,26 @@ class Store:
             writer.write_table(table)
 
         return sink.getvalue().to_pybytes()
+
+
+def _level_bound(data: tuple[np.ndarray, ...], steps: np.ndarray, col: int) -> np.ndarray:
+    """Align one band bound read from a Parquet zoom level with the metric's steps.
+
+    Args:
+        data: `(steps, times, values, vmin, vmax)` of the bound's companion scalar.
+        steps: Steps of the metric at the same level.
+        col: Column to use: 3 (`vmin`) for the low bound, 4 (`vmax`) for the high one.
+
+    Returns:
+        One bound per step; NaN where the bound has none.
+    """
+    at, values = data[0], np.where(np.isnan(data[col]), data[2], data[col])
+
+    if len(at) == len(steps) or len(at) < 2:
+        return align(steps, at, values)
+
+    # bounds were logged at fewer steps, so the levels are bucketed differently
+    return np.interp(steps, at, values, left=np.nan, right=np.nan)
 
 
 def _label(value: Any) -> str:

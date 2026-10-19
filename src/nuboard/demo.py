@@ -322,9 +322,14 @@ def _llm_runs(root: Path, base: float) -> None:
                 )
 
             if step % 500 == 0:
+                eval_loss = point["train/loss"] + 0.03 + rng.gauss(0, 0.01)
+                spread = 0.05 + 0.15 * math.exp(-step / 4000)  # std across eval batches
                 run.add_scalar(
-                    {"eval/loss": point["train/loss"] + 0.03 + rng.gauss(0, 0.01)},
+                    "eval/loss",
+                    eval_loss,
                     step=step,
+                    low=eval_loss - spread,
+                    high=eval_loss + spread,
                     time=t,
                 )
 

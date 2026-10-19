@@ -1,7 +1,7 @@
 # `add_scalar`
 
 ```python
-run.add_scalar(key, value=None, step=None, *, time=None, all_ranks=None)
+run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None, all_ranks=None)
 ```
 
 Logs a scalar, such as a loss, an accuracy or a learning rate, or several
@@ -26,20 +26,34 @@ run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4}, step=10)  # several
 - **step** (*int*, optional): the training step. Defaults to one more than
   the previous call's step. Pass it explicitly when you log several times per
   step, such as train and eval scalars.
+- **low**, **high** (optional): a range around the value, given together,
+  such as `mean - std` and `mean + std`, a confidence interval or the min and
+  max over an epoch's batches. Any number type `value` accepts works. Only
+  with a single name, not a dict. Leave both out for a plain scalar.
 - **time** (*float*, optional): a Unix timestamp. Defaults to now.
 - **all_ranks** (*bool*, optional): log from this rank even if it is not rank
   0, overriding `nb.init`'s setting for this call.
 
-**Raises** `TypeError` when `key` is a name and `value` is missing.
+**Raises** `TypeError` when `key` is a name and `value` is missing, when only
+one of `low` and `high` is given, or when they are given with a dict.
+
+```python
+# Per-epoch mean with a ± std band
+run.add_scalar("val/loss", mean, step=epoch, low=mean - std, high=mean + std)
+```
 
 **Stored as** one columnar frame per flush in the event log: a step, a time
 and a float64 per scalar. Logging a dict of 50 scalars costs a few
-microseconds, and each value takes about 8 bytes on disk.
+microseconds, and each value takes about 8 bytes on disk. `low` and `high`
+are stored as two more values at the same step (see the
+[file format](../reference/format.md)).
 
 **In the viewer** each key is a line chart on the **Charts** page, with one
-line per run, grouped in sections by the key's prefix. Runs can be grouped
-into a mean and spread band, smoothed, and plotted against wall time or
-another scalar. NaN and infinite values are stored as they are and flagged on
+line per run, grouped in sections by the key's prefix. A scalar logged with
+`low` and `high` gets a shaded band in its run's color, and the inspector
+shows the range next to the value. Runs can be grouped into a mean and spread
+band (then the band shows the spread across runs, and the logged ranges are
+not drawn), smoothed, and plotted against wall time or another scalar. NaN and infinite values are stored as they are and flagged on
 the chart and by the [health alerts](../guide/alerts.md). The Runs table shows
 each run's best or last value of a scalar you pick, and queries can filter on
 it (`train/loss.min < 0.3`).

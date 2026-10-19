@@ -27,6 +27,10 @@ TEXT = b"T"  # key_id:u32, step:i64, time:f64, text:utf8
 MEDIA = b"M"  # key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 json
 END = b"E"  # time:f64, status:utf8
 
+# A scalar's optional band is stored as two companion scalars named `<key>` plus these suffixes
+BAND_LOW = "\x1flow"
+BAND_HIGH = "\x1fhigh"
+
 _TEXT_HEAD = struct.Struct("<Iqd")
 _MEDIA_HEAD = struct.Struct("<IqdQQ")
 _F64 = struct.Struct("<d")

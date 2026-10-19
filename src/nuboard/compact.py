@@ -57,7 +57,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     per_metric: dict[str, list[tuple[int, list[tuple[np.ndarray, ...]]]]] = {}
 
     for rank in reader.ranks():
-        for metric, (s, t, v) in reader.all_scalars(rank).items():
+        for metric, (s, t, v) in reader.all_scalars(rank, bands=True).items():
             per_metric.setdefault(metric, []).append((rank, zoom_levels(s, t, v)))
 
     tables: list[pa.Table] = []

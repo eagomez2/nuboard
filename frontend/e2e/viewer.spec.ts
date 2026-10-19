@@ -842,3 +842,13 @@ test('files are pinned as tabs for every run of the project, by path or by patte
   }
   await expect(tabs.filter({ hasText: 'yaml' })).toHaveCount(0);
 });
+
+test('a scalar logged with low and high is drawn with its band', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=eval%2Floss');
+  const row = page.locator('.irow').first();
+  await expect(row).toContainText(/\d to \d/);
+  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.keyboard.type('eval/loss');
+  const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
+  await expect(options).toHaveCount(1);
+});

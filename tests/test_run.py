@@ -636,3 +636,26 @@ def test_torch_tensors_are_copied_on_the_calling_thread():
     assert pixels.max() == 0
     assert np.frombuffer(r.read_media(by_key["pc"]), "<f4").tolist() == list(range(12))
     assert by_key["v"].meta["frames"] == 4
+
+
+def test_add_scalar_band_needs_both_bounds_and_a_single_name():
+    import numpy as np
+
+    run = nb.init("p", capture_env=False)
+
+    with pytest.raises(TypeError):
+        run.add_scalar("loss", 1.0, low=0.5)
+
+    with pytest.raises(TypeError):
+        run.add_scalar({"loss": 1.0}, low=0.5, high=2.0)
+
+    run.add_scalar("loss", 1.0, step=0, low=0.5, high=2.0)
+    run.add_scalar("loss", 0.8, step=1)  # a point without a band
+    run.finish()
+    reader = RunReader(run.path)
+    assert reader.scalar_names() == ["loss"]
+    assert len(reader.scalar_names(bands=True)) == 3
+    low, high = reader.bounds("loss")
+    np.testing.assert_array_equal(low, [0.5, np.nan])
+    np.testing.assert_array_equal(high, [2.0, np.nan])
+    assert set(reader.meta()["summary"]) == {"loss"}

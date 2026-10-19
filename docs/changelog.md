@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.6
+
+- `add_scalar` takes optional `low` and `high`, a range around the value such
+  as mean ± std over an epoch: `run.add_scalar("val/loss", mean, step=epoch,
+  low=mean - std, high=mean + std)`. Charts shade the range around each run's
+  line, and the inspector shows it after the value. Scalars logged without
+  them work exactly as before. When runs are grouped (for example several
+  seeds), the band shows the spread across runs as before.
+- The demo's `llm-pretrain` runs log `eval/loss` with a range.
+
 ## 0.15.5
 
 - Console logs show their colors. Color codes (the 16 terminal colors,
