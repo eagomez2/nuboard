@@ -21,7 +21,7 @@ from . import _fs
 from ._meta import ENV_PREFIX, NAME
 from .collection import attach
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
 _SKIP_DIRS = {
     "artifacts",
@@ -222,6 +222,7 @@ def make_record(
         "reviewed": bool(ann.get("reviewed")),
         "group": meta.get("group"),
         "summary": meta.get("summary") or {},
+        "baselines": meta.get("baselines") or {},
         "commit": (git.get("commit") or "")[:10] or None,
         "dirty": bool(git.get("dirty")),
         "host": env.get("host"),

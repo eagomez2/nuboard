@@ -2,6 +2,7 @@
   import uPlot from 'uplot';
   import { onDestroy, onMount } from 'svelte';
   import type { ChartData } from '../lib/api';
+  import { baselineExtent, baselineLines } from '../lib/baselines';
   import { cssVar, withAlpha } from '../lib/colors';
   import { fmtAxis, fmtDuration } from '../lib/format';
   import { ema, robustRange } from '../lib/smooth';
@@ -33,6 +34,7 @@
     regions = [],
     markers = false,
     pinned = false,
+    baselines = false,
   }: {
     data: ChartData | null;
     smoothing?: number;
@@ -55,6 +57,8 @@
     markers?: boolean;
     /** The cursor is pinned: the dots stay where they are. */
     pinned?: boolean;
+    /** Draw the baselines set with `add_scalar_baseline` as dashed lines. */
+    baselines?: boolean;
   } = $props();
   let dots: HTMLElement[] = [];
 
@@ -151,7 +155,14 @@
     });
     if (!tables.length) return;
     const joined = tables.length === 1 ? tables[0] : uPlot.join(tables);
-    const range = robust ? robustRange(yValues) : null;
+    const lines = baselines ? baselineLines(data.series, hidden) : [];
+    const extent = baselineExtent(lines, logY);
+    let range = robust ? robustRange(yValues) : null;
+    if (range && extent && !logY && (extent[0] < range[0] || extent[1] > range[1])) {
+      // keep the baselines in view, with the same margin the range has
+      const pad = (Math.max(range[1], extent[1]) - Math.min(range[0], extent[0])) * 0.06;
+      range = [Math.min(range[0], extent[0] - pad), Math.max(range[1], extent[1] + pad)];
+    }
     const xf = xFormatter(data.xKind);
     const errColor = cssVar('--err');
 
@@ -168,6 +179,10 @@
           distr: logY ? 3 : 1,
           range: (u, min, max) => {
             if (range && !logY) return range;
+            if (extent) {
+              min = Math.min(min, extent[0]);
+              max = Math.max(max, extent[1]);
+            }
             if (logY) return [Math.max(min, 1e-12), max];
             const pad = (max - min || Math.abs(max) || 1) * 0.06;
             return [min - pad, max + pad];
@@ -263,6 +278,47 @@
           },
         ],
         draw: [
+          (u) => {
+            if (!lines.length) return;
+            const ctx = u.ctx;
+            const dpr = devicePixelRatio;
+            const left = u.bbox.left;
+            const right = left + u.bbox.width;
+            const top = u.bbox.top;
+            const bottom = top + u.bbox.height;
+            const y = (v: number) => Math.min(Math.max(u.valToPos(v, 'y', true), top), bottom);
+            ctx.save();
+            for (const line of lines) {
+              if (logY && line.value <= 0) continue;
+              // one run: its color; shared by several: gray
+              const color =
+                line.series.length === 1 ? colorOf(line.labels[0], line.series[0]) : cssVar('--muted') || '#888';
+              const dim = highlight !== null && !line.labels.includes(highlight);
+              if (line.low !== undefined && line.high !== undefined && (!logY || line.low > 0)) {
+                const a = y(line.high);
+                const b = y(line.low);
+                ctx.fillStyle = withAlpha(color, dim ? 0.03 : 0.09);
+                ctx.fillRect(left, a, right - left, b - a);
+              }
+              const py = Math.round(u.valToPos(line.value, 'y', true));
+              if (py < top || py > bottom) continue;
+              ctx.strokeStyle = withAlpha(color, dim ? 0.25 : 0.9);
+              ctx.lineWidth = (highlight !== null && !dim ? 2 : 1.5) * dpr;
+              ctx.setLineDash([6 * dpr, 4 * dpr]);
+              ctx.beginPath();
+              ctx.moveTo(left, py);
+              ctx.lineTo(right, py);
+              ctx.stroke();
+              if (!compact && !dim) {
+                ctx.setLineDash([]);
+                ctx.fillStyle = color;
+                ctx.font = `${11 * dpr}px ${cssVar('--mono') || 'monospace'}`;
+                ctx.textAlign = 'right';
+                ctx.fillText('Baseline', right - 6 * dpr, py - 5 * dpr);
+              }
+            }
+            ctx.restore();
+          },
           (u) => {
             if (!regions.length) return;
             const ctx = u.ctx;
@@ -361,6 +417,7 @@
       themeVersion,
       regions,
       markers,
+      baselines,
     ];
     schedule();
   });

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.7
+
+- New `run.add_scalar_baseline(key, value, *, low=None, high=None)` sets a
+  reference value for a scalar, such as the score of the unprocessed input:
+  `run.add_scalar_baseline("val/pesq", 1.31)`. It is linked to the scalar by
+  name, saved in `run.json` right away, and replaced by calling it again; a
+  dict sets several at once.
+- Charts draw it as a dashed horizontal line, with a light band for `low` and
+  `high`. Runs with the same baseline share one gray line; a baseline only one
+  run has is dashed in its color. Hiding or highlighting a run does the same to
+  its baseline, grouped charts use each group's mean baseline, and the y-axis
+  keeps baselines in view. The inspector lists each baseline and its runs.
+- A **Baseline** switch next to **Points** turns them off. It shows only when a
+  run has a baseline, so other charts look as before. Charts saved to reports
+  and exported to HTML keep the setting.
+- The demo's `speech-denoise` runs have PESQ and SI-SDR baselines.
+
 ## 0.15.6
 
 - `add_scalar` takes optional `low` and `high`, a range around the value such

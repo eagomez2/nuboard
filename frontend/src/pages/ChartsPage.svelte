@@ -11,6 +11,7 @@
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { encodeSpec } from '../lib/chartspec';
+  import { baselineLines } from '../lib/baselines';
   import { appendToReport, askReport } from '../lib/reports.svelte';
 
   const MAX_LINES = 60;
@@ -22,6 +23,7 @@
   const showDots = $derived(router.get('dots', '1') === '1');
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
+  const showBase = $derived(router.get('base', '1') === '1');
   const zoom = $derived.by((): [number, number] | null => {
     const z = router.get('zoom');
     if (!z) return null;
@@ -34,6 +36,7 @@
     router.get('group') === 'none' ? null : router.get('group') || app.runs?.query.group_by || null,
   );
   const agg = $derived(router.get('agg') || app.runs?.query.agg || 'std');
+  const hasBaselines = $derived(runs.some((r) => r.baselines?.length));
   const runKeys = $derived(groupBy ? runs.map((r) => r.key) : runs.slice(0, MAX_LINES).map((r) => r.key));
 
   let metrics = $state<string[]>([]);
@@ -244,6 +247,7 @@
         raw: showRaw,
         robust,
         log: logY,
+        base: showBase,
         zoom,
         hidden: [...hidden],
       });
@@ -305,6 +309,12 @@
           return [{ series: i, label: s.label, value: s.y[k], lo: s.lo[k], hi: s.hi[k], x: s.x[k] }];
       return [];
     }),
+  );
+  // In the inspector's order: lowest first when lower is better
+  const baseRows = $derived(
+    showBase
+      ? baselineLines(focusData?.series ?? [], hidden).sort((a, b) => (lower ? a.value - b.value : b.value - a.value))
+      : [],
   );
   const inspector = $derived.by(() => {
     const list = [...(cursorX === null ? lastValues : cursorValues)].sort((a, b) =>
@@ -641,6 +651,17 @@
           onclick={() => router.set({ dots: showDots ? '0' : null })}
         ></button>Points</label
       >
+      {#if hasBaselines}
+        <label class="tg" title="Dashed lines at the reference values set with add_scalar_baseline"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={showBase}
+            aria-label="Baseline"
+            onclick={() => router.set({ base: showBase ? '0' : null })}
+          ></button>Baseline</label
+        >
+      {/if}
       <label
         class="tg"
         title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
@@ -765,6 +786,7 @@
         {regions}
         markers={showDots}
         {pinned}
+        baselines={showBase}
       />
       {#if alerts.length}
         <div class="alerts" aria-label="Health alerts">
@@ -821,6 +843,20 @@
           Hover a chart to inspect a step; click to pin it. Hover a legend chip to highlight a series, click it to hide,
           double-click (or Alt-click) to show it alone. All and None show or hide every series.
         </p>
+      {/each}
+      {#each baseRows as b (b.labels.join('\n'))}
+        {@const color = b.series.length === 1 ? colorOf(b.labels[0], b.series[0]) : 'var(--muted)'}
+        <div class="irow base" class:hl={highlight !== null && b.labels.includes(highlight)}>
+          <div class="itop">
+            <span class="dash" style="border-color:{color}"></span>
+            <span class="ilab">Baseline</span>
+            <span class="mono ival keep">{fmtNum(b.value)}</span>
+            {#if b.low !== undefined && b.high !== undefined}<span class="mono faint keep"
+                >{fmtNum(b.low)} to {fmtNum(b.high)}</span
+              >{/if}
+          </div>
+          <div class="mono faint trunc runs" title={b.labels.join(', ')}>{b.labels.join(', ')}</div>
+        </div>
       {/each}
     </aside>
   </section>
@@ -922,6 +958,7 @@
                 {smoothing}
                 {showRaw}
                 {robust}
+                baselines={showBase}
                 {hidden}
                 {highlight}
                 {colorOf}
@@ -1293,6 +1330,21 @@
   }
   .irow.hl {
     border-color: var(--accent);
+  }
+  .irow.base {
+    background: transparent;
+    border: 1px dashed var(--border);
+  }
+  .irow.base.hl {
+    border-color: var(--accent);
+  }
+  .dash {
+    width: 14px;
+    flex: none;
+    border-top: 2px dashed;
+  }
+  .runs {
+    font-size: 12px;
   }
   .itop {
     display: flex;

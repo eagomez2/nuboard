@@ -38,6 +38,7 @@ NuBoard.
 | --- | --- | --- |
 | [`nb.init`](init.md) | a new run, its config and environment | Runs |
 | [`add_scalar`](add_scalar.md) | one scalar or several, such as losses and learning rates | Charts |
+| [`add_scalar_baseline`](add_scalar_baseline.md) | a reference value for a scalar, such as the score of the unprocessed input | Charts (dashed line) |
 | [`add_text`](add_text.md) | strings, such as generated samples | Media › Text |
 | [`add_image`](add_image.md) | images from arrays, tensors, PIL or files | Media › Images |
 | [`add_audio`](add_audio.md) | audio from arrays, tensors or files | Media › Audio |

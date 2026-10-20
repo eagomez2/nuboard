@@ -70,6 +70,7 @@ ignore keys they do not know.
 | `created`, `started`, `ended`, `heartbeat` | float | Unix seconds. `heartbeat` is refreshed every 10 s while running. |
 | `sessions` | list | One `{session, started, ended}` per start or resume. |
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
+| `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. |
 | `distributed` | object | `world_size`, `shared_id`. |

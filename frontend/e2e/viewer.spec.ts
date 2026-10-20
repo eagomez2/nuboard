@@ -852,3 +852,18 @@ test('a scalar logged with low and high is drawn with its band', async ({ page }
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options).toHaveCount(1);
 });
+
+test('scalar baselines are drawn, listed in the inspector and can be turned off', async ({ page }) => {
+  await page.goto('/#/charts?project=speech-denoise&metric=val%2Fsi_sdr');
+  const rows = page.locator('.irow.base');
+  await expect(rows).toHaveCount(2); // two runs share 4.6, convtasnet has 3.9
+  await expect(rows.filter({ hasText: '4.6' })).toContainText('unet-l1');
+  await expect(rows.filter({ hasText: '3.9' })).toContainText('convtasnet');
+  const toggle = page.getByRole('switch', { name: 'Baseline' });
+  await toggle.click();
+  await expect(page).toHaveURL(/base=0/);
+  await expect(rows).toHaveCount(0);
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  await expect(page.locator('.u-over').first()).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Baseline' })).toHaveCount(0);
+});

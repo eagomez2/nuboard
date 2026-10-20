@@ -140,13 +140,14 @@ def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
     """Return the run-list projection of a catalog record (keeps the payload small).
 
     The config is flattened, the summary is limited to `metrics` (all metrics
-    when None), and `metric_count` and `nonfinite` (metrics with non-finite
-    values) are added.
+    when None), `baselines` is reduced to the names of the scalars that have
+    one, and `metric_count` and `nonfinite` (metrics with non-finite values)
+    are added.
     """
     out = {
         k: v
         for k, v in record.items()
-        if k not in ("config", "summary", "inputs", "outputs", "error", "compacted")
+        if k not in ("config", "summary", "baselines", "inputs", "outputs", "error", "compacted")
     }
     out["config"] = _flat_config(record.get("config") or {})
     summary = record.get("summary") or {}
@@ -154,6 +155,7 @@ def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
         summary if metrics is None else {m: summary[m] for m in metrics if m in summary}
     )
     out["metric_count"] = len(summary)
+    out["baselines"] = sorted(record.get("baselines") or {})
     out["nonfinite"] = sorted(m for m, s in summary.items() if s.get("nonfinite"))
     return out
 

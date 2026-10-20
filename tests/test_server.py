@@ -530,3 +530,37 @@ def test_scalar_bands_are_drawn_per_run_and_hidden_as_metrics(tmp_path, compact)
         grouped = c.get("/api/scalars", params={"runs": keys, "metric": "loss", "group": "project"})
         meta = json.loads(pa.ipc.open_stream(grouped.content).read_all().schema.metadata[b"series"])
         assert "band" not in meta[0] and meta[0]["n"] == 2  # groups keep the spread across runs
+
+
+def test_scalar_baselines_reach_the_chart_and_groups_average_them(tmp_path):
+    for name, base in (("a", 2.0), ("b", 2.0), ("c", 3.0), ("d", None)):
+        with nb.init("base", name=name, config={"m": name in "ab"}, capture_env=False) as run:
+            if base is not None:
+                run.add_scalar_baseline("val/pesq", base, low=base - 0.1, high=base + 0.1)
+
+            for s in range(10):
+                run.add_scalar("val/pesq", 2.5, step=s)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        runs = c.get("/api/runs").json()["runs"]
+        assert {r["name"]: r["baselines"] for r in runs} == {
+            "a": ["val/pesq"],
+            "b": ["val/pesq"],
+            "c": ["val/pesq"],
+            "d": [],
+        }
+        keys = ",".join(r["key"] for r in runs)
+        res = c.get("/api/scalars", params={"runs": keys, "metric": "val/pesq"})
+        series = json.loads(pa.ipc.open_stream(res.content).read_all().schema.metadata[b"series"])
+        by_label = {s["label"]: s["baseline"] for s in series}
+        assert by_label["a"] == {"value": 2.0, "low": 1.9, "high": 2.1}
+        assert by_label["c"]["value"] == 3.0 and by_label["d"] is None
+
+        grouped = c.get(
+            "/api/scalars", params={"runs": keys, "metric": "val/pesq", "group": "config.m"}
+        )
+        meta = json.loads(pa.ipc.open_stream(grouped.content).read_all().schema.metadata[b"series"])
+        by_group = {s["label"]: s["baseline"]["value"] for s in meta}
+        assert by_group == {"False": 3.0, "True": 2.0}  # d has no baseline and is left out

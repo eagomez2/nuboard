@@ -12,6 +12,7 @@
     smoothing,
     showRaw,
     robust,
+    baselines,
     hidden,
     highlight,
     colorOf,
@@ -27,6 +28,7 @@
     smoothing: number;
     showRaw: boolean;
     robust: boolean;
+    baselines: boolean;
     hidden: Set<string>;
     highlight: string | null;
     colorOf: (label: string, i: number) => string;
@@ -91,6 +93,7 @@
       {smoothing}
       {showRaw}
       {robust}
+      {baselines}
       {hidden}
       {highlight}
       {colorOf}

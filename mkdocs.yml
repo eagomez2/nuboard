@@ -11,6 +11,7 @@ nav:
       - Overview: api/index.md
       - nb.init: api/init.md
       - add_scalar: api/add_scalar.md
+      - add_scalar_baseline: api/add_scalar_baseline.md
       - add_text: api/add_text.md
       - add_image: api/add_image.md
       - add_audio: api/add_audio.md

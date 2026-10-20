@@ -60,6 +60,7 @@
       showRaw={s.raw}
       robust={s.robust}
       logY={s.log}
+      baselines={s.base}
       {hidden}
       {colorOf}
       syncKey="report"
