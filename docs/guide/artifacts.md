@@ -204,3 +204,27 @@ modification times. If a variable is not set where the artifact is used,
 
 The Timeline page marks each artifact version as a diamond on the run that
 produced it.
+
+### Adding and unlinking versions in the viewer
+
+The Artifacts page is read-only unless the viewer was started with
+`nuboard up --edit-artifacts`. With it:
+
+- **New version** opens a form that adds a version as a reference, like
+  `nuboard artifact add --ref`. Pick the project, type a new or existing
+  name, and give the path of a file or folder: absolute, starting with `~` or
+  an environment variable such as `$NUBOARD_DATA_DIR/fineweb-edu`, or relative
+  to the served folder. The form checks the path as you type and shows what
+  it resolved to, with the file count and size. Add a type, a description,
+  metadata (text, number, yes/no or JSON) and, if you want, SHA-256 checksums,
+  then review and add. Nothing is copied, and the viewer cannot upload files;
+  use `nuboard artifact add --copy` or `nb.add_artifact` for a copy.
+- **Unlink version** (or **Unlink all versions**) asks for confirmation, then
+  moves the version folder to `artifacts/.unlinked/` in the project. No files
+  are deleted, and a referenced dataset is never touched. The version leaves
+  the list and `use_artifact`, and runs that used or produced it show it as
+  "(unlinked)". Its number is not reused.
+- **Show unlinked** lists unlinked versions; **Restore** puts one back.
+
+Deleting data is left to you: remove a folder under `artifacts/.unlinked/`
+yourself when you no longer need it.

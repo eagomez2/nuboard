@@ -11,6 +11,9 @@ bookmark a view, send the link to yourself on another machine, or save it as a
 view file. Per-viewer preferences (theme, default smoothing) live in your
 browser's local storage.
 
+By default the viewer only answers on this machine (`127.0.0.1`). See
+[Sharing on a network](#sharing-on-a-network) to open it to other machines.
+
 ![Runs page](../assets/runs-light.png#only-light){ .nb-shot }
 ![Runs page](../assets/runs-dark.png#only-dark){ .nb-shot }
 
@@ -290,7 +293,9 @@ to a [report](reports.md) as a snapshot.
 ## Artifacts page
 
 Every artifact version with its files, metadata and a lineage graph of the
-runs that produced and used it. See [Artifacts and lineage](artifacts.md).
+runs that produced and used it. Started with `--edit-artifacts`, the page can
+also add a version from a path and unlink or restore versions. See
+[Artifacts and lineage](artifacts.md#adding-and-unlinking-versions-in-the-viewer).
 
 ## Reports page
 
@@ -457,3 +462,32 @@ download link. The waveform player is a port of the player in
 audioviewer, built on
 [wavesurfer.js](https://wavesurfer.xyz) (BSD-3), bundled with the viewer
 so it works offline.
+
+## Sharing on a network
+
+`nuboard up --host 0.0.0.0` (or a specific address) makes the viewer reachable
+from other machines, and anyone who reaches it could read your runs and change
+notes, tags and reports. So, like Jupyter, it then asks for a token:
+
+```text
+$ nuboard up ~/exp --host 0.0.0.0
+nuboard serving ~/exp (31 runs) at http://gpu-box:6070/?token=3f9c…e1  (Ctrl+C to stop)
+  Open the link above once per browser; it signs the browser in.
+```
+
+- Opening the link signs the browser in with a cookie for 30 days and removes
+  the token from the address bar. Without it, pages show a sign-in form where
+  the token can be pasted, and API calls get a 401.
+- A new random token is made each start. `--token VALUE` or the
+  `NUBOARD_TOKEN` environment variable sets a fixed one, so bookmarks keep
+  working. `--no-token` turns it off, for a network you trust.
+- Scripts send `Authorization: token VALUE`.
+- On `127.0.0.1` there is no token, as before. You can still ask for one with
+  `--token`.
+
+Whatever the host, the viewer refuses changes that a page of another website
+tries to make through your browser.
+
+The token travels in plain HTTP. On an untrusted network, keep the default
+host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
+Artifacts stay read-only unless you add `--edit-artifacts`.

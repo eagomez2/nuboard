@@ -15,7 +15,7 @@ export default defineConfig({
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
   },
   webServer: {
-    command: `${python} -m nuboard demo ${dir} --up --port 6071`,
+    command: `${python} -m nuboard demo ${dir} --up --port 6071 --edit-artifacts`,
     url: 'http://localhost:6071/api/info',
     timeout: 60_000,
     reuseExistingServer: false,

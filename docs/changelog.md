@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.15.8
+
+- **Access token off localhost.** `nuboard up --host` with an address other
+  than `127.0.0.1` now protects the whole viewer with a token, like Jupyter:
+  it prints a link with a random token, and opening it signs the browser in.
+  Without the token, pages show a sign-in form and API calls get a 401.
+  `--token VALUE` or `NUBOARD_TOKEN` sets a fixed token and `--no-token` turns
+  it off. Scripts send `Authorization: token VALUE`. On `127.0.0.1` nothing
+  changes. If you already serve on `0.0.0.0`, open the printed link once, or
+  pass `--no-token` to keep the old behavior.
+- Changes sent from a page of another website through your browser are
+  refused, with or without a token.
+- **Adding artifact versions in the viewer.** Started with
+  `--edit-artifacts`, the Artifacts page has **New version**: a form that adds
+  a version by reference to a file or folder (absolute, `~`, `$VAR` or
+  relative to the served folder), checks the path as you type, and shows a
+  review step before adding. Nothing is copied or uploaded.
+- **Unlinking.** With `--edit-artifacts`, **Unlink version** moves a version
+  to `artifacts/.unlinked/` after a confirmation, without deleting any file.
+  **Show unlinked** lists them, and **Restore** puts one back. Runs show such
+  a version as "(unlinked)", and version numbers are never reused.
+- Without `--edit-artifacts`, artifacts are read-only in the viewer, as before.
+
 ## 0.15.7
 
 - New `run.add_scalar_baseline(key, value, *, low=None, high=None)` sets a

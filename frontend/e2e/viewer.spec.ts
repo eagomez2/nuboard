@@ -867,3 +867,31 @@ test('scalar baselines are drawn, listed in the inspector and can be turned off'
   await expect(page.locator('.u-over').first()).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Baseline' })).toHaveCount(0);
 });
+
+test('an artifact version is added from a path, unlinked and restored', async ({ page }) => {
+  await page.goto('/#/artifacts');
+  await page.getByRole('button', { name: 'New version' }).first().click();
+  const form = page.getByRole('dialog', { name: 'New artifact version' });
+  await form.getByLabel('Name', { exact: true }).fill('demo-folder');
+  await form.getByLabel('Path', { exact: true }).fill('does/not/exist');
+  await expect(form.getByText(/Nothing exists at/)).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Review' })).toBeDisabled();
+  await form.getByLabel('Path', { exact: true }).fill('vit-ablations');
+  await expect(form.getByText(/Folder · [\d,]+ files/)).toBeVisible();
+  await form.getByRole('button', { name: 'Add metadata' }).click();
+  await form.getByLabel('Key 1', { exact: true }).fill('note');
+  await form.getByLabel('Value of note').fill('from the viewer');
+  await form.getByRole('button', { name: 'Review' }).click();
+  await expect(page.getByRole('dialog', { name: 'Review the new version' })).toContainText('new artifact');
+  await page.getByRole('button', { name: 'Add version' }).click();
+  await expect(page.locator('.head h2')).toHaveText('demo-folder:v1');
+  await expect(page.getByText('from the viewer')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Unlink version' }).click();
+  await page.getByRole('button', { name: 'Unlink', exact: true }).click();
+  await expect(page.locator('.ver', { hasText: 'v1' }).filter({ hasText: 'Unlinked' })).toHaveCount(0);
+  await page.getByRole('switch', { name: 'Show unlinked' }).click();
+  await page.locator('.ver.gone').first().click();
+  await page.getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByRole('switch', { name: 'Show unlinked' })).toHaveCount(0);
+});
