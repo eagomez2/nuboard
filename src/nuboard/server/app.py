@@ -33,7 +33,15 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__, _fs
 from .._meta import FORMAT_VERSION, NAME
-from ..artifacts import find_artifact_projects, list_artifacts
+from ..artifacts import (
+    UNLINKED,
+    add_artifact,
+    find_artifact_projects,
+    list_artifacts,
+    list_unlinked,
+    restore_artifact,
+    unlink_artifact,
+)
 from ..catalog import Catalog
 from ..collection import delete_collection, list_collections, save_collection
 from ..query import QueryError, parse
@@ -50,6 +58,7 @@ from ..reports import (
     save_report,
     save_snapshot,
 )
+from .auth import Guard
 from .data import Store, path_inside
 from .runfiles import IMAGE_SUFFIXES, change_pins, list_files, read_pins
 from .tensorfiles import inspect_file
@@ -224,6 +233,8 @@ def create_app(
     *,
     cache_dir: Path | None = None,
     allowed_hosts: list[str] | None = None,
+    token: str | None = None,
+    edit_artifacts: bool = False,
 ) -> Starlette:
     """Create the viewer's Starlette app for a folder of runs.
 
@@ -235,6 +246,11 @@ def create_app(
         root: Folder holding the runs.
         cache_dir: Folder for the catalog cache, or None for the catalog's default.
         allowed_hosts: Accepted `Host` header values, or None to accept any host.
+        token: Access token every request must carry (see `auth.Guard`), or None
+            for an open viewer.
+        edit_artifacts: Allow adding artifact versions (as references to paths
+            on this machine) and unlinking and restoring them. Without it those
+            requests are refused.
 
     Returns:
         The app. Its `state.store` holds the `Store` it reads runs through.
@@ -288,6 +304,7 @@ def create_app(
                 "root_display": display,
                 "projects": projects,
                 "catalog_version": catalog.version,
+                "edit_artifacts": edit_artifacts,
             }
         )
 
@@ -350,12 +367,23 @@ def create_app(
         )
 
     def run_detail(request: Request) -> Response:
-        """Return one run's record, metadata, files, ranks, media keys and annotations."""
+        """Return one run's record, metadata, files, ranks, media keys and annotations.
+
+        Artifact versions in the metadata's `inputs` and `outputs` that were
+        unlinked get `unlinked: true`.
+        """
         key = request.path_params["key"]
         record = record_or_404(key)
         path = catalog.path_of(key)
         assert path is not None
         meta = _fs.read_json(path / "run.json", {})
+
+        for ref in [*(meta.get("inputs") or []), *(meta.get("outputs") or [])]:
+            if isinstance(ref, dict) and ref.get("artifact"):
+                home = path.parent.parent / str(ref.get("project_path") or ".")
+                folder = home / "artifacts" / UNLINKED / str(ref["artifact"])
+                ref["unlinked"] = (folder / f"v{ref.get('version')}").is_dir()
+
         files_dir = path / "files"
         files = (
             sorted(p.relative_to(files_dir).as_posix() for p in files_dir.rglob("*") if p.is_file())
@@ -766,6 +794,26 @@ def create_app(
             headers=headers,
         )
 
+    def name_of(folder: Path) -> str | None:
+        """Return the project name of a folder under the root, or None outside it."""
+        root = catalog.root.resolve()
+
+        try:
+            rel = folder.resolve().relative_to(root)
+        except ValueError:
+            return None
+
+        return rel.as_posix() if rel.parts else root.name
+
+    def artifact_project(name: str) -> Path | None:
+        """Return the folder of a project with runs or artifacts, or None if there is none."""
+        pdir = project_dir(name)
+
+        if pdir is not None:
+            return pdir
+
+        return next((p for p in find_artifact_projects(catalog.root) if name_of(p) == name), None)
+
     def artifacts(request: Request) -> Response:
         """Return artifact versions with the runs that produced and used them.
 
@@ -775,20 +823,10 @@ def create_app(
         project (`project_path`, relative to the run's project).
 
         Query parameter `project` limits the list to the artifacts of one project
-        and those its runs produced or used.
+        and those its runs produced or used. Unlinked versions are listed too,
+        with `unlinked: true`.
         """
         root = catalog.root.resolve()
-
-        def name_of(folder: Path) -> str | None:
-            """Return the project name of a folder under the root, or None outside it."""
-
-            try:
-                rel = folder.resolve().relative_to(root)
-            except ValueError:
-                return None
-
-            return rel.as_posix() if rel.parts else root.name
-
         users: dict[tuple[str, str, int], list[str]] = {}
         makers: dict[tuple[str, str, int], list[str]] = {}
         by_id: dict[tuple[str, str], str] = {}
@@ -819,7 +857,9 @@ def create_app(
             if project is None:
                 continue
 
-            for a in list_artifacts(pdir):
+            listed = [(a, False) for a in list_artifacts(pdir)]
+
+            for a, unlinked in listed + [(a, True) for a in list_unlinked(pdir)]:
                 k = (project, a.name, a.version)
                 producer = makers.get(k) or []
                 consumers = users.get(k, [])
@@ -842,10 +882,184 @@ def create_app(
                         "producers": producer,
                         "consumers": consumers,
                         "size": sum(int(f.get("size") or 0) for f in a.manifest.get("files") or []),
+                        "unlinked": unlinked,
                     }
                 )
 
         return JSON({"artifacts": out})
+
+    def artifact_source(raw: str) -> tuple[str, Path]:
+        """Return what to pass to `add_artifact` for a typed path, and the path it points at.
+
+        `~`, environment variables and absolute paths work as in the CLI; a relative
+        path is taken from the served folder.
+        """
+        expanded = os.path.expanduser(os.path.expandvars(raw))
+
+        if os.path.isabs(expanded):
+            return raw, Path(expanded)
+
+        target = (catalog.root / expanded).resolve()
+        return str(target), target
+
+    async def edit_body(request: Request) -> dict[str, Any] | Response:
+        """Return the JSON body of an artifact change, or the error response that refuses it."""
+
+        if not edit_artifacts:
+            hint = f"start the viewer with `{NAME} up --edit-artifacts` to change artifacts"
+            return JSON({"error": hint}, status_code=403)
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        return body if isinstance(body, dict) else JSON({"error": "expected an object"}, 400)
+
+    async def artifact_check(request: Request) -> Response:
+        """Check a path for a new artifact version (JSON body: `path`).
+
+        Returns `resolved` (the absolute path), `exists`, `kind` (`file` or
+        `folder`), `files` and `size` (`partial` when the count stopped at 200,000
+        files or 3 seconds), or `error`.
+        """
+        body = await edit_body(request)
+
+        if isinstance(body, Response):
+            return body
+
+        raw = str(body.get("path") or "").strip()
+
+        if not raw:
+            return JSON({"error": "enter a path"})
+
+        unset = re.search(r"\$\{?(\w+)", os.path.expandvars(raw))
+
+        if unset:
+            return JSON({"error": f"{unset.group(1)} is not set on this machine"})
+
+        _, target = artifact_source(raw)
+
+        def walk() -> dict[str, Any]:
+            """Count the files and bytes under `target`, within the limits."""
+
+            if target.is_file():
+                return {"kind": "file", "files": 1, "size": target.stat().st_size, "partial": False}
+
+            files = size = 0
+            todo = [target]
+            deadline = time.monotonic() + 3
+
+            while todo:
+                if files >= 200_000 or time.monotonic() > deadline:
+                    return {"kind": "folder", "files": files, "size": size, "partial": True}
+
+                try:
+                    with os.scandir(todo.pop()) as it:
+                        for e in it:
+                            if e.is_dir(follow_symlinks=True):
+                                todo.append(Path(e.path))
+                            elif e.is_file():
+                                files += 1
+                                size += e.stat().st_size
+                except OSError:
+                    continue
+
+            return {"kind": "folder", "files": files, "size": size, "partial": False}
+
+        out: dict[str, Any] = {"resolved": str(target), "exists": target.exists()}
+
+        if target.exists():
+            out.update(await run_in_threadpool(walk))
+
+        return JSON(out)
+
+    async def artifact_add(request: Request) -> Response:
+        """Add an artifact version that references a path on this machine.
+
+        JSON body: `project`, `name`, `path` (as for `artifact_check`), and
+        optionally `type`, `description`, `metadata` (an object) and `checksum`
+        (also hash every file). Returns the new version as `{project, name, version}`.
+        """
+        body = await edit_body(request)
+
+        if isinstance(body, Response):
+            return body
+
+        project = str(body.get("project") or "")
+        pdir = artifact_project(project)
+        name = _fs.sanitize(str(body.get("name") or ""), "")
+        raw = str(body.get("path") or "").strip()
+        metadata = body.get("metadata") or {}
+        kind = body.get("type") or None
+
+        if pdir is None:
+            return JSON({"error": f"unknown project {project!r}"}, status_code=400)
+
+        if not name:
+            return JSON({"error": "enter a name"}, status_code=400)
+
+        if not raw:
+            return JSON({"error": "enter a path"}, status_code=400)
+
+        if not isinstance(metadata, dict) or (kind is not None and not isinstance(kind, str)):
+            return JSON({"error": "metadata must be an object and type a string"}, 400)
+
+        src, target = artifact_source(raw)
+
+        if not target.exists():
+            return JSON({"error": f"{target} does not exist"}, status_code=400)
+
+        try:
+            art = await run_in_threadpool(
+                add_artifact,
+                pdir,
+                name,
+                src,
+                type=kind,
+                metadata=metadata,
+                reference=True,
+                checksum=bool(body.get("checksum")),
+                description=str(body.get("description") or ""),
+            )
+        except OSError as exc:
+            return JSON({"error": f"the version could not be added: {exc}"}, status_code=409)
+
+        return JSON({"project": project, "name": art.name, "version": art.version})
+
+    async def artifact_unlink(request: Request) -> Response:
+        """Unlink one version (`version`) or every version of an artifact, or restore one.
+
+        JSON body: `project`, `name`, `version` (omit to unlink all) and
+        `restore` (true to move that version back). Nothing is deleted.
+        """
+        body = await edit_body(request)
+
+        if isinstance(body, Response):
+            return body
+
+        pdir = artifact_project(str(body.get("project") or ""))
+        name = str(body.get("name") or "")
+        version = body.get("version")
+
+        if pdir is None or not name or name != _fs.sanitize(name, ""):
+            return JSON({"error": "unknown project or artifact"}, status_code=400)
+
+        if version is not None and (not isinstance(version, int) or isinstance(version, bool)):
+            return JSON({"error": "version must be a number"}, status_code=400)
+
+        try:
+            if body.get("restore"):
+                if version is None:
+                    return JSON({"error": "name the version to restore"}, status_code=400)
+
+                restore_artifact(pdir, name, version)
+                return JSON({"restored": [version]})
+
+            return JSON({"unlinked": unlink_artifact(pdir, name, version)})
+        except FileNotFoundError as exc:
+            return JSON({"error": str(exc)}, status_code=404)
+        except OSError as exc:
+            return JSON({"error": f"could not move the version: {exc}"}, status_code=409)
 
     def alerts(request: Request) -> Response:
         """Return the health alerts of the known runs in `runs` (comma-separated keys)."""
@@ -1349,6 +1563,9 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/artifacts", artifacts),
+        Route("/api/artifacts/check", artifact_check, methods=["POST"]),
+        Route("/api/artifacts/add", artifact_add, methods=["POST"]),
+        Route("/api/artifacts/unlink", artifact_unlink, methods=["POST"]),
         Route("/api/alerts", alerts),
         Route("/api/collections", collections),
         Route("/api/collections", collection_save, methods=["POST"]),
@@ -1374,7 +1591,7 @@ def create_app(
         routes.append(Mount("/assets", _SharedAssets(directory=STATIC / "assets")))
 
     routes.append(Route("/{path:path}", static_file))
-    middleware = [Middleware(GZipMiddleware, minimum_size=2048)]
+    middleware = [Middleware(Guard, token=token), Middleware(GZipMiddleware, minimum_size=2048)]
 
     if allowed_hosts:
         middleware.insert(0, Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts))

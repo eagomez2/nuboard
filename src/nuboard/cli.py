@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -64,11 +65,16 @@ def up(
     port: int = DEFAULT_PORT,
     open_browser: bool = False,
     before_start: object = None,
+    token: str | None = None,
+    no_token: bool = False,
+    edit_artifacts: bool = False,
 ) -> None:
     """Serve a folder of runs with the web viewer until interrupted.
 
     When `host` is a loopback address, the app only accepts loopback `Host`
-    headers. If `port` is taken, the next free port (up to 19 above it) is used.
+    headers. Otherwise it needs an access token: `token`, else
+    `$NUBOARD_TOKEN`, else a random one, printed in the viewer's link. If `port`
+    is taken, the next free port (up to 19 above it) is used.
 
     Args:
         directory: Folder holding the runs to view; `~` is expanded.
@@ -76,6 +82,9 @@ def up(
         port: Preferred port.
         open_browser: Open a browser tab on the viewer URL after about a second.
         before_start: Currently unused.
+        token: Access token; also used on a loopback address when given.
+        no_token: Serve a non-loopback address without a token.
+        edit_artifacts: Allow adding, unlinking and restoring artifact versions.
 
     Raises:
         SystemExit: If the viewer dependencies are missing, `directory` does not
@@ -92,16 +101,37 @@ def up(
         raise SystemExit(f"{root} does not exist")
 
     loopback = host in ("127.0.0.1", "localhost", "::1")
+    token = token or os.environ.get(f"{ENV_PREFIX}_TOKEN") or None
+
+    if token is None and not loopback and not no_token:
+        token = secrets.token_hex(24)
+
+    if no_token:
+        token = None
+
     app = create_app(
-        root, allowed_hosts=["127.0.0.1", "localhost", "[::1]", "::1"] if loopback else None
+        root,
+        allowed_hosts=["127.0.0.1", "localhost", "[::1]", "::1"] if loopback else None,
+        token=token,
+        edit_artifacts=edit_artifacts,
     )
     port = _free_port(host, port)
-    url = f"http://{'localhost' if loopback else host}:{port}/"
+    shown = "localhost" if loopback else socket.gethostname() if host in ("0.0.0.0", "::") else host
+    url = f"http://{shown}:{port}/"
+    link = f"{url}?token={token}" if token else url
     runs = len(app.state.store.catalog.runs())
-    print(f"{NAME} serving {root.resolve()} ({runs} runs) at {url}  (Ctrl+C to stop)")
+    print(f"{NAME} serving {root.resolve()} ({runs} runs) at {link}  (Ctrl+C to stop)")
+
+    if token:
+        print("  Open the link above once per browser; it signs the browser in.")
+    elif not loopback:
+        print("  Warning: no token, so anyone who can reach this address can use the viewer.")
+
+    if edit_artifacts:
+        print("  Artifact versions can be added, unlinked and restored from the viewer.")
 
     if open_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.0, lambda: webbrowser.open(link)).start()
 
     # Open live-update streams end once Ctrl+C sets should_exit; the timeout
     # bounds the wait for any other request still in flight
@@ -179,6 +209,22 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--open", action="store_true", help="open a browser tab")
+    p.add_argument(
+        "--token",
+        default=None,
+        help=f"access token (default: ${ENV_PREFIX}_TOKEN, or a random one when --host is "
+        "not local); the printed link signs a browser in",
+    )
+    p.add_argument(
+        "--no-token",
+        action="store_true",
+        help="serve a non-local --host without a token (anyone who reaches it can use it)",
+    )
+    p.add_argument(
+        "--edit-artifacts",
+        action="store_true",
+        help="allow adding artifact versions (references to paths here) and unlinking them",
+    )
 
     p = sub.add_parser(
         "demo", help="write a demo workspace (and optionally start the viewer with a live run)"
@@ -187,6 +233,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--up", action="store_true", help="start the viewer and keep a live run logging")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--open", action="store_true")
+    p.add_argument("--edit-artifacts", action="store_true", help="as for up")
 
     p = sub.add_parser("compact", help="write data.parquet for finished runs")
     p.add_argument("dir")
@@ -230,7 +277,15 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_artifact_cli.main(args))
 
     if args.cmd == "up":
-        up(args.dir or _default_dir(), args.host, args.port, args.open)
+        up(
+            args.dir or _default_dir(),
+            args.host,
+            args.port,
+            args.open,
+            token=args.token,
+            no_token=args.no_token,
+            edit_artifacts=args.edit_artifacts,
+        )
     elif args.cmd == "demo":
         from .demo import generate, live
 
@@ -244,7 +299,12 @@ def main(argv: list[str] | None = None) -> None:
             threading.Thread(target=live, args=(args.dir, stop), daemon=True).start()
 
             try:
-                up(args.dir, port=args.port, open_browser=args.open)
+                up(
+                    args.dir,
+                    port=args.port,
+                    open_browser=args.open,
+                    edit_artifacts=args.edit_artifacts,
+                )
             finally:
                 stop.set()
         else:

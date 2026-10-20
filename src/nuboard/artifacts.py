@@ -33,6 +33,8 @@ from . import _fs
 from ._meta import ENV_PREFIX
 
 _VERSION_RE = re.compile(r"^v(\d+)$")
+UNLINKED = ".unlinked"
+"""Folder under `<project>/artifacts/` that holds unlinked versions, by artifact name."""
 DATA_ENV = f"{ENV_PREFIX}_DATA_DIR"
 """Environment variable naming each machine's data folder, for portable references."""
 _UNSET_RE = re.compile(r"\$\{?(\w+)")
@@ -312,7 +314,8 @@ def add_artifact(
             entries.append(entry)
 
     while True:  # claim the next version number; rename is atomic
-        version = (_versions(adir) or [0])[-1] + 1
+        # unlinked versions keep their numbers, so a number never points at other data
+        version = max([0, *_versions(adir), *_versions(adir.parent / UNLINKED / name)]) + 1
         manifest = {
             "name": name,
             "version": version,
@@ -388,8 +391,102 @@ def list_artifacts(project_dir: Path) -> list[Artifact]:
 
     if root.exists():
         for name in sorted(os.listdir(root)):
+            if name.startswith("."):  # unlinked versions and staging folders
+                continue
+
             for v in _versions(root / name):
                 path = root / name / f"v{v}"
                 out.append(Artifact(name, v, path, _fs.read_json(path / "manifest.json", {})))
 
     return out
+
+
+def list_unlinked(project_dir: Path) -> list[Artifact]:
+    """List the versions unlinked with `unlink_artifact`.
+
+    Args:
+        project_dir: The project's folder.
+
+    Returns:
+        The unlinked versions, sorted by artifact name and then version.
+    """
+    root = project_dir / "artifacts" / UNLINKED
+    out = []
+
+    if root.exists():
+        for name in sorted(os.listdir(root)):
+            for v in _versions(root / name):
+                path = root / name / f"v{v}"
+                out.append(Artifact(name, v, path, _fs.read_json(path / "manifest.json", {})))
+
+    return out
+
+
+def unlink_artifact(project_dir: Path, name: str, version: int | None = None) -> list[int]:
+    """Hide one version, or every version, of an artifact without deleting anything.
+
+    Each version folder moves to `<project>/artifacts/.unlinked/<name>/`, files and
+    manifest included; referenced data is never touched. `restore_artifact` moves it
+    back. Version numbers stay taken, so a later version never reuses one.
+
+    Args:
+        project_dir: The project's folder.
+        name: Artifact name.
+        version: The version to unlink, or None for all of them.
+
+    Returns:
+        The unlinked version numbers.
+
+    Raises:
+        FileNotFoundError: If the artifact or version does not exist.
+    """
+    adir = project_dir / "artifacts" / name
+    versions = _versions(adir) if version is None else [version]
+
+    if not versions or not all((adir / f"v{v}").is_dir() for v in versions):
+        what = "versions" if version is None else f"v{version}"
+        raise FileNotFoundError(f"no {what} of artifact {name!r}")
+
+    into = project_dir / "artifacts" / UNLINKED / name
+    into.mkdir(parents=True, exist_ok=True)
+
+    for v in versions:
+        os.rename(adir / f"v{v}", into / f"v{v}")
+
+    try:
+        adir.rmdir()  # only when nothing is left
+    except OSError:
+        pass
+
+    return versions
+
+
+def restore_artifact(project_dir: Path, name: str, version: int) -> Artifact:
+    """Move an unlinked version back, under its own number.
+
+    Args:
+        project_dir: The project's folder.
+        name: Artifact name.
+        version: The version to restore.
+
+    Returns:
+        The restored version.
+
+    Raises:
+        FileNotFoundError: If that version is not unlinked.
+    """
+    src = project_dir / "artifacts" / UNLINKED / name / f"v{version}"
+
+    if not src.is_dir():
+        raise FileNotFoundError(f"v{version} of {name!r} is not unlinked")
+
+    adir = project_dir / "artifacts" / name
+    adir.mkdir(parents=True, exist_ok=True)
+    os.rename(src, adir / f"v{version}")
+
+    try:
+        src.parent.rmdir()
+    except OSError:
+        pass
+
+    return resolve_artifact(project_dir, f"{name}:v{version}")

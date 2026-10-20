@@ -80,8 +80,8 @@
 
   // Console logs (files/output.log, output.r<rank>.log) come first, as "Console".
   // An artifact from another project shows with it, as in use_artifact("datasets/fineweb-edu:v2")
-  const artifactRef = (a: { artifact: string; version: number; project?: string }) =>
-    `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}`;
+  const artifactRef = (a: { artifact: string; version: number; project?: string; unlinked?: boolean }) =>
+    `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}${a.unlinked ? ' (unlinked)' : ''}`;
   const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
   const fileTab = $derived(!['settings', 'notes', 'properties', 'filetree'].includes(tab) && !pinOf(tab));
   const showsTerminal = $derived(!multi && fileTab && (isConsole(tab) || (!!texts[0] && isTerminalText(texts[0]))));

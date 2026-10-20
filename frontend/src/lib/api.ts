@@ -68,6 +68,8 @@ export interface ArtifactVersion {
   size: number;
   producers: string[];
   consumers: string[];
+  /** Hidden with Unlink; its folder is in `artifacts/.unlinked/` and can be restored. */
+  unlinked?: boolean;
   manifest: {
     type?: string | null;
     metadata?: Record<string, unknown>;
@@ -145,6 +147,8 @@ export interface Info {
   root: string;
   root_display: string;
   projects: ProjectInfo[];
+  /** Started with `--edit-artifacts`: versions can be added, unlinked and restored. */
+  edit_artifacts?: boolean;
 }
 
 export interface RunDetail {
@@ -243,6 +247,7 @@ export interface ChartData {
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
+  if (res.status === 401) location.reload(); // signed out: the page asks for the token
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
@@ -300,6 +305,20 @@ export const api = {
   alerts: (keys: string[]) =>
     json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),
   artifacts: (project?: string | null) => json<{ artifacts: ArtifactVersion[] }>(`/api/artifacts?${qs({ project })}`),
+  /** Check a path, add a version, or unlink or restore versions (needs `--edit-artifacts`). */
+  editArtifacts: <T>(op: 'check' | 'add' | 'unlink', body: Record<string, unknown>) =>
+    fetch(`/api/artifacts/${op}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const text = await res.text();
+      try {
+        return JSON.parse(text) as T & { error?: string };
+      } catch {
+        return { error: text || `${res.status}` } as T & { error?: string };
+      }
+    }),
   collections: (project?: string | null) => json<{ collections: Collection[] }>(`/api/collections?${qs({ project })}`),
   saveCollection: (body: { name: string; add?: string[]; remove?: string[]; project?: string; delete?: boolean }) =>
     json<{ collections: Collection[] }>('/api/collections', {

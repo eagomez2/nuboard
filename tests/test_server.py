@@ -564,3 +564,96 @@ def test_scalar_baselines_reach_the_chart_and_groups_average_them(tmp_path):
         meta = json.loads(pa.ipc.open_stream(grouped.content).read_all().schema.metadata[b"series"])
         by_group = {s["label"]: s["baseline"]["value"] for s in meta}
         assert by_group == {"False": 3.0, "True": 2.0}  # d has no baseline and is left out
+
+
+def test_token_guards_everything_but_assets(tmp_path):
+    with nb.init("p", capture_env=False) as run:
+        run.add_scalar("loss", 1.0, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", token="s3cret")
+
+    with TestClient(app, follow_redirects=False) as c:
+        assert c.get("/api/info").status_code == 401
+        page = c.get("/", headers={"accept": "text/html"})
+        assert page.status_code == 401 and 'name="token"' in page.text
+        assert c.get("/?token=wrong", headers={"accept": "text/html"}).status_code == 401
+        res = c.get("/charts?token=s3cret&x=1")
+        assert res.status_code == 303 and res.headers["location"] == "/charts?x=1"
+        assert "HttpOnly" in res.headers["set-cookie"] and "s3cret" not in res.headers["set-cookie"]
+        assert c.get("/api/info").status_code == 200  # the cookie signs the client in
+
+    with TestClient(app, follow_redirects=False) as c:
+        assert c.get("/api/info", headers={"authorization": "token s3cret"}).status_code == 200
+        res = c.post("/login", data={"token": "s3cret", "next": "//evil.example"})
+        assert res.status_code == 303 and res.headers["location"] == "/"
+        assert c.get("/api/info").status_code == 200
+
+
+def test_writes_from_another_site_are_refused(client):
+    body = {"project": "sweep", "add": "x.txt"}
+    other = client.post("/api/pins", json=body, headers={"origin": "https://evil.example"})
+    assert other.status_code == 403
+    same = client.post("/api/pins", json=body, headers={"origin": "http://testserver"})
+    assert same.status_code == 200
+
+
+def test_artifacts_are_added_unlinked_and_restored_only_when_allowed(tmp_path):
+    data = tmp_path / "exp" / "data" / "corpus"
+    data.mkdir(parents=True)
+    (data / "a.txt").write_text("hello", "utf-8")
+    nb.add_artifact("datasets", "corpus", data, reference=True)
+    locked = create_app(tmp_path / "exp", cache_dir=tmp_path / "c1")
+
+    with TestClient(locked) as c:
+        assert c.get("/api/info").json()["edit_artifacts"] is False
+        res = c.post("/api/artifacts/add", json={"project": "datasets", "name": "x", "path": "."})
+        assert res.status_code == 403
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "c2", edit_artifacts=True)
+
+    with TestClient(app) as c:
+        check = c.post("/api/artifacts/check", json={"path": "data/corpus"}).json()
+        assert check["exists"] and check["kind"] == "folder" and check["files"] == 1
+        assert check["resolved"] == str(data.resolve())
+        assert (
+            "is not set"
+            in c.post("/api/artifacts/check", json={"path": "$NOPE_X/a"}).json()["error"]
+        )
+        new = c.post(
+            "/api/artifacts/add",
+            json={
+                "project": "datasets",
+                "name": "corpus",
+                "path": "data/corpus",
+                "type": "dataset",
+                "metadata": {"rows": 1},
+            },
+        ).json()
+        assert new == {"project": "datasets", "name": "corpus", "version": 2}
+        art = nb.get_artifact("datasets/corpus:v2")
+        assert art.reference == data.resolve() and art.manifest["metadata"] == {"rows": 1}
+
+        res = c.post(
+            "/api/artifacts/unlink", json={"project": "datasets", "name": "corpus", "version": 2}
+        )
+        assert res.json() == {"unlinked": [2]}
+        listed = {
+            (a["version"], a["unlinked"]) for a in c.get("/api/artifacts").json()["artifacts"]
+        }
+        assert listed == {(1, False), (2, True)}
+        assert (data / "a.txt").exists()  # referenced data is never touched
+
+        # numbers stay taken while unlinked
+        again = c.post(
+            "/api/artifacts/add", json={"project": "datasets", "name": "corpus", "path": str(data)}
+        ).json()
+        assert again["version"] == 3
+
+        c.post("/api/artifacts/unlink", json={"project": "datasets", "name": "corpus"})
+        assert all(a["unlinked"] for a in c.get("/api/artifacts").json()["artifacts"])
+        res = c.post(
+            "/api/artifacts/unlink",
+            json={"project": "datasets", "name": "corpus", "version": 2, "restore": True},
+        )
+        assert res.json() == {"restored": [2]}
+        assert nb.get_artifact("datasets/corpus").version == 2

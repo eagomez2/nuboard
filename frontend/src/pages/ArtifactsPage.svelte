@@ -1,7 +1,9 @@
 <script lang="ts">
+  import ArtifactForm from '../components/ArtifactForm.svelte';
   import Icon from '../components/Icon.svelte';
   import Status from '../components/Status.svelte';
   import { api, type ArtifactVersion } from '../lib/api';
+  import { confirmAction, notice } from '../lib/dialog.svelte';
   import { fmtAgo, fmtBytes, fmtDate, fmtValue } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -12,18 +14,36 @@
   const GAP = 16;
   const MAX_NODES = 60;
 
-  let artifacts = $state<ArtifactVersion[]>([]);
+  let all = $state<ArtifactVersion[]>([]);
   let loaded = $state(false);
+  let reloads = $state(0);
+  let formOpen = $state(false);
 
   $effect(() => {
     void app.runs?.version;
+    void reloads;
     api
       .artifacts(router.get('project') || null)
       .then((r) => {
-        artifacts = r.artifacts;
+        all = r.artifacts;
         loaded = true;
       })
       .catch(() => (loaded = true));
+  });
+
+  const edit = $derived(!!app.info?.edit_artifacts);
+  const showUnlinked = $derived(router.get('unlinked') === '1');
+  const unlinkedCount = $derived(all.filter((a) => a.unlinked).length);
+  const artifacts = $derived(showUnlinked ? all : all.filter((a) => !a.unlinked));
+  // Projects a version can be added to: those with runs and those with artifacts
+  const projects = $derived(
+    [...new Set([...(app.info?.projects ?? []).map((p) => p.name), ...all.map((a) => a.project)])].sort(),
+  );
+  const namesByProject = $derived.by(() => {
+    const out = new Map<string, string[]>();
+    for (const a of all)
+      if (!out.get(a.project)?.includes(a.name)) out.set(a.project, [...(out.get(a.project) ?? []), a.name]);
+    return out;
   });
 
   const id = (a: ArtifactVersion) => `${a.project}|${a.name}|${a.version}`;
@@ -144,11 +164,63 @@
     return `M${x0},${y0} C${mid},${y0} ${mid},${y1} ${x1},${y1}`;
   }
 
+  async function unlink(a: ArtifactVersion, whole: boolean) {
+    const versions = whole ? all.filter((x) => x.project === a.project && x.name === a.name && !x.unlinked) : [a];
+    const runs = new Set(versions.flatMap((v) => [...v.producers, ...v.consumers]));
+    const what = whole ? `all ${versions.length} versions of ${a.name}` : `${a.name}:v${a.version}`;
+    const ok = await confirmAction(
+      whole ? `Unlink ${a.name}?` : `Unlink ${a.name}:v${a.version}?`,
+      `This hides ${what} from the Artifacts page. Nothing is deleted: ${
+        versions.some((v) => v.manifest.reference) ? 'referenced data stays where it is, and ' : ''
+      }the version folders move to artifacts/.unlinked/, where Show unlinked lists them and Restore brings them back.${
+        runs.size
+          ? ` ${runs.size} run${runs.size === 1 ? '' : 's'} that produced or used ${whole ? 'them' : 'it'} will show ${whole ? 'them' : 'it'} as unlinked.`
+          : ''
+      }`,
+      { confirm: 'Unlink' },
+    );
+    if (!ok) return;
+    const res = await api.editArtifacts<{ unlinked: number[] }>('unlink', {
+      project: a.project,
+      name: a.name,
+      version: whole ? null : a.version,
+    });
+    if (res.error) return notice('Not unlinked', res.error);
+    router.set({ art: null });
+    reloads++;
+  }
+
+  async function restore(a: ArtifactVersion) {
+    const res = await api.editArtifacts<{ restored: number[] }>('unlink', {
+      project: a.project,
+      name: a.name,
+      version: a.version,
+      restore: true,
+    });
+    if (res.error) return notice('Not restored', res.error);
+    reloads++;
+  }
+
   function openNode(n: { kind: string; ref: string }) {
     if (n.kind === 'artifact') router.set({ art: n.ref });
     else router.go('runs', { cmp: n.ref });
   }
 </script>
+
+{#if formOpen}
+  <ArtifactForm
+    {projects}
+    project={selected?.project ?? (router.get('project') || projects[0] || '')}
+    name={selected && !selected.unlinked ? selected.name : ''}
+    names={namesByProject}
+    onclose={() => (formOpen = false)}
+    onadded={(p, n, v) => {
+      formOpen = false;
+      reloads++;
+      router.set({ art: `${p}|${n}|${v}` });
+    }}
+  />
+{/if}
 
 {#if !loaded}
   <div class="card empty">Loading artifacts…</div>
@@ -159,11 +231,18 @@
     <pre class="mono">run.add_artifact("dataset", "data/", type="dataset")
 run.use_artifact("dataset:latest")</pre>
     <p class="faint">Each version is a folder under <code>&lt;project&gt;/artifacts/&lt;name&gt;/v&lt;N&gt;/</code>.</p>
+    {#if edit}<button class="btn btn-primary" onclick={() => (formOpen = true)}>New version</button>{/if}
+    {#if unlinkedCount}<button class="btn btn-ghost" onclick={() => router.set({ unlinked: '1' })}
+        >Show unlinked ({unlinkedCount})</button
+      >{/if}
   </div>
 {:else}
   <div class="layout">
     <aside class="card side">
-      <div class="label">Artifacts</div>
+      <div class="sidehead">
+        <span class="label">Artifacts</span>
+        {#if edit}<button class="btn btn-ghost sm" onclick={() => (formOpen = true)}>New version</button>{/if}
+      </div>
       {#each byName as [k, versions] (k)}
         <div class="aname">
           <Icon name="artifact" size={15} />
@@ -171,13 +250,31 @@ run.use_artifact("dataset:latest")</pre>
           <span class="faint small trunc proj" title={versions[0].project}>{versions[0].project}</span>
         </div>
         {#each versions as a (id(a))}
-          <button class="ver" class:on={selected && id(a) === id(selected)} onclick={() => router.set({ art: id(a) })}>
+          <button
+            class="ver"
+            class:on={selected && id(a) === id(selected)}
+            class:gone={a.unlinked}
+            onclick={() => router.set({ art: id(a) })}
+          >
             <span class="mono">v{a.version}</span>
-            <span class="faint small grow" title={a.manifest.type ?? ''}>{a.manifest.type ?? ''}</span>
+            <span class="faint small grow" title={a.manifest.type ?? ''}
+              >{a.unlinked ? 'Unlinked' : (a.manifest.type ?? '')}</span
+            >
             <span class="faint small keep">{fmtAgo(a.manifest.created)}</span>
           </button>
         {/each}
       {/each}
+      {#if unlinkedCount}
+        <label class="tg unl"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={showUnlinked}
+            aria-label="Show unlinked"
+            onclick={() => router.set({ unlinked: showUnlinked ? null : '1', art: null })}
+          ></button>Show unlinked ({unlinkedCount})</label
+        >
+      {/if}
     </aside>
 
     {#if selected}
@@ -190,9 +287,24 @@ run.use_artifact("dataset:latest")</pre>
                 class="chip keep"
                 title="The files stay where they are; NuBoard records their path and fingerprint">Reference</span
               >{/if}
-            {#if selected.version === Math.max(...artifacts
-                  .filter((a) => a.project === selected.project && a.name === selected.name)
+            {#if selected.unlinked}<span class="chip keep" title="Hidden; its folder is in artifacts/.unlinked/"
+                >Unlinked</span
+              >{:else if selected.version === Math.max(...artifacts
+                  .filter((a) => a.project === selected.project && a.name === selected.name && !a.unlinked)
                   .map((a) => a.version))}<span class="chip latest keep">Latest</span>{/if}
+            {#if edit}
+              <span class="acts">
+                {#if selected.unlinked}
+                  <button class="btn sm" onclick={() => restore(selected!)}>Restore</button>
+                {:else}
+                  <button class="btn btn-ghost sm" onclick={() => unlink(selected!, false)}>Unlink version</button>
+                  {#if all.filter((a) => a.project === selected.project && a.name === selected.name && !a.unlinked).length > 1}
+                    <button class="btn btn-ghost sm" onclick={() => unlink(selected!, true)}>Unlink all versions</button
+                    >
+                  {/if}
+                {/if}
+              </span>
+            {/if}
           </div>
           {#if selected.manifest.description}<p class="desc">{selected.manifest.description}</p>{/if}
           <div class="facts">
@@ -334,8 +446,36 @@ run.use_artifact("dataset:latest")</pre>
     position: sticky;
     top: 16px;
   }
-  .side .label {
-    padding: 0 8px 8px;
+  .sidehead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 0 8px 8px;
+  }
+  .sm {
+    height: 30px;
+  }
+  .tg {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+  }
+  .unl {
+    margin-top: 12px;
+    padding: 8px 8px 0;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .ver.gone {
+    opacity: 0.6;
+  }
+  .acts {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    flex: none;
   }
   .aname {
     display: flex;

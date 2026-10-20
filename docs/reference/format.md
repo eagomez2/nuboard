@@ -31,6 +31,7 @@ path.
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
       files/...                           the artifact's files (absent for a reference)
+    artifacts/.unlinked/<name>/v<N>/      versions unlinked in the viewer, kept as they were
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
@@ -275,6 +276,13 @@ A project may hold only artifacts and no runs, such as a `datasets` project.
 A run folder copied alone keeps its record of which artifact versions it used
 but not the artifact files, and a reference keeps only the path, so the data
 has to stay where it was for the version to be usable.
+
+Unlinking a version in the viewer moves its folder, unchanged, to
+`artifacts/.unlinked/<name>/v<N>/`; restoring moves it back. Unlinked versions
+are not listed by `list_artifacts` or `nuboard artifact ls` and cannot be
+loaded with `use_artifact`, but their numbers stay taken: the next version of
+`<name>` is numbered after the highest version in either folder. Runs keep
+their `inputs` and `outputs` entries, and the viewer shows them as unlinked.
 
 ## Collections: `collections/<name>.json`
 

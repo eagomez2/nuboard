@@ -75,6 +75,7 @@ script of [Get started](get-started.md).
 | Command | What it does |
 | --- | --- |
 | `nuboard up [DIR] [--port 6070] [--host 127.0.0.1] [--open]` | Start the viewer on any folder: one run, one project, or a tree of projects. |
+| `nuboard up … [--token VALUE\|--no-token] [--edit-artifacts]` | Set or turn off the access token used off localhost, and allow adding and unlinking artifacts in the viewer. |
 | `nuboard demo [DIR] [--up] [--open]` | Write the demo workspace (default `demo-runs/`). |
 | `nuboard ls [DIR] [-q QUERY]` | List runs, filtered with the [query language](reference/query.md). |
 | `nuboard compact DIR [--force]` | Write `data.parquet` and health alerts for ended runs that lack them. |
@@ -86,4 +87,5 @@ script of [Get started](get-started.md).
 `python -m nuboard …` works too. The server binds to `127.0.0.1` by default
 and only answers requests addressed to localhost. To view runs on a remote
 machine, forward the port with `ssh -L 6070:localhost:6070 gpu-box` and run
-`nuboard up` there.
+`nuboard up` there, or run `nuboard up --host 0.0.0.0` and open the link with
+a token that it prints. See [Sharing on a network](guide/viewer.md#sharing-on-a-network).
