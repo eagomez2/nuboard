@@ -992,6 +992,9 @@ def _speech_runs(root: Path, base: float) -> None:
         )
         run.add_audio("audio/noisy", noisy, step=0, sample_rate=SPEECH_RATE, caption="input")
         run.add_audio("audio/clean", clean, step=0, sample_rate=SPEECH_RATE, caption="target")
+        # scores of the unprocessed input; convtasnet was validated on a harder split
+        run.add_scalar_baseline("val/pesq", 1.31, low=1.19, high=1.43)
+        run.add_scalar_baseline("val/si_sdr", 3.9 if model == "convtasnet" else 4.6)
         t = started
 
         for epoch in range(31):

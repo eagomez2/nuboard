@@ -659,3 +659,22 @@ def test_add_scalar_band_needs_both_bounds_and_a_single_name():
     np.testing.assert_array_equal(low, [0.5, np.nan])
     np.testing.assert_array_equal(high, [2.0, np.nan])
     assert set(reader.meta()["summary"]) == {"loss"}
+
+
+def test_add_scalar_baseline_is_saved_and_replaced():
+    run = nb.init("p", capture_env=False)
+
+    with pytest.raises(TypeError):
+        run.add_scalar_baseline("val/pesq", 2.3, high=2.5)
+
+    with pytest.raises(TypeError):
+        run.add_scalar_baseline({"val/pesq": 2.3}, low=2.1, high=2.5)
+
+    with pytest.raises(ValueError):
+        run.add_scalar_baseline("val/pesq", float("nan"))
+
+    run.add_scalar_baseline("val/pesq", 2.3, low=2.1, high=2.5)
+    run.add_scalar_baseline({"val/stoi": 0.8, "val/pesq": 2.4})
+    saved = json.loads((run.path / "run.json").read_text())["baselines"]
+    assert saved == {"val/pesq": {"value": 2.4}, "val/stoi": {"value": 0.8}}
+    run.finish()

@@ -95,6 +95,12 @@ batch into one columnar frame and appends it to the event log. Call
 `run.flush()` if you need everything on disk at a given point (rarely needed).
 See [`add_scalar`](../api/add_scalar.md) for the full reference.
 
+To compare a scalar against a fixed reference, such as the score of the
+unprocessed input, set it once with
+[`add_scalar_baseline`](../api/add_scalar_baseline.md):
+`run.add_scalar_baseline("val/pesq", 1.31)`. The chart draws it as a dashed
+line that a switch turns off.
+
 ## Text, images, audio, figures, PR curves, distributions, tables, point clouds, HTML
 
 Each kind of media has its own `add_*` method, described in full, with its

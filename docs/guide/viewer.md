@@ -206,6 +206,15 @@ are selected, every run matching the query.
   each run's line, smoothed along with it, and the inspector shows the range
   after the value. When runs are grouped, the band is the spread across runs
   instead.
+- **Baselines**: a scalar with a reference value set with
+  [`add_scalar_baseline`](../api/add_scalar_baseline.md) shows it as a dashed
+  horizontal line, with a light band for its range. Runs with the same
+  baseline (to 6 significant digits) share one gray line; a baseline only one
+  run has is dashed in that run's color. Hiding a run hides its baseline, and
+  highlighting a run highlights its baseline. Grouped charts draw the mean
+  baseline of each group. The inspector lists each baseline with the runs it
+  belongs to, the y-axis keeps every baseline in view, and the **Baseline**
+  switch (shown when a run has one) turns them off.
 - **Legend chips**: hover to highlight a series, click to hide it, and
   double-click (or Alt-click) to show only that series; soloing it again shows
   them all. **All** and **None** before the chips show or hide every series, so

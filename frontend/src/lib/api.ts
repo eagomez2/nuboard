@@ -1,3 +1,4 @@
+import type { Baseline } from './baselines';
 import { tableFromIPC } from 'apache-arrow';
 
 export type Num = number | 'nan' | 'inf' | '-inf' | null;
@@ -101,6 +102,8 @@ export interface RunBrief {
   group: string | null;
   summary: Record<string, MetricSummary>;
   metric_count: number;
+  /** Scalars that have a baseline set with `add_scalar_baseline`. */
+  baselines?: string[];
   nonfinite: string[];
   commit: string | null;
   dirty: boolean;
@@ -219,6 +222,8 @@ export interface SeriesMeta {
   n?: number;
   /** Logged with `low` and `high`: `lo` and `hi` are those bounds, drawn as a band. */
   band?: boolean;
+  /** Set with `add_scalar_baseline`; for a group, the mean over its runs that have one. */
+  baseline?: Baseline | null;
   last: number | null;
   nonfinite: boolean;
 }

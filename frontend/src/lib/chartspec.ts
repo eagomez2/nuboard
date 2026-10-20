@@ -11,6 +11,8 @@ export interface ChartSpec {
   raw: boolean;
   robust: boolean;
   log: boolean;
+  /** Draw baselines (absent in older specs: on). */
+  base: boolean;
   zoom: [number, number] | null;
   hidden: string[];
 }
@@ -22,6 +24,7 @@ export function encodeSpec(s: ChartSpec): string {
   if (!s.raw) p.set('raw', '0');
   if (!s.robust) p.set('robust', '0');
   if (s.log) p.set('log', '1');
+  if (!s.base) p.set('base', '0');
   if (s.zoom) p.set('zoom', `${s.zoom[0]}~${s.zoom[1]}`);
   if (s.hidden.length) p.set('hide', s.hidden.join('\n'));
   return p.toString();
@@ -43,6 +46,7 @@ export function decodeSpec(text: string): ChartSpec | null {
     raw: p.get('raw') !== '0',
     robust: p.get('robust') !== '0',
     log: p.get('log') === '1',
+    base: p.get('base') !== '0',
     zoom: z.length === 2 && z.every(Number.isFinite) ? [z[0], z[1]] : null,
     hidden: (p.get('hide') ?? '').split('\n').filter(Boolean),
   };
@@ -60,6 +64,7 @@ export function chartsParams(s: ChartSpec): Record<string, string | null> {
     raw: s.raw ? null : '0',
     robust: s.robust ? null : '0',
     log: s.log ? '1' : null,
+    base: s.base ? null : '0',
     zoom: s.zoom ? `${s.zoom[0]}~${s.zoom[1]}` : null,
   };
 }

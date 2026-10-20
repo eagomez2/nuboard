@@ -7,6 +7,7 @@ import dataclasses
 import datetime as _dt
 import glob
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -24,7 +25,7 @@ from . import _format as fmt
 from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
 from ._system import SystemMonitor, parse_groups
-from ._writer import Writer
+from ._writer import Writer, _to_float
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
 
@@ -698,6 +699,69 @@ class Run:
 
         if writer is not None:
             writer.queue.append((0, step, _now() if time is None else time, data))
+
+    def add_scalar_baseline(
+        self,
+        key: str | Mapping[str, Any],
+        value: Any = None,
+        *,
+        low: Any = None,
+        high: Any = None,
+    ) -> None:
+        """Set a reference value drawn on a scalar's chart, such as the unprocessed input's score.
+
+        The baseline belongs to the scalar logged under the same name with
+        `add_scalar`; logging it again replaces it. It is saved in `run.json`
+        right away. On ranks other than 0 the call is a no-op.
+
+        Args:
+            key: The scalar's name, such as `"val/pesq"`, or a dict of names
+                and values to set several at once.
+            value: The reference value, for a single name.
+            low: Optional lower bound of a range around the value, such as
+                `mean - std`. Given together with `high`.
+            high: Optional upper bound, such as `mean + std`.
+
+        Raises:
+            TypeError: If `key` is a name and `value` is missing, if only one of
+                `low` and `high` is given, or if they are given with a dict.
+            ValueError: If a value is not finite.
+
+        Example:
+            >>> run.add_scalar_baseline("val/pesq", 2.31)
+            >>> run.add_scalar_baseline("val/stoi", 0.87, low=0.84, high=0.90)
+            >>> run.add_scalar_baseline({"val/pesq": 2.31, "val/stoi": 0.87})
+        """
+
+        if isinstance(key, Mapping):
+            if low is not None or high is not None:
+                raise TypeError("add_scalar_baseline takes low and high only with a single name")
+
+            items = {str(k): {"value": v} for k, v in key.items()}
+        elif value is None:
+            raise TypeError(f"add_scalar_baseline({key!r}) needs a value")
+        elif (low is None) != (high is None):
+            raise TypeError(f"add_scalar_baseline({key!r}) needs both low and high, or neither")
+        else:
+            items = {key: {"value": value, "low": low, "high": high}}
+
+        baselines: dict[str, dict[str, float]] = {}
+
+        for name, parts in items.items():
+            entry = {k: _to_float(v) for k, v in parts.items() if v is not None}
+
+            if not all(math.isfinite(v) for v in entry.values()):
+                raise ValueError(f"the baseline of {name!r} must be finite: {entry}")
+
+            baselines[name] = entry
+
+        if not self.dist.is_main:
+            return
+
+        with self._meta_lock:
+            self._meta.setdefault("baselines", {}).update(baselines)
+
+        self._save_meta()
 
     def add_text(
         self,

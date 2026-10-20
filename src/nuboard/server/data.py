@@ -324,6 +324,39 @@ class Store:
 
         return x, v, lo, hi, band
 
+    def _baseline(self, keys: list[str], metric: str) -> dict[str, float] | None:
+        """Return the baseline of `metric` set with `add_scalar_baseline`, averaged over `keys`.
+
+        Args:
+            keys: Catalog keys of the runs.
+            metric: Metric name.
+
+        Returns:
+            `{"value", "low", "high"}`, each the mean over the runs that set it
+            (`low` and `high` left out when no run set them), or None if no run
+            has a baseline for `metric`.
+        """
+        found = []
+
+        for key in keys:
+            b = ((self.catalog.get(key) or {}).get("baselines") or {}).get(metric)
+
+            if isinstance(b, dict) and isinstance(b.get("value"), (int, float)):
+                found.append(b)
+
+        if not found:
+            return None
+
+        out = {}
+
+        for field in ("value", "low", "high"):
+            vals = [b[field] for b in found if isinstance(b.get(field), (int, float))]
+
+            if vals:
+                out[field] = sum(vals) / len(vals)
+
+        return out
+
     def chart(
         self,
         keys: list[str],
@@ -363,8 +396,10 @@ class Store:
             metadata holds `metric`, `x` and `series`, a JSON list with each
             series' label, runs, group value, group size (`n`, grouped only),
             whether `lo` and `hi` are logged bounds to draw as a band (`band`,
-            ungrouped only), last finite value and whether it has non-finite
-            values.
+            ungrouped only), the scalar's baseline (`baseline`: `value` and
+            optionally `low` and `high`, or None; for a group, the mean over
+            its runs that have one), last finite value and whether it has
+            non-finite values.
         """
         series_meta: list[dict[str, Any]] = []
         cols: dict[str, list[np.ndarray]] = {c: [] for c in ("series", "x", "y", "lo", "hi")}
@@ -403,7 +438,13 @@ class Store:
                     label = f"{label} ({key.rsplit('_', 1)[-1]})"
 
                 add(
-                    {"label": label, "runs": [key], "group": None, "band": band},
+                    {
+                        "label": label,
+                        "runs": [key],
+                        "group": None,
+                        "band": band,
+                        "baseline": self._baseline([key], metric),
+                    },
                     xb,
                     yb,
                     lob,
@@ -447,6 +488,7 @@ class Store:
                         "runs": members,
                         "group": _jsonable(values[label]),
                         "n": len(members),
+                        "baseline": self._baseline(members, metric),
                     },
                     stats["x"][keep],
                     center[keep],

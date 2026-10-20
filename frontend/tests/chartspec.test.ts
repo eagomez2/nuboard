@@ -13,12 +13,17 @@ describe('chart specs', () => {
       raw: false,
       robust: true,
       log: true,
+      base: false,
       zoom: [10, 20.5],
       hidden: ['lr=1e-3', 'a b'],
     };
     const text = encodeSpec(s);
     expect(text).not.toMatch(/["\s)]/); // safe inside a Markdown image title
     expect(decodeSpec(text)).toEqual(s);
+  });
+
+  it('draws baselines in specs saved before they existed', () => {
+    expect(decodeSpec('metric=loss&runs=a')?.base).toBe(true);
   });
 
   it('rejects specs without a metric or runs', () => {

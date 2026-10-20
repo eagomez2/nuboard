@@ -5,6 +5,7 @@
 import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
+import { baselineExtent, baselineLines } from './baselines';
 import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
 import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
@@ -210,8 +211,17 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
   });
   if (!series.length) return null;
   needs.libs.add('uplot');
-  const range = spec.robust && !spec.log ? robustRange(ys) : null;
-  const json = JSON.stringify({ xKind: data.xKind, log: spec.log, zoom: spec.zoom, range, series });
+  const lines = spec.base ? baselineLines(data.series, hidden) : [];
+  const extent = baselineExtent(lines, spec.log);
+  let range = spec.robust && !spec.log ? robustRange(ys) : null;
+  if (range && extent) range = [Math.min(range[0], extent[0]), Math.max(range[1], extent[1])];
+  const baselines = lines.map((l) => ({
+    value: l.value,
+    low: l.low ?? null,
+    high: l.high ?? null,
+    c: l.series.length === 1 ? l.series[0] % 8 : null,
+  }));
+  const json = JSON.stringify({ xKind: data.xKind, log: spec.log, zoom: spec.zoom, range, extent, baselines, series });
   const sub = spec.group ? `grouped by ${spec.group}` : `${spec.runs.length} runs`;
   const legend = series
     .map((x) => `<span><i style="background:var(--s${x.c + 1})"></i>${esc(x.label)}</span>`)
@@ -302,6 +312,44 @@ function nbCharts() {
       const axis = { stroke: v('--muted'), grid: { stroke: v('--grid'), width: 1 }, ticks: { show: false }, font: '12px ui-monospace,Menlo,monospace' };
       const y = { distr: d.log ? 3 : 1 };
       if (d.range) y.range = () => d.range;
+      else if (d.extent) y.range = (u, min, max) => {
+        min = Math.min(min, d.extent[0]);
+        max = Math.max(max, d.extent[1]);
+        if (d.log) return [Math.max(min, 1e-12), max];
+        const pad = (max - min || Math.abs(max) || 1) * 0.06;
+        return [min - pad, max + pad];
+      };
+      const drawBaselines = (u) => {
+        const ctx = u.ctx;
+        const dpr = devicePixelRatio;
+        const left = u.bbox.left, right = left + u.bbox.width, top = u.bbox.top, bottom = top + u.bbox.height;
+        const clamp = (p) => Math.min(Math.max(p, top), bottom);
+        ctx.save();
+        for (const b of d.baselines || []) {
+          if (d.log && b.value <= 0) continue;
+          const color = b.c === null ? v('--muted') || '#888' : v('--s' + (b.c + 1)) || '#0072b2';
+          if (b.low !== null && b.high !== null && (!d.log || b.low > 0)) {
+            const a = clamp(u.valToPos(b.high, 'y', true));
+            ctx.fillStyle = alpha(color, 0.09);
+            ctx.fillRect(left, a, right - left, clamp(u.valToPos(b.low, 'y', true)) - a);
+          }
+          const py = Math.round(u.valToPos(b.value, 'y', true));
+          if (py < top || py > bottom) continue;
+          ctx.strokeStyle = alpha(color, 0.9);
+          ctx.lineWidth = 1.5 * dpr;
+          ctx.setLineDash([6 * dpr, 4 * dpr]);
+          ctx.beginPath();
+          ctx.moveTo(left, py);
+          ctx.lineTo(right, py);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = color;
+          ctx.font = 11 * dpr + 'px ui-monospace,Menlo,monospace';
+          ctx.textAlign = 'right';
+          ctx.fillText('Baseline', right - 6 * dpr, py - 5 * dpr);
+        }
+        ctx.restore();
+      };
       if (nbDrawn.has(el)) nbDrawn.get(el).destroy();
       el.innerHTML = '';
       const u = new uPlot({
@@ -309,6 +357,7 @@ function nbCharts() {
         scales: { x: { time: d.xKind === 'time' }, y },
         axes: [Object.assign({ size: 40 }, axis), Object.assign({ size: 56 }, axis)],
         cursor: { drag: { x: true, y: false }, points: { show: false } },
+        hooks: { draw: [drawBaselines] },
       }, tables.length === 1 ? tables[0] : uPlot.join(tables), el);
       if (d.zoom) u.setScale('x', { min: d.zoom[0], max: d.zoom[1] });
       nbDrawn.set(el, u);
