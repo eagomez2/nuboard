@@ -17,12 +17,32 @@
   border-color: color-mix(in srgb, var(--text) 16%, transparent);
 }
 .nbwf-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  /* fixed places, so no control moves when a selection comes or goes: play, time, the selection's
+     controls (which wrap within their own cell), the zoom buttons; then the readout, a row of its own */
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  /* top-aligned: a selection whose controls wrap grows its own cell, not the others' positions */
+  align-items: start;
   gap: 4px 10px;
   min-height: 30px;
   font-size: 12px;
+}
+.nbwf-bar > .nbwf-sel {
+  grid-column: 3;
+  grid-row: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-self: start;
+  min-height: 30px;
+}
+.nbwf-bar > .nbwf-view {
+  grid-column: 4;
+  grid-row: 1;
+  align-items: center;
+  min-height: 30px;
+}
+.nbwf-bar > .nbwf-sel[hidden] {
+  display: none;
 }
 .nbwf-play {
   width: 30px;
@@ -56,11 +76,11 @@
 }
 .nbwf-time {
   flex: none;
+  line-height: 30px;
 }
 .nbwf-read {
-  /* a row of its own under the controls, so the values have the plot's width */
-  order: 1;
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  grid-row: 2;
   min-height: 18px;
   min-width: 0;
   overflow: hidden;
@@ -90,7 +110,6 @@
   display: flex;
   gap: 4px;
   flex: none;
-  margin-left: auto;
 }
 .nbwf-zoom button {
   height: 26px;
