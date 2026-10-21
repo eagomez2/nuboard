@@ -58,8 +58,10 @@
   flex: none;
 }
 .nbwf-read {
-  /* on its own line when the plot is narrow */
-  flex: 1 1 260px;
+  /* a row of its own under the controls, so the values have the plot's width */
+  order: 1;
+  flex: 1 1 100%;
+  min-height: 18px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -103,6 +105,87 @@
 }
 .nbwf-zoom button:hover {
   border-color: var(--nbwf-accent);
+}
+.nbwf-zoom button.on {
+  color: var(--nbwf-accent);
+  border-color: var(--nbwf-accent);
+}
+.nbwf-seltext {
+  align-self: center;
+  font-family: var(--nbwf-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.nbwf-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.nbwf-form[hidden] {
+  display: none;
+}
+.nbwf-form input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.nbwf-form button {
+  height: 26px;
+  padding: 0 9px;
+  font: 12px var(--nbwf-mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nbwf-form button[type='submit'] {
+  color: var(--panel);
+  background: var(--nbwf-accent);
+  border-color: var(--nbwf-accent);
+}
+/* notes added in the viewer, above the plot */
+.nbwf-notes {
+  position: relative;
+}
+.nbwf-notes[hidden] {
+  display: none;
+}
+.nbwf-note {
+  position: absolute;
+  height: 17px;
+  padding: 0 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font: 11px var(--nbwf-mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--nbwf-accent) 14%, transparent);
+  border: 0;
+  border-left: 2px solid var(--nbwf-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.nbwf-note:hover,
+.nbwf-note.active {
+  background: color-mix(in srgb, var(--nbwf-accent) 28%, transparent);
+}
+/* region tracks logged with the figure, under the plot */
+.nbwf-tracks {
+  display: block;
+  width: 100%;
+}
+.nbwf .u-select {
+  background: color-mix(in srgb, var(--nbwf-accent) 16%, transparent);
 }
 .nbwf-plot {
   position: relative;

@@ -131,7 +131,7 @@ var part=function(n){return box.querySelector('script[data-part='+n+']').textCon
 var bytes=function(b){var s=atob(b),u=new Uint8Array(s.length);for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
 var a=part('audio'),w=bytes(a),g=bytes(part('signals')),all=new Uint8Array(w.length+g.length);all.set(w);all.set(g,w.length);
 var m=JSON.parse(box.dataset.meta);
-mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,audioSrc:'data:audio/wav;base64,'+a});
+mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,regions:m.regions,notes:m.notes,audioSrc:'data:audio/wav;base64,'+a});
 });`;
 
 /** Base64 of `bytes`, a chunk at a time (a spread of millions of arguments would overflow the stack). */
@@ -486,11 +486,19 @@ async function mediaHtml(
     const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
     const offset = item.audio_bytes ?? 0;
     const names = item.signals ?? [];
-    const info = { names, range: item.range ?? [-1, 1], samples: item.samples ?? 0, caption: item.caption ?? null };
+    const info = {
+      names,
+      range: item.range ?? [-1, 1],
+      samples: item.samples ?? 0,
+      caption: item.caption ?? null,
+      regions: item.regions ?? null,
+      notes: item.notes ?? [],
+    };
     body =
       `<div class="nbwavefig" data-meta="${esc(JSON.stringify(info))}">` +
       `<script type="application/octet-stream" data-part="audio">${base64(bytes.subarray(0, offset))}</script>` +
-      `<script type="application/octet-stream" data-part="signals">${base64(bytes.subarray(offset))}</script></div>`;
+      `<script type="application/octet-stream" data-part="signals">${base64(bytes.subarray(offset))}</script></div>` +
+      notesList(item.notes ?? []);
   } else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;

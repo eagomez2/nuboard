@@ -7,7 +7,7 @@ Example:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from typing import Any
 
 
@@ -29,6 +29,13 @@ class WaveformFigure:
             the waveform's own axis, -1 to 1 (full scale), so a signal lines up
             with the samples: an envelope traces the waveform and a
             probability of 1 reaches full scale.
+        regions: Optional labelled time regions logged with the figure, such as
+            the target and predicted classes of a classifier, as a dict of
+            tracks by name. A track is a list of `(start, end, label)` in
+            seconds, or `(ids, names, frame)`: a class id per frame, the class
+            names and the frame length in seconds. Each track is drawn in its
+            own lane, each label in its own color; notes added in the viewer
+            are kept apart from them.
         caption: Optional caption shown with the figure.
 
     Example:
@@ -38,5 +45,7 @@ class WaveformFigure:
     audio: Any
     sample_rate: int
     signals: Any
+    _: KW_ONLY
     range: tuple[float, float] | None = None
+    regions: dict[str, Any] | None = None
     caption: str | None = None
