@@ -176,6 +176,13 @@ test('media page plots waveform figures, with exact values, region lanes, select
   // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
   await over.hover({ position: { x: box.width / 2, y: 20 } });
   await expect(readout).toContainText(/0:01\.1[5-9]/);
+  // the demo's live run makes the page fetch its media again every few seconds: the figure keeps its
+  // zoom and selection (it is not mounted again for an equal item)
+  await fig.evaluate((el) => (el.dataset.kept = 'yes'));
+  await page.waitForTimeout(5000);
+  await expect(fig).toHaveAttribute('data-kept', 'yes');
+  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await expect(readout).toContainText(/0:01\.1[5-9]/);
   await fig.getByRole('button', { name: 'Fit' }).click();
   await over.hover({ position: { x: box.width / 2 + 1, y: 20 } });
   await expect(readout).toContainText(/0:01\.(29|30)/);
