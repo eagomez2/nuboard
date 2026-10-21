@@ -8,6 +8,13 @@
   gap: 4px;
   min-width: 0;
   color: var(--text);
+  /* boxed like the audio player (audio/player.css), in the viewer and in an export alike */
+  border: 1px solid color-mix(in srgb, var(--text) 13%, transparent);
+  border-radius: 0.6rem;
+  padding: 8px 10px 6px;
+}
+:root[data-theme='dark'] .nbwf {
+  border-color: color-mix(in srgb, var(--text) 16%, transparent);
 }
 .nbwf-bar {
   display: flex;
