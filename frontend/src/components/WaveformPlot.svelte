@@ -1,9 +1,9 @@
 <script lang="ts">
   import uPlot from 'uplot';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { waveformKit } from '../lib/waveform';
-  import { mountWaveform } from '../lib/waveplot';
+  import { mountWaveform, type WaveformNote } from '../lib/waveplot';
   import '../lib/waveplot.css';
 
   /**
@@ -19,6 +19,9 @@
     samples,
     caption = null,
     height = 240,
+    regions = null,
+    notes = [],
+    onnotes,
   }: {
     url: string;
     title: string;
@@ -30,12 +33,17 @@
     samples: number;
     caption?: string | null;
     height?: number;
+    /** Labelled regions logged with the figure, by track. */
+    regions?: Record<string, [number, number, string][]> | null;
+    /** Notes added in the viewer; `onnotes` gets the new list after each change. */
+    notes?: WaveformNote[];
+    onnotes?: (notes: WaveformNote[]) => void;
   } = $props();
 
   const kit = waveformKit();
   let box: HTMLDivElement;
   let error = $state('');
-  let mounted: { restyle: () => void; destroy: () => void } | null = null;
+  let mounted: ReturnType<typeof mountWaveform> | null = null;
   let audioUrl = '';
 
   function unmount() {
@@ -48,7 +56,16 @@
   // load the item: a new one (the step slider) starts at the whole clip
   $effect(() => {
     const target = url;
-    const opts = { offset, names: $state.snapshot(names), range: $state.snapshot(range), samples, caption, height };
+    const opts = {
+      offset,
+      names: $state.snapshot(names),
+      range: $state.snapshot(range),
+      samples,
+      caption,
+      height,
+      regions: $state.snapshot(regions),
+      onnotes,
+    };
     error = '';
     fetch(target)
       .then((r) => {
@@ -59,9 +76,16 @@
         if (target !== url) return;
         unmount();
         audioUrl = URL.createObjectURL(new Blob([buffer.slice(0, opts.offset)], { type: 'audio/wav' }));
-        mounted = mountWaveform(box, kit, uPlot, { buffer, audioSrc: audioUrl, ...opts });
+        // the notes as they are now; later changes go to setNotes below
+        const current = untrack(() => $state.snapshot(notes));
+        mounted = mountWaveform(box, kit, uPlot, { buffer, audioSrc: audioUrl, notes: current, ...opts });
       })
       .catch((e) => (error = `Could not load the waveform: ${e instanceof Error ? e.message : e}`));
+  });
+
+  $effect(() => {
+    const next = $state.snapshot(notes);
+    untrack(() => mounted?.setNotes(next));
   });
 
   // the app's own colors changed (the light/dark switch is followed by the plot itself)

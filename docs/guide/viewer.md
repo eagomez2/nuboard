@@ -369,12 +369,14 @@ signals))` is drawn as a plot of the samples with each signal over it, accurate
 at every zoom: each pixel column draws the first, smallest, largest and last
 sample under it, recomputed as you zoom, so long files stay fast and single
 samples show when zoomed in. Hovering shows the time, sample index and exact
-values. Drag to zoom in, Ctrl/⌘ + wheel zooms, Shift + wheel scrolls, the
-overview below the plot moves the view, and double-click shows it all. The
-play button plays the clip from where you click. It has no spectrogram or
-notes; [Audio](#audio) has those. See
+values, and the label of each region track logged with the figure (drawn in
+lanes under the plot, a row per class where classes overlap). Drag to select a
+section, then loop it, zoom to it or add a **Note**; notes show in a lane above
+the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
+double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
+the view. The play button plays the clip, or the selection, from where you
+click. It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
-
 
 ### Tables
 

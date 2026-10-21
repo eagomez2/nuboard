@@ -125,6 +125,9 @@
     samples={item.samples ?? 0}
     caption={item.caption}
     height={tall ? 460 : 240}
+    regions={item.regions}
+    {notes}
+    onnotes={saveNotes}
   />
 {:else if item.mime === TABLE_MIME}
   <TableView {runKey} {runName} {item} />

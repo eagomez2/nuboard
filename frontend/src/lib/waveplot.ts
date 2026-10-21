@@ -7,6 +7,14 @@ import type { waveformKit } from './waveform';
 
 type Kit = ReturnType<typeof waveformKit>;
 
+/** A note on a section of the clip, added in the viewer (as on audio, in the run's annotations.json). */
+export interface WaveformNote {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface WaveformInput {
   /** The item's bytes: the WAV, then `samples` float32 values per signal. */
   buffer: ArrayBuffer;
@@ -20,21 +28,28 @@ export interface WaveformInput {
   audioSrc: string;
   caption?: string | null;
   height?: number;
+  /** Labelled regions logged with the figure, `[start, end, label]` in seconds, by track. */
+  regions?: Record<string, [number, number, string][]> | null;
+  notes?: WaveformNote[];
+  /** Called with the new list when a note is added, edited or deleted; without it notes are read-only. */
+  onnotes?: (notes: WaveformNote[]) => void;
 }
 
 /**
  * Draw a waveform figure in `box`: the samples with each signal over them, accurate at every zoom
- * (M4, see lib/waveform.ts), with the values at a sample under the pointer. Drag or Ctrl/⌘ + wheel
- * zooms, Shift + wheel scrolls, − / + / Fit and double-click change the zoom, the overview below moves
- * the view, and the play button plays the clip from where the plot was clicked. It uses nothing from
- * outside itself, so an export embeds it as text (`mountWaveform.toString()`).
+ * (M4, see lib/waveform.ts), with the values at a sample under the pointer, the region tracks logged
+ * with it in lanes under the plot, and the notes added in the viewer in a lane above it. Dragging
+ * selects a section, to zoom to, loop or note; − / + / Fit, Ctrl/⌘ + wheel and double-click zoom,
+ * Shift + wheel scrolls, the overview moves the view, and the play button plays from where the plot
+ * was clicked (or the selection). It uses nothing from outside itself, so an export embeds it as
+ * text (`mountWaveform.toString()`).
  */
 export function mountWaveform(
   box: HTMLElement,
   kit: Kit,
   UPlot: typeof uPlot,
   input: WaveformInput,
-): { restyle: () => void; destroy: () => void } {
+): { restyle: () => void; setNotes: (notes: WaveformNote[]) => void; destroy: () => void } {
   const data = kit.parseWaveform(input.buffer, input.offset, input.names, input.samples);
   const values = [...data.channels, ...data.signals];
   const pyramids = values.map((v) => new kit.Pyramid(v));
@@ -44,12 +59,20 @@ export function mountWaveform(
   const labels = [...(nch > 1 ? data.channels.map((_, c) => `ch ${c + 1}`) : ['audio']), ...input.names];
   const own = input.range[0] !== -1 || input.range[1] !== 1;
   const height = input.height ?? 240;
+  const tracks = Object.entries(input.regions ?? {});
+  const editable = !!input.onnotes;
+  let notes: WaveformNote[] = [];
   let view: [number, number] = [0, duration];
+  let sel: [number, number] | null = null;
+  let looping = false;
+  let hoverT: number | null = null;
   let plot: uPlot | null = null;
   let frame = 0;
   let dots: HTMLElement[] = [];
+  let editing: string | null = null;
 
-  // the widget: toolbar, plot, overview, legend and caption, and the audio it plays
+  // the widget: toolbar, note form, notes lane, plot, region lanes, overview, legend and caption, and
+  // the audio it plays
   const el = (tag: string, cls?: string, text?: string) => {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -58,25 +81,37 @@ export function mountWaveform(
   };
   const icon = (cls: string, d: string) =>
     `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
-  const root = el('div', 'nbwf');
-  const bar = el('div', 'nbwf-bar');
-  const play = el('button', 'nbwf-play') as HTMLButtonElement;
-  play.type = 'button';
-  play.setAttribute('aria-label', 'Play');
-  play.title = 'Play / pause (click the plot to set where)';
-  play.innerHTML = icon('nbwf-go', 'M8 5.5v13l10.5-6.5z') + icon('nbwf-pause', 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
-  const time = el('span', 'nbwf-time');
-  const read = el('span', 'nbwf-read');
-  const zoomBox = el('span', 'nbwf-zoom');
-  const button = (text: string, label: string, onclick: () => void) => {
+  const button = (parent: HTMLElement, text: string, label: string, onclick: () => void) => {
     const b = el('button', '', text) as HTMLButtonElement;
     b.type = 'button';
     if (text !== label) b.setAttribute('aria-label', label);
     b.title = label;
     b.addEventListener('click', onclick);
-    zoomBox.appendChild(b);
+    parent.appendChild(b);
+    return b;
   };
+  const root = el('div', 'nbwf');
+  const bar = el('div', 'nbwf-bar');
+  const play = el('button', 'nbwf-play') as HTMLButtonElement;
+  play.type = 'button';
+  play.setAttribute('aria-label', 'Play');
+  play.title = 'Play / pause (click the plot to set where, or select a section)';
+  play.innerHTML = icon('nbwf-go', 'M8 5.5v13l10.5-6.5z') + icon('nbwf-pause', 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
+  const time = el('span', 'nbwf-time');
+  const read = el('span', 'nbwf-read');
+  const selBox = el('span', 'nbwf-sel nbwf-zoom');
+  const selText = el('span', 'nbwf-seltext');
+  const zoomBox = el('span', 'nbwf-zoom');
+  const form = el('form', 'nbwf-form') as HTMLFormElement;
+  const formTime = el('span', 'nbwf-seltext');
+  const noteText = el('input') as HTMLInputElement;
+  noteText.type = 'text';
+  noteText.placeholder = 'Note for this section (Enter to save, Esc to cancel)';
+  noteText.setAttribute('aria-label', 'Note text');
+  const notesLane = el('div', 'nbwf-notes');
   const plotEl = el('div', 'nbwf-plot');
+  const lanes = el('canvas', 'nbwf-tracks') as HTMLCanvasElement;
+  lanes.setAttribute('aria-label', `Regions: ${tracks.map(([name]) => name).join(', ')}`);
   const overview = el('canvas', 'nbwf-overview') as HTMLCanvasElement;
   overview.setAttribute('aria-label', 'Overview of the clip; drag to move the view');
   const cap = el('div', 'nbwf-cap');
@@ -84,16 +119,35 @@ export function mountWaveform(
   audio.preload = 'auto';
   audio.hidden = true;
   audio.src = input.audioSrc;
-  bar.append(play, time, read, zoomBox);
-  root.append(bar, plotEl, overview, cap, audio);
+  bar.append(play, time, read, selBox, zoomBox);
+  root.append(bar, form, notesLane, plotEl);
+  if (tracks.length) root.append(lanes);
+  root.append(overview, cap, audio);
   box.replaceChildren(root);
 
   const css = (name: string) => getComputedStyle(root).getPropertyValue(name).trim();
   const alpha = (color: string, a: string) => (/^#[0-9a-f]{6}$/i.test(color) ? color + a : color);
-  const colorOf = (k: number) => (k < nch ? 'var(--muted)' : `var(--s${((k - nch + 1) % 8) + 1})`);
-  const swatch = (k: number) => {
+  const seriesVar = (k: number) => (k < nch ? 'var(--muted)' : `var(--s${((k - nch + 1) % 8) + 1})`);
+  // the labels' colors: picked from each label's text among the colors no signal uses, so a label
+  // keeps its color in every lane, run and step, and two labels of the figure never share one
+  const hash = (text: string) => {
+    let h = 0;
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  };
+  const free = [1, 2, 3, 4, 5, 6, 7, 8].filter((c) => !input.names.some((_, k) => ((k + 1) % 8) + 1 === c));
+  const labelColor = new Map<string, number>();
+  const classes = [...new Set(tracks.flatMap(([, segs]) => segs.map((g) => g[2])))];
+  for (const label of [...classes].sort((a, b) => hash(a) - hash(b) || (a < b ? -1 : 1))) {
+    const taken = new Set(labelColor.values());
+    let c = hash(label) % free.length;
+    for (let k = 0; k < free.length && taken.has(free[c]); k++) c = (c + 1) % free.length;
+    labelColor.set(label, free[c]);
+  }
+  const labelVar = (label: string) => `--s${labelColor.get(label) ?? 1}`;
+  const swatch = (color: string) => {
     const i = el('i', 'nbwf-sw');
-    i.style.background = colorOf(k);
+    i.style.background = color;
     return i;
   };
   const clock = (t: number, digits: number) => {
@@ -109,16 +163,56 @@ export function mountWaveform(
     const a = Math.abs(v);
     return a !== 0 && (a < 1e-3 || a >= 1e5) ? v.toExponential(3) : String(Number(v.toPrecision(5)));
   };
+  /** The segment of a track at time `t`, if any (segments are in time order). */
+  const segmentAt = (segments: [number, number, string][], t: number) => {
+    let lo = 0;
+    let hi = segments.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (segments[mid][1] <= t) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    for (let k = lo; k < segments.length && segments[k][0] <= t; k++) if (segments[k][1] > t) return segments[k];
+    return null;
+  };
+  // each track's rows: one row of all its segments, or, when they overlap (labels that can be on at
+  // once), one row per label, as in a piano roll
+  type Segment = [number, number, string];
+  const trackRows = tracks.map(([name, segments]) => {
+    let end = -Infinity;
+    let overlap = false;
+    for (const g of segments) {
+      if (g[0] < end - 1e-9) overlap = true;
+      end = Math.max(end, g[1]);
+    }
+    if (!overlap) return { name, rows: [segments] };
+    const byLabel = new Map<string, Segment[]>();
+    for (const g of segments) byLabel.set(g[2], [...(byLabel.get(g[2]) ?? []), g]);
+    return { name, rows: [...byLabel.values()] };
+  });
+  /** The segments of a track at time `t`, one per row at most. */
+  const activeAt = (rows: Segment[][], t: number) => rows.map((r) => segmentAt(r, t)).filter((g): g is Segment => !!g);
   const showTime = () => (time.textContent = `${clock(audio.currentTime, 3)} / ${clock(duration, 3)}`);
   const hint = () =>
     read.replaceChildren(
-      el('span', 'nbwf-hint', 'Drag to zoom · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all'),
+      el(
+        'span',
+        'nbwf-hint',
+        `Drag to select${editable ? ' and note' : ''} · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all`,
+      ),
     );
+  /** Horizontal position in the plot element of time `t`, in CSS pixels. */
+  const xOf = (t: number) => (plot ? plot.bbox.left / devicePixelRatio + plot.valToPos(t, 'x') : 0);
 
-  // the legend and the caption, with the clip's length and rate
+  // the legend (signals, then the labels of the regions) and the caption, with the clip's length and rate
   input.names.forEach((name, k) => {
     const s = el('span', 'nbwf-sig');
-    s.append(swatch(nch + k), name);
+    s.append(swatch(seriesVar(nch + k)), name);
+    cap.append(s);
+  });
+  classes.forEach((label) => {
+    const s = el('span', 'nbwf-sig');
+    s.append(swatch(`var(${labelVar(label)})`), label);
     cap.append(s);
   });
   cap.append([input.caption, `${duration.toFixed(2)} s`, `${rate / 1000} kHz`].filter(Boolean).join(' · '));
@@ -180,6 +274,144 @@ export function mountWaveform(
     ctx.strokeRect(a + 0.5, 0.5, Math.max(2, b - a) - 1, h - 1);
   };
 
+  // the region tracks, one lane each under the plot (a row per label when labels overlap): the track's
+  // name in the axis gutter, then its segments in the color of their label, named when there is room
+  const LANE = 18;
+  const drawLanes = () => {
+    if (!plot || !tracks.length) return;
+    const dpr = devicePixelRatio;
+    const width = lanes.clientWidth;
+    const h = trackRows.reduce((n, t) => n + t.rows.length, 0) * LANE + (trackRows.length - 1) * 4;
+    lanes.width = Math.round(width * dpr);
+    lanes.height = Math.round(h * dpr);
+    lanes.style.height = `${h}px`;
+    const ctx = lanes.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+    const left = plot.bbox.left / dpr;
+    const right = left + plot.bbox.width / dpr;
+    ctx.font = `11px ${css('--nbwf-mono')}`;
+    ctx.textBaseline = 'middle';
+    let y = 0;
+    for (const { name, rows } of trackRows) {
+      ctx.fillStyle = css('--faint');
+      ctx.textAlign = 'right';
+      ctx.fillText(name, left - 6, y + LANE / 2, left - 8);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(left, y, right - left, rows.length * LANE);
+      ctx.clip();
+      ctx.textAlign = 'left';
+      for (const row of rows) {
+        for (const [start, end, label] of row) {
+          if (end < view[0] || start > view[1]) continue;
+          const a = Math.max(left, xOf(start));
+          const b = Math.min(right, xOf(end));
+          const color = css(labelVar(label)) || '#888888';
+          ctx.fillStyle = alpha(color, '4d');
+          ctx.fillRect(a, y + 2, Math.max(1, b - a), LANE - 4);
+          ctx.fillStyle = color;
+          ctx.fillRect(a, y + 2, Math.min(2, Math.max(1, b - a)), LANE - 4);
+          if (b - a > ctx.measureText(label).width + 10) {
+            ctx.fillStyle = css('--text');
+            ctx.fillText(label, a + 5, y + LANE / 2, b - a - 8);
+          }
+        }
+        y += LANE;
+      }
+      ctx.restore();
+      y += 4;
+    }
+    if (hoverT !== null && hoverT >= view[0] && hoverT <= view[1]) {
+      ctx.fillStyle = css('--muted');
+      ctx.fillRect(Math.round(xOf(hoverT)), 0, 1, h);
+    }
+  };
+
+  // the notes: chips in rows above the plot (overlapping notes stack, extra ones share the last row)
+  const NOTE_ROWS = 3;
+  const NOTE_ROW = 20;
+  const drawNotes = () => {
+    notesLane.replaceChildren();
+    notesLane.hidden = !notes.length;
+    if (!plot || !notes.length) return;
+    const ends: number[] = [];
+    const left = plot.bbox.left / devicePixelRatio;
+    const right = left + plot.bbox.width / devicePixelRatio;
+    for (const n of [...notes].sort((a, b) => a.start - b.start || a.end - b.end)) {
+      let row = ends.findIndex((end) => end <= n.start);
+      if (row < 0) row = Math.min(ends.length, NOTE_ROWS - 1);
+      ends[row] = Math.max(ends[row] ?? 0, n.end);
+      const a = xOf(n.start);
+      const b = Math.max(xOf(n.end), a + 14);
+      if (b < left || a > right) continue;
+      const chip = el('button', 'nbwf-note', n.text) as HTMLButtonElement;
+      chip.type = 'button';
+      chip.title = `${clock(n.start, 3)} – ${clock(n.end, 3)}  ${n.text}\nClick to select${editable ? ' (then Note to edit)' : ''}, double-click to zoom in`;
+      chip.style.left = `${Math.max(left, a)}px`;
+      chip.style.width = `${Math.min(right, b) - Math.max(left, a)}px`;
+      chip.style.top = `${row * NOTE_ROW}px`;
+      chip.classList.toggle('active', !!sel && Math.abs(sel[0] - n.start) < 1e-3 && Math.abs(sel[1] - n.end) < 1e-3);
+      chip.addEventListener('click', () => select(n.start, n.end));
+      chip.addEventListener('dblclick', () =>
+        setView(n.start - (n.end - n.start) * 0.05, n.end + (n.end - n.start) * 0.05),
+      );
+      notesLane.appendChild(chip);
+    }
+    notesLane.style.height = `${Math.min(ends.length, NOTE_ROWS) * NOTE_ROW}px`;
+  };
+
+  // the selection, drawn as uPlot's selection box, kept in seconds so it follows the zoom
+  const showSelection = () => {
+    selBox.hidden = !sel;
+    if (!plot) return;
+    if (!sel) {
+      plot.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+      return;
+    }
+    const a = Math.max(0, plot.valToPos(sel[0], 'x'));
+    const b = Math.min(plot.bbox.width / devicePixelRatio, plot.valToPos(sel[1], 'x'));
+    plot.setSelect({ left: a, top: 0, width: Math.max(0, b - a), height: plot.bbox.height / devicePixelRatio }, false);
+    selText.textContent = `${sel[0].toFixed(3)} – ${sel[1].toFixed(3)} s (${(sel[1] - sel[0]).toFixed(3)} s)`;
+  };
+  const noteAtSelection = () =>
+    sel ? notes.find((n) => Math.abs(sel![0] - n.start) < 1e-3 && Math.abs(sel![1] - n.end) < 1e-3) : undefined;
+  const select = (a: number, b: number) => {
+    sel = [Math.max(0, Math.min(a, b)), Math.min(duration, Math.max(a, b))];
+    closeForm();
+    showSelection();
+    drawNotes();
+  };
+  const clearSelection = () => {
+    sel = null;
+    looping = false;
+    loopButton.classList.remove('on');
+    closeForm();
+    showSelection();
+    drawNotes();
+  };
+
+  // the note form, for the selection: a note on exactly that section opens for editing
+  const openForm = () => {
+    if (!sel || !editable) return;
+    const note = noteAtSelection();
+    editing = note ? note.id : null;
+    noteText.value = note ? note.text : '';
+    deleteButton.hidden = !note;
+    saveButton.textContent = note ? 'Save' : 'Add';
+    formTime.textContent = `${clock(sel[0], 3)} – ${clock(sel[1], 3)}`;
+    form.hidden = false;
+    noteText.focus();
+  };
+  const closeForm = () => {
+    form.hidden = true;
+    editing = null;
+  };
+  const save = (next: WaveformNote[]) => {
+    notes = next;
+    drawNotes();
+    input.onnotes?.(next);
+  };
+
   const refresh = () => {
     if (frame) return;
     frame = requestAnimationFrame(() => {
@@ -187,7 +419,10 @@ export function mountWaveform(
       if (!plot) return;
       plot.setData(viewData(plot), false);
       plot.setScale('x', { min: view[0], max: view[1] });
+      showSelection();
       drawOverview();
+      drawLanes();
+      drawNotes();
     });
   };
   const setView = (a: number, b: number) => {
@@ -217,13 +452,17 @@ export function mountWaveform(
         points: { show: zoomedIn, size: k < nch ? 4 : 5, fill: colors[k], stroke: colors[k] },
       }),
     );
+    // the left axis is as wide as the region lanes' names need
+    const measure = document.createElement('canvas').getContext('2d')!;
+    measure.font = font;
+    const gutter = Math.max(50, ...tracks.map(([name]) => Math.ceil(measure.measureText(name).width) + 14));
     const axis = (scale: string, side: number): uPlot.Axis => ({
       scale,
       side,
       stroke: muted,
       grid: { show: side === 3, stroke: grid, width: 1 },
       ticks: { show: false },
-      size: 50,
+      size: side === 3 ? gutter : 50,
       font,
       values: (u, splits) => splits.map((v) => String(Number(v.toPrecision(3)))),
     });
@@ -262,55 +501,85 @@ export function mountWaveform(
               return null;
             },
             mouseup: (u, _target, handler) => (e: MouseEvent) => {
+              // a click (not a drag) sets the playhead
               if (u.select.width === 0 && u.cursor.left !== undefined && u.cursor.left >= 0) {
                 audio.currentTime = u.posToVal(u.cursor.left, 'x');
                 showTime();
                 u.redraw(false, false);
               }
-              return handler(e);
+              const out = handler(e);
+              showSelection();
+              return out;
             },
           },
         },
         hooks: {
           setSelect: [
             (u) => {
-              if (u.select.width > 4)
-                setView(u.posToVal(u.select.left, 'x'), u.posToVal(u.select.left + u.select.width, 'x'));
-              u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+              if (u.select.width > 4) {
+                select(u.posToVal(u.select.left, 'x'), u.posToVal(u.select.left + u.select.width, 'x'));
+                if (sel && (audio.currentTime < sel[0] || audio.currentTime > sel[1])) {
+                  audio.currentTime = sel[0];
+                  showTime();
+                }
+              }
             },
           ],
           setCursor: [
             (u) => {
               const left = u.cursor.left;
               if (left === undefined || left < 0) {
+                hoverT = null;
                 hint();
                 for (const d of dots) d.style.display = 'none';
+                u.redraw(false, false);
+                drawLanes();
                 return;
               }
               const i = Math.min(input.samples - 1, Math.max(0, Math.round(u.posToVal(left, 'x') * rate)));
+              hoverT = i / rate;
               const span = view[1] - view[0];
               const digits = span < 0.02 ? 5 : span < 0.2 ? 4 : span < 5 ? 3 : 2;
-              // the time and sample, then each series' value at it, with a dot where its line goes through it
-              const parts: Node[] = [el('span', 'nbwf-at', `${clock(i / rate, digits)} · #${i}`)];
-              const x = u.valToPos(i / rate, 'x');
+              // the time and sample, each series' value at it (with a dot where its line goes through
+              // it), and the label of each region track there
+              const parts: Node[] = [el('span', 'nbwf-at', `${clock(hoverT, digits)} · #${i}`)];
+              const x = u.valToPos(hoverT, 'x');
               labels.forEach((label, k) => {
                 const v = el('span', 'nbwf-val');
-                v.append(swatch(k), `${label} `, el('b', '', value(values[k][i])));
+                v.append(swatch(seriesVar(k)), `${label} `, el('b', '', value(values[k][i])));
                 parts.push(v);
                 const y = u.valToPos(values[k][i], k >= nch && own ? 'v' : 'y');
                 const inside = Number.isFinite(y) && y >= 0 && y <= u.bbox.height / devicePixelRatio;
                 dots[k].style.display = inside ? 'block' : 'none';
                 dots[k].style.transform = `translate(${x}px, ${y}px)`;
               });
+              for (const { name, rows } of trackRows) {
+                const on = activeAt(rows, hoverT);
+                const v = el('span', 'nbwf-val');
+                v.append(...on.map((g) => swatch(`var(${labelVar(g[2])})`)), `${name} `);
+                v.append(el('b', '', on.length ? on.map((g) => g[2]).join(', ') : '–'));
+                parts.push(v);
+              }
               read.replaceChildren(...parts);
+              u.redraw(false, false);
+              drawLanes();
             },
           ],
           draw: [
             (u) => {
-              // the zero line and the playhead
               const ctx = u.ctx;
               const { left, top, width, height: h } = u.bbox;
               ctx.save();
+              // the regions under the pointer, lightly shaded
+              if (hoverT !== null) {
+                for (const g of trackRows.flatMap(({ rows }) => activeAt(rows, hoverT!))) {
+                  const a = Math.max(left, u.valToPos(g[0], 'x', true));
+                  const b = Math.min(left + width, u.valToPos(g[1], 'x', true));
+                  ctx.fillStyle = alpha(css(labelVar(g[2])) || '#888888', '14');
+                  ctx.fillRect(a, top, b - a, h);
+                }
+              }
+              // the zero line and the playhead
               ctx.fillStyle = alpha(muted, '59');
               ctx.fillRect(left, Math.round(u.valToPos(0, 'y', true)), width, devicePixelRatio);
               const px = Math.round(u.valToPos(audio.currentTime, 'x', true));
@@ -352,17 +621,55 @@ export function mountWaveform(
     refresh();
   };
 
-  button('−', 'Zoom out', () => zoom(2));
-  button('+', 'Zoom in', () => zoom(0.5));
-  button('Fit', 'Fit', () => setView(0, duration));
+  // the selection's controls, the zoom buttons and the note form
+  selBox.append(selText);
+  const loopButton = button(selBox, 'Loop', 'Loop', () => {
+    looping = !looping;
+    loopButton.classList.toggle('on', looping);
+  });
+  button(selBox, 'Zoom in', 'Zoom in to the selection', () => {
+    if (!sel) return;
+    const pad = (sel[1] - sel[0]) * 0.05;
+    setView(sel[0] - pad, sel[1] + pad);
+  });
+  if (editable) button(selBox, 'Note', 'Note', openForm);
+  button(selBox, '×', 'Clear the selection', clearSelection);
+  button(zoomBox, '−', 'Zoom out', () => zoom(2));
+  button(zoomBox, '+', 'Zoom in', () => zoom(0.5));
+  button(zoomBox, 'Fit', 'Fit', () => setView(0, duration));
+  form.append(formTime, noteText);
+  const saveButton = el('button', '', 'Add') as HTMLButtonElement;
+  saveButton.type = 'submit';
+  form.append(saveButton);
+  const deleteButton = button(form, 'Delete', 'Delete', () => {
+    if (editing) save(notes.filter((n) => n.id !== editing));
+    closeForm();
+  });
+  button(form, 'Cancel', 'Cancel', closeForm);
+  form.hidden = true;
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = noteText.value.trim();
+    if (!sel || !text) return;
+    const id = editing || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    save([...notes.filter((n) => n.id !== id), { id, start: sel[0], end: sel[1], text }]);
+    closeForm();
+  });
+  noteText.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeForm();
+  });
 
-  // the playhead follows the audio, a page at a time
+  // the playhead follows the audio, a page at a time; a selection plays (or loops) on its own
   const follow = () => {
+    let t = audio.currentTime;
+    if (sel && !audio.paused && t >= sel[1]) {
+      if (looping) audio.currentTime = t = sel[0];
+      else audio.pause();
+    }
     showTime();
     root.classList.toggle('playing', !audio.paused);
     play.setAttribute('aria-label', audio.paused ? 'Play' : 'Pause');
     if (!plot) return;
-    const t = audio.currentTime;
     const span = view[1] - view[0];
     if (!audio.paused && (t > view[1] || t < view[0]) && span < duration) setView(t, t + span);
     plot.redraw(false, false);
@@ -373,7 +680,8 @@ export function mountWaveform(
   audio.addEventListener('seeked', follow);
   play.addEventListener('click', () => {
     if (!audio.paused) return audio.pause();
-    if (audio.currentTime >= duration - 1e-3) audio.currentTime = 0;
+    if (sel && (audio.currentTime < sel[0] || audio.currentTime >= sel[1] - 1e-3)) audio.currentTime = sel[0];
+    else if (audio.currentTime >= duration - 1e-3) audio.currentTime = 0;
     void audio.play();
   });
 
@@ -398,11 +706,17 @@ export function mountWaveform(
   const theme = new MutationObserver(build);
   theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+  notes = [...(input.notes ?? [])];
+  selBox.hidden = true;
   showTime();
   hint();
   build();
   return {
     restyle: build,
+    setNotes: (next) => {
+      notes = [...next];
+      drawNotes();
+    },
     destroy: () => {
       audio.pause();
       resize.disconnect();

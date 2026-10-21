@@ -334,6 +334,54 @@ def test_waveforms():
     signals = np.frombuffer(data[n:], "<f4").reshape(2, 800)
     assert np.allclose(signals[0], np.linspace(0, 1, 800)) and np.allclose(signals[1], -signals[0])
     assert one.meta["signals"] == ["signal"] and one.meta["range"] == [0.0, 0.5]
+    assert two.meta["regions"] is None
+
+
+def test_waveform_regions():
+    rate = 8000
+    wav = np.zeros(800)
+    run = nb.init("w", capture_env=False)
+    classes = np.array([0, 0, 1, 1, 1, 0, 2, 2, 2, 2])  # one per 10 ms frame
+    regions = {
+        "target": [(0.05, 0.08, "speech"), (0.0, 0.02, "music")],
+        "predicted": (classes, ["silence", "speech", "music"], 0.01),
+        # labels that can be on at once: a multi-hot row per frame
+        "events": ([[1, 0], [1, 1], [0, 1], [0, 0]], ["dog", "bark"], 0.1),
+    }
+    run.add_figure("vad", nb.WaveformFigure(wav, rate, wav, regions=regions), step=0)
+    classes[:] = 0  # converted when logged
+
+    with pytest.raises(ValueError, match="ends before it starts"):
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, wav, regions={"t": [(0.5, 0.2, "x")]}))
+
+    with pytest.raises(ValueError, match="class id 3 has no name"):
+        bad = {"t": (np.array([0, 3]), ["a", "b"], 0.01)}
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, wav, regions=bad))
+
+    with pytest.raises(ValueError, match="one value per name"):
+        bad = {"t": ([[1, 0, 1]], ["a", "b"], 0.01)}
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, wav, regions=bad))
+
+    with pytest.raises(ValueError, match="frame length must be positive"):
+        bad = {"t": ([0, 1], ["a", "b"], 0)}
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, wav, regions=bad))
+
+    with pytest.raises(TypeError, match="positional"):
+        nb.WaveformFigure(wav, rate, wav, (0, 1))  # type: ignore[misc]  # range is keyword-only
+
+    run.finish()
+    [item] = RunReader(run.path).media()
+    # in time order, and the frames of one class merged into one segment
+    assert item.meta["regions"] == {
+        "target": [[0.0, 0.02, "music"], [0.05, 0.08, "speech"]],
+        "predicted": [
+            [0.0, 0.02, "silence"],
+            [0.02, 0.05, "speech"],
+            [0.05, 0.06, "silence"],
+            [0.06, 0.1, "music"],
+        ],
+        "events": [[0.0, 0.2, "dog"], [0.1, 0.3, "bark"]],
+    }
 
 
 def test_histograms():

@@ -129,12 +129,14 @@ The same chart from each library:
 ## Waveforms with signals
 
 ```python
-nb.WaveformFigure(audio, sample_rate, signals, *, range=None, caption=None)
+nb.WaveformFigure(audio, sample_rate, signals, *, range=None, regions=None, caption=None)
 ```
 
 A figure made by NuBoard itself: a waveform with signals drawn over it, such
 as a voice activity probability, a gain mask or an envelope, one value per
-audio sample. It needs no plotting library, only NumPy for the arrays.
+audio sample, and optionally labelled time regions, such as a classifier's
+target and predicted classes. It needs no plotting library, only NumPy for
+the arrays.
 
 **Parameters**
 
@@ -148,7 +150,20 @@ audio sample. It needs no plotting library, only NumPy for the arrays.
   Defaults to the waveform's own axis, -1 to 1 (full scale), so a signal
   shares the waveform's scale: an envelope traces it and a probability of 1
   reaches the top. With a range, the signals get their own axis on the right.
+- **regions** (*dict*, optional): labelled time regions logged with the
+  figure, as tracks by name. Each track is one of
+    - a list of `(start, end, label)` in seconds, which may overlap;
+    - `(ids, names, frame)`: a class id per frame (1-D), the class names and
+      the frame length in seconds, as a single-label classifier outputs it;
+    - `(multi_hot, names, frame)`: a `(frames, classes)` array of 0 and 1, for
+      classes that can be on at the same time (multi-label).
+
+    Consecutive frames of one class are stored as one segment, so an hour of
+    10 ms frames stays small. A malformed track raises `ValueError` when it is
+    logged.
 - **caption** (*str*, optional): a caption shown under the plot.
+
+`range`, `regions` and `caption` are keyword-only.
 
 A model that outputs one value per frame repeats it over the frame's samples:
 
@@ -158,9 +173,28 @@ signal = np.repeat(probs, 160)[: len(wav)]
 run.add_figure("eval/vad", nb.WaveformFigure(wav, 16_000, {"vad": signal}), step=epoch)
 ```
 
+A classifier's target and prediction go in region tracks, next to its scores:
+
+```python
+classes = ["silence", "speech", "music"]
+run.add_figure(
+    "eval/classes",
+    nb.WaveformFigure(
+        wav, 16_000, {"speech": probs_per_sample},
+        regions={
+            "target": (target_ids, classes, 0.01),       # one class per 10 ms frame
+            "predicted": (predicted_ids, classes, 0.01),
+            "events": (multi_hot, ["dog", "bark"], 0.01),  # classes that overlap
+        },
+    ),
+    step=epoch,
+)
+```
+
 **Stored as** the audio as 16-bit WAV followed by each signal as float32,
-written on the background thread. A signal therefore takes twice the space
-of mono audio: an hour at 16 kHz is 115 MB of audio and 230 MB per signal.
+written on the background thread; the regions are stored with the item's
+metadata, as segments. A signal takes twice the space of mono audio: an hour
+at 16 kHz is 115 MB of audio and 230 MB per signal.
 
 **In the viewer** the figure is listed under **Figures** and drawn as an
 interactive plot, not in the audio player:
@@ -173,27 +207,44 @@ interactive plot, not in the audio player:
   computed once when the figure loads, so a redraw costs the same for a clip
   as for an hour. A 10-minute file shows in about 2 s and an hour in about 10 s
   (mostly fetching it); zooming and scrolling stay smooth after that.
-- **Exact values.** Hovering shows the time, the sample index and the value
-  of the audio and of each signal at that sample, with a dot on each curve.
-- **Zoom and scroll.** Drag across the plot to zoom in, Ctrl/⌘ + wheel zooms
-  around the pointer, Shift + wheel (or a sideways swipe) scrolls, and
-  double-click or **Fit** shows the whole file. The overview under the plot
-  shows where the view is; drag on it to move there.
+- **Exact values.** Hovering shows the time, the sample index, the value of
+  the audio and of each signal at that sample (with a dot on each curve), and
+  the label of each region track there.
+- **Region tracks.** Each track has a lane under the plot, named in the
+  margin, with each label in its own color: the same label keeps its color in
+  every lane, run and step, and never takes a signal's color. A track whose
+  classes overlap gets a row per class, as in a piano roll, and hovering lists
+  every class that is on. The regions under the pointer are shaded on the plot.
+- **Selections and notes.** Drag across the plot to select a section. The
+  toolbar then shows its span with **Loop**, **Zoom in**, **Note** and **×**;
+  play plays the selection (and loops it with **Loop**). **Note** adds a note
+  on it, shown in a lane above the plot; clicking a note selects its section
+  again (then **Note** edits or deletes it) and double-clicking zooms to it.
+  Notes are saved in the run's `annotations.json`, apart from the logged
+  regions, as for [audio](../guide/viewer.md#audio), and `Run.audio_notes`
+  reads them.
+- **Zoom and scroll.** − / + / **Fit**, Ctrl/⌘ + wheel around the pointer,
+  Shift + wheel (or a sideways swipe) to scroll, and double-click to see the
+  whole file. The overview under the plot shows where the view is; drag on it
+  to move there.
 - **Playback.** The play button plays the audio and the playhead follows it.
   Click the plot to start from there.
 
 In a report, the figure embeds like any logged item. An HTML export keeps it
-interactive, with the same plot and the clip's audio, offline; a .zip export
-writes its audio as a `.wav` and its signals as a CSV.
+interactive and looks the same, offline: the same plot, regions, notes (read
+only, and listed under it) and the clip's audio. A .zip export writes its
+audio as a `.wav` and its signals as a CSV.
 
-The plot does not have a spectrogram or notes. For those, also log the clip
-with [`add_audio`](add_audio.md), which opens in the waveform and
-spectrogram player.
+The plot has no spectrogram. For one, also log the clip with
+[`add_audio`](add_audio.md), which opens in the waveform and spectrogram
+player.
 
 `nuboard demo` logs one per model in the `speech-denoise` project, under
 `vad/enhanced`: the enhanced output with a speech probability, rough at
-epoch 0 and sharp by epoch 30.
+epoch 0 and sharp by epoch 30, with `target` and `predicted` speech/silence
+tracks and an `events` track where tonal blips overlap the speech. The first
+`unet-l1` figure has notes on its false alarms.
 
 **Expected result**
 
-![The enhanced output of a speech model with its speech probability over the waveform](../assets/api/waveform.png)
+![A speech model's output with its speech probability, region tracks and notes](../assets/api/waveform.png)

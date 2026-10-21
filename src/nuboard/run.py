@@ -1313,8 +1313,8 @@ class Run:
 
         Raises:
             TypeError: If the figure type is not supported.
-            ValueError: If a waveform's signals do not hold one value per sample, or
-                its range is empty or reversed.
+            ValueError: If a waveform's signals do not hold one value per sample,
+                its range is empty or reversed, or a region track is malformed.
 
         Example:
             >>> run.add_figure("eval/vad", nb.WaveformFigure(wav, 16000, {"vad": probs}))
@@ -1322,9 +1322,10 @@ class Run:
         from ._media import figure_bytes
 
         if isinstance(figure, WaveformFigure):
-            from ._media import waveform_bytes, waveform_signals
+            from ._media import waveform_bytes, waveform_regions, waveform_signals
 
             audio, signals = waveform_signals(figure.audio, figure.signals)
+            regions = waveform_regions(figure.regions) if figure.regions else None
             rate, bounds = figure.sample_rate, figure.range
 
             if not rate:
@@ -1337,7 +1338,7 @@ class Run:
                 key,
                 step,
                 lambda: waveform_bytes(audio, rate, signals, bounds),
-                {"kind": "figure", "caption": figure.caption},
+                {"kind": "figure", "caption": figure.caption, "regions": regions},
                 time,
             )
             return

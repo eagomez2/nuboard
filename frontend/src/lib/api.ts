@@ -224,6 +224,8 @@ export interface MediaItem {
   samples?: number;
   signals?: string[];
   range?: [number, number];
+  /** Waveforms: labelled regions logged with the figure, `[start, end, label]` in seconds, by track. */
+  regions?: Record<string, [number, number, string][]> | null;
   text?: string;
   /** Notes on sections of an audio item, added in the viewer. */
   notes?: AudioNote[];
