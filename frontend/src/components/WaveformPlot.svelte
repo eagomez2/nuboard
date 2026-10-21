@@ -45,6 +45,8 @@
   let error = $state('');
   let mounted: ReturnType<typeof mountWaveform> | null = null;
   let audioUrl = '';
+  // what the mounted figure shows, so a fresh copy of the same item does not mount it again
+  let shown = '';
 
   function unmount() {
     mounted?.destroy();
@@ -53,7 +55,9 @@
     audioUrl = '';
   }
 
-  // load the item: a new one (the step slider) starts at the whole clip
+  // load the item: a new one (the step slider) starts at the whole clip. The media list is fetched
+  // again whenever a live run writes, which hands over equal but new item objects; those keep the
+  // figure as it is (its selection, zoom and playback) instead of loading and mounting it again
   $effect(() => {
     const target = url;
     const opts = {
@@ -64,8 +68,10 @@
       caption,
       height,
       regions: $state.snapshot(regions),
-      onnotes,
     };
+    const key = JSON.stringify([target, opts]);
+    if (key === untrack(() => shown)) return;
+    shown = key;
     error = '';
     fetch(target)
       .then((r) => {
@@ -78,9 +84,19 @@
         audioUrl = URL.createObjectURL(new Blob([buffer.slice(0, opts.offset)], { type: 'audio/wav' }));
         // the notes as they are now; later changes go to setNotes below
         const current = untrack(() => $state.snapshot(notes));
-        mounted = mountWaveform(box, kit, uPlot, { buffer, audioSrc: audioUrl, notes: current, ...opts });
+        mounted = mountWaveform(box, kit, uPlot, {
+          buffer,
+          audioSrc: audioUrl,
+          notes: current,
+          // the handler of the moment, which may be a new function after the item is fetched again
+          onnotes: onnotes ? (next) => onnotes?.(next) : undefined,
+          ...opts,
+        });
       })
-      .catch((e) => (error = `Could not load the waveform: ${e instanceof Error ? e.message : e}`));
+      .catch((e) => {
+        shown = '';
+        error = `Could not load the waveform: ${e instanceof Error ? e.message : e}`;
+      });
   });
 
   $effect(() => {
