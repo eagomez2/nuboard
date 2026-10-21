@@ -57,7 +57,7 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; properties, collections and alerts per run |
 | Runs | query language, stars, Markdown notes, archive, typed properties, tag editing, column chooser, collections, saved views, run details and config/file diffs |
 | Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any scalar (tokens, epochs), solo or show all series |
-| Media | images, video, audio (waveform + spectrogram player with notes, or the browser's player), per-example tables compared across steps, PR curves, distributions over steps, point clouds with axes, text, HTML, and interactive Plotly, Vega-Lite and Bokeh figures; filter by kind, a step slider per card, best-scalar step, configurable grid |
+| Media | images, video, audio (waveform + spectrogram player with notes, or the browser's player), per-example tables compared across steps, PR curves, distributions over steps, point clouds with axes, text, HTML, interactive Plotly, Vega-Lite and Bokeh figures, and waveforms with signals over them (accurate at every zoom); filter by kind, a step slider per card, best-scalar step, configurable grid |
 | Reports | Markdown reports that embed logged items, live charts and plot snapshots; export as HTML or a zip, print to PDF |
 | Sweeps | parallel coordinates with brushing, scatter per parameter, rank correlation, best runs |
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |

@@ -219,6 +219,11 @@ export interface MediaItem {
   /** Distributions: the number of bins and of values. */
   bins?: number;
   count?: number;
+  /** Waveforms: the WAV's length in the item's bytes, then `samples` float32 values per signal. */
+  audio_bytes?: number;
+  samples?: number;
+  signals?: string[];
+  range?: [number, number];
   text?: string;
   /** Notes on sections of an audio item, added in the viewer. */
   notes?: AudioNote[];

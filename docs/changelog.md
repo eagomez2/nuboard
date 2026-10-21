@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Waveform figures.** `run.add_figure(key, nb.WaveformFigure(audio,
+  sample_rate, signals))` logs audio with signals over its waveform, one value
+  per sample, such as a voice activity probability or a gain mask. The viewer
+  draws it as a plot that is accurate at every zoom (M4 decimation: the first,
+  smallest, largest and last sample of each pixel column, recomputed as you
+  zoom), fast on files an hour long, down to single samples. Hovering shows
+  the exact values at a sample; the clip plays from where you click. It is
+  listed under **Figures**; `add_audio` and its spectrogram player are
+  unchanged. See [`add_figure`](api/add_figure.md#waveforms-with-signals).
+- The demo's `speech-denoise` runs log `vad/enhanced`, a waveform figure of
+  the enhanced output with a speech probability.
+
 ## 0.16.0
 
 - **Jobs.** A second process can log into a running run with

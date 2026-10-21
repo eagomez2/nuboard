@@ -518,6 +518,96 @@ def audio_bytes(audio: Any, sample_rate: int | None) -> tuple[bytes, str, dict[s
     raise TypeError(f"unsupported audio type {type(audio).__name__}")
 
 
+#: MIME type of waveforms with signals in the media pack (see `waveform_bytes`)
+WAVEFORM_MIME = "application/x-nuboard-waveform"
+
+
+def waveform_signals(audio: Any, signals: Any) -> tuple[Any, dict[str, Any]]:
+    """Check a waveform's signals against its audio and copy both.
+
+    Args:
+        audio: A `(samples,)` or `(channels, samples)` array or tensor.
+        signals: An array or tensor of `samples` values, or a dict of them by name.
+
+    Returns:
+        The audio as a NumPy array of its own and the signals as float32
+        arrays by name.
+
+    Raises:
+        ValueError: If the audio is not 1-D or 2-D, or a signal is not 1-D or
+            does not hold one value per sample.
+    """
+
+    import numpy as np  # arrays only come from code that already has NumPy
+
+    def array(x: Any) -> Any:
+        if hasattr(x, "detach"):  # torch tensor
+            x = x.detach().cpu().float() if str(x.dtype) == "torch.bfloat16" else x.detach().cpu()
+            x = x.numpy()
+
+        return np.array(x)  # a copy: the caller may reuse its buffer
+
+    a = array(audio)
+
+    if a.ndim not in (1, 2):
+        raise ValueError(f"cannot interpret array of shape {a.shape} as audio")
+
+    samples = max(a.shape)
+    named = signals if isinstance(signals, dict) else {"signal": signals}
+
+    if not named:
+        raise ValueError("a waveform needs at least one signal")
+
+    out = {}
+
+    for name, values in named.items():
+        v = array(values).astype("<f4")
+
+        if v.ndim != 1 or v.shape[0] != samples:
+            raise ValueError(
+                f"signal {name!r} has shape {v.shape}; expected ({samples},), one value per sample"
+            )
+
+        out[str(name)] = v
+
+    return a, out
+
+
+def waveform_bytes(
+    audio: Any,
+    sample_rate: int,
+    signals: dict[str, Any],
+    value_range: tuple[float, float] | None = None,
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Pack a waveform as WAV bytes followed by its signals as float32.
+
+    Args:
+        audio: The audio array (see `waveform_signals`).
+        sample_rate: Samples per second.
+        signals: Float32 arrays of one value per sample, by name.
+        value_range: The values at the bottom and top of the waveform; -1
+            and 1 (the waveform's own full scale) when None.
+
+    Returns:
+        The bytes (the WAV, then each signal as little-endian float32, in
+        order), the MIME type and metadata: the audio info, `audio_bytes`
+        (the WAV's length), `samples`, the `signals` names and the `range`.
+    """
+
+    wav, info = array_to_wav(audio, sample_rate)
+    lo, hi = (-1.0, 1.0) if value_range is None else value_range
+
+    meta = {
+        **info,
+        "audio_bytes": len(wav),
+        "samples": int(next(iter(signals.values())).shape[0]),
+        "signals": list(signals),
+        "range": [float(lo), float(hi)],
+    }
+    data = wav + b"".join(v.astype("<f4").tobytes() for v in signals.values())
+    return data, WAVEFORM_MIME, meta
+
+
 def _sniff_audio(data: bytes) -> str | None:
     """Guess an audio MIME type from the first bytes of `data`, or return None."""
 
