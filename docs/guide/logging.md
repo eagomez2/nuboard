@@ -29,6 +29,7 @@ nb.init(
     dir=None,               # root folder; default $NUBOARD_DIR or ./experiments
     tags=None, notes=None, group=None,
     run_id=None, resume=None,   # resume="must" | "auto"
+    job=None,               # join run_id as a second job, such as "eval"
     fork_from=None,         # (run_id, step)
     all_ranks=False,        # log on every rank, not only rank 0
     capture_env=True,       # git, pip freeze, GPUs, command line
@@ -178,6 +179,10 @@ sessions. If you restart from a checkpoint at step 5000, points the old session
 logged at step ≥ 5000 are hidden in favour of the new session's points (per
 scalar). A fork copies the parent's points up to the fork step into the new
 run's folder, so the new folder still never refers to anything outside it.
+
+To log into a run from a second process while the first is still running, such
+as an evaluator that scores checkpoints, use `job=` instead of `resume`. See
+[Evaluating while training](jobs.md).
 
 ## Environment variables
 

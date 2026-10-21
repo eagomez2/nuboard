@@ -43,7 +43,9 @@ from ..artifacts import (
     unlink_artifact,
 )
 from ..catalog import Catalog
+from ..catalog import cache_dir as default_cache_dir
 from ..collection import delete_collection, list_collections, save_collection
+from ..jobs import read_meta
 from ..query import QueryError, parse
 from ..reports import (
     MediaRef,
@@ -61,6 +63,7 @@ from ..reports import (
 from .auth import Guard
 from .data import Store, path_inside
 from .runfiles import IMAGE_SUFFIXES, change_pins, list_files, read_pins
+from .storage import Meter
 from .tensorfiles import inspect_file
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -376,7 +379,7 @@ def create_app(
         record = record_or_404(key)
         path = catalog.path_of(key)
         assert path is not None
-        meta = _fs.read_json(path / "run.json", {})
+        meta = read_meta(path) or {}
 
         for ref in [*(meta.get("inputs") or []), *(meta.get("outputs") or [])]:
             if isinstance(ref, dict) and ref.get("artifact"):
@@ -813,6 +816,38 @@ def create_app(
             return pdir
 
         return next((p for p in find_artifact_projects(catalog.root) if name_of(p) == name), None)
+
+    def storage_projects() -> list[tuple[str, Path]]:
+        """Return every project folder with runs or artifacts, with its name."""
+        dirs = {(catalog.root / r["path"]).parent.parent for r in catalog.runs()}
+        dirs |= set(find_artifact_projects(catalog.root))
+        return sorted((name_of(d) or d.name, d) for d in dirs)
+
+    meter = Meter(
+        catalog.root,
+        storage_projects,
+        lambda: [(r["key"], r["name"], catalog.root / r["path"]) for r in catalog.runs()],
+        cache_dir or default_cache_dir(),
+    )
+
+    async def storage(request: Request) -> Response:
+        """Return the disk use measured last, and the progress of a measurement under way.
+
+        `POST {"action": "start" | "resume" | "stop"}` starts a measurement,
+        continues one that paused, or ends it keeping a partial result. Nothing
+        is measured otherwise.
+        """
+
+        if request.method == "POST":
+            body = await request.json()
+            action = body.get("action") if isinstance(body, dict) else None
+
+            if action not in ("start", "resume", "stop"):
+                return JSON({"error": "action must be start, resume or stop"}, status_code=400)
+
+            getattr(meter, action)()
+
+        return JSON(meter.status())
 
     def artifacts(request: Request) -> Response:
         """Return artifact versions with the runs that produced and used them.
@@ -1548,6 +1583,7 @@ def create_app(
 
     routes: list[BaseRoute] = [
         Route("/api/info", info),
+        Route("/api/storage", storage, methods=["GET", "POST"]),
         Route("/api/runs", runs),
         Route("/api/runs/annotate", annotate, methods=["POST"]),
         Route("/api/runs/{key}", run_detail),

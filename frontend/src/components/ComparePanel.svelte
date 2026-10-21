@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import NotesEditor from './NotesEditor.svelte';
   import PropertiesEditor from './PropertiesEditor.svelte';
+  import JobChips from './JobChips.svelte';
   import Status from './Status.svelte';
   import TagEditor from './TagEditor.svelte';
   import Terminal from './Terminal.svelte';
@@ -124,6 +125,7 @@
       gpus: (m.env?.gpus ?? []).map((g: { name: string }) => g.name).join(', ') || null,
       world_size: m.distributed?.world_size ?? 1,
       fork: m.fork ? `${m.fork.run_id} @ ${m.fork.step}` : null,
+      jobs: (d.run.jobs ?? []).map((j) => `${j.job} (${j.status}${j.host ? `, ${j.host}` : ''})`).join(', ') || null,
       inputs: (m.inputs ?? []).map(artifactRef).join(', ') || null,
       outputs: (m.outputs ?? []).map(artifactRef).join(', ') || null,
     };
@@ -179,7 +181,7 @@
       </h2>
       {#if !multi}<div class="runtags"><TagEditor runKey={details[0].run.key} {tags} /></div>{/if}
     </div>
-    {#if details.length === 1}<Status status={details[0].run.status} />{/if}
+    {#if details.length === 1}<Status status={details[0].run.status} /><JobChips jobs={details[0].run.jobs} />{/if}
     <button
       class="btn btn-ghost close"
       aria-label="Close"

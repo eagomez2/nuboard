@@ -895,3 +895,24 @@ test('an artifact version is added from a path, unlinked and restored', async ({
   await page.getByRole('button', { name: 'Restore' }).click();
   await expect(page.getByRole('switch', { name: 'Show unlinked' })).toHaveCount(0);
 });
+
+test('a helper job shows on its run, and storage is measured only on request', async ({ page }) => {
+  await page.goto('/#/runs?project=speech-denoise');
+  const row = page.locator('.row', { hasText: 'convtasnet' }).first();
+  await expect(page.locator('.job', { hasText: 'eval' }).first()).toBeVisible();
+  await expect(row).toBeVisible();
+
+  await page.getByRole('button', { name: 'Storage' }).first().click();
+  const dlg = page.getByRole('dialog', { name: 'Storage' });
+  await expect(dlg.getByText(/Not measured yet|Measured/)).toBeVisible();
+  await dlg.getByRole('button', { name: /Measure|Refresh/ }).click();
+  await expect(dlg.getByText(/Measured .* in /)).toBeVisible();
+  await expect(dlg.getByText('speech-denoise')).toBeVisible();
+  await dlg.getByRole('tab', { name: 'Artifacts' }).click();
+  await expect(dlg.getByText('stored in this folder')).toBeVisible();
+  await dlg.getByRole('button', { name: 'Close' }).click();
+
+  await page.goto('/#/artifacts');
+  await page.locator('.sidehead').getByRole('button', { name: 'Storage' }).click();
+  await expect(page.getByRole('tab', { name: 'Artifacts' })).toHaveAttribute('aria-selected', 'true');
+});

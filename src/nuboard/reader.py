@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from . import _format as fmt
-from . import _fs
+from .jobs import read_meta
 
 _LOG_RE = re.compile(r"^events\.r(\d+)\.s(\d+)\.log$")
 Series = tuple[np.ndarray, np.ndarray, np.ndarray]  # steps (i8), times (f8), values (f8)
@@ -50,10 +50,12 @@ class MediaEntry:
         key: Media key.
         step: Training step.
         time: Unix time it was logged.
-        offset: Byte offset in `media.r<rank>.pack`.
+        offset: Byte offset in the media pack.
         length: Length in bytes.
         meta: Metadata, including `mime`.
         rank: Process rank whose pack holds the bytes.
+        pack: File name of the pack: `media.r<rank>.pack`, or for a helper job's
+            session `media.r<rank>.s<session>.pack`.
     """
 
     key: str
@@ -63,6 +65,7 @@ class MediaEntry:
     length: int
     meta: dict[str, Any]
     rank: int
+    pack: str = ""
 
 
 class LogFile:
@@ -89,6 +92,7 @@ class LogFile:
         self.heartbeat: float | None = None
         self.end: tuple[float, str] | None = None
         self._series: dict[str, Series] | None = None
+        self._pack = ""
 
     @property
     def size(self) -> int:
@@ -157,6 +161,12 @@ class LogFile:
                 self.texts.append(TextEntry(self.names.get(key, str(key)), step, t, text))
             elif kind == fmt.MEDIA:
                 key, step, t, off, length, meta = fmt.decode_media(payload)
+
+                if not self._pack:  # a helper job's session has a pack of its own
+                    own = f"media.r{self.rank}.s{self.session}.pack"
+                    has_own = (self.path.parent / own).exists()
+                    self._pack = own if has_own else f"media.r{self.rank}.pack"
+
                 self.media.append(
                     MediaEntry(
                         self.names.get(key, str(key)),
@@ -166,6 +176,7 @@ class LogFile:
                         length,
                         json.loads(meta),
                         self.rank,
+                        self._pack,
                     )
                 )
             elif kind == fmt.END:
@@ -363,8 +374,8 @@ class RunReader:
 
     # -- metadata -----------------------------------------------------------
     def meta(self) -> dict[str, Any]:
-        """Return the contents of `run.json`, or an empty dict if it is missing."""
-        return _fs.read_json(self.path / "run.json", {})
+        """Return `run.json` with helper jobs merged in, or an empty dict if it is missing."""
+        return read_meta(self.path) or {}
 
     def _log_paths(self) -> list[Path]:
         """Return the event log files in the run folder, sorted."""
@@ -562,7 +573,7 @@ class RunReader:
             The stored bytes.
         """
 
-        with open(self.path / f"media.r{entry.rank}.pack", "rb") as f:
+        with open(self.path / (entry.pack or f"media.r{entry.rank}.pack"), "rb") as f:
             f.seek(entry.offset)
             return f.read(entry.length)
 

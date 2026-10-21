@@ -178,10 +178,14 @@
   // Category tick labels sit left of their axis: the first axis only has the side padding.
   const fitTick = (text: string, a: Axis, k: number) =>
     a.numeric ? text : cut(text, Math.max(4, Math.floor(((k === 0 ? PAD : spacing) - 14) / 6.4)));
-  // Scatter x labels: categories split the 230-unit axis between them, the outer ones anchored inward.
+  // Scatter plots are drawn at their real width so text keeps its CSS size at any column count.
+  let scatterW = $state(300); // card width, padding included
+  const sw = $derived(Math.max(200, Math.round(scatterW) - 24));
+  const span = $derived(sw - 70);
+  // Scatter x labels: categories split the axis between them, the outer ones anchored inward.
   const scatterTick = (a: Axis, n: number, text: string) => {
     if (a.numeric) return { text, anchor: 'middle' };
-    const room = 230 / Math.max(a.categories.length, 2) - 6;
+    const room = span / Math.max(a.categories.length, 2) - 6;
     return {
       text: cut(text, Math.max(4, Math.floor(room / 6.4))),
       anchor: n === 0 ? 'start' : n === 1 ? 'end' : 'middle',
@@ -393,7 +397,7 @@
   >
     {#each params.slice(page * size, page * size + size) as p (p)}
       {@const a = axes[params.indexOf(p)]}
-      <div class="card scatter">
+      <div class="card scatter" bind:clientWidth={scatterW}>
         <div class="sh">
           <span class="mono trunc" title={p}>{short(p)}</span>
           {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint keep"
@@ -411,12 +415,13 @@
               )}><Icon name="bookmark" size={14} /></button
           >
         </div>
-        <svg viewBox="0 0 300 190" role="img" aria-label="{metric} against {p}">
-          <line class="frame" x1="40" x2="290" y1="160" y2="160" />
+        <svg width={sw} height="190" viewBox="0 0 {sw} 190" role="img" aria-label="{metric} against {p}">
+          <line class="frame" x1="40" x2={sw - 10} y1="160" y2="160" />
           <line class="frame" x1="40" x2="40" y1="10" y2="160" />
           {#each axisTicks(a, fmt) as [n, text] (text + n)}
             {@const t = scatterTick(a, n, text)}
-            <text class="tick mono" x={46 + n * 230} y="176" text-anchor={t.anchor}><title>{text}</title>{t.text}</text>
+            <text class="tick mono" x={46 + n * span} y="176" text-anchor={t.anchor}><title>{text}</title>{t.text}</text
+            >
           {/each}
           {#each axisTicks(metricAxis, fmt).filter((_, i, all) => i === 0 || i === all.length - 1 || all.length <= 3) as [n, text] (text + n)}
             {@const yy = 160 - (lower ? 1 - n : n) * 150}
@@ -428,7 +433,7 @@
             {#if xn !== null && g !== null}
               {@const jitter = a.numeric ? 0 : (((i * 37) % 11) - 5) * 1.6}
               <circle
-                cx={46 + xn * 230 + jitter}
+                cx={46 + xn * span + jitter}
                 cy={160 - g * 150}
                 r={hover === l.run.key ? 5 : 3.5}
                 class:dim={!l.keep}

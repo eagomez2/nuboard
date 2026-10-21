@@ -35,6 +35,7 @@ nav:
       - Artifacts and lineage: guide/artifacts.md
       - Analysis API: guide/analysis.md
       - Distributed training: guide/distributed.md
+      - Evaluating while training: guide/jobs.md
       - Importing from TensorBoard: guide/tensorboard.md
   - Reference:
       - Query language: reference/query.md

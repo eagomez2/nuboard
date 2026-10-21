@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import JobChips from './JobChips.svelte';
   import Status from './Status.svelte';
   import TagPills from './TagPills.svelte';
   import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
@@ -631,6 +632,7 @@
                 <button class="name mono" onclick={() => router.set({ cmp: r.key })} title="Show details"
                   >{r.name}</button
                 >
+                {#if r.jobs?.length}<JobChips jobs={r.jobs} />{/if}
                 {#if r.alerts?.length}
                   <button
                     class="alertbadge"

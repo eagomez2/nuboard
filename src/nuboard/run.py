@@ -11,6 +11,7 @@ import math
 import os
 import re
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -25,9 +26,11 @@ from . import _format as fmt
 from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
 from ._system import SystemMonitor, parse_groups
-from ._writer import Writer, _to_float
+from ._writer import Writer, _flatten, _to_float
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
+from .catalog import effective_status
+from .jobs import MAIN, job_path, read_jobs
 
 _LOG_RE = re.compile(r"^events\.r(\d+)\.s(\d+)\.log$")
 _active: list[Run] = []
@@ -248,6 +251,13 @@ class Run:
         resume: What to do when `run_id` already exists: None raises, `"must"`
             continues it and also requires it to exist, `"auto"` continues it if it
             exists and creates it otherwise. Each continuation starts a new session.
+        job: Join the existing run `run_id` as a helper job of this name, such as
+            `"eval"` for a job that evaluates checkpoints while training goes on.
+            It logs into the same run without touching its status, heartbeat or
+            summary, which stay the main job's: its own state goes in
+            `jobs/<job>.json`, its console in `files/output.<job>.log` and its
+            system metrics under `system/<job>/`. None (or `"main"`) is the
+            process that creates the run. Restarting a job continues it.
         fork_from: `(parent_run_id, step)`. Copies the parent's rank 0 scalars up
             to and including `step` into the new run, which then continues from
             `step + 1`.
@@ -276,17 +286,21 @@ class Run:
         dist: Rank and world size of this process.
         all_ranks: Whether scalars are logged from every rank.
         session: Index of this session; it grows each time the run is resumed.
+        job: Name of this helper job, or None for the main job.
         started: Start time of this session, as a Unix timestamp.
 
     Raises:
         FileExistsError: If `run_id` exists and `resume` is None, or if a run folder
             differing only by case exists.
-        FileNotFoundError: If `resume="must"` and `run_id` does not exist, or if the
-            `fork_from` parent does not exist.
+        FileNotFoundError: If `resume="must"` and `run_id` does not exist, if the
+            `fork_from` parent does not exist, or if `job` is given and run `run_id`
+            does not exist.
+        RuntimeError: If `job` is already running on this run in another process.
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group.
+        ValueError: If `system_metrics` names an unknown group, or if `job` is given
+            with `fork_from`.
     """
 
     def __init__(
@@ -301,6 +315,7 @@ class Run:
         group: str | None = None,
         run_id: str | None = None,
         resume: Literal["must", "auto"] | None = None,
+        job: str | None = None,
         fork_from: tuple[str, int] | None = None,
         all_ranks: bool = False,
         capture_env: bool = True,
@@ -332,6 +347,22 @@ class Run:
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
         name = _fs.sanitize(name or "run")
+        self.job = None if job in (None, MAIN) else _fs.sanitize(str(job))
+        self._main_names: set[str] = set()
+        self._main_names_read = 0.0
+        self._names_seen: set[str] = set()
+
+        if self.job is not None:
+            if fork_from is not None:
+                raise ValueError("a helper job joins a run and cannot fork_from another")
+
+            if run_id is None or not (runs_dir / run_id / "run.json").exists():
+                raise FileNotFoundError(
+                    f"job={job!r} joins an existing run, but there is no run {run_id!r} in "
+                    f"{runs_dir}; leave out job to start a new run"
+                )
+
+            resume = "must"
 
         resumed = False
 
@@ -367,6 +398,9 @@ class Run:
             self.path = runs_dir / run_id
 
         self.id = run_id
+        self._meta_path = (
+            self.path / "run.json" if self.job is None else job_path(self.path, self.job)
+        )
 
         if self.dist.is_main:
             runs_dir.mkdir(parents=True, exist_ok=True)
@@ -382,7 +416,9 @@ class Run:
         self.config = _config_to_dict(config)
         self._meta: dict[str, Any] = {}
 
-        if self.dist.is_main:
+        if self.dist.is_main and self.job is not None:
+            self._write_job_meta(capture_env)
+        elif self.dist.is_main:
             self._write_initial_meta(name, tags, notes, group, resumed, fork_from, capture_env)
 
         if fork_from is not None and self.dist.is_main:
@@ -393,10 +429,12 @@ class Run:
         _install_excepthook()
 
         if capture_console and (self.dist.is_main or all_ranks):
-            log = "output.log" if self.dist.is_main else f"output.r{self.dist.rank}.log"
+            base = "output" if self.job is None else f"output.{self.job}"
+            log = f"{base}.log" if self.dist.is_main else f"{base}.r{self.dist.rank}.log"
             stamp = _dt.datetime.fromtimestamp(self.started).isoformat(" ", "seconds")
+            job_note = f", job {self.job}" if self.job else ""
             self._console = ConsoleLog(
-                self.path / "files" / log, f"[nuboard: session {self.session}, {stamp}]"
+                self.path / "files" / log, f"[nuboard: session {self.session}{job_note}, {stamp}]"
             )
 
         if groups and self.dist.local_rank == 0:
@@ -527,6 +565,90 @@ class Run:
         self._meta = meta
         self._save_meta()
 
+    def _write_job_meta(self, capture_env: bool) -> None:
+        """Create or update this helper job's `jobs/<job>.json`.
+
+        Raises:
+            RuntimeError: If the job is already running in another live process.
+        """
+        path = self._meta_path
+        meta = _fs.read_json(path, None) or {}
+        quiet = time.time() - (meta.get("heartbeat") or 0)
+        patience = max(3 * float(meta.get("heartbeat_interval") or 10.0), 30.0)
+
+        if meta.get("status") == "running" and quiet < patience:
+            env = meta.get("env") or {}
+            raise RuntimeError(
+                f"job {self.job!r} is already running on run {self.id!r} "
+                f"({env.get('host', '?')}, pid {env.get('pid', '?')}, last seen {quiet:.0f} s "
+                f"ago). If that process was killed, start again in {patience - quiet:.0f} s."
+            )
+
+        if not meta:
+            meta = {
+                "format_version": FORMAT_VERSION,
+                "job": self.job,
+                "created": self.started,
+                "sessions": [],
+                "summary": {},
+                "inputs": [],
+                "outputs": [],
+            }
+
+        if self.config:
+            meta["config"] = self.config
+        else:
+            self.config = (_fs.read_json(self.path / "run.json", {}) or {}).get("config") or {}
+
+        meta.update(
+            status="running",
+            started=self.started,
+            ended=None,
+            heartbeat=time.time(),
+            heartbeat_interval=self._heartbeat_interval,
+            exit=None,
+            env={"host": socket.gethostname(), "pid": os.getpid()},
+        )
+        meta["sessions"].append({"session": self.session, "started": self.started, "ended": None})
+
+        if capture_env:
+            meta["command"] = _env.command_line()
+
+        path.parent.mkdir(exist_ok=True)
+        self._meta = meta
+        self._save_meta()
+
+    def _warn_shared_names(self, data: Mapping[str, Any]) -> None:
+        """Warn once per name when a helper job logs a scalar the main job also logs."""
+        new = {k for k, _ in _flatten(data)} - self._names_seen
+
+        if not new:
+            return
+
+        self._names_seen |= new
+
+        if time.time() - self._main_names_read > 30:  # the main job may have logged more
+            main = _fs.read_json(self.path / "run.json", {}) or {}
+            self._main_names = set(main.get("summary") or {})
+            self._main_names_read = time.time()
+
+        for k in sorted(new & self._main_names):
+            warnings.warn(
+                f"{NAME}: {k} is also logged by the main job; this job's values replace "
+                f"them from its first step. Log it under another name, such as "
+                f"{self.job}/{k.split('/', 1)[-1]}.",
+                stacklevel=3,
+            )
+
+    def _others_running(self) -> bool:
+        """Return True if another job of this run (main or helper) is still running."""
+        others = [j for j in read_jobs(self.path) if j["job"] != self.job]
+
+        if self.job is not None:
+            others.append(_fs.read_json(self.path / "run.json", {}) or {})
+
+        return any(effective_status(j) == "running" for j in others)
+
     def _copy_fork(self, parent_id: str, step: int) -> None:
         """Copy a parent run's rank 0 scalars up to `step` into this run.
 
@@ -578,7 +700,7 @@ class Run:
         self._next_step = self._last_step = step + 1 if points else 0
 
     def _save_meta(self) -> None:
-        """Write `run.json` with the current summary (rank 0 only)."""
+        """Write `run.json`, or a helper job's file, with the current summary (rank 0 only)."""
 
         if not self.dist.is_main:
             return
@@ -587,7 +709,7 @@ class Run:
             if self._writer is not None:
                 self._meta["summary"] = self._writer.summary()
 
-            _fs.atomic_write_json(self.path / "run.json", self._meta)
+            _fs.atomic_write_json(self._meta_path, self._meta)
 
     def _log_system(self, values: dict[str, float]) -> None:
         """Queue a system sample at the latest step; called by the system thread.
@@ -596,6 +718,10 @@ class Run:
         not affected, and logs from any rank, as only local rank 0 samples.
         """
         writer = self._writer or self._ensure_writer()
+
+        if self.job is not None:
+            prefix = f"system/{self.job}/"
+            values = {prefix + k.removeprefix("system/"): v for k, v in values.items()}
 
         if writer is not None:
             writer.queue.append((0, self._last_step, _now(), values))
@@ -623,6 +749,7 @@ class Run:
                         flush_interval=self._flush_interval,
                         heartbeat_interval=self._heartbeat_interval,
                         on_heartbeat=self._on_heartbeat if self.dist.is_main else None,
+                        own_pack=self.job is not None,
                     )
 
         return self._writer
@@ -694,6 +821,9 @@ class Run:
 
         if not self.dist.is_main and not (self.all_ranks if all_ranks is None else all_ranks):
             return
+
+        if self.job is not None:
+            self._warn_shared_names(data)
 
         writer = self._writer or self._ensure_writer()
 
@@ -1443,7 +1573,12 @@ class Run:
 
             self._save_meta()
 
-        if self._compact and self.dist.world_size == 1 and status != "running":
+        if (
+            self._compact
+            and self.dist.world_size == 1
+            and status != "running"
+            and not self._others_running()  # the last job to end compacts
+        ):
             try:
                 from .compact import compact_run
             except ImportError:
@@ -1495,6 +1630,7 @@ def init(
     group: str | None = None,
     run_id: str | None = None,
     resume: Literal["must", "auto"] | None = None,
+    job: str | None = None,
     fork_from: tuple[str, int] | None = None,
     all_ranks: bool = False,
     capture_env: bool = True,
@@ -1531,6 +1667,13 @@ def init(
         resume: What to do when `run_id` already exists: None raises, `"must"`
             continues it and also requires it to exist, `"auto"` continues it if it
             exists and creates it otherwise. Each continuation starts a new session.
+        job: Join the existing run `run_id` as a helper job of this name, such as
+            `"eval"` for a job that evaluates checkpoints while training goes on.
+            It logs into the same run without touching its status, heartbeat or
+            summary, which stay the main job's: its own state goes in
+            `jobs/<job>.json`, its console in `files/output.<job>.log` and its
+            system metrics under `system/<job>/`. None (or `"main"`) is the
+            process that creates the run. Restarting a job continues it.
         fork_from: `(parent_run_id, step)`. Copies the parent's rank 0 scalars up
             to and including `step` into the new run, which then continues from
             `step + 1`.
@@ -1556,8 +1699,10 @@ def init(
     Raises:
         FileExistsError: If `run_id` exists and `resume` is None, or if a run folder
             differing only by case exists.
-        FileNotFoundError: If `resume="must"` and `run_id` does not exist, or if the
-            `fork_from` parent does not exist.
+        FileNotFoundError: If `resume="must"` and `run_id` does not exist, if the
+            `fork_from` parent does not exist, or if `job` is given and run `run_id`
+            does not exist.
+        RuntimeError: If `job` is already running on this run in another process.
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
@@ -1578,6 +1723,7 @@ def init(
         group=group,
         run_id=run_id,
         resume=resume,
+        job=job,
         fork_from=fork_from,
         all_ranks=all_ranks,
         capture_env=capture_env,

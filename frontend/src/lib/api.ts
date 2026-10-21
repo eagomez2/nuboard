@@ -115,6 +115,18 @@ export interface RunBrief {
   fields: Record<string, FieldValue>;
   collections: string[];
   alerts: Alert[];
+  /** Helper jobs that log into the run, such as an evaluator (`init(..., job="eval")`). */
+  jobs?: Job[];
+}
+
+export interface Job {
+  job: string;
+  status: string;
+  started: number | null;
+  ended: number | null;
+  heartbeat: number | null;
+  error: string | null;
+  host: string | null;
 }
 
 export interface QueryInfo {
@@ -245,6 +257,54 @@ export interface ChartData {
   series: Series[];
 }
 
+/** Disk use of one run folder, split by kind (bytes). */
+export interface StorageRun {
+  key: string;
+  name: string;
+  id: string;
+  bytes: number;
+  scalars: number;
+  media: number;
+  console: number;
+  files: number;
+  other: number;
+}
+
+export interface StorageProject {
+  name: string;
+  runs_bytes: number;
+  artifacts_bytes: number;
+  other_bytes: number;
+  run_count: number;
+  /** The largest runs; `rest` sums the others. */
+  runs: StorageRun[];
+  rest: { count: number; bytes: number };
+}
+
+export interface StorageArtifact {
+  project: string;
+  name: string;
+  version: number;
+  /** Bytes stored in the served folder (only the manifest for a reference). */
+  bytes: number;
+  reference: boolean;
+  /** Size of the files a reference points to, stored elsewhere. */
+  referenced: number;
+  unlinked: boolean;
+}
+
+export interface StorageStatus {
+  state: 'idle' | 'measuring' | 'paused';
+  progress: { done?: number; total?: number; bytes?: number; seconds?: number };
+  result: {
+    measured_at: number;
+    seconds: number;
+    partial: boolean;
+    projects: StorageProject[];
+    artifacts: StorageArtifact[];
+  } | null;
+}
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (res.status === 401) location.reload(); // signed out: the page asks for the token
@@ -261,6 +321,13 @@ const encodePath = (path: string) => path.split('/').map(encodeURIComponent).joi
 
 export const api = {
   info: () => json<Info>('/api/info'),
+  storage: (action?: 'start' | 'resume' | 'stop') =>
+    json<StorageStatus>(
+      '/api/storage',
+      action
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }
+        : undefined,
+    ),
   runs: (q: string, project?: string | null, metrics?: string[] | null) =>
     json<RunsResponse>(`/api/runs?${qs({ q, project, metrics: metrics?.join(',') })}`),
   run: (key: string) => json<RunDetail>(`/api/runs/${encodeURIComponent(key)}`),

@@ -657,3 +657,71 @@ def test_artifacts_are_added_unlinked_and_restored_only_when_allowed(tmp_path):
         )
         assert res.json() == {"restored": [2]}
         assert nb.get_artifact("datasets/corpus").version == 2
+
+
+def test_storage_is_measured_only_on_request_and_pauses(tmp_path, monkeypatch):
+    from nuboard.server import storage
+
+    for i in range(3):
+        with nb.init("p", name=f"r{i}", capture_env=False, system_metrics=False) as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+            (run.path / "files").mkdir(exist_ok=True)
+            (run.path / "files" / "big.bin").write_bytes(b"x" * (10_000 * (i + 1)))
+
+    data = tmp_path / "elsewhere"
+    data.mkdir()
+    (data / "huge.bin").write_bytes(b"x" * 50_000)
+    nb.add_artifact("p", "corpus", data, reference=True)
+    nb.add_artifact("p", "model", data / "huge.bin")
+    (tmp_path / "exp" / "p" / "reports").mkdir()
+    (tmp_path / "exp" / "p" / "reports" / "r.md").write_text("x" * 700, "utf-8")
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        assert c.get("/api/storage").json() == {"state": "idle", "progress": {}, "result": None}
+        assert c.post("/api/storage", json={"action": "nope"}).status_code == 400
+        monkeypatch.setattr(storage, "PAUSE_AFTER_S", 0.0)  # pause after the first item
+        c.post("/api/storage", json={"action": "start"})
+        st = _wait(c, lambda s: s["state"] == "paused")
+        assert st["progress"]["done"] == 1 and st["progress"]["total"] == 5
+        monkeypatch.setattr(storage, "PAUSE_AFTER_S", 1000.0)
+        c.post("/api/storage", json={"action": "resume"})
+        res = _wait(c, lambda s: s["state"] == "idle")["result"]
+
+    assert res["partial"] is False
+    (proj,) = res["projects"]
+    assert proj["run_count"] == 3 and proj["other_bytes"] == 700
+    assert [r["files"] for r in proj["runs"]] == [30_000, 20_000, 10_000]
+    assert all(r["scalars"] > 0 for r in proj["runs"])
+    arts = {a["name"]: a for a in res["artifacts"]}
+    assert arts["corpus"]["reference"] and arts["corpus"]["referenced"] == 50_000
+    assert arts["corpus"]["bytes"] < 5_000  # only its manifest is stored here
+    assert arts["model"]["bytes"] > 50_000 and not arts["model"]["reference"]
+    assert proj["artifacts_bytes"] == arts["corpus"]["bytes"] + arts["model"]["bytes"]
+
+    again = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")  # kept across restarts
+
+    with TestClient(again) as c:
+        st = c.get("/api/storage").json()
+        assert st["state"] == "idle" and st["result"]["measured_at"] == res["measured_at"]
+        monkeypatch.setattr(storage, "PAUSE_AFTER_S", 0.0)
+        c.post("/api/storage", json={"action": "start"})
+        _wait(c, lambda s: s["state"] == "paused")
+        c.post("/api/storage", json={"action": "stop"})
+        assert _wait(c, lambda s: s["state"] == "idle")["result"]["partial"] is True
+
+
+def _wait(c, ok, timeout=10.0):
+    import time
+
+    end = time.time() + timeout
+
+    while time.time() < end:
+        st = c.get("/api/storage").json()
+
+        if ok(st):
+            return st
+
+        time.sleep(0.02)
+
+    raise AssertionError(f"timed out: {st}")

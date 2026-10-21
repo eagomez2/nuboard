@@ -11,11 +11,13 @@ import textwrap
 import time
 import warnings
 
+import numpy as np
 import pytest
 
 import nuboard as nb
 from nuboard._media import histogram_bytes, points_bytes, pr_curve_bytes
 from nuboard.catalog import effective_status
+from nuboard.jobs import read_meta
 from nuboard.reader import RunReader
 
 
@@ -678,3 +680,61 @@ def test_add_scalar_baseline_is_saved_and_replaced():
     saved = json.loads((run.path / "run.json").read_text())["baselines"]
     assert saved == {"val/pesq": {"value": 2.4}, "val/stoi": {"value": 0.8}}
     run.finish()
+
+
+def test_a_helper_job_logs_into_the_run_without_touching_its_state():
+    train = nb.init("p", name="big", capture_env=False, system_metrics=False)
+    train.add_scalar({"train/loss": 1.0}, step=0)
+    train.flush()
+    train._on_heartbeat()  # puts the summary in run.json
+
+    with pytest.raises(FileNotFoundError, match="leave out job"):
+        nb.init("p", run_id="20250101-0000_nope_abcdef", job="eval")
+
+    ev = nb.init("p", run_id=train.id, job="eval", capture_env=False, system_metrics=False)
+    assert ev.job == "eval" and ev.path == train.path
+
+    with pytest.raises(RuntimeError, match="already running"):
+        nb.init("p", run_id=train.id, job="eval", capture_env=False)
+
+    with pytest.warns(UserWarning, match="train/loss is also logged by the main job"):
+        ev.add_scalar({"train/loss": 5.0}, step=99)
+
+    for epoch in range(3):
+        train.add_scalar({"train/loss": 1.0 / (epoch + 1)}, step=epoch * 10)
+        ev.add_scalar({"eval/score": float(epoch)}, step=epoch * 10)
+
+    ev.add_image("eval/sample", np.zeros((4, 4, 3), np.uint8), step=0)
+    ev.add_scalar_baseline("eval/score", 0.5)
+    ev.finish()  # the main job still runs: its status is untouched
+    main = json.loads((train.path / "run.json").read_text())
+    assert main["status"] == "running" and "eval/score" not in main["summary"]
+    assert "baselines" not in main
+    job = json.loads((train.path / "jobs" / "eval.json").read_text())
+    assert job["status"] == "finished" and "eval/score" in job["summary"]
+    assert not (train.path / "data.parquet").exists()  # the main job compacts when it ends
+
+    train.flush()
+    train._on_heartbeat()
+    meta = read_meta(train.path)
+    assert meta is not None and meta["status"] == "running"
+    assert [j["job"] for j in meta["jobs"]] == ["eval"]
+    assert meta["summary"]["eval/score"]["last"] == 2.0
+    assert meta["summary"]["train/loss"]["last"] == pytest.approx(1 / 3)  # the main job wins
+    assert meta["baselines"]["eval/score"]["value"] == 0.5
+
+    reader = RunReader(train.path)
+    assert list(reader.scalars("eval/score")[0]) == [0, 10, 20]
+    (img,) = reader.media("eval/sample")
+    assert img.pack.endswith(f".s{ev.session}.pack")
+    assert reader.read_media(img)[:4] == b"\x89PNG"
+
+    again = nb.init("p", run_id=train.id, job="eval", capture_env=False, system_metrics=False)
+    assert again.session > ev.session  # a restart continues the job
+    again.finish()
+    train.finish()
+    assert len(json.loads((train.path / "jobs" / "eval.json").read_text())["sessions"]) == 2
+    assert (train.path / "data.parquet").exists()  # the last job to end compacts
+    after = RunReader(train.path)
+    assert after.parquet is not None
+    assert list(after.scalars("eval/score")[0]) == [0, 10, 20]
