@@ -101,7 +101,7 @@ export function mountWaveform(
   const read = el('span', 'nbwf-read');
   const selBox = el('span', 'nbwf-sel nbwf-zoom');
   const selText = el('span', 'nbwf-seltext');
-  const zoomBox = el('span', 'nbwf-zoom');
+  const zoomBox = el('span', 'nbwf-zoom nbwf-view');
   const form = el('form', 'nbwf-form') as HTMLFormElement;
   const formTime = el('span', 'nbwf-seltext');
   const noteText = el('input') as HTMLInputElement;
@@ -634,6 +634,7 @@ export function mountWaveform(
     looping = !looping;
     loopButton.classList.toggle('on', looping);
   });
+  // as in the audio player: the selection's Zoom in, next to − / + / Fit for the whole view
   button(selBox, 'Zoom in', 'Zoom in to the selection', () => {
     if (!sel) return;
     const pad = (sel[1] - sel[0]) * 0.05;

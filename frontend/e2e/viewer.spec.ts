@@ -162,12 +162,16 @@ test('media page plots waveform figures, with exact values, region lanes, select
   // a track whose classes overlap: every class that is on
   await expect(readout).toContainText(/events\s*((blip|speech)(, (blip|speech))?|–)/);
 
-  // dragging across a tenth of the plot selects it, and Zoom in shows just that
+  // dragging across a tenth of the plot selects it, and Zoom in shows just that; the zoom buttons
+  // stay where they were (the selection's controls have a place of their own)
+  const plus = fig.getByRole('button', { name: 'Zoom in', exact: true });
+  const plusAt = (await plus.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.4, box.y + 40);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.5, box.y + 40, { steps: 4 });
   await page.mouse.up();
   await expect(fig.locator('.nbwf-seltext').first()).toContainText(/1\.0\d+ – 1\.\d+ s/);
+  expect(await plus.boundingBox()).toEqual(plusAt);
   await fig.getByRole('button', { name: 'Zoom in to the selection' }).click();
   // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
   await over.hover({ position: { x: box.width / 2, y: 20 } });
