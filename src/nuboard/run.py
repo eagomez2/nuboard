@@ -30,6 +30,7 @@ from ._writer import Writer, _flatten, _to_float
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
 from .catalog import effective_status
+from .figures import WaveformFigure
 from .jobs import MAIN, job_path, read_jobs
 
 _LOG_RE = re.compile(r"^events\.r(\d+)\.s(\d+)\.log$")
@@ -1296,22 +1297,50 @@ class Run:
     def add_figure(
         self, key: str, figure: Any, step: int | None = None, *, time: float | None = None
     ) -> None:
-        """Log a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure.
+        """Log a Plotly, Altair/Vega-Lite, Bokeh or matplotlib figure, or a `WaveformFigure`.
 
         The figure is serialized immediately, since figures are mutable. Plotly,
         Vega-Lite and Bokeh figures stay interactive in the viewer; matplotlib
-        figures are stored as SVG. Only rank 0 logs media.
+        figures are stored as SVG. A `nb.WaveformFigure` is plotted with its signals
+        over the waveform; its arrays are copied and encoded on the background
+        thread. Only rank 0 logs media.
 
         Args:
             key: Name the figure is logged under.
-            figure: The figure, or a Plotly or Vega-Lite spec as a dict.
+            figure: The figure, a Plotly or Vega-Lite spec as a dict, or a `nb.WaveformFigure`.
             step: Training step. Defaults to the step of the latest `add_scalar` call.
             time: Unix timestamp of the item. Defaults to now.
 
         Raises:
             TypeError: If the figure type is not supported.
+            ValueError: If a waveform's signals do not hold one value per sample, or
+                its range is empty or reversed.
+
+        Example:
+            >>> run.add_figure("eval/vad", nb.WaveformFigure(wav, 16000, {"vad": probs}))
         """
         from ._media import figure_bytes
+
+        if isinstance(figure, WaveformFigure):
+            from ._media import waveform_bytes, waveform_signals
+
+            audio, signals = waveform_signals(figure.audio, figure.signals)
+            rate, bounds = figure.sample_rate, figure.range
+
+            if not rate:
+                raise ValueError("a waveform needs a sample_rate")
+
+            if bounds is not None and not float(bounds[1]) > float(bounds[0]):
+                raise ValueError(f"range must go from low to high, not {bounds}")
+
+            self._put_media(
+                key,
+                step,
+                lambda: waveform_bytes(audio, rate, signals, bounds),
+                {"kind": "figure", "caption": figure.caption},
+                time,
+            )
+            return
 
         data, mime = figure_bytes(figure)  # serialize now: figures are mutable
         self._put_media(key, step, lambda: (data, mime), {"kind": "figure"}, time)

@@ -6,9 +6,10 @@
   import PrChart from './PrChart.svelte';
   import TableView from './TableView.svelte';
   import VideoView from './VideoView.svelte';
+  import WaveformPlot from './WaveformPlot.svelte';
   import { api, type AudioNote, type MediaItem } from '../lib/api';
   import { notice } from '../lib/dialog.svelte';
-  import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, type AudioOptions } from '../lib/media';
+  import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME, type AudioOptions } from '../lib/media';
 
   // One logged item (image, audio, figure, HTML or text) of a run.
   let {
@@ -114,6 +115,28 @@
       .filter(Boolean)
       .join(' · ')}
   </div>
+{:else if item.mime === WAVEFORM_MIME}
+  <WaveformPlot
+    {url}
+    title="{runName} {item.key}"
+    names={item.signals ?? []}
+    range={item.range ?? [-1, 1]}
+    offset={item.audio_bytes ?? 0}
+    samples={item.samples ?? 0}
+    height={tall ? 460 : 240}
+  />
+  <div class="faint cap mono">
+    {#each item.signals ?? [] as name, i (name)}
+      <span class="sig"><i style="background:var(--s{(i % 7) + 2})"></i>{name}</span>
+    {/each}
+    {[
+      item.caption,
+      item.duration != null ? `${item.duration.toFixed(2)} s` : null,
+      item.sample_rate ? `${item.sample_rate / 1000} kHz` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ')}
+  </div>
 {:else if item.mime === TABLE_MIME}
   <TableView {runKey} {runName} {item} />
 {:else if item.mime === PR_MIME}
@@ -211,6 +234,17 @@
   }
   .faint {
     color: var(--faint);
+  }
+  .sig {
+    margin-right: 10px;
+  }
+  .sig i {
+    display: inline-block;
+    width: 10px;
+    height: 3px;
+    border-radius: 2px;
+    margin-right: 5px;
+    vertical-align: middle;
   }
   .cap {
     font-size: 12px;

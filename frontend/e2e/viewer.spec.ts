@@ -143,6 +143,30 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
 });
 
+test('media page plots waveform figures, with exact values on hover and zoom', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Evad%2Fenhanced%24');
+  const over = page.locator('.wf .u-over').first();
+  await expect(over).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.wf .time').first()).toHaveText('0:00.000 / 0:02.600');
+  const box = (await over.boundingBox())!;
+  await over.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+  const readout = page.locator('.wf .readout').first();
+  await expect(readout).toContainText(/#\d+/);
+  await expect(readout).toContainText('audio');
+  await expect(readout).toContainText('speech');
+  // drag across a tenth of the plot zooms in to it
+  await page.mouse.move(box.x + box.width * 0.4, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + 40, { steps: 4 });
+  await page.mouse.up();
+  // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
+  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await expect(readout).toContainText(/0:01\.1[5-9]/);
+  await page.getByRole('button', { name: 'Fit' }).first().click();
+  await over.hover({ position: { x: box.width / 2 + 1, y: 20 } });
+  await expect(readout).toContainText(/0:01\.(29|30)/);
+});
+
 test('properties: define one from Columns, edit a cell, set it on selected runs', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.getByRole('button', { name: /Columns/ }).click();

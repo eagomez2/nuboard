@@ -305,6 +305,37 @@ def test_point_clouds(tmp_path):
     assert shown.meta["axes"] == ["x", "y", "z"]
 
 
+def test_waveforms():
+    rate = 8000
+    wav = np.linspace(-0.5, 0.5, 800)
+    vad = np.linspace(0, 1, 800)
+    run = nb.init("w", capture_env=False)
+    figure = nb.WaveformFigure(wav, rate, {"vad": vad, "gain": -vad}, caption="c")
+    run.add_figure("vad", figure, step=2)
+    vad[:] = 7  # the call copied its input
+    run.add_figure("one", nb.WaveformFigure(wav[None], rate, wav, range=(0, 0.5)), step=2)
+
+    with pytest.raises(ValueError, match="one value per sample"):
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, vad[:-1]))
+
+    with pytest.raises(ValueError, match="low to high"):
+        run.add_figure("bad", nb.WaveformFigure(wav, rate, vad, range=(1, 0)))
+
+    run.finish()
+    r = RunReader(run.path)
+    two, one = r.media()
+    assert two.meta["mime"] == "application/x-nuboard-waveform" and two.meta["kind"] == "figure"
+    assert two.meta["signals"] == ["vad", "gain"] and two.meta["range"] == [-1.0, 1.0]
+    assert two.meta["samples"] == 800 and two.meta["sample_rate"] == rate
+    assert two.meta["caption"] == "c"
+    data = r.read_media(two)
+    n = two.meta["audio_bytes"]
+    assert data[:4] == b"RIFF" and len(data) == n + 2 * 800 * 4
+    signals = np.frombuffer(data[n:], "<f4").reshape(2, 800)
+    assert np.allclose(signals[0], np.linspace(0, 1, 800)) and np.allclose(signals[1], -signals[0])
+    assert one.meta["signals"] == ["signal"] and one.meta["range"] == [0.0, 0.5]
+
+
 def test_histograms():
     import numpy as np
 

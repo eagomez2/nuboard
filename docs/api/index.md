@@ -43,7 +43,7 @@ NuBoard.
 | [`add_image`](add_image.md) | images from arrays, tensors, PIL or files | Media › Images |
 | [`add_audio`](add_audio.md) | audio from arrays, tensors or files | Media › Audio |
 | [`add_video`](add_video.md) | video from arrays, tensors or files | Media › Video |
-| [`add_figure`](add_figure.md) | Plotly, Altair/Vega-Lite, Bokeh and matplotlib figures | Media › Figures |
+| [`add_figure`](add_figure.md) | Plotly, Altair/Vega-Lite, Bokeh and matplotlib figures, and waveforms with signals (`nb.WaveformFigure`) | Media › Figures |
 | [`add_pr_curve`](add_pr_curve.md) | a precision-recall curve | Media › Figures |
 | [`add_histogram`](add_histogram.md) | the distribution of weights, gradients or any values | Media › Figures |
 | [`add_table`](add_table.md) | per-example results, with audio and image cells | Media › Tables |

@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 from . import _fs
 from .cells import Audio
 from .collection import save_collection
+from .figures import WaveformFigure
 from .reports import save_fields, save_report, save_snapshot
 from .run import add_artifact, init
 
@@ -955,6 +956,27 @@ def _noise(rng: Any, n: int) -> Any:
     return 0.08 * pink / pink.std() + 0.02 * hum
 
 
+def _speech_presence(clean: Any, out: Any, epoch: int, rng: Any) -> Any:
+    """Return a voice activity probability for `out`, one per sample, held over 10 ms frames.
+
+    It follows the clean speech's level, more sharply as training goes on, and is
+    fooled by loud residual noise early on.
+    """
+    import numpy as np
+
+    hop = SPEECH_RATE // 100
+    n = len(clean) // hop * hop
+
+    def level(x: Any) -> Any:  # dB per frame
+        return 20 * np.log10(np.sqrt((x[:n].reshape(-1, hop) ** 2).mean(1)) + 1e-6)
+
+    speech = (np.maximum(level(clean), -60) + 35) / (8 - epoch / 6)
+    fooled = (1 - epoch / 30) * (level(out) + 30) / 5  # residual noise reads as speech early on
+    logit = np.clip(speech + fooled + rng.normal(0, 0.6, len(speech)), -9, 9)
+    prob = 1 / (1 + np.exp(-logit))
+    return np.pad(np.repeat(prob, hop), (0, len(out) - n), mode="edge")
+
+
 def _speech_runs(root: Path, base: float) -> None:
     """Write the `speech-denoise` project: three models with audio samples (needs numpy)."""
 
@@ -1029,6 +1051,12 @@ def _speech_runs(root: Path, base: float) -> None:
                     step=epoch,
                     sample_rate=SPEECH_RATE,
                     caption=f"epoch {epoch}",
+                )
+                vad = _speech_presence(clean, out, epoch, erng)
+                run.add_figure(
+                    "vad/enhanced",
+                    WaveformFigure(np.clip(out, -1, 1), SPEECH_RATE, {"speech": vad}),
+                    step=epoch,
                 )
                 rows = _eval_rows(model, epoch, left)
                 worst = sorted(range(len(rows)), key=lambda j: rows[j]["pesq"])[:3]
