@@ -1112,6 +1112,8 @@ def _speech_notes(project: Path, ids: dict[str, str]) -> None:
         "# Listening notes\n\n"
         "Conv-TasNet is cleanest overall; what is left is a little hiss and a few tonal blips.\n\n"
         f"![Conv-TasNet at epoch 30](media:{ids['convtasnet']}/audio/enhanced@30)\n\n"
+        "Its speech probability is sharp by now, and stays low in the pauses:\n\n"
+        f"![Speech probability at epoch 30](media:{ids['convtasnet']}/vad/enhanced@30)\n\n"
         "## Per-file scores\n\n"
         "Sorted by PESQ in the viewer, the worst files are babble noise at low input SNR; "
         "colors show the change since the previous eval.\n\n"

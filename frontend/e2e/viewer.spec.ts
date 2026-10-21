@@ -690,7 +690,16 @@ test('a report with a table and audio notes exports them, with either audio play
     .poll(async () => (await off.locator('.nbwave iframe').first().boundingBox())!.height)
     .toBeGreaterThan(200);
   await expect(off.locator('.nbnotes li')).toHaveCount(2);
-  await expect(off.locator('audio')).toHaveCount(0);
+  // the waveform figure: its plot, drawn offline, with the values under the pointer, and its audio
+  const wave = off.locator('.nbwavefig .u-over').first();
+  await expect(wave).toBeVisible();
+  const wbox = (await wave.boundingBox())!;
+  await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
+  await expect(off.locator('.nbwf-read')).toContainText(/#\d+ +audio -?[\d.]+ +speech [\d.e-]+/);
+  await expect
+    .poll(() => off.locator('.nbwavefig audio').evaluate((a: HTMLAudioElement) => a.duration))
+    .toBeCloseTo(2.6, 1);
+  await expect(off.locator('audio')).toHaveCount(1);
 
   // the browser's player, whose notes play their section
   await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));
