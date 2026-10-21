@@ -11,7 +11,8 @@ import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
 import { fmtTick, histSvg, type HistData, type HistSeries } from './hist';
 import { mountPoints } from './points';
-import { mountWaveform } from './waveexport';
+import { mountWaveform } from './waveplot';
+import WAVEPLOT_CSS from './waveplot.css?raw';
 import { waveformKit } from './waveform';
 import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
@@ -125,7 +126,13 @@ new MutationObserver(function(){v.setBackground(bg())}).observe(document.documen
 const WAVEFORM_JS = `var waveformKit=(${waveformKit.toString()});
 var mountWaveform=(${mountWaveform.toString()});
 var kit=waveformKit();
-document.querySelectorAll('.nbwavefig').forEach(function(box){mountWaveform(box,kit,uPlot)});`;
+document.querySelectorAll('.nbwavefig').forEach(function(box){
+var part=function(n){return box.querySelector('script[data-part='+n+']').textContent.trim()};
+var bytes=function(b){var s=atob(b),u=new Uint8Array(s.length);for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
+var a=part('audio'),w=bytes(a),g=bytes(part('signals')),all=new Uint8Array(w.length+g.length);all.set(w);all.set(g,w.length);
+var m=JSON.parse(box.dataset.meta);
+mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,audioSrc:'data:audio/wav;base64,'+a});
+});`;
 
 /** Base64 of `bytes`, a chunk at a time (a spread of millions of arguments would overflow the stack). */
 function base64(bytes: Uint8Array): string {
@@ -479,16 +486,11 @@ async function mediaHtml(
     const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
     const offset = item.audio_bytes ?? 0;
     const names = item.signals ?? [];
-    const info = { names, range: item.range ?? [-1, 1], samples: item.samples ?? 0 };
-    const legend = names
-      .map((n, i) => `<span><i style="background:var(--s${((i + 1) % 8) + 1})"></i>${esc(n)}</span>`)
-      .join('');
+    const info = { names, range: item.range ?? [-1, 1], samples: item.samples ?? 0, caption: item.caption ?? null };
     body =
       `<div class="nbwavefig" data-meta="${esc(JSON.stringify(info))}">` +
-      `<div class="nbwf-bar"><span class="nbwf-read">Drag to zoom · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all · click to set the playhead</span><button type="button" class="nbwf-fit">Fit</button></div>` +
-      `<div class="nbwf-plot"></div><audio controls preload="auto" src="data:audio/wav;base64,${base64(bytes.subarray(0, offset))}"></audio>` +
-      `<script type="application/octet-stream">${base64(bytes.subarray(offset))}</script>` +
-      `<div class="nblegend">${legend}</div></div>`;
+      `<script type="application/octet-stream" data-part="audio">${base64(bytes.subarray(0, offset))}</script>` +
+      `<script type="application/octet-stream" data-part="signals">${base64(bytes.subarray(offset))}</script></div>`;
   } else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;
@@ -515,9 +517,6 @@ figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
 figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
 .nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.nbwavefig{display:flex;flex-direction:column;gap:6px}.nbwavefig audio{width:100%}
-.nbwf-bar{display:flex;gap:10px;align-items:center;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nbwf-read{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.nbwf-fit{font:12px system-ui,sans-serif;padding:3px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer}
 .nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
 .nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
 footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;text-align:center}
@@ -621,6 +620,13 @@ export async function reportHtml(
   if (needs.notes) scripts.push(NOTES_JS);
   if (needs.points) scripts.push(POINTS_JS);
   if (needs.waveform) scripts.push(WAVEFORM_JS);
+  // the viewer's monospace font, which the waveform figure's numbers and controls use
+  let fonts = '';
+  if (needs.waveform) {
+    const mono = (await import('@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?inline'))
+      .default;
+    fonts = `@font-face{font-family:'Geist Mono Variable';font-weight:100 900;font-display:swap;src:url(${mono}) format('woff2-variations')}.nbwavefig{--mono:'Geist Mono Variable',ui-monospace,Menlo,monospace}`;
+  }
   let player = '';
   if (needs.wave) {
     const page = new DOMParser().parseFromString(AUDIO_PAGE, 'text/html');
@@ -638,7 +644,7 @@ export async function reportHtml(
   const footer = opts.footer.trim() ? `<footer>${esc(opts.footer.trim())}</footer>` : '';
   return `<!doctype html>
 <html lang="en"${switchable ? '' : ` data-theme="${opts.theme}"`}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}</style></head>
+<title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}${needs.waveform ? WAVEPLOT_CSS + fonts : ''}</style></head>
 <body>${switchable ? THEME_BUTTON : ''}${main.outerHTML}${footer}
 ${tail}</body></html>
 `;
