@@ -1043,6 +1043,28 @@ def _speech_runs(root: Path, base: float) -> None:
         run.finish(_ended=t)
         ids[model] = run.id
 
+        if model == "convtasnet":  # a second job scored checkpoints while training went on
+            ev = init(
+                "speech-denoise",
+                dir=root,
+                run_id=run.id,
+                job="eval",
+                capture_env=False,
+                system_metrics=False,
+                capture_console=False,
+                _started=started + 400,
+            )
+
+            for epoch in range(5, 31, 5):
+                left = floor + (1 - floor) * math.exp(-epoch / 7)
+                ev.add_scalar(
+                    {"eval/dnsmos": 2.2 + 1.6 * (1 - left) + prng.gauss(0, 0.03)},
+                    step=epoch,
+                    time=started + epoch * 70 + 400,
+                )
+
+            ev.finish(_ended=t + 400)
+
     _speech_notes(root / "speech-denoise", ids)
 
 

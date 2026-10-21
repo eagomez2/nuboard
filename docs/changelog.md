@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.16.0
+
+- **Jobs.** A second process can log into a running run with
+  `nb.init(..., run_id=ID, job="eval")`, for example an evaluator that scores
+  checkpoints while training goes on. Its scalars share the run's step axis,
+  and it never changes the run's status, heartbeat or summary: its own state
+  goes in `jobs/<job>.json`, its console in `files/output.<job>.log` and its
+  system metrics under `system/<job>/`. The viewer shows each job as a chip
+  next to the run. A job can only join an existing run, the same job cannot
+  run twice at once, and logging a name the main job also logs gives a
+  warning. The last job to end compacts the run. See
+  [Evaluating while training](guide/jobs.md), which includes a checkpoint
+  queue recipe. Runs without jobs are unchanged, and older versions still read
+  new runs (without the jobs).
+- **Storage.** A disk button in the left rail shows how much space runs,
+  artifacts and other files take, per project and per run. The Artifacts page
+  has the same button for artifact versions. It is measured only when you
+  press **Measure** or **Refresh**, pauses after 10 s on large folders to ask
+  before going on, and counts only what is stored in the folder: a referenced
+  artifact counts its manifest, with the size it points to shown apart.
+- Sweeps: the scatter plots under the parallel-coordinates chart no longer
+  scale their axis labels with the plot width; text keeps the same size with
+  one column or four.
+- The demo's `convtasnet` run has an `eval` job that logged `eval/dnsmos`.
+
 ## 0.15.8
 
 - **Access token off localhost.** `nuboard up --host` with an address other

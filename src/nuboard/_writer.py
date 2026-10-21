@@ -86,6 +86,8 @@ class Writer:
         flush_interval: Seconds between writes when nothing wakes the thread.
         heartbeat_interval: Minimum seconds between heartbeat frames.
         on_heartbeat: Called from the writer thread after each heartbeat.
+        own_pack: Write media to `media.r<rank>.s<session>.pack` instead of the
+            rank's shared pack, for a helper job that runs alongside the main one.
     """
 
     def __init__(
@@ -96,9 +98,12 @@ class Writer:
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
         on_heartbeat: Callable[[], None] | None = None,
+        own_pack: bool = False,
     ) -> None:
         self.log_path = run_dir / f"events.r{rank}.s{session}.log"
-        self.pack_path = run_dir / f"media.r{rank}.pack"
+        self.pack_path = run_dir / (
+            f"media.r{rank}.s{session}.pack" if own_pack else f"media.r{rank}.pack"
+        )
         self.queue: collections.deque[tuple[Any, ...]] = collections.deque()
         self.flush_interval = flush_interval
         self.heartbeat_interval = heartbeat_interval

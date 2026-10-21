@@ -335,13 +335,14 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "ls":
         from . import _fs
         from .catalog import effective_status, find_runs, make_record
+        from .jobs import read_meta
         from .query import parse
 
         root = Path(args.dir or _default_dir())
         records = []
 
         for project, path in find_runs(root):
-            meta = _fs.read_json(path / "run.json", {})
+            meta = read_meta(path) or {}
             ann = _fs.read_json(path / "annotations.json", {}) or {}
             records.append(make_record(path.name, project, path.name, meta, ann))
 

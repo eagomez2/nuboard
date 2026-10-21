@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { storageView } from '../lib/storage.svelte';
   import ArtifactForm from '../components/ArtifactForm.svelte';
   import Icon from '../components/Icon.svelte';
   import Status from '../components/Status.svelte';
@@ -241,6 +242,13 @@ run.use_artifact("dataset:latest")</pre>
     <aside class="card side">
       <div class="sidehead">
         <span class="label">Artifacts</span>
+        <button
+          class="btn btn-ghost sm icon"
+          title="Disk use of artifacts"
+          aria-label="Storage"
+          onclick={() => Object.assign(storageView, { open: true, tab: 'artifacts' })}
+          ><Icon name="disk" size={15} /></button
+        >
         {#if edit}<button class="btn btn-ghost sm" onclick={() => (formOpen = true)}>New version</button>{/if}
       </div>
       {#each byName as [k, versions] (k)}
@@ -445,6 +453,12 @@ run.use_artifact("dataset:latest")</pre>
     gap: 2px;
     position: sticky;
     top: 16px;
+  }
+  .sidehead .icon {
+    margin-left: auto;
+    width: 30px;
+    padding: 0;
+    justify-content: center;
   }
   .sidehead {
     display: flex;

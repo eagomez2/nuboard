@@ -20,8 +20,9 @@ from typing import Any
 from . import _fs
 from ._meta import ENV_PREFIX, NAME
 from .collection import attach
+from .jobs import JOBS, merge_jobs, read_jobs
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
 _SKIP_DIRS = {
     "artifacts",
@@ -234,6 +235,7 @@ def make_record(
         "fields": ann.get("fields") or {},
         "alerts": meta.get("alerts") or [],
         "compacted": bool(meta.get("compacted")),
+        "jobs": [{**j, "status": effective_status(j)} for j in meta.get("jobs") or []],
     }
 
 
@@ -290,8 +292,9 @@ class Catalog:
             self._state[key] = (rel, rm, am)
             row = self._rows[key] = json.loads(record)
 
-            if row["status"] == "running" and now - (row["heartbeat"] or 0) > STALE_AFTER_S:
-                row["status"] = "lost"
+            for r in [row, *row.get("jobs", [])]:
+                if r["status"] == "running" and now - (r["heartbeat"] or 0) > STALE_AFTER_S:
+                    r["status"] = "lost"
 
     # -- refresh ----------------------------------------------------------------
     def refresh(self, full: bool = True) -> set[str]:
@@ -362,11 +365,14 @@ class Catalog:
         """Re-read one run if its `run.json` or folder changed; return True if it did."""
         run_json = os.path.join(path, "run.json")
         ann_json = os.path.join(path, "annotations.json")
-        # annotations.json is always replaced atomically, which bumps the folder's mtime
+        # annotations.json is always replaced atomically, which bumps the folder's mtime;
+        # so are the helper jobs' files, which bumps the mtime of `jobs/`
         rm, am = _mtime(run_json), _mtime(path)
 
         if rm == 0:
             return False
+
+        rm ^= _mtime(os.path.join(path, JOBS)) << 2
 
         old = self._state.get(key)
 
@@ -378,6 +384,7 @@ class Catalog:
         if meta is None:  # mid-write on a filesystem without atomic rename; next time
             return False
 
+        merge_jobs(meta, read_jobs(path))
         ann = _fs.read_json(ann_json, {}) or {}
         self._state[key] = (rel, rm, am)
         self._rows[key] = make_record(key, project, rel, meta, ann)

@@ -33,6 +33,7 @@
     expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
     pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v7',
+    disk: 'M3 13h18v7H3zM3 13l3-9h12l3 9M7 16.5h.01M11 16.5h6',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>

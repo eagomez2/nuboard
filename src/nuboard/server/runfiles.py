@@ -26,7 +26,8 @@ _pins_lock = threading.Lock()
 
 # Files NuBoard writes itself, at the top of a run folder
 _INTERNAL = re.compile(
-    r"^(run\.json|annotations\.json|data\.parquet|events\.r\d+\.s\d+\.log|media\.r\d+\.pack)$"
+    r"^(run\.json|annotations\.json|data\.parquet|events\.r\d+\.s\d+\.log"
+    r"|media\.r\d+(\.s\d+)?\.pack|jobs/[^/]+\.json)$"
 )
 
 
@@ -120,7 +121,7 @@ def list_files(run_dir: Path) -> dict[str, Any]:
                     "size": st.st_size,
                     "mtime": st.st_mtime,
                     "kind": kind_of(rel, path, sniff),
-                    "internal": "/" not in rel and bool(_INTERNAL.match(rel)),
+                    "internal": bool(_INTERNAL.match(rel)),
                 }
             )
 

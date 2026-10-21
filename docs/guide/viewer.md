@@ -296,6 +296,8 @@ Every artifact version with its files, metadata and a lineage graph of the
 runs that produced and used it. Started with `--edit-artifacts`, the page can
 also add a version from a path and unlink or restore versions. See
 [Artifacts and lineage](artifacts.md#adding-and-unlinking-versions-in-the-viewer).
+The disk button at the top of the list opens [Storage](#storage) on its
+Artifacts tab.
 
 ## Reports page
 
@@ -462,6 +464,27 @@ download link. The waveform player is a port of the player in
 audioviewer, built on
 [wavesurfer.js](https://wavesurfer.xyz) (BSD-3), bundled with the viewer
 so it works offline.
+
+## Storage
+
+The disk button at the bottom of the left rail shows how much disk the served
+folder uses, like a system storage panel. Nothing is measured until you press
+**Measure**, and the result stays until you press **Refresh**, with the time
+it was measured. It is kept across restarts of the viewer.
+
+- **Runs** shows one bar for the whole folder, split into runs, artifacts and
+  other files (reports, views, ...), then every project by size. Open a
+  project to see its largest runs, each split into scalars, media, files and
+  console output; click a run to open it.
+- **Artifacts** lists each artifact with its versions. Only what is stored in
+  the folder counts: a copied version counts its files, a referenced version
+  only its manifest. The size a reference points to is shown apart, as
+  "points to … elsewhere".
+
+Measuring only lists folders and reads file sizes; it never opens a file, and
+a symlink counts as the link, not what it points to. On a very large folder it
+pauses after 10 s and asks whether to go on; **Stop here** keeps what was
+measured so far, marked as partial.
 
 ## Sharing on a network
 

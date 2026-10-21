@@ -21,6 +21,8 @@ path.
         annotations.json                  viewer-owned: star, notes, tags, archived, reviewed, fields
         events.r<rank>.s<session>.log     append-only event log, one per rank and session
         media.r<rank>.pack                images, video, figures and HTML appended back to back
+        media.r<rank>.s<session>.pack     the same, for a session of a helper job (see Jobs)
+        jobs/<job>.json                   state of a helper job: status, heartbeat, summary, ...
         data.parquet                      compacted scalars (written at finish, optional)
         files/
           requirements.txt                installed packages (pip freeze format)
@@ -114,6 +116,23 @@ Each alert is an object:
 
 The list is recomputed whenever the run is compacted. Readers treat a missing
 key as "not checked yet", not as "healthy".
+
+## Jobs: `jobs/<job>.json`
+
+A process that joins a run with `init(..., run_id=ID, job="eval")` is a helper
+job. It never writes `run.json`: its state goes in `jobs/<job>.json`, with the
+same keys `run.json` uses for a process (`status`, `started`, `ended`,
+`heartbeat`, `exit`, `sessions`, `summary`, `inputs`, `outputs`,
+`baselines`), plus `job`, `heartbeat_interval`, `env` (`host`, `pid`) and
+`command`. Its scalars go to event logs numbered after the run's other
+sessions, and its media to `media.r<rank>.s<session>.pack`, so two processes
+never append to the same file.
+
+Readers merge the jobs into the run: summaries and baselines are added (the
+main job's entry wins on a shared name), inputs and outputs are appended with
+`job` set, and `jobs` lists each job's `job`, `status`, `started`, `ended`,
+`heartbeat`, `error` and `host`. The run's `status` is the main job's.
+Readers older than 0.16 ignore `jobs/` and show the main job only.
 
 ## Event log: `events.r<rank>.s<session>.log`
 

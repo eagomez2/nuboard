@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import About from './components/About.svelte';
+  import StorageDialog from './components/StorageDialog.svelte';
+  import { storageView } from './lib/storage.svelte';
   import Dialog from './components/Dialog.svelte';
   import ReportToast from './components/ReportToast.svelte';
   import Icon from './components/Icon.svelte';
@@ -89,11 +91,20 @@
         <Icon name={item.icon} size={20} />
       </button>
     {/each}
+    <button
+      class="storage-btn"
+      title="Storage"
+      aria-label="Storage"
+      onclick={() => Object.assign(storageView, { open: true, tab: 'runs' })}
+    >
+      <Icon name="disk" size={18} />
+    </button>
     <button class="about-btn" title="About {NAME}" aria-label="About {NAME}" onclick={() => (about = true)}>
       <Icon name="info" size={17} />
     </button>
   </nav>
   <About bind:open={about} />
+  <StorageDialog />
 
   <main class="page">
     <header>
@@ -185,8 +196,16 @@
     background: rgba(255, 255, 255, 0.13);
     color: #fff;
   }
-  .rail .about-btn {
+  .rail .storage-btn {
     margin-top: auto;
+    width: 34px;
+    height: 34px;
+    opacity: 0.6;
+  }
+  .rail .storage-btn:hover {
+    opacity: 1;
+  }
+  .rail .about-btn {
     width: 34px;
     height: 34px;
     opacity: 0.6;
