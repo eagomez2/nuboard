@@ -419,11 +419,14 @@ export function mountWaveform(
       if (!plot) return;
       plot.setData(viewData(plot), false);
       plot.setScale('x', { min: view[0], max: view[1] });
-      showSelection();
       drawOverview();
-      drawLanes();
-      drawNotes();
     });
+  };
+  // the selection, the region lanes and the notes, placed by time with the plot's current scale
+  const placeByTime = () => {
+    showSelection();
+    drawLanes();
+    drawNotes();
   };
   const setView = (a: number, b: number) => {
     const span = Math.min(Math.max(b - a, Math.min(duration, 32 / rate)), duration);
@@ -514,6 +517,10 @@ export function mountWaveform(
           },
         },
         hooks: {
+          // what is placed by time, once uPlot has applied the new scale (it does so after setScale returns)
+          setScale: [(u, key) => key === 'x' && placeByTime()],
+          ready: [placeByTime],
+          setSize: [placeByTime],
           setSelect: [
             (u) => {
               if (u.select.width > 4) {
