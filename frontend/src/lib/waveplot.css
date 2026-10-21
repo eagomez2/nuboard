@@ -1,0 +1,135 @@
+/* The waveform figure, as the viewer draws it and as an HTML export draws it (lib/waveplot.ts): the
+   same rules in both, so what you see is what the exported file shows. */
+.nbwf {
+  --nbwf-accent: var(--accent, var(--link, #0072b2));
+  --nbwf-mono: var(--mono, ui-monospace, Menlo, Consolas, monospace);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text);
+}
+.nbwf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 30px;
+  font-size: 12px;
+}
+.nbwf-play {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nbwf-accent);
+  color: var(--panel);
+  cursor: pointer;
+}
+.nbwf-play svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+.nbwf-play .nbwf-pause,
+.nbwf.playing .nbwf-play .nbwf-go {
+  display: none;
+}
+.nbwf.playing .nbwf-play .nbwf-pause {
+  display: block;
+}
+.nbwf-time,
+.nbwf-read {
+  font-family: var(--nbwf-mono);
+  font-variant-numeric: tabular-nums;
+}
+.nbwf-time {
+  flex: none;
+}
+.nbwf-read {
+  /* on its own line when the plot is narrow */
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-read .nbwf-hint,
+.nbwf-read .nbwf-at,
+.nbwf-cap {
+  color: var(--faint);
+}
+.nbwf-read .nbwf-val {
+  margin-left: 10px;
+}
+.nbwf-read b {
+  font-weight: 650;
+}
+.nbwf i.nbwf-sw {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.nbwf-zoom {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  margin-left: auto;
+}
+.nbwf-zoom button {
+  height: 26px;
+  min-width: 28px;
+  padding: 0 9px;
+  font: 12px var(--nbwf-mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nbwf-zoom button:hover {
+  border-color: var(--nbwf-accent);
+}
+.nbwf-plot {
+  position: relative;
+  min-width: 0;
+}
+.nbwf-dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--panel);
+  pointer-events: none;
+  display: none;
+}
+.nbwf-overview {
+  display: block;
+  width: 100%;
+  height: 28px;
+  cursor: grab;
+  touch-action: none;
+}
+.nbwf-cap {
+  font-family: var(--nbwf-mono);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-cap .nbwf-sig {
+  margin-right: 10px;
+}
+.nbwf-err {
+  color: var(--faint);
+  padding: 12px 0;
+}

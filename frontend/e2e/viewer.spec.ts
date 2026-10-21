@@ -145,12 +145,12 @@ test('media page plays audio with the waveform and simple players', async ({ pag
 
 test('media page plots waveform figures, with exact values on hover and zoom', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Evad%2Fenhanced%24');
-  const over = page.locator('.wf .u-over').first();
+  const over = page.locator('.nbwf .u-over').first();
   await expect(over).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('.wf .time').first()).toHaveText('0:00.000 / 0:02.600');
+  await expect(page.locator('.nbwf-time').first()).toHaveText('0:00.000 / 0:02.600');
   const box = (await over.boundingBox())!;
   await over.hover({ position: { x: box.width / 2, y: box.height / 2 } });
-  const readout = page.locator('.wf .readout').first();
+  const readout = page.locator('.nbwf-read').first();
   await expect(readout).toContainText(/#\d+/);
   await expect(readout).toContainText('audio');
   await expect(readout).toContainText('speech');
@@ -695,11 +695,18 @@ test('a report with a table and audio notes exports them, with either audio play
   await expect(wave).toBeVisible();
   const wbox = (await wave.boundingBox())!;
   await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
-  await expect(off.locator('.nbwf-read')).toContainText(/#\d+ +audio -?[\d.]+ +speech [\d.e-]+/);
+  await expect(off.locator('.nbwf-read')).toContainText(/#\d+\s*audio -?[\d.]+\s*speech [\d.e-]+/);
   await expect
     .poll(() => off.locator('.nbwavefig audio').evaluate((a: HTMLAudioElement) => a.duration))
     .toBeCloseTo(2.6, 1);
   await expect(off.locator('audio')).toHaveCount(1);
+  // the same controls as in the viewer
+  await expect(off.locator('.nbwavefig .nbwf-overview')).toBeVisible();
+  await expect(off.locator('.nbwavefig .nbwf-time')).toHaveText('0:00.000 / 0:02.600');
+  await off.getByRole('button', { name: 'Zoom in' }).click();
+  await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
+  await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
+  await off.getByRole('button', { name: 'Fit' }).click();
 
   // the browser's player, whose notes play their section
   await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));

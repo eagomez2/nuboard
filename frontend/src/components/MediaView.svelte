@@ -123,20 +123,9 @@
     range={item.range ?? [-1, 1]}
     offset={item.audio_bytes ?? 0}
     samples={item.samples ?? 0}
+    caption={item.caption}
     height={tall ? 460 : 240}
   />
-  <div class="faint cap mono">
-    {#each item.signals ?? [] as name, i (name)}
-      <span class="sig"><i style="background:var(--s{(i % 7) + 2})"></i>{name}</span>
-    {/each}
-    {[
-      item.caption,
-      item.duration != null ? `${item.duration.toFixed(2)} s` : null,
-      item.sample_rate ? `${item.sample_rate / 1000} kHz` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ')}
-  </div>
 {:else if item.mime === TABLE_MIME}
   <TableView {runKey} {runName} {item} />
 {:else if item.mime === PR_MIME}
@@ -234,17 +223,6 @@
   }
   .faint {
     color: var(--faint);
-  }
-  .sig {
-    margin-right: 10px;
-  }
-  .sig i {
-    display: inline-block;
-    width: 10px;
-    height: 3px;
-    border-radius: 2px;
-    margin-right: 5px;
-    vertical-align: middle;
   }
   .cap {
     font-size: 12px;
