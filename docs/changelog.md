@@ -10,9 +10,12 @@
   zoom), fast on files an hour long, down to single samples. Hovering shows
   the exact values at a sample; the clip plays from where you click. It is
   listed under **Figures**; `add_audio` and its spectrogram player are
-  unchanged. See [`add_figure`](api/add_figure.md#waveforms-with-signals).
+  unchanged. In a report, an HTML export keeps it interactive offline, with
+  its audio, and a .zip export writes its audio as a WAV and its signals as a
+  CSV. See [`add_figure`](api/add_figure.md#waveforms-with-signals).
 - The demo's `speech-denoise` runs log `vad/enhanced`, a waveform figure of
-  the enhanced output with a speech probability.
+  the enhanced output with a speech probability, and its listening report
+  embeds one.
 
 ## 0.16.0
 

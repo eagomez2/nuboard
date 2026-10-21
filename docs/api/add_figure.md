@@ -182,6 +182,10 @@ interactive plot, not in the audio player:
 - **Playback.** The play button plays the audio and the playhead follows it.
   Click the plot to start from there.
 
+In a report, the figure embeds like any logged item. An HTML export keeps it
+interactive, with the same plot and the clip's audio, offline; a .zip export
+writes its audio as a `.wav` and its signals as a CSV.
+
 The plot does not have a spectrogram or notes. For those, also log the clip
 with [`add_audio`](add_audio.md), which opens in the waveform and
 spectrogram player.

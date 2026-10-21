@@ -6,11 +6,13 @@ import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
 import { baselineExtent, baselineLines } from './baselines';
-import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
+import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
 import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
 import { fmtTick, histSvg, type HistData, type HistSeries } from './hist';
 import { mountPoints } from './points';
+import { mountWaveform } from './waveexport';
+import { waveformKit } from './waveform';
 import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
 import { ema, robustRange } from './smooth';
@@ -73,6 +75,8 @@ interface Needs {
   points?: boolean;
   /** Audio is drawn with the waveform player, so the player is embedded once. */
   wave?: boolean;
+  /** A waveform figure is embedded, so its plot is added (with uPlot). */
+  waveform?: boolean;
 }
 
 /** How audio is exported: the waveform and spectrogram player, or the browser's own. */
@@ -115,6 +119,20 @@ var bg=function(){return getComputedStyle(document.documentElement).getPropertyV
 var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg(),box.dataset.axes?JSON.parse(box.dataset.axes):null);
 new MutationObserver(function(){v.setBackground(bg())}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 });`;
+
+// Draws each waveform figure from the WAV in its <audio> and the signals in its <script>, with the
+// same decimation as the viewer.
+const WAVEFORM_JS = `var waveformKit=(${waveformKit.toString()});
+var mountWaveform=(${mountWaveform.toString()});
+var kit=waveformKit();
+document.querySelectorAll('.nbwavefig').forEach(function(box){mountWaveform(box,kit,uPlot)});`;
+
+/** Base64 of `bytes`, a chunk at a time (a spread of millions of arguments would overflow the stack). */
+function base64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
 
 // Puts the waveform player in each audio frame: the player's page and scripts are stored once in
 // #nbplayer, and the frame's own data goes in before them as NB_AUDIO_EMBED. The frames follow
@@ -454,7 +472,24 @@ async function mediaHtml(
     const base64 = (await dataUrl(url)).replace(/^data:[^,]*,/, '');
     body = `<div class="nbpoints" data-count="${item.points ?? 0}" data-colors="${item.colors ? 1 : 0}"${item.axes ? ` data-axes="${esc(JSON.stringify(item.axes))}"` : ''}><canvas aria-label="${esc(item.key)}"></canvas><script type="application/octet-stream">${base64}</script><small>${(item.points ?? 0).toLocaleString()} points · drag to rotate, shift-drag to pan, click then scroll to zoom, double-click to reset</small></div>`;
   } else if (item.mime === 'text/html') body = frame(await (await fetch(url)).text(), item.key, 360);
-  else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
+  else if (item.mime === WAVEFORM_MIME) {
+    // the audio plays from its own data URL; the plot reads the same bytes, then the signals after them
+    needs.libs.add('uplot');
+    needs.waveform = true;
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const offset = item.audio_bytes ?? 0;
+    const names = item.signals ?? [];
+    const info = { names, range: item.range ?? [-1, 1], samples: item.samples ?? 0 };
+    const legend = names
+      .map((n, i) => `<span><i style="background:var(--s${((i + 1) % 8) + 1})"></i>${esc(n)}</span>`)
+      .join('');
+    body =
+      `<div class="nbwavefig" data-meta="${esc(JSON.stringify(info))}">` +
+      `<div class="nbwf-bar"><span class="nbwf-read">Drag to zoom · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all · click to set the playhead</span><button type="button" class="nbwf-fit">Fit</button></div>` +
+      `<div class="nbwf-plot"></div><audio controls preload="auto" src="data:audio/wav;base64,${base64(bytes.subarray(0, offset))}"></audio>` +
+      `<script type="application/octet-stream">${base64(bytes.subarray(offset))}</script>` +
+      `<div class="nblegend">${legend}</div></div>`;
+  } else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;
 }
@@ -480,6 +515,9 @@ figcaption{display:flex;flex-direction:column;font-size:13px;margin-top:6px}
 figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:12px}audio{width:100%}
 .nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.nbwavefig{display:flex;flex-direction:column;gap:6px}.nbwavefig audio{width:100%}
+.nbwf-bar{display:flex;gap:10px;align-items:center;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nbwf-read{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nbwf-fit{font:12px system-ui,sans-serif;padding:3px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer}
 .nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
 .nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
 footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;text-align:center}
@@ -582,6 +620,7 @@ export async function reportHtml(
   if (needs.libs.size) scripts.push(DRAW);
   if (needs.notes) scripts.push(NOTES_JS);
   if (needs.points) scripts.push(POINTS_JS);
+  if (needs.waveform) scripts.push(WAVEFORM_JS);
   let player = '';
   if (needs.wave) {
     const page = new DOMParser().parseFromString(AUDIO_PAGE, 'text/html');
