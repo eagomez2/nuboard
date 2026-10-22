@@ -1,20 +1,49 @@
 # Architecture
 
-```text
- training process                         run folder                       viewer process
-┌────────────────────┐            ┌───────────────────────┐        ┌──────────────────────────┐
-│ run.add_scalar(dict)      │ deque      │ run.json   (atomic)   │ stat   │ Catalog (SQLite cache in │
-│   └─ append ───────┼──────┐     │ events.r0.s0.log      │◀───────│ ~/.cache, rebuilt freely) │
-│ writer thread      │      └────▶│   N S S T S H S … E   │ read   │ RunReader (NumPy,        │
-│   encode frames    │  append    │ media.r0.pack         │◀───────│   incremental, Parquet)  │
-│   update summary   │            │ data.parquet (finish) │        │ Starlette: JSON, Arrow,  │
-│   heartbeat 10 s   │            │ files/ annotations.json│◀─write─│   SSE, static frontend   │
-└────────────────────┘            └───────────────────────┘        └────────────┬─────────────┘
-                                                                                │ HTTP
-                                                                   ┌────────────▼─────────────┐
-                                                                   │ Svelte 5 SPA (uPlot,     │
-                                                                   │ Arrow JS, state in URL)  │
-                                                                   └──────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph train ["Training process"]
+        direction LR
+        add("run.add_scalar(dict)") -- append --> dq[("deque")]
+        dq --> writer("<b>Writer thread</b><br/><small>encodes frames, updates the summary,<br/>heartbeat every 10 s</small>")
+    end
+
+    subgraph folder ["Run folder"]
+        direction TB
+        runjson("<b>run.json</b><br/><small>rewritten atomically</small>")
+        events("<b>events.r0.s0.log</b><br/><small>N S S T S H S … E</small>")
+        media("<b>media.r0.pack</b><br/><small>images, video, figures</small>")
+        parquet("<b>data.parquet</b><br/><small>written at finish</small>")
+        files("<b>files/</b><br/><small>annotations.json</small>")
+        runjson ~~~ parquet
+        events ~~~ files
+    end
+
+    subgraph viewer ["Viewer process"]
+        direction LR
+        catalog("<b>Catalog</b><br/><small>SQLite cache in ~/.cache,<br/>rebuilt freely</small>")
+        reader("<b>RunReader</b><br/><small>NumPy, incremental, Parquet</small>")
+        server("<b>Starlette</b><br/><small>JSON · Arrow · SSE<br/>static frontend</small>")
+        catalog --> server
+        reader --> server
+    end
+
+    spa("<b>Svelte 5 SPA</b><br/><small>uPlot · Arrow JS · state in URL</small>")
+
+    train -- "append frames, rewrite run.json" --> folder
+    folder <-. "stat and read runs, write annotations" .-> viewer
+    viewer <-- HTTP --> spa
+
+    classDef code fill:#0072b21f,stroke:#0072b2,stroke-width:1.5px
+    classDef disk fill:#e69f0024,stroke:#e69f00,stroke-width:1.5px
+    classDef ui fill:#009e7324,stroke:#009e73,stroke-width:1.5px
+    classDef gone fill:transparent,stroke:#999999,stroke-width:1px,stroke-dasharray:4 3
+    class add,writer,catalog,reader,server code
+    class dq,runjson,events,media,parquet,files disk
+    class spa ui
+    style train fill:transparent,stroke:#8c8c8c,stroke-width:1px,stroke-dasharray:5 4
+    style folder fill:transparent,stroke:#8c8c8c,stroke-width:1px,stroke-dasharray:5 4
+    style viewer fill:transparent,stroke:#8c8c8c,stroke-width:1px,stroke-dasharray:5 4
 ```
 
 ## Logging side (`run.py`, `_writer.py`, `_format.py`, `_env.py`, `_media.py`, `artifacts.py`)

@@ -5,15 +5,30 @@ one job. You can move it to a second job that evaluates checkpoints as they
 appear, and still get **one run**: training and evaluation scalars on the same
 step axis, one status, one place to look.
 
-```text
-training job ── saves checkpoints as before
-     │  └── with --eval-queue: also links each one into queue/
-     │                                   │
-     │                                   ▼
-     │                              eval job ── takes each one, scores it,
-     │                                   │      keeps it in best/ if better, else deletes it
-     ▼                                   ▼
-one nuboard run (same run_id): train/* and eval/* on the same step axis
+```mermaid
+flowchart TB
+    train("<b>Training job</b><br/><small>saves checkpoints as before</small>")
+    queue[("queue/")]
+    eval("<b>Eval job</b><br/><small>scores each checkpoint</small>")
+    best[("best/")]
+    dropped(["deleted"])
+    run("<b>One nuboard run</b> (same run_id)<br/><small>train/* and eval/* on the same step axis</small>")
+
+    train -- "with --eval-queue,<br/>links each checkpoint" --> queue
+    queue -- takes each one --> eval
+    eval -- better: kept --> best
+    eval -. otherwise .-> dropped
+    train -- "train/*" --> run
+    eval -- "eval/*" --> run
+
+    classDef code fill:#0072b21f,stroke:#0072b2,stroke-width:1.5px
+    classDef disk fill:#e69f0024,stroke:#e69f00,stroke-width:1.5px
+    classDef ui fill:#009e7324,stroke:#009e73,stroke-width:1.5px
+    classDef gone fill:transparent,stroke:#999999,stroke-width:1px,stroke-dasharray:4 3
+    class train,eval code
+    class queue,best disk
+    class run ui
+    class dropped gone
 ```
 
 ## The two jobs
