@@ -36,6 +36,8 @@
   changes are ignored.
 - Audio players label the waveform's amplitude (±1 full scale, per
   channel), with an **Amplitude axis** switch on the Media page.
+- Waveform figures (signals and region lanes, such as VAD) get a full screen
+  button like the audio player's, in Media and in exported reports.
 - Run details follow the run's status, duration and summary live, so a run
   that finishes shows **Finished** there too.
 - Tables: a highlighted row no longer gets a rounded corner when it is the
