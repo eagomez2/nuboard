@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 from . import _fs
 from .cells import Audio
 from .collection import save_collection
+from .figures import WaveformFigure
 from .reports import save_fields, save_report, save_snapshot
 from .run import add_artifact, init
 
@@ -955,6 +956,31 @@ def _noise(rng: Any, n: int) -> Any:
     return 0.08 * pink / pink.std() + 0.02 * hum
 
 
+def _speech_presence(clean: Any, out: Any, epoch: int, rng: Any) -> tuple[Any, Any, Any]:
+    """Return a voice activity probability for `out` and the frames' classes.
+
+    The probability is one value per sample, held over 10 ms frames. It follows the
+    clean speech's level, more sharply as training goes on, and is fooled by loud
+    residual noise early on. The classes (0 silence, 1 speech) are per frame: the
+    target from the clean speech's level, and the prediction from the probability.
+    """
+    import numpy as np
+
+    hop = SPEECH_RATE // 100
+    n = len(clean) // hop * hop
+
+    def level(x: Any) -> Any:  # dB per frame
+        return 20 * np.log10(np.sqrt((x[:n].reshape(-1, hop) ** 2).mean(1)) + 1e-6)
+
+    speech = (np.maximum(level(clean), -60) + 35) / (8 - epoch / 6)
+    fooled = (1 - epoch / 30) * (level(out) + 30) / 5  # residual noise reads as speech early on
+    logit = np.clip(speech + fooled + rng.normal(0, 0.6, len(speech)), -9, 9)
+    prob = 1 / (1 + np.exp(-logit))
+    target = (level(clean) > -35).astype(int)
+    per_sample = np.pad(np.repeat(prob, hop), (0, len(out) - n), mode="edge")
+    return per_sample, target, (prob > 0.5).astype(int)
+
+
 def _speech_runs(root: Path, base: float) -> None:
     """Write the `speech-denoise` project: three models with audio samples (needs numpy)."""
 
@@ -966,6 +992,7 @@ def _speech_runs(root: Path, base: float) -> None:
     models = {"unet-l1": (0.30, 0.020), "unet-sisdr": (0.16, 0.012), "convtasnet": (0.10, 0.006)}
     rng = np.random.default_rng(7)
     ids: dict[str, str] = {}
+    alarms: list[tuple[float, float]] = []  # where the first VAD of unet-l1 is fooled
     clean = _speech(rng)
     noise = _noise(rng, len(clean))
     noisy = np.clip(clean + noise, -1, 1)
@@ -1030,6 +1057,31 @@ def _speech_runs(root: Path, base: float) -> None:
                     sample_rate=SPEECH_RATE,
                     caption=f"epoch {epoch}",
                 )
+                vad, target, predicted = _speech_presence(clean, out, epoch, erng)
+                hop = SPEECH_RATE // 100
+                frames = np.abs(blips[: len(target) * hop]).reshape(-1, hop).max(1)
+                blip_on = (artifacts * 6 * frames > 0.01).astype(int)
+                classes = ["silence", "speech"]
+
+                if model == "unet-l1" and epoch == 0:
+                    alarms = _false_alarms(target, predicted, 0.01)
+
+                run.add_figure(
+                    "vad/enhanced",
+                    WaveformFigure(
+                        np.clip(out, -1, 1),
+                        SPEECH_RATE,
+                        {"speech": vad},
+                        regions={
+                            "target": (target, classes, 0.01),
+                            "predicted": (predicted, classes, 0.01),
+                            # what is audible per frame; a blip can land on speech, so the
+                            # classes overlap (multi-hot, one column per class)
+                            "events": (np.stack([target, blip_on], 1), ["speech", "blip"], 0.01),
+                        },
+                    ),
+                    step=epoch,
+                )
                 rows = _eval_rows(model, epoch, left)
                 worst = sorted(range(len(rows)), key=lambda j: rows[j]["pesq"])[:3]
 
@@ -1065,25 +1117,54 @@ def _speech_runs(root: Path, base: float) -> None:
 
             ev.finish(_ended=t + 400)
 
-    _speech_notes(root / "speech-denoise", ids)
+    _speech_notes(root / "speech-denoise", ids, alarms)
 
 
-def _speech_notes(project: Path, ids: dict[str, str]) -> None:
-    """Add audio notes and a listening report to the `speech-denoise` demo."""
+def _false_alarms(target: Any, predicted: Any, frame: float) -> list[tuple[float, float]]:
+    """Return the sections (in seconds) predicted as speech where the target has none."""
+    out: list[tuple[float, float]] = []
+    start = None
+
+    for i, p in enumerate([*predicted, 0]):  # the 0 ends a section running to the end
+        if p and start is None:
+            start = i
+        elif not p and start is not None:
+            if not any(target[start:i]):
+                out.append((round(start * frame, 3), round(i * frame, 3)))
+
+            start = None
+
+    return out
+
+
+def _speech_notes(project: Path, ids: dict[str, str], alarms: list[tuple[float, float]]) -> None:
+    """Add audio notes, notes on VAD figures and a listening report to the `speech-denoise` demo."""
     run_dir = project / "runs" / ids["convtasnet"]
     notes = [
         {"id": "n1", "start": 0.42, "end": 0.78, "text": "residual hiss on the vowel"},
         {"id": "n2", "start": 1.55, "end": 1.9, "text": "tonal blip (musical noise)"},
     ]
     ann = _fs.read_json(run_dir / "annotations.json", {}) or {}
-    ann["audio_notes"] = {"audio/enhanced@30": notes}
+    pause = {"id": "v1", "start": 1.05, "end": 1.15, "text": "pause: stays below 0.01"}
+    ann["audio_notes"] = {"audio/enhanced@30": notes, "vad/enhanced@30": [pause]}
     _fs.atomic_write_json(run_dir / "annotations.json", ann)
+    # the false alarms of the noisiest model's first VAD, noted where they happen
+    unet = project / "runs" / ids["unet-l1"]
+    ann = _fs.read_json(unet / "annotations.json", {}) or {}
+    text = "false alarm: residual noise read as speech"
+    found = [
+        {"id": f"fa{i}", "start": a, "end": b, "text": text} for i, (a, b) in enumerate(alarms)
+    ]
+    ann["audio_notes"] = {**(ann.get("audio_notes") or {}), "vad/enhanced@0": found}
+    _fs.atomic_write_json(unet / "annotations.json", ann)
     save_report(
         project,
         "listening-notes",
         "# Listening notes\n\n"
         "Conv-TasNet is cleanest overall; what is left is a little hiss and a few tonal blips.\n\n"
         f"![Conv-TasNet at epoch 30](media:{ids['convtasnet']}/audio/enhanced@30)\n\n"
+        "Its speech probability is sharp by now, and stays low in the pauses:\n\n"
+        f"![Speech probability at epoch 30](media:{ids['convtasnet']}/vad/enhanced@30)\n\n"
         "## Per-file scores\n\n"
         "Sorted by PESQ in the viewer, the worst files are babble noise at low input SNR; "
         "colors show the change since the previous eval.\n\n"

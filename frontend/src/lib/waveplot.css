@@ -1,0 +1,244 @@
+/* The waveform figure, as the viewer draws it and as an HTML export draws it (lib/waveplot.ts): the
+   same rules in both, so what you see is what the exported file shows. */
+.nbwf {
+  --nbwf-accent: var(--accent, var(--link, #0072b2));
+  --nbwf-mono: var(--mono, ui-monospace, Menlo, Consolas, monospace);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text);
+  /* boxed like the audio player (audio/player.css), in the viewer and in an export alike */
+  border: 1px solid color-mix(in srgb, var(--text) 13%, transparent);
+  border-radius: 0.6rem;
+  padding: 8px 10px 6px;
+}
+:root[data-theme='dark'] .nbwf {
+  border-color: color-mix(in srgb, var(--text) 16%, transparent);
+}
+.nbwf-bar {
+  /* fixed places, so no control moves when a selection comes or goes: play, time, the selection's
+     controls (which wrap within their own cell), the zoom buttons; then the readout, a row of its own */
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  /* top-aligned: a selection whose controls wrap grows its own cell, not the others' positions */
+  align-items: start;
+  gap: 4px 10px;
+  min-height: 30px;
+  font-size: 12px;
+}
+.nbwf-bar > .nbwf-sel {
+  grid-column: 3;
+  grid-row: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-self: start;
+  min-height: 30px;
+}
+.nbwf-bar > .nbwf-view {
+  grid-column: 4;
+  grid-row: 1;
+  align-items: center;
+  min-height: 30px;
+}
+.nbwf-bar > .nbwf-sel[hidden] {
+  display: none;
+}
+.nbwf-play {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nbwf-accent);
+  color: var(--panel);
+  cursor: pointer;
+}
+.nbwf-play svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+.nbwf-play .nbwf-pause,
+.nbwf.playing .nbwf-play .nbwf-go {
+  display: none;
+}
+.nbwf.playing .nbwf-play .nbwf-pause {
+  display: block;
+}
+.nbwf-time,
+.nbwf-read {
+  font-family: var(--nbwf-mono);
+  font-variant-numeric: tabular-nums;
+}
+.nbwf-time {
+  flex: none;
+  line-height: 30px;
+}
+.nbwf-read {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-height: 18px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-read .nbwf-hint,
+.nbwf-read .nbwf-at,
+.nbwf-cap {
+  color: var(--faint);
+}
+.nbwf-read .nbwf-val {
+  margin-left: 10px;
+}
+.nbwf-read b {
+  font-weight: 650;
+}
+.nbwf i.nbwf-sw {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.nbwf-zoom {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.nbwf-zoom button {
+  height: 26px;
+  min-width: 28px;
+  padding: 0 9px;
+  font: 12px var(--nbwf-mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nbwf-zoom button:hover {
+  border-color: var(--nbwf-accent);
+}
+.nbwf-zoom button.on {
+  color: var(--nbwf-accent);
+  border-color: var(--nbwf-accent);
+}
+.nbwf-seltext {
+  align-self: center;
+  font-family: var(--nbwf-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.nbwf-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.nbwf-form[hidden] {
+  display: none;
+}
+.nbwf-form input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.nbwf-form button {
+  height: 26px;
+  padding: 0 9px;
+  font: 12px var(--nbwf-mono);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nbwf-form button[type='submit'] {
+  color: var(--panel);
+  background: var(--nbwf-accent);
+  border-color: var(--nbwf-accent);
+}
+/* notes added in the viewer, above the plot */
+.nbwf-notes {
+  position: relative;
+}
+.nbwf-notes[hidden] {
+  display: none;
+}
+.nbwf-note {
+  position: absolute;
+  height: 17px;
+  padding: 0 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font: 11px var(--nbwf-mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--nbwf-accent) 14%, transparent);
+  border: 0;
+  border-left: 2px solid var(--nbwf-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.nbwf-note:hover,
+.nbwf-note.active {
+  background: color-mix(in srgb, var(--nbwf-accent) 28%, transparent);
+}
+/* region tracks logged with the figure, under the plot */
+.nbwf-tracks {
+  display: block;
+  width: 100%;
+}
+.nbwf .u-select {
+  background: color-mix(in srgb, var(--nbwf-accent) 16%, transparent);
+}
+.nbwf-plot {
+  position: relative;
+  min-width: 0;
+}
+.nbwf-dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--panel);
+  pointer-events: none;
+  display: none;
+}
+.nbwf-overview {
+  display: block;
+  width: 100%;
+  height: 28px;
+  cursor: grab;
+  touch-action: none;
+}
+.nbwf-cap {
+  font-family: var(--nbwf-mono);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-cap .nbwf-sig {
+  margin-right: 10px;
+}
+.nbwf-err {
+  color: var(--faint);
+  padding: 12px 0;
+}

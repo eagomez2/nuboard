@@ -72,7 +72,8 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
 - **.zip** downloads the Markdown with every embedded image and audio
   clip as a file in `files/`, figures and HTML as linked files, chart
   snapshots as images, and logged text inlined, so it reads on GitHub or in any Markdown editor without
-  NuBoard.
+  NuBoard. A waveform figure becomes its audio as a `.wav` and its signals as
+  a `-signals.csv` next to it, one row per sample.
 - **.html** downloads the report as one self-contained HTML file that opens
   offline, with no NuBoard and no CDN: images, audio clips and snapshots are
   inlined, logged text and HTML are included, and Plotly and Vega-Lite
@@ -89,7 +90,12 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   waveform and spectrogram player once (about 200 KB), with zoom, loops and
   the notes drawn on their lane, following the page's theme; **Simple** uses
   the browser's own player, with the notes listed below as buttons that play
-  their section. Figures and charts saved from the Charts page follow the theme:
+  their section. Waveform figures (`nb.WaveformFigure`) stay interactive with
+  either choice: the same accurate plot as the viewer, with zoom, the values
+  under the pointer and the clip's audio, whose playhead shows on the plot.
+  They embed their audio and signals, so a long one makes a large file (an
+  hour at 16 kHz is about 460 MB with one signal). Figures and charts saved
+  from the Charts page follow the theme:
   the charts are drawn live in the file from their data at export time (the
   snapshot is used only if the data cannot be loaded). Sweeps and Timeline
   snapshots are images and keep the colors they were taken with.
