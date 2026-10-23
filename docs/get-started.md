@@ -53,7 +53,7 @@ import nuboard as nb
 
 config = {"lr": lr, "hidden": hidden, "epochs": epochs, "batch_size": 32}
 
-with nb.init("get-started", name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
+with nb.init("get-started", run_name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
     ...
 ```
 
@@ -146,9 +146,9 @@ for lr in (0.05, 0.2, 1.0):
 
 ```console
 $ python examples/get_started.py
-lr=0.05: val/acc 0.911, logged to experiments/get-started/runs/20261017-0932_lr-0.05_ipbnxh
-lr=0.2: val/acc 0.978, logged to experiments/get-started/runs/20261017-0932_lr-0.2_meynve
-lr=1: val/acc 1.000, logged to experiments/get-started/runs/20261017-0932_lr-1_hxxxiz
+lr=0.05: val/acc 0.911, logged to experiments/get-started/runs/20261017T0932-71165378
+lr=0.2: val/acc 0.978, logged to experiments/get-started/runs/20261017T0932-6c1850ee
+lr=1: val/acc 1.000, logged to experiments/get-started/runs/20261017T0932-408224b6
 ```
 
 ## Open the viewer
@@ -313,7 +313,7 @@ before:
         params = init_params(rng, hidden)
         probe = np.argsort(-np.hypot(*x_val.T))[:10]  # the outermost points, the hardest ones
 
-        with nb.init("get-started", name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
+        with nb.init("get-started", run_name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
             step = 0
 
             for epoch in range(epochs):

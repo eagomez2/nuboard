@@ -65,7 +65,7 @@ import math
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="scalars")
+run = nb.init("api-tour", run_name="scalars")
 
 for step in range(500):
     lr = 1e-3 * min(1, step / 50) * 0.5 * (1 + math.cos(math.pi * step / 500))

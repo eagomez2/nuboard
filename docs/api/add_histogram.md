@@ -42,7 +42,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="histograms")
+run = nb.init("api-tour", run_name="histograms")
 rng = np.random.default_rng(0)
 weights = rng.normal(0, 0.02, 65_536)
 

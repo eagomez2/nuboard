@@ -18,7 +18,7 @@ def client(tmp_path):
         for seed in (1, 2):
             with nb.init(
                 "sweep",
-                name=f"lr{lr}-s{seed}",
+                run_name=f"lr{lr}-s{seed}",
                 config={"lr": lr, "seed": seed},
                 tags=["sweep"],
                 capture_env=False,
@@ -170,7 +170,7 @@ def test_collections(client, tmp_path):
 
 
 def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
-    with nb.init("sweep", name="bad", capture_env=False) as run:
+    with nb.init("sweep", run_name="bad", capture_env=False) as run:
         for s in range(400):
             run.add_scalar({"loss": float("nan") if s >= 300 else 1.0}, step=s)
 
@@ -178,7 +178,7 @@ def test_alerts_endpoint_and_artifact_lineage(client, tmp_path):
         src.write_bytes(b"x")
         run.add_artifact("weights", src)
 
-    with nb.init("sweep", name="user", capture_env=False) as run:
+    with nb.init("sweep", run_name="user", capture_env=False) as run:
         run.use_artifact("weights:latest")
         run.add_scalar({"loss": 1.0}, step=0)
 
@@ -197,11 +197,11 @@ def test_artifacts_of_a_project_without_runs(client, tmp_path):
     (tmp_path / "data.txt").write_text("x")
     nb.add_artifact("datasets", "corpus", tmp_path / "data.txt", reference=True)
 
-    with nb.init("llm", name="train", capture_env=False) as run:
+    with nb.init("llm", run_name="train", capture_env=False) as run:
         run.use_artifact("datasets/corpus")
         run.add_scalar({"loss": 1.0}, step=0)
 
-    with nb.init("vision", name="other", capture_env=False) as run:
+    with nb.init("vision", run_name="other", capture_env=False) as run:
         run.add_scalar({"loss": 1.0}, step=0)
 
     client.get("/api/runs")  # the catalog picks up the new runs
@@ -215,7 +215,7 @@ def test_artifacts_of_a_project_without_runs(client, tmp_path):
 
 
 def test_x_axis_by_another_metric(client):
-    with nb.init("sweep", name="tok", capture_env=False) as run:
+    with nb.init("sweep", run_name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
             run.add_scalar({"loss": 1 / (s + 1), "tokens": s * 512.0}, step=s)
 
@@ -374,7 +374,7 @@ def test_property_definitions_and_tag_values(client):
 
 def test_runs_with_the_same_name_get_distinct_series(tmp_path):
     for _ in range(2):
-        with nb.init("dup", name="same", dir=tmp_path / "exp", capture_env=False) as run:
+        with nb.init("dup", run_name="same", dir=tmp_path / "exp", capture_env=False) as run:
             run.add_scalar({"loss": 1.0}, step=0)
 
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
@@ -494,12 +494,12 @@ def test_pins_are_shared_in_the_project_folder(tmp_path):
 
 @pytest.mark.parametrize("compact", [False, True])
 def test_scalar_bands_are_drawn_per_run_and_hidden_as_metrics(tmp_path, compact):
-    with nb.init("bands", name="b", capture_env=False, compact=compact) as run:
+    with nb.init("bands", run_name="b", capture_env=False, compact=compact) as run:
         for s in range(5000):
             run.add_scalar("loss", 1.0, step=s, low=0.5, high=2.0)
             run.add_scalar("acc", 0.9, step=s)
 
-    with nb.init("bands", name="plain", capture_env=False, compact=compact) as run:
+    with nb.init("bands", run_name="plain", capture_env=False, compact=compact) as run:
         for s in range(5000):
             run.add_scalar("loss", 1.5, step=s)
 
@@ -534,7 +534,7 @@ def test_scalar_bands_are_drawn_per_run_and_hidden_as_metrics(tmp_path, compact)
 
 def test_scalar_baselines_reach_the_chart_and_groups_average_them(tmp_path):
     for name, base in (("a", 2.0), ("b", 2.0), ("c", 3.0), ("d", None)):
-        with nb.init("base", name=name, config={"m": name in "ab"}, capture_env=False) as run:
+        with nb.init("base", run_name=name, config={"m": name in "ab"}, capture_env=False) as run:
             if base is not None:
                 run.add_scalar_baseline("val/pesq", base, low=base - 0.1, high=base + 0.1)
 
@@ -663,7 +663,7 @@ def test_storage_is_measured_only_on_request_and_pauses(tmp_path, monkeypatch):
     from nuboard.server import storage
 
     for i in range(3):
-        with nb.init("p", name=f"r{i}", capture_env=False, system_metrics=False) as run:
+        with nb.init("p", run_name=f"r{i}", capture_env=False, system_metrics=False) as run:
             run.add_scalar({"loss": 1.0}, step=0)
             (run.path / "files").mkdir(exist_ok=True)
             (run.path / "files" / "big.bin").write_bytes(b"x" * (10_000 * (i + 1)))

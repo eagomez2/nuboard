@@ -90,7 +90,7 @@ def train(lr: float, hidden: int = 64, epochs: int = 30, seed: int = 0) -> None:
     params = init_params(rng, hidden)
     probe = np.argsort(-np.hypot(*x_val.T))[:10]  # the outermost points, the hardest ones
 
-    with nb.init("get-started", name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
+    with nb.init("get-started", run_name=f"lr-{lr:g}", config=config, tags=["spiral"]) as run:
         step = 0
 
         for epoch in range(epochs):

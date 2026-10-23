@@ -53,7 +53,7 @@ demo only writes the folder; view it later with `nuboard up demo-runs`.
 import nuboard as nb
 
 config = {"lr": 3e-4, "batch_size": 64}
-with nb.init("my-project", name="baseline", config=config) as run:
+with nb.init("my-project", run_name="baseline", config=config) as run:
     for step in range(1000):
         loss = train_step()  # your code
         run.add_scalar({"train/loss": loss, "lr": config["lr"]}, step=step)

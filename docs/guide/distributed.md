@@ -12,7 +12,7 @@ every rank (gradient norms, throughput, memory), pass `all_ranks=True` to that
 call, or to `init` to make it the default:
 
 ```python
-run = nb.init("llm", name="ddp", config=cfg)  # every rank
+run = nb.init("llm", run_name="ddp", config=cfg)  # every rank
 run.add_scalar({"train/loss": loss}, step=step)  # rank 0 only
 run.add_scalar({"perf/tokens_per_sec": tps}, step=step, all_ranks=True)
 ```

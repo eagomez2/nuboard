@@ -9,7 +9,7 @@ writer = SummaryWriter("runs/baseline")
 writer.add_scalar("train/loss", loss, step)
 
 # NuBoard
-run = nb.init("my-project", name="baseline")
+run = nb.init("my-project", run_name="baseline")
 run.add_scalar("train/loss", loss, step)
 ```
 

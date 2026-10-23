@@ -47,7 +47,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="images")
+run = nb.init("api-tour", run_name="images")
 y, x = np.mgrid[-1:1:128j, -1:1:128j]
 target = 0.5 + 0.5 * np.cos(12 * np.hypot(x, y))  # rings, floats in [0, 1]
 rng = np.random.default_rng(0)

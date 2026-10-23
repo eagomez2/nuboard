@@ -4,7 +4,7 @@
 nb.init(
     project=None,
     *,
-    name=None,
+    run_name=None,
     config=None,
     dir=None,
     tags=None,
@@ -32,8 +32,9 @@ marks it crashed.
 
 - **project** (*str*, optional): the project folder. A `/` nests projects,
   as in `"team/llm"`. Defaults to `"default"`.
-- **name** (*str*, optional): a short name for the run, shown in the viewer and
-  used in the run id. Defaults to `"run"`.
+- **run_name** (*str*, optional): a human-readable label for the run, shown in
+  the viewer. It is not part of the run id, and many runs can share it.
+  Defaults to `"run"`.
 - **config** (optional): the hyperparameters. This can be a dict, a dataclass, an
   `argparse.Namespace`, an OmegaConf config, or any object with `to_dict()`.
   Nested values are kept nested, and the viewer flattens them with `.`
@@ -46,7 +47,8 @@ marks it crashed.
 - **group** (*str*, optional): a group name for runs that belong together,
   such as the trials of a [sweep](../guide/sweeps.md).
 - **run_id** (*str*, optional): the run's id, which is also its folder name.
-  Defaults to `<YYYYMMDD-HHMM>_<name>_<6 random characters>`.
+  Defaults to `<YYYYMMDDTHHMM>-<8 random hex digits>`, such as
+  `20261001T1833-48ad8bb2`. You can still pass your own.
 - **resume** (*"must" or "auto"*, optional): what to do when `run_id` already
   exists. See [Resume and fork](init.md#resume-and-fork).
 - **fork_from** (*(run_id, step)*, optional): start from a copy of another
@@ -97,9 +99,9 @@ class Config:
     layers: int = 4
 
 
-with nb.init("api-tour", name="init", config=Config(), tags=["docs"]) as run:
-    print(run.id)  # e.g. 20261017-0930_init_k3x9q2
-    print(run.path)  # experiments/api-tour/runs/20261017-0930_init_k3x9q2
+with nb.init("api-tour", run_name="init", config=Config(), tags=["docs"]) as run:
+    print(run.id)  # e.g. 20261017T0930-c589c96e
+    print(run.path)  # experiments/api-tour/runs/20261017T0930-c589c96e
 ```
 
 
@@ -107,11 +109,11 @@ with nb.init("api-tour", name="init", config=Config(), tags=["docs"]) as run:
 
 ```python
 # continue a run, such as after a restart from a checkpoint
-run = nb.init("api-tour", run_id="20261017-0930_init_k3x9q2", resume="must")
+run = nb.init("api-tour", run_id="20261017T0930-c589c96e", resume="must")
 run = nb.init("api-tour", run_id=my_id, resume="auto")  # create it if missing
 
 # a new run whose history is a copy of another run's, up to step 5000
-run = nb.init("api-tour", name="lower-lr", fork_from=("20261017-0930_init_k3x9q2", 5000))
+run = nb.init("api-tour", run_name="lower-lr", fork_from=("20261017T0930-c589c96e", 5000))
 ```
 
 - **resume="must"** continues the run and fails if it does not exist.

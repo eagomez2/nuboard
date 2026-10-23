@@ -36,7 +36,7 @@ df.groupby(["config.optim.lr", "step"]).value.mean().unstack(0).plot()
 summary = project.summary().to_pandas()
 
 # all scalars of one run
-run = project.run("20261013-0720_lr3e-4-s1_x5bq2k")
+run = project.run("20261013T0720-755037e9")
 run.scalars()  # columns key, step, time, value
 run.scalars("train/loss")
 ```
@@ -58,7 +58,7 @@ server uses:
 ```python
 from nuboard.reader import RunReader
 
-r = RunReader("experiments/llm-pretrain/runs/20261013-0720_lr3e-4-s1_x5bq2k")
+r = RunReader("experiments/llm-pretrain/runs/20261013T0720-755037e9")
 r.scalar_names()  # rank 0 by default
 steps, times, values = r.scalars("train/loss")
 r.scalars("grad_norm", rank=3)  # another rank
