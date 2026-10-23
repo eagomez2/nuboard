@@ -853,6 +853,33 @@ test('a scalar logged with low and high is drawn with its band', async ({ page }
   await expect(options).toHaveCount(1);
 });
 
+test('the Ranges switch hides the bands around the curves', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=eval%2Floss');
+  const row = page.locator('.irow').first();
+  await expect(row).toContainText(/\d to \d/);
+  await page.getByRole('switch', { name: 'Ranges' }).click();
+  await expect(page).toHaveURL(/bands=0/);
+  await expect(page.getByRole('switch', { name: 'Ranges' })).toHaveAttribute('aria-checked', 'false');
+  await expect(row).toContainText(/\d to \d/); // the inspector still lists the range
+  await page.getByRole('switch', { name: 'Ranges' }).click();
+  await expect(page).not.toHaveURL(/bands=0/);
+});
+
+test('Ctrl + wheel zooms the focus chart and double-click resets it', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const over = page.locator('.focus .u-over').first();
+  await expect(over).toBeVisible();
+  const box = (await over.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect(page).toHaveURL(/zoom=[\d.e+-]+(~|%7E)[\d.e+-]+/);
+  await page.mouse.wheel(0, 0); // plain wheel scrolls the page, it does not zoom
+  await over.dblclick();
+  await expect(page).not.toHaveURL(/zoom=/);
+});
+
 test('scalar baselines are drawn, listed in the inspector and can be turned off', async ({ page }) => {
   await page.goto('/#/charts?project=speech-denoise&metric=val%2Fsi_sdr');
   const rows = page.locator('.irow.base');
