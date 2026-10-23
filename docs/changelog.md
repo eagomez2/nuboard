@@ -21,6 +21,26 @@
 - Tables: a highlighted row no longer gets a rounded corner when it is the
   last row; table frames have square corners.
 - Updated the screenshots in the docs.
+- **Waveform figures.** `run.add_figure(key, nb.WaveformFigure(audio,
+  sample_rate, signals))` logs audio with signals over its waveform, one value
+  per sample, such as a voice activity probability or a gain mask. The viewer
+  draws it as a plot that is accurate at every zoom (M4 decimation: the first,
+  smallest, largest and last sample of each pixel column, recomputed as you
+  zoom), fast on files an hour long, down to single samples. Hovering shows
+  the exact values at a sample; the clip plays from where you click. It is
+  listed under **Figures**; `add_audio` and its spectrogram player are
+  unchanged. `regions=` adds labelled tracks from training (a list of
+  segments, a class per frame, or multi-hot frames for classes that overlap),
+  drawn in lanes under the plot. Dragging selects a section to loop, zoom to
+  or note; notes are kept apart from the logged regions, in the run's
+  `annotations.json`. In a report, an HTML export looks and works the same,
+  offline, with its audio, regions and notes, and a .zip export writes its
+  audio as a WAV and its signals as a CSV. See
+  [`add_figure`](api/add_figure.md#waveforms-with-signals).
+- The demo's `speech-denoise` runs log `vad/enhanced`, a waveform figure of
+  the enhanced output with a speech probability and target, predicted and
+  overlapping event tracks, with notes on the first one's false alarms; its
+  listening report embeds one.
 
 ## 0.16.0
 

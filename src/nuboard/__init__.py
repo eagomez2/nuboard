@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from ._meta import FORMAT_VERSION, NAME
 from .artifacts import Artifact
 from .cells import Audio, Image
+from .figures import WaveformFigure
 from .run import Run, add_artifact, get_artifact, init
 
 try:
@@ -56,6 +57,7 @@ __all__ = [
     "Audio",
     "Image",
     "Run",
+    "WaveformFigure",
     "__version__",
     "add_artifact",
     "get_artifact",

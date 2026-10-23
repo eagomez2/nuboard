@@ -21,10 +21,12 @@ Standard library only.
 
 from __future__ import annotations
 
+import array
 import hashlib
 import io
 import math
 import re
+import sys
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -54,6 +56,8 @@ _EXT = {
     "application/vnd.plotly.v1+json": ".plotly.json",
     "application/vnd.vegalite+json": ".vl.json",
     "application/vnd.bokeh+json": ".bokeh.json",
+    # a waveform figure: its audio as a WAV, and its signals as a CSV next to it
+    "application/x-nuboard-waveform": ".wav",
 }
 
 
@@ -154,6 +158,19 @@ def save_report(project_dir: Path, name: str, text: str) -> Path:
 Resolver = Callable[[MediaRef], "tuple[dict[str, Any], bytes] | None"]
 
 
+def _signals_csv(data: bytes, names: list[str]) -> str:
+    """Return a waveform figure's signals (float32, one after the other) as CSV rows of samples."""
+    values = array.array("f", data[: len(data) // 4 * 4])
+
+    if sys.byteorder == "big":
+        values.byteswap()  # stored little-endian
+
+    n = len(values) // max(1, len(names))
+    columns = [values[k * n : (k + 1) * n] for k in range(len(names))]
+    rows = (",".join(f"{v:.7g}" for v in row) for row in zip(*columns, strict=True))
+    return ",".join(names) + "\n" + "\n".join(rows) + "\n"
+
+
 def export_report(
     text: str,
     resolve: Resolver,
@@ -210,13 +227,24 @@ def export_report(
             stem = _fs.sanitize(f"{ref.run_id}-{ref.key.replace('/', '_')}-{ref.step}", "item")
             name = used.setdefault(str(ref), f"files/{stem}{_EXT.get(mime, '.bin')}")
 
+            label = alt or f"{ref.key} at step {ref.step}"
+
+            if mime == "application/x-nuboard-waveform":
+                cut = int(item.get("audio_bytes") or 0)
+                csv = name.removesuffix(".wav") + "-signals.csv"
+
+                if name not in zf.namelist():
+                    zf.writestr(name, data[:cut])
+                    zf.writestr(csv, _signals_csv(data[cut:], list(item.get("signals") or [])))
+
+                return f"[{label}]({name}) ([signals]({csv}))"
+
             if name not in zf.namelist():
                 zf.writestr(name, data)
 
             if mime.startswith("image/"):
                 return f"![{alt}]({name})"
 
-            label = alt or f"{ref.key} at step {ref.step}"
             return f"[{label}]({name})"
 
         def copy_local(match: re.Match[str]) -> str:

@@ -143,6 +143,61 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
 });
 
+test('media page plots waveform figures, with exact values, region lanes, selections and notes', async ({ page }) => {
+  // at step 0, so the note below is not on the figure the listening report embeds (step 30)
+  await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
+  const fig = page.locator('.nbwf').first();
+  const over = fig.locator('.u-over');
+  await expect(over).toBeVisible({ timeout: 15000 });
+  await expect(fig.locator('.nbwf-time')).toHaveText('0:00.000 / 0:02.600');
+  await expect(fig.locator('.nbwf-tracks')).toBeVisible();
+  const box = (await over.boundingBox())!;
+  await over.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+  const readout = fig.locator('.nbwf-read');
+  await expect(readout).toContainText(/#\d+/);
+  await expect(readout).toContainText('audio');
+  // the label of each region track at the sample under the pointer
+  await expect(readout).toContainText(/target\s*(speech|silence)/);
+  await expect(readout).toContainText(/predicted\s*(speech|silence)/);
+  // a track whose classes overlap: every class that is on
+  await expect(readout).toContainText(/events\s*((blip|speech)(, (blip|speech))?|–)/);
+
+  // dragging across a tenth of the plot selects it, and Zoom in shows just that; the zoom buttons
+  // stay where they were (the selection's controls have a place of their own)
+  const plus = fig.getByRole('button', { name: 'Zoom in', exact: true });
+  const plusAt = (await plus.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.4, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + 40, { steps: 4 });
+  await page.mouse.up();
+  await expect(fig.locator('.nbwf-seltext').first()).toContainText(/1\.0\d+ – 1\.\d+ s/);
+  expect(await plus.boundingBox()).toEqual(plusAt);
+  await fig.getByRole('button', { name: 'Zoom in to the selection' }).click();
+  // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
+  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await expect(readout).toContainText(/0:01\.1[5-9]/);
+  // the demo's live run makes the page fetch its media again every few seconds: the figure keeps its
+  // zoom and selection (it is not mounted again for an equal item)
+  await fig.evaluate((el) => (el.dataset.kept = 'yes'));
+  await page.waitForTimeout(5000);
+  await expect(fig).toHaveAttribute('data-kept', 'yes');
+  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await expect(readout).toContainText(/0:01\.1[5-9]/);
+  await fig.getByRole('button', { name: 'Fit' }).click();
+  await over.hover({ position: { x: box.width / 2 + 1, y: 20 } });
+  await expect(readout).toContainText(/0:01\.(29|30)/);
+
+  // a note on the selection is saved with the run, and is there after a reload
+  await fig.getByRole('button', { name: 'Note', exact: true }).click();
+  await fig.getByLabel('Note text').fill('checked by ear');
+  await page.keyboard.press('Enter');
+  await expect(fig.locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.nbwf').first().locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible({
+    timeout: 15000,
+  });
+});
+
 test('properties: define one from Columns, edit a cell, set it on selected runs', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.getByRole('button', { name: /Columns/ }).click();
@@ -665,8 +720,27 @@ test('a report with a table and audio notes exports them, with either audio play
   await expect
     .poll(async () => (await off.locator('.nbwave iframe').first().boundingBox())!.height)
     .toBeGreaterThan(200);
-  await expect(off.locator('.nbnotes li')).toHaveCount(2);
-  await expect(off.locator('audio')).toHaveCount(0);
+  await expect(off.locator('.nbnotes li')).toHaveCount(3);
+  // the waveform figure: its plot, drawn offline, with the values under the pointer, and its audio
+  const wave = off.locator('.nbwavefig .u-over').first();
+  await expect(wave).toBeVisible();
+  const wbox = (await wave.boundingBox())!;
+  await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
+  await expect(off.locator('.nbwf-read')).toContainText(/#\d+\s*audio -?[\d.]+\s*speech [\d.e-]+/);
+  await expect
+    .poll(() => off.locator('.nbwavefig audio').evaluate((a: HTMLAudioElement) => a.duration))
+    .toBeCloseTo(2.6, 1);
+  await expect(off.locator('audio')).toHaveCount(1);
+  // the same controls as in the viewer, its region lanes and its note (read-only)
+  await expect(off.locator('.nbwavefig .nbwf-overview')).toBeVisible();
+  await expect(off.locator('.nbwavefig .nbwf-tracks')).toBeVisible();
+  await expect(off.locator('.nbwavefig .nbwf-note')).toHaveText('pause: stays below 0.01');
+  await expect(off.locator('.nbwavefig').getByRole('button', { name: 'Note', exact: true })).toHaveCount(0);
+  await expect(off.locator('.nbwavefig .nbwf-time')).toHaveText('0:00.000 / 0:02.600');
+  await off.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
+  await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
+  await off.getByRole('button', { name: 'Fit' }).click();
 
   // the browser's player, whose notes play their section
   await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));

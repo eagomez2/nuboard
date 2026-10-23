@@ -518,6 +518,193 @@ def audio_bytes(audio: Any, sample_rate: int | None) -> tuple[bytes, str, dict[s
     raise TypeError(f"unsupported audio type {type(audio).__name__}")
 
 
+#: MIME type of waveforms with signals in the media pack (see `waveform_bytes`)
+WAVEFORM_MIME = "application/x-nuboard-waveform"
+
+
+def waveform_signals(audio: Any, signals: Any) -> tuple[Any, dict[str, Any]]:
+    """Check a waveform's signals against its audio and copy both.
+
+    Args:
+        audio: A `(samples,)` or `(channels, samples)` array or tensor.
+        signals: An array or tensor of `samples` values, or a dict of them by name.
+
+    Returns:
+        The audio as a NumPy array of its own and the signals as float32
+        arrays by name.
+
+    Raises:
+        ValueError: If the audio is not 1-D or 2-D, or a signal is not 1-D or
+            does not hold one value per sample.
+    """
+
+    import numpy as np  # arrays only come from code that already has NumPy
+
+    def array(x: Any) -> Any:
+        if hasattr(x, "detach"):  # torch tensor
+            x = x.detach().cpu().float() if str(x.dtype) == "torch.bfloat16" else x.detach().cpu()
+            x = x.numpy()
+
+        return np.array(x)  # a copy: the caller may reuse its buffer
+
+    a = array(audio)
+
+    if a.ndim not in (1, 2):
+        raise ValueError(f"cannot interpret array of shape {a.shape} as audio")
+
+    samples = max(a.shape)
+    named = signals if isinstance(signals, dict) else {"signal": signals}
+
+    if not named:
+        raise ValueError("a waveform needs at least one signal")
+
+    out = {}
+
+    for name, values in named.items():
+        v = array(values).astype("<f4")
+
+        if v.ndim != 1 or v.shape[0] != samples:
+            raise ValueError(
+                f"signal {name!r} has shape {v.shape}; expected ({samples},), one value per sample"
+            )
+
+        out[str(name)] = v
+
+    return a, out
+
+
+def waveform_regions(regions: Any) -> dict[str, list[list[Any]]]:
+    """Check a waveform's region tracks and convert each to `[start, end, label]` segments.
+
+    Args:
+        regions: A dict of tracks by name. A track is a sequence of
+            `(start, end, label)` in seconds, which may overlap, or a
+            `(classes, names, frame)` tuple: per frame, a class id (a 1-D
+            array, tensor or sequence of integers) or the classes that are on
+            (a 2-D `(frames, classes)` multi-hot array, for labels that can
+            overlap), then the class names and the frame length in seconds.
+
+    Returns:
+        The segments of each track, in time order; consecutive frames of one
+        class become one segment.
+
+    Raises:
+        ValueError: If a segment ends before it starts, a class id has no
+            name, a multi-hot row does not have one value per name, or the
+            frame length is not positive.
+        TypeError: If `regions` is not a dict.
+    """
+
+    if not isinstance(regions, dict):
+        raise TypeError(f"regions must be a dict of tracks by name, not {type(regions).__name__}")
+
+    out: dict[str, list[list[Any]]] = {}
+
+    for name, track in regions.items():
+        frames = (
+            isinstance(track, tuple)
+            and len(track) == 3
+            and not isinstance(track[1], (int, float))
+            and isinstance(track[2], (int, float))
+        )
+
+        if frames:
+            classes, names, frame = track[0], [str(n) for n in track[1]], float(track[2])
+
+            if not frame > 0:
+                raise ValueError(f"track {name!r}: the frame length must be positive, not {frame}")
+
+            if hasattr(classes, "detach"):  # torch tensor
+                classes = classes.detach().cpu().numpy()
+
+            segments: list[list[Any]] = []
+            multi = getattr(classes, "ndim", None) == 2 or (
+                not hasattr(classes, "ndim") and len(classes) and hasattr(classes[0], "__len__")
+            )
+
+            if multi:
+                # several classes can be on at once: each class's runs of frames, in time order
+                rows = [list(r) for r in classes]
+
+                if any(len(r) != len(names) for r in rows):
+                    raise ValueError(f"track {name!r}: each multi-hot row needs one value per name")
+
+                for c, label in enumerate(names):
+                    start = None
+
+                    for i, row in enumerate([*rows, [0] * len(names)]):
+                        if row[c] and start is None:
+                            start = i
+                        elif not row[c] and start is not None:
+                            segments.append([round(start * frame, 6), round(i * frame, 6), label])
+                            start = None
+
+                out[str(name)] = sorted(segments, key=lambda g: (g[0], g[1]))
+                continue
+
+            for i, raw in enumerate(_values(classes)):
+                k = int(raw)
+
+                if not 0 <= k < len(names):
+                    raise ValueError(f"track {name!r}: class id {k} has no name in {names}")
+
+                if segments and segments[-1][2] == names[k]:  # frames are contiguous
+                    segments[-1][1] = round((i + 1) * frame, 6)
+                else:
+                    segments.append([round(i * frame, 6), round((i + 1) * frame, 6), names[k]])
+        else:
+            segments = []
+
+            for seg in track:
+                start, end, label = float(seg[0]), float(seg[1]), str(seg[2])
+
+                if not end >= start:
+                    raise ValueError(f"track {name!r}: segment {tuple(seg)} ends before it starts")
+
+                segments.append([round(start, 6), round(end, 6), label])
+
+            segments.sort(key=lambda g: (g[0], g[1]))
+
+        out[str(name)] = segments
+
+    return out
+
+
+def waveform_bytes(
+    audio: Any,
+    sample_rate: int,
+    signals: dict[str, Any],
+    value_range: tuple[float, float] | None = None,
+) -> tuple[bytes, str, dict[str, Any]]:
+    """Pack a waveform as WAV bytes followed by its signals as float32.
+
+    Args:
+        audio: The audio array (see `waveform_signals`).
+        sample_rate: Samples per second.
+        signals: Float32 arrays of one value per sample, by name.
+        value_range: The values at the bottom and top of the waveform; -1
+            and 1 (the waveform's own full scale) when None.
+
+    Returns:
+        The bytes (the WAV, then each signal as little-endian float32, in
+        order), the MIME type and metadata: the audio info, `audio_bytes`
+        (the WAV's length), `samples`, the `signals` names and the `range`.
+    """
+
+    wav, info = array_to_wav(audio, sample_rate)
+    lo, hi = (-1.0, 1.0) if value_range is None else value_range
+
+    meta = {
+        **info,
+        "audio_bytes": len(wav),
+        "samples": int(next(iter(signals.values())).shape[0]),
+        "signals": list(signals),
+        "range": [float(lo), float(hi)],
+    }
+    data = wav + b"".join(v.astype("<f4").tobytes() for v in signals.values())
+    return data, WAVEFORM_MIME, meta
+
+
 def _sniff_audio(data: bytes) -> str | None:
     """Guess an audio MIME type from the first bytes of `data`, or return None."""
 
