@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import struct
 import zipfile
 
 import pytest
@@ -38,12 +39,15 @@ def test_save_and_list_reports(tmp_path):
 def test_export_report_bundles_items():
     text = (
         "# R\n\n![a sample](media:r1/img@3)\n\n![log](media:r1/log@0)\n\n"
-        "![fig](media:r1/fig@3)\n\n![gone](media:r2/img@9)\n"
+        "![fig](media:r1/fig@3)\n\n![gone](media:r2/img@9)\n\n![vad](media:r1/vad@3)\n"
     )
+    wave = {"kind": "figure", "mime": "application/x-nuboard-waveform", "audio_bytes": 4}
+    signals = struct.pack("<4f", 0.5, 1.0, -1.0, 0.25)  # two signals of two samples
     items = {
         "img": ({"kind": "image", "mime": "image/png"}, b"PNG"),
         "log": ({"kind": "text", "mime": "text/plain", "text": "hello"}, b""),
         "fig": ({"kind": "figure", "mime": "application/vnd.plotly.v1+json"}, b"{}"),
+        "vad": ({**wave, "signals": ["vad", "gain"]}, b"RIFF" + signals),
     }
 
     def resolve(ref):
@@ -56,6 +60,9 @@ def test_export_report_bundles_items():
     assert "[fig](files/r1-fig-3.plotly.json)" in md
     assert "*(missing: img at step 9 of run r2)*" in md
     assert zf.read("files/r1-img-3.png") == b"PNG"
+    assert "[vad](files/r1-vad-3.wav) ([signals](files/r1-vad-3-signals.csv))" in md
+    assert zf.read("files/r1-vad-3.wav") == b"RIFF"
+    assert zf.read("files/r1-vad-3-signals.csv").decode() == "vad,gain\n0.5,-1\n1,0.25\n"
 
 
 def test_fields_are_validated(tmp_path):

@@ -75,3 +75,20 @@
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: 1rem;
 }
+
+/* Mermaid diagrams: site font, theme-aware lines and labels, rounded groups.
+   Node colors come from classDef in each diagram (Okabe-Ito: blue = code,
+   orange = files on disk, green = the browser). */
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-mermaid-font-family: var(--md-text-font-family), system-ui, sans-serif;
+  --md-mermaid-edge-color: var(--md-default-fg-color--light);
+  --md-mermaid-node-bg-color: var(--md-default-fg-color--lightest);
+  --md-mermaid-node-fg-color: var(--md-default-fg-color);
+  --md-mermaid-label-bg-color: var(--md-default-bg-color);
+  --md-mermaid-label-fg-color: var(--md-default-fg-color--light);
+}
+.md-typeset .mermaid {
+  margin: 1.5em 0;
+  text-align: center;
+}

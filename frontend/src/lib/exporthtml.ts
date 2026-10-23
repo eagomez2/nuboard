@@ -6,11 +6,14 @@ import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
 import { baselineExtent, baselineLines } from './baselines';
-import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME } from './media';
+import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
 import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
 import { fmtTick, histSvg, type HistData, type HistSeries } from './hist';
 import { mountPoints } from './points';
+import { mountWaveform } from './waveplot';
+import WAVEPLOT_CSS from './waveplot.css?raw';
+import { waveformKit } from './waveform';
 import { prArea, prSvg, type PRData } from './pr';
 import { renderMarkdown } from './markdown';
 import { ema, robustRange } from './smooth';
@@ -73,6 +76,8 @@ interface Needs {
   points?: boolean;
   /** Audio is drawn with the waveform player, so the player is embedded once. */
   wave?: boolean;
+  /** A waveform figure is embedded, so its plot is added (with uPlot). */
+  waveform?: boolean;
 }
 
 /** How audio is exported: the waveform and spectrogram player, or the browser's own. */
@@ -115,6 +120,26 @@ var bg=function(){return getComputedStyle(document.documentElement).getPropertyV
 var v=mountPoints(c,u.buffer,+box.dataset.count,box.dataset.colors==='1',bg(),box.dataset.axes?JSON.parse(box.dataset.axes):null);
 new MutationObserver(function(){v.setBackground(bg())}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 });`;
+
+// Draws each waveform figure from the WAV in its <audio> and the signals in its <script>, with the
+// same decimation as the viewer.
+const WAVEFORM_JS = `var waveformKit=(${waveformKit.toString()});
+var mountWaveform=(${mountWaveform.toString()});
+var kit=waveformKit();
+document.querySelectorAll('.nbwavefig').forEach(function(box){
+var part=function(n){return box.querySelector('script[data-part='+n+']').textContent.trim()};
+var bytes=function(b){var s=atob(b),u=new Uint8Array(s.length);for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
+var a=part('audio'),w=bytes(a),g=bytes(part('signals')),all=new Uint8Array(w.length+g.length);all.set(w);all.set(g,w.length);
+var m=JSON.parse(box.dataset.meta);
+mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,regions:m.regions,notes:m.notes,audioSrc:'data:audio/wav;base64,'+a});
+});`;
+
+/** Base64 of `bytes`, a chunk at a time (a spread of millions of arguments would overflow the stack). */
+function base64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
 
 // Puts the waveform player in each audio frame: the player's page and scripts are stored once in
 // #nbplayer, and the frame's own data goes in before them as NB_AUDIO_EMBED. The frames follow
@@ -454,7 +479,27 @@ async function mediaHtml(
     const base64 = (await dataUrl(url)).replace(/^data:[^,]*,/, '');
     body = `<div class="nbpoints" data-count="${item.points ?? 0}" data-colors="${item.colors ? 1 : 0}"${item.axes ? ` data-axes="${esc(JSON.stringify(item.axes))}"` : ''}><canvas aria-label="${esc(item.key)}"></canvas><script type="application/octet-stream">${base64}</script><small>${(item.points ?? 0).toLocaleString()} points · drag to rotate, shift-drag to pan, click then scroll to zoom, double-click to reset</small></div>`;
   } else if (item.mime === 'text/html') body = frame(await (await fetch(url)).text(), item.key, 360);
-  else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
+  else if (item.mime === WAVEFORM_MIME) {
+    // the audio plays from its own data URL; the plot reads the same bytes, then the signals after them
+    needs.libs.add('uplot');
+    needs.waveform = true;
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const offset = item.audio_bytes ?? 0;
+    const names = item.signals ?? [];
+    const info = {
+      names,
+      range: item.range ?? [-1, 1],
+      samples: item.samples ?? 0,
+      caption: item.caption ?? null,
+      regions: item.regions ?? null,
+      notes: item.notes ?? [],
+    };
+    body =
+      `<div class="nbwavefig" data-meta="${esc(JSON.stringify(info))}">` +
+      `<script type="application/octet-stream" data-part="audio">${base64(bytes.subarray(0, offset))}</script>` +
+      `<script type="application/octet-stream" data-part="signals">${base64(bytes.subarray(offset))}</script></div>` +
+      notesList(item.notes ?? []);
+  } else if (/plotly|vega|bokeh/.test(item.mime)) body = figureHtml(item.mime, await (await fetch(url)).text(), needs);
   else body = `<p class="missing">${esc(item.mime)} items are not exported</p>`;
   return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(meta)}</small></figcaption></figure>`;
 }
@@ -582,6 +627,14 @@ export async function reportHtml(
   if (needs.libs.size) scripts.push(DRAW);
   if (needs.notes) scripts.push(NOTES_JS);
   if (needs.points) scripts.push(POINTS_JS);
+  if (needs.waveform) scripts.push(WAVEFORM_JS);
+  // the viewer's monospace font, which the waveform figure's numbers and controls use
+  let fonts = '';
+  if (needs.waveform) {
+    const mono = (await import('@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?inline'))
+      .default;
+    fonts = `@font-face{font-family:'Geist Mono Variable';font-weight:100 900;font-display:swap;src:url(${mono}) format('woff2-variations')}.nbwavefig{--mono:'Geist Mono Variable',ui-monospace,Menlo,monospace}`;
+  }
   let player = '';
   if (needs.wave) {
     const page = new DOMParser().parseFromString(AUDIO_PAGE, 'text/html');
@@ -599,7 +652,7 @@ export async function reportHtml(
   const footer = opts.footer.trim() ? `<footer>${esc(opts.footer.trim())}</footer>` : '';
   return `<!doctype html>
 <html lang="en"${switchable ? '' : ` data-theme="${opts.theme}"`}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}</style></head>
+<title>${esc(title)}</title>${icon}${theme}<style>${STYLE}${needs.libs.has('uplot') ? UPLOT_CSS : ''}${needs.waveform ? WAVEPLOT_CSS + fonts : ''}</style></head>
 <body>${switchable ? THEME_BUTTON : ''}${main.outerHTML}${footer}
 ${tail}</body></html>
 `;
