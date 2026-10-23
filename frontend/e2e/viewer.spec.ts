@@ -136,6 +136,13 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect(page).toHaveURL(/cmap=magma/);
   await expect(page).toHaveURL(/fscale=mel/);
   await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
+  // the amplitude axis is on by default, and its switch takes it off without decoding again
+  await expect(player.locator('.amp-axis span')).toHaveText(['1', '0', '−1']);
+  await page.getByRole('switch', { name: 'Amplitude axis' }).click();
+  await expect(page).toHaveURL(/amp=0/);
+  await expect(player.locator('.amp-axis')).toHaveCount(0);
+  await page.getByRole('switch', { name: 'Amplitude axis' }).click();
+  await expect(player.locator('.amp-axis span')).toHaveCount(3);
   await page.getByRole('button', { name: 'simple' }).click();
   await expect(page).toHaveURL(/player=simple/);
   const audio = page.locator('audio').first();
@@ -1015,7 +1022,7 @@ test('live updates wait behind an Update button when Charts are paused, and a Re
   await page.getByRole('switch', { name: 'Live' }).click();
   const update = page.getByRole('button', { name: 'New data · Update' });
   await expect(update).toBeVisible({ timeout: 20_000 }); // the demo's live run keeps logging
-  expect(await top()).toBe(before); // the button floats over the chart, which does not move
+  expect(await top()).toBe(before); // the button sits in the fixed-height header, so the chart does not move
   await update.click();
   await expect(update).toHaveCount(0);
   expect(await top()).toBe(before);

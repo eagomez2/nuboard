@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { AudioNote } from '../lib/api';
+  import type { AudioOptions } from '../lib/media';
   import { app } from '../lib/state.svelte';
 
   /**
@@ -30,8 +31,8 @@
     duration?: number;
     group: string;
     header: { label?: string; name?: string; tags?: string[] };
-    /** Spectrogram colormap, frequency scale and window (see MediaPage's options). */
-    options: { colormap: string; scale: string; fftSize: number; spectrogram: boolean };
+    /** Spectrogram colormap, frequency scale and window, and the amplitude axis (see MediaPage's options). */
+    options: AudioOptions;
     notes?: AudioNote[];
     onnotes?: (notes: AudioNote[]) => void;
   } = $props();
@@ -68,6 +69,7 @@
       colormap: options.colormap,
       waveHeight: 72,
       spectrogramHeight: options.spectrogram ? 140 : 0,
+      axis: options.axis,
       normalize: false,
       notes: !!onnotes,
       annotations: $state.snapshot(notes),
@@ -97,7 +99,16 @@
 
   // a new clip (step slider), theme or option re-renders the player
   $effect(() => {
-    void [url, app.theme, app.themeVersion, options.colormap, options.scale, options.fftSize, options.spectrogram];
+    void [
+      url,
+      app.theme,
+      app.themeVersion,
+      options.colormap,
+      options.scale,
+      options.fftSize,
+      options.spectrogram,
+      options.axis,
+    ];
     void notes;
     send();
   });

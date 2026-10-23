@@ -497,8 +497,10 @@ remembered):
   **Colors** picks the spectrogram colormap (theme, viridis, magma or gray),
   **Frequency** its scale (linear, log or mel), **Window** the FFT size (256
   to 4096 samples; the hop is a quarter of it), and **Spectrogram** hides it
-  to show only waveforms. The choices are remembered in the browser and kept
-  in the URL (`cmap`, `fscale`, `fft`, `spec`), so a shared link shows the
+  to show only waveforms. **Amplitude axis** labels the waveform's amplitude
+  (±1 is full scale) down its left edge. The choices are remembered in the
+  browser and kept in the URL (`cmap`, `fscale`, `fft`, `spec`, `amp`), so a
+  shared link shows the
   same view.
 - **Simple**: the browser's own audio controls, as in TensorBoard.
 

@@ -813,6 +813,20 @@
               : agg
             : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
         >
+        <!-- these take the hint's room in the fixed-height header, so neither the tabs nor the plot move -->
+        <span class="pills">
+          {#if stale}<button
+              class="btn sm newdata"
+              title="New points were logged; draw them"
+              onclick={update}
+              transition:fade={{ duration: 150 }}>New data · Update</button
+            >{/if}
+          {#if zoom}<button
+              class="btn sm resetzoom"
+              onclick={() => router.set({ zoom: null })}
+              transition:fade={{ duration: 150 }}>Reset zoom</button
+            >{/if}
+        </span>
         <span class="acts">
           <span class="spin" class:on={slow} role="status" aria-label={slow ? 'Loading' : undefined}></span>
           <button
@@ -832,20 +846,6 @@
         </span>
       </div>
       <div class="plotwrap">
-        <!-- floats over the plot, so showing or hiding these never moves the chart -->
-        <div class="overlay">
-          {#if stale}<button
-              class="btn sm newdata"
-              title="New points were logged; draw them"
-              onclick={update}
-              transition:fade={{ duration: 150 }}>New data · Update</button
-            >{/if}
-          {#if zoom}<button
-              class="btn sm resetzoom"
-              onclick={() => router.set({ zoom: null })}
-              transition:fade={{ duration: 150 }}>Reset zoom</button
-            >{/if}
-        </div>
         <LineChart
           data={focusData}
           {smoothing}
@@ -1430,21 +1430,17 @@
       transform: rotate(360deg);
     }
   }
-  .plotwrap {
-    position: relative;
-  }
-  .overlay {
-    position: absolute;
-    top: 4px;
-    right: 14px;
-    z-index: 3;
-    display: flex;
+  .pills {
+    flex: none;
+    display: inline-flex;
     gap: 6px;
-    pointer-events: none;
   }
-  .overlay .btn {
-    pointer-events: auto;
-    box-shadow: var(--lift);
+  .pills .btn {
+    height: 28px;
+    padding-block: 0;
+  }
+  .main > .tabs {
+    height: 34px; /* fixed, so the pills and spinner coming and going never move the plot */
   }
   .resetzoom {
     background: var(--panel);

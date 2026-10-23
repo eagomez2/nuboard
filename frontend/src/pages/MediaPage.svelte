@@ -239,7 +239,7 @@
     prefs.set('player', p);
     router.set({ player: p === 'wave' ? null : p });
   }
-  const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1' };
+  const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1', amp: '1' };
   type AudioOpt = keyof typeof AUDIO_DEFAULTS;
   const opt = (k: AudioOpt) => router.get(k, prefs.get(k, AUDIO_DEFAULTS[k]));
   function setOpt(k: AudioOpt, v: string) {
@@ -251,6 +251,7 @@
     scale: opt('fscale'),
     fftSize: Number(opt('fft')) || 1024,
     spectrogram: opt('spec') !== '0',
+    axis: opt('amp') !== '0',
   });
   const showsAudio = $derived(kinds.includes('audio') && kindCounts.audio.size > 0);
 
@@ -471,6 +472,16 @@
               onclick={() => setOpt('spec', audioOptions.spectrogram ? '0' : '1')}
             ></button>
             <span class="faint">Spectrogram</span></label
+          >
+          <label class="opt"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={audioOptions.axis}
+              aria-label="Amplitude axis"
+              onclick={() => setOpt('amp', audioOptions.axis ? '0' : '1')}
+            ></button>
+            <span class="faint">Amplitude axis</span></label
           >
           <span class="faint small"
             >Players follow each other's zoom and selection · space plays · ctrl + wheel zooms</span
