@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import FilesView from './FilesView.svelte';
   import Icon from './Icon.svelte';
   import NotesEditor from './NotesEditor.svelte';
@@ -59,6 +60,30 @@
     Promise.all(ks.map((k) => api.run(k))).then((d) => (details = d));
   });
 
+  // Keep the open runs' status, duration and summary in step with the live run list. When
+  // a status changes (a run finishes or crashes), fetch that run again for its end time and
+  // error; nothing else on the panel is reloaded.
+  $effect(() => {
+    void app.runs?.version;
+    const now = untrack(() => details);
+    let changed = false;
+    const next = now.map((d) => {
+      const b = app.runByKey(d.run.key);
+      if (!b || (b.status === d.run.status && b.duration === d.run.duration && b.heartbeat === d.run.heartbeat))
+        return d;
+      changed = true;
+      if (b.status !== d.run.status)
+        api
+          .run(d.run.key)
+          .then(
+            (f) => (details = details.map((x) => (x.run.key === f.run.key ? { ...x, run: f.run, meta: f.meta } : x))),
+          )
+          .catch(() => {});
+      return { ...d, run: { ...d.run, ...b } };
+    });
+    if (changed) details = next;
+  });
+
   // Each run's file listing, kept with the runs it belongs to so a new set of runs never mixes with the last
   let loaded = $state<{ keys: string; trees: (RunTree | null)[] }>({ keys: '', trees: [] });
   const runKeys = $derived(details.map((d) => d.run.key).join(','));
@@ -71,7 +96,10 @@
 
   // Pinned files are tabs, shared by everyone through each project's pins.json; a pin
   // shows only where one of the runs has a file it names
-  const projects = $derived([...new Set(details.map((d) => d.run.project))]);
+  // keyed by strings, so live status updates of `details` do not reload pins or files
+  const projectKey = $derived([...new Set(details.map((d) => d.run.project))].join('\n'));
+  const projects = $derived(projectKey ? projectKey.split('\n') : []);
+  const statusKey = $derived(details.map((d) => d.run.status).join(','));
   $effect(() => {
     for (const p of projects) pins.load(p);
   });
@@ -96,11 +124,12 @@
 
   $effect(() => {
     const t = tab;
-    const ds = details;
-    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || pinOf(t) || !ds.length) return;
+    const ks = runKeys;
+    void statusKey; // a finished run's console is read once more
+    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || pinOf(t) || !ks) return;
     loadingFile = true;
     const term = isConsole(t);
-    Promise.all(ds.map((d) => api.file(d.run.key, t, term))).then((x) => {
+    Promise.all(ks.split(',').map((k) => api.file(k, t, term))).then((x) => {
       texts = x;
       loadingFile = false;
     });

@@ -14,10 +14,26 @@
   min–max, logged low/high bounds, rank ranges) when they clutter the chart.
   It is saved with charts added to reports. Smooth and the display switches
   moved to their own row under the grouping and x-axis controls.
-- Charts: **Ctrl/⌘/Alt + mouse wheel** (or a trackpad pinch) zooms the focus
-  chart around the cursor, and **Shift + wheel** pans a zoomed chart. The
-  finer data for the new range loads when the wheel stops. Dragging still
-  zooms to a box and double-click still resets.
+- Charts: **Ctrl/⌘ + mouse wheel** (or a trackpad pinch) zooms the focus
+  chart around the cursor, also past the ends of the data, with y fitted to
+  the view; **Alt + wheel** zooms both axes; **Shift + drag** pans in any
+  direction and **Shift + wheel** along x. The view stays put while finer data
+  for it loads, and the data comes with a margin on each side so smoothing does
+  not restart at the edge. Dragging still zooms to a range and double-click
+  still resets.
+- Charts: the inspector's latest values leave out hidden series, and take the
+  last value in the zoomed range.
+- Timeline: **Day / Week / Month / Year / All** windows with **‹ ›** to step
+  through time, Ctrl/⌘ + wheel zoom around the cursor, Shift + wheel or
+  Shift + drag to move, and month and year ticks on long ranges.
+- **Calmer live updates.** Charts redraw new points only while you are not
+  zoomed, pinned or hovering, with a **Live** switch and a **New data ·
+  Update** button otherwise. Runs table rows hold still under the pointer.
+  Media, Sweeps, Timeline, Artifacts and Reports no longer change under you:
+  a **New results · Refresh** button appears instead, and heartbeat-only
+  changes are ignored.
+- Run details follow the run's status, duration and summary live, so a run
+  that finishes shows **Finished** there too.
 - Tables: a highlighted row no longer gets a rounded corner when it is the
   last row; table frames have square corners.
 - Updated the screenshots in the docs.

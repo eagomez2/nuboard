@@ -94,9 +94,11 @@
         x: xKind,
         group: groupBy,
         agg,
-        points: 1400,
-        xmin: zoom?.[0],
-        xmax: zoom?.[1],
+        // a zoomed chart also gets half a view on each side, so smoothing is warmed up at the
+        // edges and a small pan or zoom out shows data before the next fetch arrives
+        points: zoom ? 2800 : 1400,
+        xmin: zoom ? zoom[0] - (zoom[1] - zoom[0]) / 2 : undefined,
+        xmax: zoom ? zoom[1] + (zoom[1] - zoom[0]) / 2 : undefined,
         signal: ctrl.signal,
       })
       .then((d) => {
@@ -109,11 +111,33 @@
     return () => ctrl.abort();
   });
 
+  // Live: new points redraw the charts (at most every 2 s) unless updates are paused or you
+  // are working with the chart (zoomed, pinned or hovering it); then an Update button
+  // waits, and it applies by itself once you stop hovering a chart that is not zoomed or pinned.
+  let live = $state(prefs.get('chartsLive', true));
+  let stale = $state(false);
+  const interacting = $derived(zoom !== null || pinned || cursorX !== null);
+  function setLive(on: boolean) {
+    live = on;
+    prefs.set('chartsLive', on);
+  }
+  function update() {
+    stale = false;
+    tick++;
+  }
+  $effect(() => {
+    if (stale && live && !interacting) update();
+  });
+
   onMount(() => {
     let last = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     return onLive('data', (changed) => {
       if (!changed.some((k) => runKeys.includes(k))) return;
+      if (!live || interacting) {
+        stale = true;
+        return;
+      }
       const wait = Math.max(0, 2000 - (Date.now() - last));
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -307,11 +331,12 @@
     return [...map.entries()];
   });
 
-  // Without a hover, the inspector shows each series' latest value.
+  // Without a hover, the inspector shows each shown series' latest value (in the zoomed range).
   const lastValues = $derived(
     (focusData?.series ?? []).flatMap((s, i) => {
+      if (hidden.has(s.label)) return [];
       for (let k = s.y.length - 1; k >= 0; k--)
-        if (Number.isFinite(s.y[k]))
+        if (Number.isFinite(s.y[k]) && (!zoom || s.x[k] <= zoom[1]))
           return [{ series: i, label: s.label, value: s.y[k], lo: s.lo[k], hi: s.hi[k], x: s.x[k] }];
       return [];
     }),
@@ -704,6 +729,12 @@
             onclick={() => router.set({ log: logY ? null : '1' })}
           ></button>Log y</label
         >
+        <label
+          class="tg"
+          title="Draw new points as runs log them. Off, or while you zoom, pin or hover a chart, an Update button appears instead."
+          ><button class="switch" role="switch" aria-checked={live} aria-label="Live" onclick={() => setLive(!live)}
+          ></button>Live</label
+        >
       </div>
     </div>
   </section>
@@ -763,6 +794,9 @@
           </div>
         {/if}
         <span class="note">
+          {#if stale}<button class="btn sm newdata" title="New points were logged; draw them" onclick={update}
+              >New data · Update</button
+            >{/if}
           {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>Reset zoom</button>{/if}
           {loading
             ? 'loading…'
@@ -770,7 +804,7 @@
               ? agg === 'std'
                 ? 'mean ± std'
                 : agg
-              : 'Drag or Ctrl+wheel to zoom · double-click to reset'}
+              : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}
           <button
             class="btn btn-ghost sm icon-btn"
             title="Add this chart to a report"
@@ -1250,6 +1284,12 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .newdata {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: transparent;
+    font-weight: 600;
   }
   .knobrows {
     display: flex;

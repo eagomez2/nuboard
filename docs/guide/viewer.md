@@ -244,15 +244,20 @@ are selected, every run matching the query.
   fits the y-axis to the 1st–99th percentile of the values, so a few spikes
   (such as a huge loss at step 0) do not flatten every curve. Off, the axis
   fits every point. **Log y** switches to a log scale.
-- **Zoom**: drag across a chart to zoom in, or hold **Ctrl** (**⌘** on a
-  Mac, or **Alt**) and scroll over the focused chart to zoom in and out around
-  the cursor (a trackpad pinch works too). **Shift** + scroll pans a zoomed
-  chart. The server sends a finer resolution for the visible range (from the
-  precomputed zoom levels in `data.parquet`, or from the raw log for live
-  runs) once the wheel stops. Double-click, or **Reset zoom**, to reset.
+- **Zoom and pan**: drag across a chart to zoom into a range. Over the
+  focused chart, **Ctrl** (**⌘** on a Mac) + scroll, or a trackpad pinch,
+  zooms in and out around the cursor, also past the ends of the data, with
+  the y-axis fitted to what is in view. **Alt** + scroll zooms both axes, as
+  in TensorBoard. **Shift** + drag pans in any direction, and **Shift** +
+  scroll pans along x. The server sends a finer resolution for the x range
+  (from the precomputed zoom levels in `data.parquet`, or from the raw log
+  for live runs) once you stop, with some data on each side so smoothing
+  does not restart at the edge; the view stays where you left it while it
+  loads. Double-click, or **Reset zoom**, to reset.
 - **Inspector**: hover a chart to see every series' value at that step,
   sorted best first, with ± std for grouped series. Click to pin the step.
-  Without hovering it shows the latest values.
+  Without hovering it shows the latest values of the series shown (in the
+  zoomed range).
 - **Linked crosshair**: hovering any chart moves the crosshair on all of them.
 - **Full screen**: the corner button above the focused chart (or Esc to
   leave) fills the screen with the chart and the inspector.
@@ -271,11 +276,27 @@ are selected, every run matching the query.
 - A run that logged NaN gets a dashed marker at the first NaN with a
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
-  Server-Sent Events and the charts refresh about every two seconds.
+  Server-Sent Events and the charts redraw at most every two seconds. They
+  hold still while you work with them: when the chart is zoomed, the cursor
+  is pinned or you hover a chart, or when the **Live** switch is off, new
+  points wait behind a **New data · Update** button. Hovering away from an
+  unzoomed, unpinned chart draws them by itself.
 
 - **Alerts strip**: under the focused chart, the
   [health alerts](alerts.md) of the runs in view. Click one to jump to it;
   spikes and drops are shaded on the chart.
+
+## Live updates
+
+The server checks the folder every 1.5 s and pushes changes. The **Runs** page
+follows them as they come: values change in place, and rows do not move while
+the pointer is over the table. Open run details follow the run's status,
+duration and summary, and read the run once more when it finishes or crashes.
+**Charts** behave as described above. **Media**, **Sweeps**, **Timeline**,
+**Artifacts** and **Reports** do not change under you: when runs change, a
+**New results · Refresh** button appears next to the page title (changes that
+are only heartbeats are ignored). Going back to Runs or Charts catches up by
+itself.
 
 ## Sweeps page
 
@@ -292,8 +313,15 @@ Every run as a bar from start to end, grouped by project, colored by status,
 project or group. **Packed** puts runs that never overlap on the same row, so
 the chart shows how many ran at once; the summary line gives the peak and the
 total run time. Crashed runs end in ✕, runs with alerts have a dot, and
-diamonds mark artifact versions a run produced. Drag to zoom into a time
-range, double-click to reset, click a bar to open the run. The corner button
+diamonds mark artifact versions a run produced. Click a bar to open the run.
+
+To move around in time: **Day**, **Week**, **Month** and **Year** show that
+much time up to the latest activity, **‹** and **›** step one window back or
+forward, and **All** fits every run. Drag across the chart to zoom into a
+range, **Ctrl** (**⌘**) + scroll (or a pinch) zooms around the cursor, and
+**Shift** + scroll, a sideways scroll or **Shift** + drag moves along time.
+Double-click fits every run again. The axis switches to months and years for
+long ranges. The corner button
 shows the timeline full screen (Esc leaves), and the bookmark button adds it
 to a [report](reports.md) as a snapshot.
 

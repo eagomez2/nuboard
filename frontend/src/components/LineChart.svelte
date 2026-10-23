@@ -73,9 +73,15 @@
   let width = $state(600);
   let mains: { idx: number; label: string; series: number; lo: number | null; hi: number | null }[] = [];
   let frame = 0;
-  // x extent of the unzoomed data, so zooming out with the wheel stops at the whole run
-  let fullX: [number, number] | null = null;
+  // What the user is looking at. It outlives rebuilds (new data, live updates) so the view
+  // never jumps; `zoom` only says which x range the data was fetched for.
+  let view: { x: [number, number] | null; y: [number, number] | null } = { x: null, y: null };
+  let lastZoom = ''; // the zoom this chart last reported, to tell its own changes from outside ones
   let wheelTimer = 0;
+  let panned = false;
+  // per drawn series: x and smoothed y, to fit the y-axis to what is in view
+  let fitXs: ArrayLike<number>[] = [];
+  let fitYs: Float64Array[] = [];
 
   // Shorten text with an ellipsis so it fits in `max` canvas pixels (long run names would run off the plot).
   function fitText(ctx: CanvasRenderingContext2D, text: string, max: number): string {
@@ -114,6 +120,7 @@
     const bands: uPlot.Band[] = [];
     const nanMarks: { x: number; label: string; color: string }[] = [];
     const yValues: Float64Array[] = [];
+    const xValues: ArrayLike<number>[] = [];
     let col = 1;
     data.series.forEach((s, i) => {
       if (hidden.has(s.label) || !s.x.length) return;
@@ -153,6 +160,7 @@
       });
       mains.push({ idx: col + cols.length - 1, label: s.label, series: i, lo: loIdx, hi: hiIdx });
       yValues.push(smooth instanceof Float64Array ? smooth : Float64Array.from(smooth));
+      xValues.push(s.x);
       col += cols.length;
       tables.push([s.x as unknown as number[], ...(cols as unknown as number[][])]);
       if (s.nonfinite) {
@@ -165,18 +173,16 @@
     });
     if (!tables.length) return;
     const joined = tables.length === 1 ? tables[0] : uPlot.join(tables);
-    if (!zoom) {
-      const xs = joined[0];
-      if (xs.length) fullX = [xs[0], xs[xs.length - 1]];
+    const zkey = zoom ? `${zoom[0]}~${zoom[1]}` : '';
+    if (zkey !== lastZoom) {
+      // zoom set from outside (the URL, Reset zoom, an alert): show that range
+      view = { x: zoom ? [zoom[0], zoom[1]] : null, y: null };
+      lastZoom = zkey;
     }
+    fitXs = xValues;
+    fitYs = yValues;
     const lines = baselines ? baselineLines(data.series, hidden) : [];
     const extent = baselineExtent(lines, logY);
-    let range = robust ? robustRange(yValues) : null;
-    if (range && extent && !logY && (extent[0] < range[0] || extent[1] > range[1])) {
-      // keep the baselines in view, with the same margin the range has
-      const pad = (Math.max(range[1], extent[1]) - Math.min(range[0], extent[0])) * 0.06;
-      range = [Math.min(range[0], extent[0] - pad), Math.max(range[1], extent[1] + pad)];
-    }
     const xf = xFormatter(data.xKind);
     const errColor = cssVar('--err');
 
@@ -192,7 +198,14 @@
         y: {
           distr: logY ? 3 : 1,
           range: (u, min, max) => {
-            if (range && !logY) return range;
+            if (view.y) return logY ? [Math.max(view.y[0], 1e-12), view.y[1]] : view.y;
+            let range = robust && !logY ? robustRange(inView(u.scales.x.min, u.scales.x.max)) : null;
+            if (range && extent && (extent[0] < range[0] || extent[1] > range[1])) {
+              // keep the baselines in view, with the same margin the range has
+              const pad = (Math.max(range[1], extent[1]) - Math.min(range[0], extent[0])) * 0.06;
+              range = [Math.min(range[0], extent[0] - pad), Math.max(range[1], extent[1] + pad)];
+            }
+            if (range) return range;
             if (extent) {
               min = Math.min(min, extent[0]);
               max = Math.max(max, extent[1]);
@@ -227,10 +240,21 @@
         points: { show: false },
         bind: {
           dblclick: () => () => {
-            onZoom?.(null);
+            resetView();
             return null;
           },
+          mousedown: (u, target, handler) => (e: MouseEvent) => {
+            if (e.shiftKey && onZoom && e.button === 0) {
+              startPan(e);
+              return null;
+            }
+            return handler(e);
+          },
           mouseup: (u, target, handler) => (e: MouseEvent) => {
+            if (panned) {
+              panned = false;
+              return null;
+            }
             if (u.select.width === 0) onPin?.();
             return handler(e);
           },
@@ -242,7 +266,8 @@
             if (u.select.width > 4) {
               const a = u.posToVal(u.select.left, 'x');
               const b = u.posToVal(u.select.left + u.select.width, 'x');
-              onZoom?.([a, b]);
+              view = { x: [a, b], y: null };
+              report(0);
             }
           },
         ],
@@ -400,7 +425,7 @@
       },
     };
     plot = new uPlot(opts, joined, el);
-    if (zoom) plot.setScale('x', { min: zoom[0], max: zoom[1] });
+    if (view.x) plot.setScale('x', { min: view.x[0], max: view.x[1] });
     if (onZoom) plot.over.addEventListener('wheel', onWheel, { passive: false });
     dots = markers
       ? mains.map((m) => {
@@ -413,48 +438,126 @@
       : [];
   }
 
+  /** Smoothed y values whose x is in [lo, hi], per series (all of them without a range). */
+  function inView(lo: number | null | undefined, hi: number | null | undefined): Float64Array[] {
+    if (lo == null || hi == null) return fitYs;
+    return fitYs.map((ys, i) => {
+      const xs = fitXs[i];
+      let a = 0;
+      while (a < xs.length && xs[a] < lo) a++;
+      let b = xs.length;
+      while (b > a && xs[b - 1] > hi) b--;
+      return ys.subarray(a, b);
+    });
+  }
+
+  // y is zoomed and panned in log space on a log axis
+  const toY = (v: number) => (logY ? Math.log10(Math.max(v, 1e-300)) : v);
+  const fromY = (v: number) => (logY ? 10 ** v : v);
+
+  /** Show x and y; a null y fits the y-axis to the data in view. */
+  function setView(x: [number, number], y: [number, number] | null) {
+    const u = plot;
+    if (!u) return;
+    view = { x, y };
+    u.batch(() => {
+      u.setScale('x', { min: x[0], max: x[1] });
+      if (y) u.setScale('y', { min: y[0], max: y[1] });
+    });
+  }
+
+  /** Tell the page the x range in view (after `delay` ms of quiet), so it fetches finer data. */
+  function report(delay: number) {
+    clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => {
+      if (!view.x) return;
+      let [a, b] = view.x;
+      // round to ~5 significant digits of the span, to keep the URL readable
+      const digits = Math.min(Math.max(4 - Math.floor(Math.log10(b - a)), 0), 20);
+      [a, b] = [Number(a.toFixed(digits)), Number(b.toFixed(digits))];
+      lastZoom = `${a}~${b}`;
+      onZoom?.([a, b]);
+    }, delay);
+  }
+
+  function resetView() {
+    clearTimeout(wheelTimer);
+    view = { x: null, y: null };
+    const had = lastZoom !== '';
+    lastZoom = '';
+    if (had) onZoom?.(null);
+    else schedule();
+  }
+
+  function currentScales(u: uPlot): [[number, number], [number, number]] | null {
+    const { min: x0, max: x1 } = u.scales.x;
+    const { min: y0, max: y1 } = u.scales.y;
+    if (x0 == null || x1 == null || y0 == null || y1 == null || !(x1 > x0) || !(y1 > y0)) return null;
+    return [
+      [x0, x1],
+      [y0, y1],
+    ];
+  }
+
   /**
-   * Ctrl/⌘/Alt + wheel (or a trackpad pinch) zooms x around the cursor; Shift + wheel pans
-   * a zoomed chart. The scale moves at once and the data for the new range is fetched
-   * when the wheel stops.
+   * Ctrl/⌘ + wheel (or a trackpad pinch) zooms x around the cursor, past the data if you
+   * like, with y fitted to what is in view (unless y was panned or zoomed); Alt + wheel
+   * zooms both axes, as in TensorBoard; Shift + wheel pans along x. The view moves at once
+   * and the data for the new x range is fetched when the wheel stops.
    */
   function onWheel(e: WheelEvent) {
     const u = plot;
     if (!u) return;
     const zooming = e.ctrlKey || e.metaKey || e.altKey;
     if (!zooming && !e.shiftKey) return;
-    const min = u.scales.x.min;
-    const max = u.scales.x.max;
-    if (min == null || max == null || max <= min) return;
+    const now = currentScales(u);
+    if (!now) return;
     e.preventDefault();
+    const [[x0, x1], [y0, y1]] = now;
     const delta = (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.deltaY || e.deltaX);
-    let a: number;
-    let b: number;
     if (zooming) {
-      const at = u.posToVal(e.offsetX, 'x');
       const f = Math.min(Math.max(Math.exp(delta * 0.002), 0.5), 2);
-      a = at - (at - min) * f;
-      b = at + (max - at) * f;
+      const ax = u.posToVal(e.offsetX, 'x');
+      const x: [number, number] = [ax - (ax - x0) * f, ax + (x1 - ax) * f];
+      if (e.altKey) {
+        const ay = toY(u.posToVal(e.offsetY, 'y'));
+        const [ly0, ly1] = [toY(y0), toY(y1)];
+        setView(x, [fromY(ay - (ay - ly0) * f), fromY(ay + (ly1 - ay) * f)]);
+      } else setView(x, view.y);
     } else {
-      const shift = (max - min) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
-      a = min + shift;
-      b = max + shift;
-      if (fullX && a < fullX[0]) [a, b] = [fullX[0], fullX[0] + (max - min)];
-      if (fullX && b > fullX[1]) [a, b] = [fullX[1] - (max - min), fullX[1]];
+      const shift = (x1 - x0) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
+      setView([x0 + shift, x1 + shift], view.y);
     }
-    let whole = false;
-    if (fullX) {
-      a = Math.max(a, fullX[0]);
-      b = Math.min(b, fullX[1]);
-      whole = a <= fullX[0] && b >= fullX[1];
-    }
-    if (!(b > a)) return;
-    // round to ~5 significant digits of the span, to keep the URL readable
-    const digits = Math.min(Math.max(4 - Math.floor(Math.log10(b - a)), 0), 20);
-    if (!whole) [a, b] = [Number(a.toFixed(digits)), Number(b.toFixed(digits))];
-    u.setScale('x', { min: a, max: b });
-    clearTimeout(wheelTimer);
-    wheelTimer = window.setTimeout(() => onZoom?.(whole ? null : [a, b]), 250);
+    report(250);
+  }
+
+  /** Shift + drag pans the view on both axes. */
+  function startPan(e: MouseEvent) {
+    const u = plot;
+    const now = u && currentScales(u);
+    if (!u || !now) return;
+    const [[x0, x1], [y0, y1]] = now;
+    const [ly0, ly1] = [toY(y0), toY(y1)];
+    const w = u.over.clientWidth || 1;
+    const h = u.over.clientHeight || 1;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    panned = false;
+    const move = (ev: MouseEvent) => {
+      const dx = ((ev.clientX - sx) / w) * (x1 - x0);
+      const dy = ((ev.clientY - sy) / h) * (ly1 - ly0);
+      if (dx || dy) panned = true;
+      setView([x0 - dx, x1 - dx], [fromY(ly0 + dy), fromY(ly1 + dy)]);
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      u.over.style.cursor = '';
+      if (panned) report(0);
+    };
+    u.over.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
   }
 
   function schedule() {
