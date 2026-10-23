@@ -26,7 +26,7 @@ switches to the source, with line numbers. HTML is listed under **HTML**.
 ```python
 import nuboard as nb
 
-run = nb.init("api-tour", name="html")
+run = nb.init("api-tour", run_name="html")
 pairs = [
     ("the cat sat on the mat", "the cat sat on a mat"),
     ("a quick brown fox", "a quick brown fox"),

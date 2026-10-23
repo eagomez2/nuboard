@@ -22,13 +22,16 @@ from nuboard.reader import RunReader
 
 
 def test_init_creates_self_contained_folder(tmp_path):
-    with nb.init("proj", name="base line:1", config={"lr": 1e-3, "opt": {"b": [0.9, 0.95]}}) as run:
+    with nb.init(
+        "proj", run_name="base line:1", config={"lr": 1e-3, "opt": {"b": [0.9, 0.95]}}
+    ) as run:
         run.add_scalar({"loss": 1.0, "nested": {"acc": 0.5}}, step=0)
 
     assert run.path.parent.parent == tmp_path / "exp" / "proj"
-    assert re.fullmatch(r"\d{8}-\d{4}_base-line-1_[a-z2-9]{6}", run.id)
+    assert re.fullmatch(r"\d{8}T\d{4}-[0-9a-f]{8}", run.id)
     assert ":" not in run.id
     meta = json.loads((run.path / "run.json").read_text("utf-8"))
+    assert meta["name"] == "base line:1"
     assert meta["format_version"] == nb.FORMAT_VERSION
     assert meta["status"] == "finished"
     assert meta["config"]["opt"]["b"] == [0.9, 0.95]
@@ -156,7 +159,7 @@ def test_process_killed_without_finish_keeps_flushed_data(tmp_path):
 
 
 def test_resume_new_session_later_wins():
-    run = nb.init("p", name="r", capture_env=False)
+    run = nb.init("p", run_name="r", capture_env=False)
 
     for s in range(10):
         run.add_scalar({"loss": 10.0 - s}, step=s)
@@ -182,9 +185,9 @@ def test_resume_new_session_later_wins():
     with pytest.raises(FileNotFoundError):
         nb.init("p", run_id="nope", resume="must", capture_env=False)
 
-    created = nb.init("p", run_id="20250101-0000_fresh_abcdef", resume="auto", capture_env=False)
+    created = nb.init("p", run_id="20250101T0000-c61e17cd", resume="auto", capture_env=False)
     created.finish()
-    assert created.path.name == "20250101-0000_fresh_abcdef"
+    assert created.path.name == "20250101T0000-c61e17cd"
 
 
 def test_fork_copies_history_up_to_step():
@@ -208,9 +211,9 @@ def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
     monkeypatch.setenv("WORLD_SIZE", "2")
     monkeypatch.setenv("TORCHELASTIC_RUN_ID", "job-42")
     monkeypatch.setenv("RANK", "0")
-    r0 = nb.init("dist", name="ddp", capture_env=False)
+    r0 = nb.init("dist", run_name="ddp", capture_env=False)
     monkeypatch.setenv("RANK", "1")
-    r1 = nb.init("dist", name="ddp", capture_env=False)
+    r1 = nb.init("dist", run_name="ddp", capture_env=False)
     assert r0.path == r1.path
     r0.add_scalar({"loss": 1.0}, step=0)
     r1.add_scalar({"loss": 2.0}, step=0)  # ignored: rank 1, not all_ranks
@@ -683,13 +686,13 @@ def test_add_scalar_baseline_is_saved_and_replaced():
 
 
 def test_a_helper_job_logs_into_the_run_without_touching_its_state():
-    train = nb.init("p", name="big", capture_env=False, system_metrics=False)
+    train = nb.init("p", run_name="big", capture_env=False, system_metrics=False)
     train.add_scalar({"train/loss": 1.0}, step=0)
     train.flush()
     train._on_heartbeat()  # puts the summary in run.json
 
     with pytest.raises(FileNotFoundError, match="leave out job"):
-        nb.init("p", run_id="20250101-0000_nope_abcdef", job="eval")
+        nb.init("p", run_id="20250101T0000-0dd62557", job="eval")
 
     ev = nb.init("p", run_id=train.id, job="eval", capture_env=False, system_metrics=False)
     assert ev.job == "eval" and ev.path == train.path

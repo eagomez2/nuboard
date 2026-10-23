@@ -10,7 +10,7 @@ Log from Python with three calls. Every run is a folder. View thousands of runs 
 ```python
 import nuboard as nb
 
-with nb.init("my-project", name="baseline", config={"lr": 3e-4}) as run:
+with nb.init("my-project", run_name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
         run.add_scalar({"train/loss": loss}, step=step)  # ~3 µs, never blocks training

@@ -41,7 +41,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="audio")
+run = nb.init("api-tour", run_name="audio")
 rate = 16_000
 t = np.arange(2 * rate) / rate
 clean = 0.4 * np.sin(2 * np.pi * (220 + 220 * t) * t)  # a rising chirp

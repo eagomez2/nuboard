@@ -49,7 +49,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="tables")
+run = nb.init("api-tour", run_name="tables")
 rng = np.random.default_rng(0)
 files = [f"p232_{i:03d}" for i in range(1, 13)]
 snr_in = rng.uniform(-5, 15, len(files)).round(1)

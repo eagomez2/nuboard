@@ -233,7 +233,7 @@ def _llm_runs(root: Path, base: float) -> None:
 
     with init(
         "llm-pretrain",
-        name="prepare-data",
+        run_name="prepare-data",
         dir=root,
         capture_env=False,
         system_metrics=False,
@@ -285,7 +285,7 @@ def _llm_runs(root: Path, base: float) -> None:
         crashed = lr == 3e-3 and seed == 2
         run = init(
             "llm-pretrain",
-            name=name,
+            run_name=name,
             dir=root,
             config=_llm_config(lr, seed),
             tags=["sweep", "seeds"],
@@ -380,7 +380,7 @@ def _llm_runs(root: Path, base: float) -> None:
     # downstream of the checkpoint: an evaluation run that writes a report artifact
     with init(
         "llm-pretrain",
-        name="eval-mmlu",
+        run_name="eval-mmlu",
         dir=root,
         capture_env=False,
         system_metrics=False,
@@ -600,7 +600,7 @@ def _vit_runs(root: Path, base: float) -> None:
         }
         run = init(
             "vit-ablations",
-            name=f"{aug}-s{seed}",
+            run_name=f"{aug}-s{seed}",
             dir=root,
             config=config,
             tags=["ablation"],
@@ -975,7 +975,7 @@ def _speech_runs(root: Path, base: float) -> None:
         started = base - 30 * 3600 + i * 2400
         run = init(
             "speech-denoise",
-            name=model,
+            run_name=model,
             dir=root,
             capture_env=False,
             system_metrics=False,
@@ -1201,7 +1201,7 @@ def _ppo_runs(root: Path, base: float) -> None:
         top = 21 if env == "Pong" else 380
         run = init(
             "ppo-atari",
-            name=f"{env.lower()}-s{seed}",
+            run_name=f"{env.lower()}-s{seed}",
             dir=root,
             capture_env=False,
             system_metrics=False,
@@ -1296,7 +1296,7 @@ def live(root: str | Path, stop: threading.Event | None = None, speed: float = 1
         rng = random.Random(seed)
         run = init(
             "llm-pretrain",
-            name=f"lr1e-3-live-s{seed}",
+            run_name=f"lr1e-3-live-s{seed}",
             dir=root,
             config=_llm_config(lr, seed),
             tags=["sweep", "live"],

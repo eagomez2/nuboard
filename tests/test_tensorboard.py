@@ -30,7 +30,7 @@ def test_imports_tf2_pytorch_and_tensorboardx_logs(tmp_path):
     assert not any(r.ignored for r in results)  # histograms are imported too
 
     runs = _runs(tmp_path)
-    tf_train = runs["tf2-lr0.01-train"]
+    tf_train = runs["tf2/lr0.01/train"]
     assert tf_train.config == {"lr": 0.01, "optimizer": "adam", "layers": 3, "dropout_on": True}
     assert tf_train.record["group"] == "tf2/lr0.01"
     assert tf_train.record["status"] == "finished"
@@ -59,7 +59,7 @@ def test_imports_tf2_pytorch_and_tensorboardx_logs(tmp_path):
     assert [t.text for t in reader.texts("note")] == ["hello **tf**"]
 
     # PyTorch's add_hparams sub-folder is folded into its run
-    torch_run = runs["torch-run_a"]
+    torch_run = runs["torch/run_a"]
     assert torch_run.config == {"lr": 0.1, "bs": 32, "opt": "sgd"}
     assert set(torch_run.summary) == {"train/loss", "hparam/acc"}
     assert {m.key for m in torch_run.reader().media()} == {"img", "snd", "h"}
@@ -73,7 +73,7 @@ def test_imports_tf2_pytorch_and_tensorboardx_logs(tmp_path):
     assert [t.text for t in torch_run.reader().texts("txt")] == ["torch text"]
     assert len(runs) == 6
 
-    tbx = runs["tbx-exp1"]
+    tbx = runs["tbx/exp1"]
     assert {m.key for m in tbx.reader().media()} == {"img", "snd"}
     _, _, loss = tbx.reader().scalars("loss")
     assert loss[0] == pytest.approx(3.0)

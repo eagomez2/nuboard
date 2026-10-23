@@ -43,7 +43,7 @@ import numpy as np
 import nuboard as nb
 
 classes = ["cat", "dog", "bird", "fish"]
-run = nb.init("api-tour", name="figures")
+run = nb.init("api-tour", run_name="figures")
 rng = np.random.default_rng(0)
 
 for epoch in range(3):

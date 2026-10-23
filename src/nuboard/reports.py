@@ -4,7 +4,7 @@ Reports are plain Markdown files in `<project>/reports/<name>.md`. A logged
 image, audio clip, figure, HTML page or text is embedded with an image line whose
 target is a media reference:
 
-    ![Reconstructions at the best step](media:20261016-0815_baseline_ab12cd/samples/recon@1200)
+    ![Reconstructions at the best step](media:20261016T0815-bc799713/samples/recon@1200)
 
 that is `media:<run id>/<media key>@<step>`. The viewer renders the item in
 place, and `export_report` writes a zip with the Markdown and the files.
@@ -80,7 +80,7 @@ def parse_ref(text: str) -> MediaRef:
     """Parse the part of a media reference after `media:`.
 
     Args:
-        text: Such as `20261016-0815_baseline_ab12cd/samples/recon@1200`.
+        text: Such as `20261016T0815-bc799713/samples/recon@1200`.
 
     Returns:
         The reference.

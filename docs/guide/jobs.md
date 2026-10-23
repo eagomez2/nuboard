@@ -23,7 +23,7 @@ eval job joins it with `job="eval"`:
 
 ```python
 # train.py
-with nb.init("speech", name="big", run_id=RUN_ID, config=cfg) as run:
+with nb.init("speech", run_name="big", run_id=RUN_ID, config=cfg) as run:
     for epoch in range(epochs):
         ...
         run.add_scalar({"train/loss": loss}, step=epoch)

@@ -27,7 +27,7 @@ import random
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="text")
+run = nb.init("api-tour", run_name="text")
 words = "the model learns to write short sentences about cats and dogs".split()
 random.seed(0)
 

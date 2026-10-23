@@ -6,7 +6,7 @@ every call in detail.
 ```python
 import nuboard as nb
 
-run = nb.init("project", name="baseline", config=cfg)  # also a context manager
+run = nb.init("project", run_name="baseline", config=cfg)  # also a context manager
 ds = run.use_artifact("dataset:v2")
 run.add_scalar({"loss": loss, "lr": lr}, step=step)  # non-blocking
 run.add_image("samples/recon", img, step=step)
@@ -24,7 +24,7 @@ run.finish()  # also on exit and on crash
 nb.init(
     project=None,           # folder name (may be nested: "team/llm"); default "default"
     *,
-    name=None,              # short run name, part of the run id
+    run_name=None,          # label shown in the viewer (not part of the run id)
     config=None,            # dict, dataclass, argparse.Namespace, OmegaConf, or obj.to_dict()
     dir=None,               # root folder; default $NUBOARD_DIR or ./experiments
     tags=None, notes=None, group=None,
@@ -39,7 +39,8 @@ nb.init(
 )
 ```
 
-`init` creates `<dir>/<project>/runs/<YYYYMMDD-HHMM>_<name>_<rand>/` and
+`init` creates `<dir>/<project>/runs/<YYYYMMDDTHHMM>-<hash>/` (for example
+`20261001T1833-48ad8bb2`, with 8 random hex digits) and
 records:
 
 - the config (in `run.json`),
@@ -167,11 +168,11 @@ that produced and used it.
 
 ```python
 # continue the same run (new session file; later session wins on overlapping steps)
-run = nb.init("project", run_id="20261013-0720_baseline_x5bq2k", resume="must")
+run = nb.init("project", run_id="20261013T0720-d9fe0e01", resume="must")
 run = nb.init("project", run_id=my_id, resume="auto")  # create it if missing
 
 # start a new run whose history is a copy of another run's up to step 5000
-run = nb.init("project", name="lower-lr", fork_from=("20261013-0720_baseline_x5bq2k", 5000))
+run = nb.init("project", run_name="lower-lr", fork_from=("20261013T0720-d9fe0e01", 5000))
 ```
 
 A resumed run writes `events.r0.s1.log`, `s2`, … next to the earlier

@@ -47,7 +47,7 @@ Data that a script prepares is registered from that script's run, which then
 shows as its producer:
 
 ```python
-with nb.init("llm-pretrain", name="prepare-data", tags=["data"]) as run:
+with nb.init("llm-pretrain", run_name="prepare-data", tags=["data"]) as run:
     ...  # write /data/fineweb-edu/2026-10
     run.add_artifact("datasets/fineweb-edu", "/data/fineweb-edu/2026-10",
                      type="dataset", metadata={"tokens": "12B"}, reference=True)
@@ -130,7 +130,7 @@ it, and checks that its files are still there and unchanged.
 ## Using them
 
 ```python
-with nb.init("llm-pretrain", name="lr1e-3-s1") as run:
+with nb.init("llm-pretrain", run_name="lr1e-3-s1") as run:
     data = run.use_artifact("datasets/fineweb-edu:v2")  # or ":latest"
     train(MyDataset(data.files / "train"))
     run.add_artifact("model", "ckpt/final.safetensors", type="checkpoint",

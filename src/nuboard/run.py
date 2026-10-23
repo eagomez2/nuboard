@@ -10,6 +10,7 @@ import hashlib
 import math
 import os
 import re
+import secrets
 import shutil
 import socket
 import sys
@@ -138,11 +139,15 @@ def _copy_atomic(src: Path, dest: Path) -> None:
         raise
 
 
-def _suffix_from(shared_id: str) -> str:
-    """Derive a 6-character run id suffix from an id shared by every rank."""
-    digest = hashlib.sha1(shared_id.encode("utf-8")).digest()
-    alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
-    return "".join(alphabet[b % len(alphabet)] for b in digest[:6])
+def _format_run_id(started: float, digest: str) -> str:
+    """Return the run id `<YYYYmmddTHHMM>-<digest>` for a run started at `started`."""
+    stamp = _dt.datetime.fromtimestamp(started).strftime("%Y%m%dT%H%M")
+    return f"{stamp}-{digest}"
+
+
+def _hash_from(shared_id: str) -> str:
+    """Derive the 8 hex digit run id hash from an id shared by every rank."""
+    return hashlib.sha1(shared_id.encode("utf-8")).hexdigest()[:8]
 
 
 def _warn_if_changed(art: Artifact) -> None:
@@ -234,8 +239,8 @@ class Run:
     Args:
         project: Project name. Path separators (`/` or a backslash) nest projects in
             sub-folders; each part is sanitized. Defaults to `"default"`.
-        name: Human-readable run name, also used in the generated run id. Defaults
-            to `"run"`.
+        run_name: Human-readable run name shown in the viewer. Many runs can share
+            it. Defaults to `"run"`.
         config: Hyperparameters: a mapping, a dataclass instance, an OmegaConf
             config, an object with `to_dict()` or a namespace such as
             `argparse.Namespace`. Saved in `run.json`. When resuming with no config,
@@ -246,7 +251,8 @@ class Run:
         notes: Free-form notes.
         group: Group name, for runs that belong together (e.g. a sweep).
         run_id: Run id, which is also the run's folder name. Defaults to a new
-            `<YYYYmmdd-HHMM>_<name>_<suffix>` id. Every rank of a distributed job
+            `<YYYYmmddTHHMM>-<hash>` id such as `20261001T1833-48ad8bb2`, where the
+            hash is 8 random hex digits. Every rank of a distributed job
             derives the same id.
         resume: What to do when `run_id` already exists: None raises, `"must"`
             continues it and also requires it to exist, `"auto"` continues it if it
@@ -307,7 +313,7 @@ class Run:
         self,
         project: str | os.PathLike[str] | None = None,
         *,
-        name: str | None = None,
+        run_name: str | None = None,
         config: Any = None,
         dir: str | os.PathLike[str] | None = None,
         tags: list[str] | None = None,
@@ -346,7 +352,7 @@ class Run:
         groups = parse_groups(system_metrics)
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
-        name = _fs.sanitize(name or "run")
+        name = (run_name or "").strip() or "run"
         self.job = None if job in (None, MAIN) else _fs.sanitize(str(job))
         self._main_names: set[str] = set()
         self._main_names_read = 0.0
@@ -379,7 +385,7 @@ class Run:
             elif resume == "must":
                 raise FileNotFoundError(f"cannot resume: no run {run_id!r} in {runs_dir}")
         else:
-            new_id = self._new_run_id(runs_dir, name)
+            new_id = self._new_run_id(runs_dir)
 
             if new_id is None:  # a non-zero rank with no way to find rank 0's folder
                 warnings.warn(
@@ -441,15 +447,18 @@ class Run:
             self._system = SystemMonitor(groups, system_interval, self._log_system)
 
     # -- setup ----------------------------------------------------------------
-    def _new_run_id(self, runs_dir: Path, name: str) -> str | None:
-        """Create a run id that every rank agrees on, or None if this rank cannot."""
-        stamp = _dt.datetime.fromtimestamp(self.started).strftime("%Y%m%d-%H%M")
+    def _new_run_id(self, runs_dir: Path) -> str | None:
+        """Create a run id that every rank agrees on, or None if this rank cannot.
+
+        The id is `<YYYYmmddTHHMM>-<hash>`, with 8 random hex digits (or, when every
+        rank shares an id such as `SLURM_JOB_ID`, 8 hex digits derived from it).
+        """
 
         if self.dist.world_size > 1:
             if self.dist.shared_id:
-                return f"{stamp}_{name}_{_suffix_from(self.dist.shared_id)}"
+                return _format_run_id(self.started, _hash_from(self.dist.shared_id))
 
-            mine = f"{stamp}_{name}_{_fs.random_suffix()}" if self.dist.is_main else None
+            mine = self._fresh_run_id(runs_dir) if self.dist.is_main else None
             shared = _env.broadcast_run_id(mine)
 
             if shared:
@@ -458,7 +467,16 @@ class Run:
             if not self.dist.is_main:
                 return None
 
-        return f"{stamp}_{name}_{_fs.random_suffix()}"
+        return self._fresh_run_id(runs_dir)
+
+    def _fresh_run_id(self, runs_dir: Path) -> str:
+        """Return a random run id that no folder in `runs_dir` uses yet."""
+
+        while True:
+            run_id = _format_run_id(self.started, secrets.token_hex(4))
+
+            if not (runs_dir / run_id).exists():
+                return run_id
 
     def _wait_for_folder(self, timeout: float = 120.0) -> None:
         """Wait, on a non-zero rank, for rank 0 to create the run folder.
@@ -469,10 +487,9 @@ class Run:
         Raises:
             TimeoutError: If no folder appears within `timeout` seconds.
         """
-        suffix = self.id.rsplit("_", 1)[-1]
-        name = self.id.split("_", 1)[1].rsplit("_", 1)[0] if "_" in self.id else ""
+        suffix = self.id.rsplit("-", 1)[-1]
         deadline = time.monotonic() + timeout
-        pattern = str(self.path.parent / f"*_{glob.escape(name)}_{suffix}")
+        pattern = str(self.path.parent / f"*-{glob.escape(suffix)}")
 
         while time.monotonic() < deadline:
             if self.path.exists():
@@ -1622,7 +1639,7 @@ _now = time.time
 def init(
     project: str | os.PathLike[str] | None = None,
     *,
-    name: str | None = None,
+    run_name: str | None = None,
     config: Any = None,
     dir: str | os.PathLike[str] | None = None,
     tags: list[str] | None = None,
@@ -1650,8 +1667,8 @@ def init(
     Args:
         project: Project name. Path separators (`/` or a backslash) nest projects in
             sub-folders; each part is sanitized. Defaults to `"default"`.
-        name: Human-readable run name, also used in the generated run id. Defaults
-            to `"run"`.
+        run_name: Human-readable run name shown in the viewer. Many runs can share
+            it. Defaults to `"run"`.
         config: Hyperparameters: a mapping, a dataclass instance, an OmegaConf
             config, an object with `to_dict()` or a namespace such as
             `argparse.Namespace`. Saved in `run.json`. When resuming with no config,
@@ -1662,7 +1679,8 @@ def init(
         notes: Free-form notes.
         group: Group name, for runs that belong together (e.g. a sweep).
         run_id: Run id, which is also the run's folder name. Defaults to a new
-            `<YYYYmmdd-HHMM>_<name>_<suffix>` id. Every rank of a distributed job
+            `<YYYYmmddTHHMM>-<hash>` id such as `20261001T1833-48ad8bb2`, where the
+            hash is 8 random hex digits. Every rank of a distributed job
             derives the same id.
         resume: What to do when `run_id` already exists: None raises, `"must"`
             continues it and also requires it to exist, `"auto"` continues it if it
@@ -1710,12 +1728,12 @@ def init(
 
     Example:
         >>> import nuboard as nb
-        >>> with nb.init("my-project", name="baseline", config={"lr": 1e-3}) as run:
+        >>> with nb.init("my-project", run_name="baseline", config={"lr": 1e-3}) as run:
         ...     run.add_scalar({"loss": 0.5}, step=0)
     """
     return Run(
         project,
-        name=name,
+        run_name=run_name,
         config=config,
         dir=dir,
         tags=tags,
