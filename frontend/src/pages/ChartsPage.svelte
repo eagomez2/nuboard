@@ -24,6 +24,7 @@
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
   const showBase = $derived(router.get('base', '1') === '1');
+  const showBands = $derived(router.get('bands', '1') === '1');
   const zoom = $derived.by((): [number, number] | null => {
     const z = router.get('zoom');
     if (!z) return null;
@@ -41,6 +42,10 @@
 
   let metrics = $state<string[]>([]);
   let focusData = $state<ChartData | null>(null);
+  // Offer the Ranges toggle only when something draws a range around a curve.
+  const hasRanges = $derived(
+    (!!groupBy && agg !== 'none') || !!focusData?.series.some((s) => s.band || (s.n ?? 1) > 1),
+  );
   let loading = $state(false);
   let tick = $state(0);
   let hidden = $state(new Set<string>());
@@ -248,6 +253,7 @@
         robust,
         log: logY,
         base: showBase,
+        bands: showBands,
         zoom,
         hidden: [...hidden],
       });
@@ -573,115 +579,132 @@
         >
       {/if}
     </div>
-    <div class="knobs">
-      <select
-        class="input sm groupsel"
-        value={router.get('group') || (groupBy ?? 'none')}
-        title={groupBy ? `group by ${groupBy}` : 'no grouping'}
-        onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
-        aria-label="Group by"
-      >
-        <option value="none">No grouping</option>
-        {#each [...new Set([...(groupBy ? [groupBy] : []), ...groupOptions])] as g (g)}<option value={g}
-            >Group by {g}</option
-          >{/each}
-      </select>
-      {#if groupBy}
+    <div class="knobrows">
+      <div class="knobs">
         <select
-          class="input sm"
-          value={agg}
-          onchange={(e) => router.set({ agg: (e.currentTarget as HTMLSelectElement).value })}
-          aria-label="Band"
+          class="input sm groupsel"
+          value={router.get('group') || (groupBy ?? 'none')}
+          title={groupBy ? `group by ${groupBy}` : 'no grouping'}
+          onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
+          aria-label="Group by"
         >
-          <option value="std">Mean ± std</option>
-          <option value="sem">Mean ± sem</option>
-          <option value="minmax">Mean · min–max</option>
-          <option value="median">Median · min–max</option>
-          <option value="none">Mean only</option>
+          <option value="none">No grouping</option>
+          {#each [...new Set([...(groupBy ? [groupBy] : []), ...groupOptions])] as g (g)}<option value={g}
+              >Group by {g}</option
+            >{/each}
         </select>
-      {/if}
-      <div class="seg" role="group" aria-label="X axis">
-        {#each [['step', 'Step'], ['time', 'Wall time'], ['relative', 'Relative'], ['active', 'Active time']] as [k, label] (k)}
-          <button aria-pressed={xKind === k} onclick={() => router.set({ x: k === 'step' ? null : k, zoom: null })}
-            >{label}</button
+        {#if groupBy}
+          <select
+            class="input sm"
+            value={agg}
+            onchange={(e) => router.set({ agg: (e.currentTarget as HTMLSelectElement).value })}
+            aria-label="Band"
           >
-        {/each}
+            <option value="std">Mean ± std</option>
+            <option value="sem">Mean ± sem</option>
+            <option value="minmax">Mean · min–max</option>
+            <option value="median">Median · min–max</option>
+            <option value="none">Mean only</option>
+          </select>
+        {/if}
+        <div class="seg" role="group" aria-label="X axis">
+          {#each [['step', 'Step'], ['time', 'Wall time'], ['relative', 'Relative'], ['active', 'Active time']] as [k, label] (k)}
+            <button aria-pressed={xKind === k} onclick={() => router.set({ x: k === 'step' ? null : k, zoom: null })}
+              >{label}</button
+            >
+          {/each}
+        </div>
+        <select
+          class="input sm mono xmetric"
+          class:on={xMetric !== null}
+          value={xMetric ?? ''}
+          onchange={(e) => {
+            const v = (e.currentTarget as HTMLSelectElement).value;
+            router.set({ x: v ? `metric:${v}` : null, zoom: null });
+          }}
+          aria-label="X axis scalar"
+          title="Plot against another scalar, matched by step"
+        >
+          <option value="">X by scalar…</option>
+          {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
+        </select>
       </div>
-      <select
-        class="input sm mono xmetric"
-        class:on={xMetric !== null}
-        value={xMetric ?? ''}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
-          router.set({ x: v ? `metric:${v}` : null, zoom: null });
-        }}
-        aria-label="X axis scalar"
-        title="Plot against another scalar, matched by step"
-      >
-        <option value="">X by scalar…</option>
-        {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
-      </select>
-      <label class="smooth"
-        >Smooth
-        <input
-          type="range"
-          min="0"
-          max="0.99"
-          step="0.01"
-          value={smoothing}
-          oninput={(e) => setSmooth(Number((e.currentTarget as HTMLInputElement).value))}
-        />
-        <span class="mono">{smoothing.toFixed(2)}</span>
-      </label>
-      <label class="tg"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={showRaw}
-          aria-label="Show raw"
-          onclick={() => router.set({ raw: showRaw ? '0' : null })}
-        ></button>Raw</label
-      >
-      <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={showDots}
-          aria-label="Points"
-          onclick={() => router.set({ dots: showDots ? '0' : null })}
-        ></button>Points</label
-      >
-      {#if hasBaselines}
-        <label class="tg" title="Dashed lines at the reference values set with add_scalar_baseline"
+      <div class="knobs">
+        <label class="smooth"
+          >Smooth
+          <input
+            type="range"
+            min="0"
+            max="0.99"
+            step="0.01"
+            value={smoothing}
+            oninput={(e) => setSmooth(Number((e.currentTarget as HTMLInputElement).value))}
+          />
+          <span class="mono">{smoothing.toFixed(2)}</span>
+        </label>
+        <label class="tg"
           ><button
             class="switch"
             role="switch"
-            aria-checked={showBase}
-            aria-label="Baseline"
-            onclick={() => router.set({ base: showBase ? '0' : null })}
-          ></button>Baseline</label
+            aria-checked={showRaw}
+            aria-label="Show raw"
+            onclick={() => router.set({ raw: showRaw ? '0' : null })}
+          ></button>Raw</label
         >
-      {/if}
-      <label
-        class="tg"
-        title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={robust}
-          aria-label="Ignore outliers"
-          onclick={() => router.set({ robust: robust ? '0' : null })}
-        ></button>Ignore outliers</label
-      >
-      <label class="tg"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={logY}
-          aria-label="Log y"
-          onclick={() => router.set({ log: logY ? null : '1' })}
-        ></button>Log y</label
-      >
+        {#if hasRanges}
+          <label
+            class="tg"
+            title="Shade the range around each curve: the group's band, logged low/high bounds or the min–max across ranks"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={showBands}
+              aria-label="Ranges"
+              onclick={() => router.set({ bands: showBands ? '0' : null })}
+            ></button>Ranges</label
+          >
+        {/if}
+        <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={showDots}
+            aria-label="Points"
+            onclick={() => router.set({ dots: showDots ? '0' : null })}
+          ></button>Points</label
+        >
+        {#if hasBaselines}
+          <label class="tg" title="Dashed lines at the reference values set with add_scalar_baseline"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={showBase}
+              aria-label="Baseline"
+              onclick={() => router.set({ base: showBase ? '0' : null })}
+            ></button>Baseline</label
+          >
+        {/if}
+        <label
+          class="tg"
+          title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={robust}
+            aria-label="Ignore outliers"
+            onclick={() => router.set({ robust: robust ? '0' : null })}
+          ></button>Ignore outliers</label
+        >
+        <label class="tg"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={logY}
+            aria-label="Log y"
+            onclick={() => router.set({ log: logY ? null : '1' })}
+          ></button>Log y</label
+        >
+      </div>
     </div>
   </section>
 
@@ -747,7 +770,7 @@
               ? agg === 'std'
                 ? 'mean ± std'
                 : agg
-              : 'Drag to zoom · double-click to reset'}
+              : 'Drag or Ctrl+wheel to zoom · double-click to reset'}
           <button
             class="btn btn-ghost sm icon-btn"
             title="Add this chart to a report"
@@ -768,8 +791,10 @@
         data={focusData}
         {smoothing}
         {showRaw}
+        {showBands}
         {robust}
         {logY}
+        {zoom}
         {hidden}
         {highlight}
         {colorOf}
@@ -957,6 +982,7 @@
                 {agg}
                 {smoothing}
                 {showRaw}
+                {showBands}
                 {robust}
                 baselines={showBase}
                 {hidden}
@@ -1224,6 +1250,12 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .knobrows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
   }
   .knobs {
     display: flex;

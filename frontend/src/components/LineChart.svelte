@@ -19,6 +19,7 @@
     data,
     smoothing = 0,
     showRaw = true,
+    showBands = true,
     robust = true,
     logY = false,
     height = 360,
@@ -35,10 +36,13 @@
     markers = false,
     pinned = false,
     baselines = false,
+    zoom = null,
   }: {
     data: ChartData | null;
     smoothing?: number;
     showRaw?: boolean;
+    /** Shade the ranges (group bands, logged low/high, rank min–max) around each curve. */
+    showBands?: boolean;
     robust?: boolean;
     logY?: boolean;
     height?: number;
@@ -59,6 +63,8 @@
     pinned?: boolean;
     /** Draw the baselines set with `add_scalar_baseline` as dashed lines. */
     baselines?: boolean;
+    /** The x range the data was fetched for, or null for the whole run. */
+    zoom?: [number, number] | null;
   } = $props();
   let dots: HTMLElement[] = [];
 
@@ -67,6 +73,9 @@
   let width = $state(600);
   let mains: { idx: number; label: string; series: number; lo: number | null; hi: number | null }[] = [];
   let frame = 0;
+  // x extent of the unzoomed data, so zooming out with the wheel stops at the whole run
+  let fullX: [number, number] | null = null;
+  let wheelTimer = 0;
 
   // Shorten text with an ellipsis so it fits in `max` canvas pixels (long run names would run off the plot).
   function fitText(ctx: CanvasRenderingContext2D, text: string, max: number): string {
@@ -111,7 +120,8 @@
       const color = colorOf(s.label, i);
       const dim = highlight !== null && highlight !== s.label;
       const smooth = smoothing > 0 ? ema(s.y, smoothing) : s.y;
-      const hasBand = (s.band || (s.n ?? 1) > 1) && s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]);
+      const hasBand =
+        showBands && (s.band || (s.n ?? 1) > 1) && s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]);
       const cols: (number | null)[][] = [];
       if (showRaw && smoothing > 0) {
         cols.push(clean(s.y));
@@ -155,6 +165,10 @@
     });
     if (!tables.length) return;
     const joined = tables.length === 1 ? tables[0] : uPlot.join(tables);
+    if (!zoom) {
+      const xs = joined[0];
+      if (xs.length) fullX = [xs[0], xs[xs.length - 1]];
+    }
     const lines = baselines ? baselineLines(data.series, hidden) : [];
     const extent = baselineExtent(lines, logY);
     let range = robust ? robustRange(yValues) : null;
@@ -386,6 +400,8 @@
       },
     };
     plot = new uPlot(opts, joined, el);
+    if (zoom) plot.setScale('x', { min: zoom[0], max: zoom[1] });
+    if (onZoom) plot.over.addEventListener('wheel', onWheel, { passive: false });
     dots = markers
       ? mains.map((m) => {
           const d = document.createElement('div');
@@ -395,6 +411,50 @@
           return d;
         })
       : [];
+  }
+
+  /**
+   * Ctrl/⌘/Alt + wheel (or a trackpad pinch) zooms x around the cursor; Shift + wheel pans
+   * a zoomed chart. The scale moves at once and the data for the new range is fetched
+   * when the wheel stops.
+   */
+  function onWheel(e: WheelEvent) {
+    const u = plot;
+    if (!u) return;
+    const zooming = e.ctrlKey || e.metaKey || e.altKey;
+    if (!zooming && !e.shiftKey) return;
+    const min = u.scales.x.min;
+    const max = u.scales.x.max;
+    if (min == null || max == null || max <= min) return;
+    e.preventDefault();
+    const delta = (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.deltaY || e.deltaX);
+    let a: number;
+    let b: number;
+    if (zooming) {
+      const at = u.posToVal(e.offsetX, 'x');
+      const f = Math.min(Math.max(Math.exp(delta * 0.002), 0.5), 2);
+      a = at - (at - min) * f;
+      b = at + (max - at) * f;
+    } else {
+      const shift = (max - min) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
+      a = min + shift;
+      b = max + shift;
+      if (fullX && a < fullX[0]) [a, b] = [fullX[0], fullX[0] + (max - min)];
+      if (fullX && b > fullX[1]) [a, b] = [fullX[1] - (max - min), fullX[1]];
+    }
+    let whole = false;
+    if (fullX) {
+      a = Math.max(a, fullX[0]);
+      b = Math.min(b, fullX[1]);
+      whole = a <= fullX[0] && b >= fullX[1];
+    }
+    if (!(b > a)) return;
+    // round to ~5 significant digits of the span, to keep the URL readable
+    const digits = Math.min(Math.max(4 - Math.floor(Math.log10(b - a)), 0), 20);
+    if (!whole) [a, b] = [Number(a.toFixed(digits)), Number(b.toFixed(digits))];
+    u.setScale('x', { min: a, max: b });
+    clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => onZoom?.(whole ? null : [a, b]), 250);
   }
 
   function schedule() {
@@ -408,6 +468,7 @@
       data,
       smoothing,
       showRaw,
+      showBands,
       robust,
       logY,
       height,
@@ -434,6 +495,7 @@
   });
   onDestroy(() => {
     cancelAnimationFrame(frame);
+    clearTimeout(wheelTimer);
     plot?.destroy();
   });
 </script>

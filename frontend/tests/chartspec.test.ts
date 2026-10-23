@@ -14,6 +14,7 @@ describe('chart specs', () => {
       robust: true,
       log: true,
       base: false,
+      bands: false,
       zoom: [10, 20.5],
       hidden: ['lr=1e-3', 'a b'],
     };
@@ -22,8 +23,9 @@ describe('chart specs', () => {
     expect(decodeSpec(text)).toEqual(s);
   });
 
-  it('draws baselines in specs saved before they existed', () => {
+  it('draws baselines and ranges in specs saved before they existed', () => {
     expect(decodeSpec('metric=loss&runs=a')?.base).toBe(true);
+    expect(decodeSpec('metric=loss&runs=a')?.bands).toBe(true);
   });
 
   it('rejects specs without a metric or runs', () => {
