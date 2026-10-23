@@ -11,6 +11,7 @@
     agg,
     smoothing,
     showRaw,
+    showBands,
     robust,
     baselines,
     hidden,
@@ -27,6 +28,7 @@
     agg: string;
     smoothing: number;
     showRaw: boolean;
+    showBands: boolean;
     robust: boolean;
     baselines: boolean;
     hidden: Set<string>;
@@ -92,6 +94,7 @@
       {data}
       {smoothing}
       {showRaw}
+      {showBands}
       {robust}
       {baselines}
       {hidden}

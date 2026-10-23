@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.17.0
+
+- **Breaking: `init(name=...)` is now `init(run_name=...)`**, so it reads as
+  the pair it forms with `run_id`. `run_name` is a free label shown in the
+  viewer; it is no longer sanitized, since it is not part of any path.
+- **New run ids.** The default `run_id` is `<YYYYMMDDTHHMM>-<hash>`, such as
+  `20261001T1833-48ad8bb2`: a local timestamp plus 8 random hex digits,
+  redrawn if the folder already exists. The run name is no longer part of the
+  id. You can still pass your own `run_id`; existing runs keep their ids.
+  TensorBoard imports use the same shape, with a hash of the source folder.
+- Charts: a **Ranges** switch hides the shaded bands (group mean ± std or
+  min–max, logged low/high bounds, rank ranges) when they clutter the chart.
+  It is saved with charts added to reports. Smooth and the display switches
+  moved to their own row under the grouping and x-axis controls.
+- Charts: **Ctrl/⌘/Alt + mouse wheel** (or a trackpad pinch) zooms the focus
+  chart around the cursor, and **Shift + wheel** pans a zoomed chart. The
+  finer data for the new range loads when the wheel stops. Dragging still
+  zooms to a box and double-click still resets.
+- Tables: a highlighted row no longer gets a rounded corner when it is the
+  last row; table frames have square corners.
+- Updated the screenshots in the docs.
+
 ## 0.16.0
 
 - **Jobs.** A second process can log into a running run with

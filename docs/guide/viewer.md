@@ -208,7 +208,8 @@ are selected, every run matching the query.
   [`add_scalar`](../api/add_scalar.md)) is drawn with a shaded band around
   each run's line, smoothed along with it, and the inspector shows the range
   after the value. When runs are grouped, the band is the spread across runs
-  instead.
+  instead. The **Ranges** switch (shown when a chart has bands) hides every
+  band when they clutter the chart; it is kept in the URL as `bands=0`.
 - **Baselines**: a scalar with a reference value set with
   [`add_scalar_baseline`](../api/add_scalar_baseline.md) shows it as a dashed
   horizontal line, with a light band for its range. Runs with the same
@@ -230,6 +231,9 @@ are selected, every run matching the query.
   scalar is matched to each point by step (interpolated when the two were
   logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.
+- **Display row**: Smooth and the Raw, Ranges, Points, Baseline, Ignore
+  outliers and Log y switches sit on their own row under the grouping and
+  x-axis controls.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **Raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
 - **Points**: a dot on each curve at the logged point under the cursor, so
@@ -240,9 +244,12 @@ are selected, every run matching the query.
   fits the y-axis to the 1st–99th percentile of the values, so a few spikes
   (such as a huge loss at step 0) do not flatten every curve. Off, the axis
   fits every point. **Log y** switches to a log scale.
-- **Zoom**: drag across a chart to zoom in; the server sends a finer
-  resolution for the visible range (from the precomputed zoom levels in
-  `data.parquet`, or from the raw log for live runs). Double-click to reset.
+- **Zoom**: drag across a chart to zoom in, or hold **Ctrl** (**⌘** on a
+  Mac, or **Alt**) and scroll over the focused chart to zoom in and out around
+  the cursor (a trackpad pinch works too). **Shift** + scroll pans a zoomed
+  chart. The server sends a finer resolution for the visible range (from the
+  precomputed zoom levels in `data.parquet`, or from the raw log for live
+  runs) once the wheel stops. Double-click, or **Reset zoom**, to reset.
 - **Inspector**: hover a chart to see every series' value at that step,
   sorted best first, with ± std for grouped series. Click to pin the step.
   Without hovering it shows the latest values.
