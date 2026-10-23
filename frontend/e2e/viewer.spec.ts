@@ -1001,11 +1001,24 @@ test('live updates wait behind an Update button when Charts are paused, and a Re
 }) => {
   await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
   await expect(page.locator('.focus .u-over').first()).toBeVisible();
+  // the plot's offset inside its card (content above the card may still be loading); a live
+  // redraw replaces the plot for a frame, so measure again until it is there
+  const top = async () => {
+    for (;;) {
+      const plot = await page.locator('.focus .u-over').first().boundingBox();
+      const card = await page.locator('.focus .main').first().boundingBox();
+      if (plot && card) return plot.y - card.y;
+      await page.waitForTimeout(50);
+    }
+  };
+  const before = await top();
   await page.getByRole('switch', { name: 'Live' }).click();
   const update = page.getByRole('button', { name: 'New data · Update' });
   await expect(update).toBeVisible({ timeout: 20_000 }); // the demo's live run keeps logging
+  expect(await top()).toBe(before); // the button floats over the chart, which does not move
   await update.click();
   await expect(update).toHaveCount(0);
+  expect(await top()).toBe(before);
   await page.getByRole('switch', { name: 'Live' }).click();
   await page.goto('/#/sweeps?project=llm-pretrain');
   const refresh = page.getByRole('button', { name: /New results · Refresh/ });

@@ -120,7 +120,7 @@
       <div class="title">
         <h1>{title}</h1>
         <p>
-          {subtitle}{#if app.pending}{' · '}<button
+          {subtitle}{#if app.pending}&nbsp;·&nbsp;<button
               class="refresh"
               title="Runs changed since this page was drawn"
               onclick={() => app.applyPending()}><Icon name="reset" size={12} /> New results · Refresh</button
