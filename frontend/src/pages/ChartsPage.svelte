@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade } from 'svelte/transition';
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
@@ -47,6 +48,16 @@
     (!!groupBy && agg !== 'none') || !!focusData?.series.some((s) => s.band || (s.n ?? 1) > 1),
   );
   let loading = $state(false);
+  // the spinner shows only for a fetch slower than 300 ms, so quick live updates show nothing
+  let slow = $state(false);
+  $effect(() => {
+    if (!loading) {
+      slow = false;
+      return;
+    }
+    const t = setTimeout(() => (slow = true), 300);
+    return () => clearTimeout(t);
+  });
   let tick = $state(0);
   let hidden = $state(new Set<string>());
   let highlight = $state<string | null>(null);
@@ -742,14 +753,16 @@
   <section class="focus" class:full bind:this={focusEl}>
     <div class="card main">
       <div class="tabs">
-        {#each tabs as m (m)}
-          <button
-            class="mono tab"
-            aria-pressed={m === focus}
-            title={m}
-            onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
-          >
-        {/each}
+        <div class="tabscroll">
+          {#each tabs as m (m)}
+            <button
+              class="mono tab"
+              aria-pressed={m === focus}
+              title={m}
+              onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
+            >
+          {/each}
+        </div>
         {#if metrics.length > tabs.length}
           <div class="picker" bind:this={pickEl}>
             <button
@@ -793,18 +806,15 @@
             {/if}
           </div>
         {/if}
-        <span class="note">
-          {#if stale}<button class="btn sm newdata" title="New points were logged; draw them" onclick={update}
-              >New data · Update</button
-            >{/if}
-          {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>Reset zoom</button>{/if}
-          {loading
-            ? 'loading…'
-            : groupBy
-              ? agg === 'std'
-                ? 'mean ± std'
-                : agg
-              : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}
+        <span class="note"
+          >{groupBy
+            ? agg === 'std'
+              ? 'mean ± std'
+              : agg
+            : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
+        >
+        <span class="acts">
+          <span class="spin" class:on={slow} role="status" aria-label={slow ? 'Loading' : undefined}></span>
           <button
             class="btn btn-ghost sm icon-btn"
             title="Add this chart to a report"
@@ -821,32 +831,48 @@
           >
         </span>
       </div>
-      <LineChart
-        data={focusData}
-        {smoothing}
-        {showRaw}
-        {showBands}
-        {robust}
-        {logY}
-        {zoom}
-        {hidden}
-        {highlight}
-        {colorOf}
-        themeVersion={app.themeVersion}
-        height={full ? Math.max(320, innerHeight - (alerts.length ? 190 : 120)) : 420}
-        onCursor={(x, v) => {
-          if (!pinned) {
-            cursorX = x;
-            cursorValues = v;
-          }
-        }}
-        onPin={() => (pinned = !pinned)}
-        onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
-        {regions}
-        markers={showDots}
-        {pinned}
-        baselines={showBase}
-      />
+      <div class="plotwrap">
+        <!-- floats over the plot, so showing or hiding these never moves the chart -->
+        <div class="overlay">
+          {#if stale}<button
+              class="btn sm newdata"
+              title="New points were logged; draw them"
+              onclick={update}
+              transition:fade={{ duration: 150 }}>New data · Update</button
+            >{/if}
+          {#if zoom}<button
+              class="btn sm resetzoom"
+              onclick={() => router.set({ zoom: null })}
+              transition:fade={{ duration: 150 }}>Reset zoom</button
+            >{/if}
+        </div>
+        <LineChart
+          data={focusData}
+          {smoothing}
+          {showRaw}
+          {showBands}
+          {robust}
+          {logY}
+          {zoom}
+          {hidden}
+          {highlight}
+          {colorOf}
+          themeVersion={app.themeVersion}
+          height={full ? Math.max(320, innerHeight - (alerts.length ? 190 : 120)) : 420}
+          onCursor={(x, v) => {
+            if (!pinned) {
+              cursorX = x;
+              cursorValues = v;
+            }
+          }}
+          onPin={() => (pinned = !pinned)}
+          onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
+          {regions}
+          markers={showDots}
+          {pinned}
+          baselines={showBase}
+        />
+      </div>
       {#if alerts.length}
         <div class="alerts" aria-label="Health alerts">
           <span class="label">Alerts</span>
@@ -1287,7 +1313,7 @@
   }
   .newdata {
     color: var(--accent);
-    background: var(--accent-soft);
+    background: color-mix(in srgb, var(--accent-soft) 85%, var(--panel));
     border-color: transparent;
     font-weight: 600;
   }
@@ -1332,7 +1358,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     margin-bottom: 6px;
   }
   .tab {
@@ -1354,13 +1380,74 @@
     font-weight: 600;
     box-shadow: inset 0 0 0 1px var(--border);
   }
+  /* one row whatever happens: tabs that do not fit scroll sideways (and are in All) */
+  .tabscroll {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabscroll::-webkit-scrollbar {
+    display: none;
+  }
+  .tabscroll .tab {
+    flex: none;
+  }
+  /* the hint takes whatever room the tabs leave and truncates; the buttons never shrink */
   .note {
-    margin-left: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     color: var(--faint);
     font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .acts {
+    flex: none;
     display: inline-flex;
     gap: 8px;
     align-items: center;
+  }
+  .spin {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    visibility: hidden;
+  }
+  .spin.on {
+    visibility: visible;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .plotwrap {
+    position: relative;
+  }
+  .overlay {
+    position: absolute;
+    top: 4px;
+    right: 14px;
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .overlay .btn {
+    pointer-events: auto;
+    box-shadow: var(--lift);
+  }
+  .resetzoom {
+    background: var(--panel);
   }
   .inspector {
     padding: 14px 16px;
