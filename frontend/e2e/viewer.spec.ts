@@ -159,6 +159,13 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(fig.locator('.nbwf-time')).toHaveText('0:00.000 / 0:02.600');
   await expect(fig.locator('.nbwf-tracks')).toBeVisible();
   const box = (await over.boundingBox())!;
+  // full screen covers the window with a taller plot; its button (or Esc) puts it back
+  await fig.getByRole('button', { name: 'Full screen' }).click();
+  await expect(fig).toHaveClass(/nbwf-full/);
+  await expect.poll(async () => (await over.boundingBox())!.height).toBeGreaterThan(box.height + 100);
+  await fig.getByRole('button', { name: 'Exit full screen' }).click();
+  await expect(fig).not.toHaveClass(/nbwf-full/);
+  await expect.poll(async () => Math.round((await over.boundingBox())!.height)).toBe(Math.round(box.height));
   await over.hover({ position: { x: box.width / 2, y: box.height / 2 } });
   const readout = fig.locator('.nbwf-read');
   await expect(readout).toContainText(/#\d+/);
@@ -748,6 +755,13 @@ test('a report with a table and audio notes exports them, with either audio play
   await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
   await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
   await off.getByRole('button', { name: 'Fit' }).click();
+  // full screen, as the audio player has: the figure covers the window and its plot grows
+  await off.locator('.nbwavefig').getByRole('button', { name: 'Full screen' }).click();
+  await expect(off.locator('.nbwavefig .nbwf-full')).toBeVisible();
+  await expect.poll(async () => (await wave.boundingBox())!.height).toBeGreaterThan(wbox.height + 100);
+  await off.keyboard.press('Escape');
+  await expect(off.locator('.nbwavefig .nbwf-full')).toHaveCount(0);
+  await expect.poll(async () => Math.round((await wave.boundingBox())!.height)).toBe(Math.round(wbox.height));
 
   // the browser's player, whose notes play their section
   await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));

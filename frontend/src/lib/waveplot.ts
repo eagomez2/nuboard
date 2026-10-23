@@ -59,6 +59,9 @@ export function mountWaveform(
   const labels = [...(nch > 1 ? data.channels.map((_, c) => `ch ${c + 1}`) : ['audio']), ...input.names];
   const own = input.range[0] !== -1 || input.range[1] !== 1;
   const height = input.height ?? 240;
+  // the plot's height: `height`, or what the window leaves it in full screen
+  let plotHeight = height;
+  let full = false;
   const tracks = Object.entries(input.regions ?? {});
   const editable = !!input.onnotes;
   let notes: WaveformNote[] = [];
@@ -472,7 +475,7 @@ export function mountWaveform(
     plot = new UPlot(
       {
         width: plotEl.clientWidth || 600,
-        height,
+        height: plotHeight,
         series,
         legend: { show: false },
         padding: [10, own ? 0 : 28, 0, 0],
@@ -645,6 +648,12 @@ export function mountWaveform(
   button(zoomBox, '−', 'Zoom out', () => zoom(2));
   button(zoomBox, '+', 'Zoom in', () => zoom(0.5));
   button(zoomBox, 'Fit', 'Fit', () => setView(0, duration));
+  const fullButton = button(zoomBox, '', 'Full screen', () => setFull(!full));
+  fullButton.classList.add('nbwf-full-btn');
+  fullButton.setAttribute('aria-pressed', 'false');
+  fullButton.innerHTML =
+    icon('nbwf-expand', 'M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 0h2v5h-5v-2h3z') +
+    icon('nbwf-shrink', 'M8 5h2v5H5V8h3zm6 0h2v3h3v2h-5zM5 14h5v5H8v-3H5zm9 0h5v2h-3v3h-2z');
   form.append(formTime, noteText);
   const saveButton = el('button', '', 'Add') as HTMLButtonElement;
   saveButton.type = 'submit';
@@ -705,10 +714,50 @@ export function mountWaveform(
   overview.addEventListener('pointermove', onOverview);
   const resize = new ResizeObserver(() => {
     if (plot && plotEl.clientWidth && plotEl.clientWidth !== plot.width) {
-      plot.setSize({ width: plotEl.clientWidth, height });
+      plot.setSize({ width: plotEl.clientWidth, height: plotHeight });
       refresh();
     }
   });
+  // full screen, as in the audio player: the figure covers the window and its plot takes the height
+  // the controls, lanes and overview leave; its place in the page is kept, so nothing moves under it
+  const fitHeight = () => {
+    if (!plot) return;
+    // what the rest of the figure takes: its other parts, the gaps between them and its padding
+    const style = getComputedStyle(root);
+    const parts = [...root.children].filter((c) => c !== plotEl && (c as HTMLElement).offsetHeight > 0);
+    const rest =
+      parts.reduce((sum, c) => sum + (c as HTMLElement).offsetHeight, 0) +
+      parts.length * (parseFloat(style.rowGap) || 0) +
+      (parseFloat(style.paddingTop) || 0) +
+      (parseFloat(style.paddingBottom) || 0);
+    const next = full ? Math.max(height, Math.floor(window.innerHeight - rest - 4)) : height;
+    if (next === plotHeight) return;
+    plotHeight = next;
+    plot.setSize({ width: plotEl.clientWidth, height: plotHeight });
+    refresh();
+  };
+  const setFull = (on: boolean) => {
+    if (on === full) return;
+    full = on;
+    box.style.minHeight = on ? `${box.offsetHeight}px` : '';
+    root.classList.toggle('nbwf-full', on);
+    fullButton.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+    fullButton.title = on ? 'Exit full screen (Esc)' : 'Full screen';
+    fullButton.setAttribute('aria-pressed', String(on));
+    if (on) window.addEventListener('resize', fitHeight);
+    else window.removeEventListener('resize', fitHeight);
+    // the plot's own height first, then what the window leaves it once the layout has settled
+    plotHeight = -1;
+    if (full) requestAnimationFrame(fitHeight);
+    else fitHeight();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && full) {
+      e.stopPropagation();
+      setFull(false);
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
   resize.observe(plotEl);
   // new colors when the light/dark theme changes
   const theme = new MutationObserver(build);
@@ -727,6 +776,8 @@ export function mountWaveform(
     },
     destroy: () => {
       audio.pause();
+      window.removeEventListener('resize', fitHeight);
+      document.removeEventListener('keydown', onKey, true);
       resize.disconnect();
       theme.disconnect();
       cancelAnimationFrame(frame);

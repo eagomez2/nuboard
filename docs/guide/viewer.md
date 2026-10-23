@@ -409,7 +409,9 @@ lanes under the plot, a row per class where classes overlap). Drag to select a
 section, then loop it, zoom to it or add a **Note**; notes show in a lane above
 the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
-the view. The play button plays the clip, or the selection, from where you
+the view. The full screen button (next to **Fit**) spreads the figure over the
+window with a taller plot, in the viewer and in exported reports alike; Esc
+puts it back. The play button plays the clip, or the selection, from where you
 click. It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
 
