@@ -88,7 +88,7 @@
     return lower ? s.min : s.max;
   }
 
-  const rows = $derived.by(() => {
+  const sortedRows = $derived.by(() => {
     let list = (app.runs?.runs ?? []).filter((r) => showArchived || !r.archived);
     if (find) {
       list = list.filter((r) =>
@@ -117,6 +117,17 @@
       });
     }
     return list;
+  });
+
+  // While the pointer is over the rows, live updates change values in place but never move
+  // rows, so the row under the cursor stays put; runs that appear meanwhile go at the end.
+  let frozen = $state<string[] | null>(null);
+  const rows = $derived.by(() => {
+    if (!frozen) return sortedRows;
+    const byKey = new Map(sortedRows.map((r) => [r.key, r]));
+    const out = frozen.flatMap((k) => byKey.get(k) ?? []);
+    const seen = new Set(frozen);
+    return [...out, ...sortedRows.filter((r) => !seen.has(r.key))];
   });
 
   // Config keys whose values differ between the listed runs: the ones worth showing.
@@ -595,7 +606,10 @@
     </div>
     <div
       class="body"
+      role="rowgroup"
       bind:clientHeight={viewport}
+      onpointerenter={() => (frozen = sortedRows.map((r) => r.key))}
+      onpointerleave={() => (frozen = null)}
       onscroll={(e) => (scrollTop = (e.currentTarget as HTMLElement).scrollTop)}
     >
       <div style="height:{rows.length * ROW}px; position:relative">

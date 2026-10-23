@@ -33,6 +33,11 @@
   let artifacts = $state<ArtifactVersion[]>([]);
   let hover = $state<{ run: RunBrief; x: number; y: number } | null>(null);
   let drag = $state<{ x0: number; x1: number } | null>(null);
+  // Shift + drag pans: where the drag started and the range it started from
+  let pan = $state<{ x: number; range: [number, number] } | null>(null);
+  // The range while the wheel or a pan moves it; written to the URL once it settles.
+  let moving = $state<[number, number] | null>(null);
+  let settle = 0;
   let svg = $state<SVGSVGElement | null>(null);
 
   const colorBy = $derived(router.get('color', 'status'));
@@ -103,6 +108,7 @@
     return [lo - pad, hi + pad];
   });
   const range = $derived.by((): [number, number] => {
+    if (moving) return moving;
     const z = router.get('tz');
     if (z) {
       const [a, b] = z.split('~').map(Number);
@@ -117,7 +123,33 @@
   const ticks = $derived.by(() => {
     const span = range[1] - range[0];
     const steps = [60, 300, 900, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400];
-    const step = steps.find((s) => span / s <= Math.max(3, plotW / 110)) ?? 30 * 86400;
+    const room = Math.max(3, plotW / 110);
+    const step = steps.find((s) => span / s <= room);
+    if (step === undefined) {
+      // months, quarters or years, on calendar boundaries
+      const months = [1, 3, 6, 12, 24, 60].find((m) => span / (m * 30.44 * 86400) <= room) ?? 120;
+      const d = new Date(range[0] * 1000);
+      let y = d.getFullYear();
+      let m = Math.ceil((d.getMonth() + (d.getDate() > 1 ? 1 : 0)) / months) * months;
+      const out: { t: number; label: string; day: boolean }[] = [];
+      for (;;) {
+        const at = new Date(y, m, 1);
+        const t = at.getTime() / 1000;
+        if (t > range[1]) break;
+        out.push({
+          t,
+          day: at.getMonth() === 0,
+          label:
+            months >= 12 || at.getMonth() === 0
+              ? String(at.getFullYear())
+              : at.toLocaleDateString(undefined, { month: 'short' }),
+        });
+        m += months;
+        y += Math.floor(m / 12);
+        m %= 12;
+      }
+      return out;
+    }
     const offset = new Date().getTimezoneOffset() * 60;
     const first = Math.ceil((range[0] - offset) / step) * step + offset;
     const out: { t: number; label: string; day: boolean }[] = [];
@@ -179,19 +211,98 @@
   }
   function down(e: PointerEvent) {
     if (e.button !== 0 || !svg) return;
+    svg.setPointerCapture(e.pointerId);
+    if (e.shiftKey) {
+      pan = { x: e.clientX, range: [...range] };
+      return;
+    }
     const x = pointerX(e);
     drag = { x0: x, x1: x };
-    svg.setPointerCapture(e.pointerId);
   }
   function move(e: PointerEvent) {
-    if (drag) drag = { ...drag, x1: pointerX(e) };
+    if (pan) {
+      const dt = ((e.clientX - pan.x) / plotW) * (pan.range[1] - pan.range[0]);
+      moving = [pan.range[0] - dt, pan.range[1] - dt];
+    } else if (drag) drag = { ...drag, x1: pointerX(e) };
   }
   function up() {
+    if (pan) {
+      pan = null;
+      commit(0);
+      return;
+    }
     if (!drag) return;
     const [a, b] = [Math.min(drag.x0, drag.x1), Math.max(drag.x0, drag.x1)];
     drag = null;
     if (b - a > 6) router.set({ tz: `${Math.round(tOf(a))}~${Math.round(tOf(b))}` });
   }
+  /** Write the range being moved to the URL after `delay` ms of quiet. */
+  function commit(delay: number) {
+    clearTimeout(settle);
+    settle = window.setTimeout(() => {
+      if (!moving) return;
+      const [a, b] = moving;
+      router.set({ tz: `${Math.round(a)}~${Math.round(b)}` });
+      moving = null;
+    }, delay);
+  }
+  function show(r: [number, number] | null) {
+    clearTimeout(settle);
+    moving = null;
+    router.set({ tz: r ? `${Math.round(r[0])}~${Math.round(r[1])}` : null });
+  }
+
+  /** Ctrl/⌘/Alt + wheel (or a pinch) zooms around the cursor; Shift + wheel or a sideways scroll pans. */
+  function wheel(e: WheelEvent) {
+    if (!svg) return;
+    const zooming = e.ctrlKey || e.metaKey || e.altKey;
+    const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    if (!zooming && !e.shiftKey && !sideways) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    const [a, b] = range;
+    if (zooming) {
+      const f = Math.min(Math.max(Math.exp(unit * e.deltaY * 0.002), 0.5), 2);
+      const at = tOf(Math.min(Math.max(e.clientX - svg.getBoundingClientRect().left, LABEL), LABEL + plotW));
+      const span = Math.max((b - a) * f, 60); // never closer than a minute across
+      const left = (at - a) / (b - a);
+      moving = [at - span * left, at + span * (1 - left)];
+    } else {
+      const d = unit * (sideways ? e.deltaX : e.deltaY || e.deltaX);
+      const shift = (b - a) * Math.min(Math.max(d * 0.001, -0.25), 0.25);
+      moving = [a + shift, b + shift];
+    }
+    commit(250);
+  }
+
+  // not `onwheel`: that listener could be passive, and the page must not scroll while zooming
+  $effect(() => {
+    const el = svg;
+    if (!el) return;
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  });
+
+  // Preset windows, ending at the latest activity (or now, for running runs).
+  const PRESETS: [string, number][] = [
+    ['Day', 86400],
+    ['Week', 7 * 86400],
+    ['Month', 30 * 86400],
+    ['Year', 365 * 86400],
+  ];
+  const presetSpan = $derived(
+    PRESETS.find(([, s]) => router.get('tz') && Math.abs(range[1] - range[0] - s) < 2)?.[1] ?? null,
+  );
+  function preset(span: number) {
+    const end = Math.min(Math.max(range[1], full[0] + span), full[1]);
+    show([end - span, end]);
+  }
+  /** Move by one window: -1 back in time, 1 forward. */
+  function step(dir: number) {
+    const span = range[1] - range[0];
+    show([range[0] + dir * span, range[1] + dir * span]);
+  }
+
   function laneY(r: RunBrief) {
     return AXIS + (lanes.lane.get(r.key) ?? 0) * ROW;
   }
@@ -223,7 +334,14 @@
       <button aria-pressed={!packed} onclick={() => router.set({ layout: null })}>One row per run</button>
       <button aria-pressed={packed} onclick={() => router.set({ layout: 'packed' })}>Packed</button>
     </div>
-    {#if router.get('tz')}<button class="btn" onclick={() => router.set({ tz: null })}>Reset zoom</button>{/if}
+    <div class="seg" role="group" aria-label="Time range">
+      <button class="nav" title="Back one window" aria-label="Back one window" onclick={() => step(-1)}>‹</button>
+      {#each PRESETS as [label, span] (label)}
+        <button aria-pressed={presetSpan === span} onclick={() => preset(span)}>{label}</button>
+      {/each}
+      <button aria-pressed={!router.get('tz') && !moving} title="Fit every run" onclick={() => show(null)}>All</button>
+      <button class="nav" title="Forward one window" aria-label="Forward one window" onclick={() => step(1)}>›</button>
+    </div>
     <button
       class="btn btn-ghost icon-btn"
       title="Add the timeline to a report"
@@ -253,7 +371,8 @@
         onpointerdown={down}
         onpointermove={move}
         onpointerup={up}
-        ondblclick={() => router.set({ tz: null })}
+        ondblclick={() => show(null)}
+        class:panning={pan !== null}
       >
         {#each ticks as t (t.t)}
           <line class="grid" class:day={t.day} x1={xOf(t.t)} x2={xOf(t.t)} y1={AXIS - 6} y2={height} />
@@ -332,8 +451,9 @@
       </svg>
     </div>
     <p class="hint">
-      Drag across the chart to zoom, double-click to reset. Diamonds mark artifact versions a run produced; a dot before
-      a bar means the run has health alerts. Click a bar to open the run.
+      Drag across the chart to zoom, Ctrl (⌘) + scroll to zoom around the cursor, Shift + scroll or Shift + drag to move
+      along time, double-click to fit every run. Diamonds mark artifact versions a run produced; a dot before a bar
+      means the run has health alerts. Click a bar to open the run.
     </p>
   {/if}
 </div>
@@ -379,6 +499,13 @@
   }
   .grow {
     flex: 1;
+  }
+  .seg .nav {
+    font-size: 16px;
+    line-height: 1;
+  }
+  svg.panning {
+    cursor: grabbing;
   }
   .muted {
     color: var(--muted);

@@ -954,6 +954,66 @@ test('Ctrl + wheel zooms the focus chart and double-click resets it', async ({ p
   await expect(page).not.toHaveURL(/zoom=/);
 });
 
+test('Shift + drag pans a chart, and the inspector leaves out hidden series', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const over = page.locator('.focus .u-over').first();
+  await expect(over).toBeVisible();
+  const chips = page.locator('.legend-chip');
+  await chips.first().dblclick(); // solo the first series
+  await page.mouse.move(5, 5);
+  await expect(page.locator('.irow:not(.base)')).toHaveCount(1);
+  const box = (await over.boundingBox())!;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(page).toHaveURL(/zoom=/);
+  await page.mouse.move(5, 5);
+  await expect(page.locator('.irow:not(.base)')).toHaveCount(1);
+});
+
+test('the timeline zooms with presets, steps back and forth, and with Ctrl + wheel', async ({ page }) => {
+  await page.goto('/#/timeline?project=llm-pretrain');
+  await expect(page.locator('.wrap svg')).toBeVisible();
+  const span = () => {
+    const m = decodeURIComponent(page.url()).match(/tz=(\d+)~(\d+)/);
+    return m ? [Number(m[1]), Number(m[2])] : null;
+  };
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect.poll(() => span()?.[1]! - span()?.[0]!).toBe(86400);
+  const day = span()!;
+  await page.getByRole('button', { name: 'Back one window' }).click();
+  await expect.poll(() => span()?.[0]).toBe(day[0] - 86400);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page).not.toHaveURL(/tz=/);
+  const box = (await page.locator('.wrap svg').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 60);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect(page).toHaveURL(/tz=/);
+});
+
+test('live updates wait behind an Update button when Charts are paused, and a Refresh pill elsewhere', async ({
+  page,
+}) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  await expect(page.locator('.focus .u-over').first()).toBeVisible();
+  await page.getByRole('switch', { name: 'Live' }).click();
+  const update = page.getByRole('button', { name: 'New data · Update' });
+  await expect(update).toBeVisible({ timeout: 20_000 }); // the demo's live run keeps logging
+  await update.click();
+  await expect(update).toHaveCount(0);
+  await page.getByRole('switch', { name: 'Live' }).click();
+  await page.goto('/#/sweeps?project=llm-pretrain');
+  const refresh = page.getByRole('button', { name: /New results · Refresh/ });
+  await expect(refresh).toBeVisible({ timeout: 30_000 });
+  await refresh.click();
+  await expect(refresh).toHaveCount(0);
+});
+
 test('scalar baselines are drawn, listed in the inspector and can be turned off', async ({ page }) => {
   await page.goto('/#/charts?project=speech-denoise&metric=val%2Fsi_sdr');
   const rows = page.locator('.irow.base');
