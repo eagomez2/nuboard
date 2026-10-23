@@ -22,6 +22,9 @@ export const PR_MIME = 'application/x-nuboard-pr+json';
 /** MIME type of distributions logged with `add_histogram`. */
 export const HIST_MIME = 'application/x-nuboard-histogram+json';
 
+/** MIME type of waveforms with signals logged with `add_figure(key, nb.WaveformFigure(...))`. */
+export const WAVEFORM_MIME = 'application/x-nuboard-waveform';
+
 /** The kind a media item is filtered by on the Media page. */
 export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'text') return 'text';
@@ -29,7 +32,7 @@ export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'audio' || it.mime.startsWith('audio/')) return 'audio';
   if (it.kind === 'video' || it.mime.startsWith('video/')) return 'video';
   if (it.mime === POINTS_MIME) return 'points';
-  if (it.mime === PR_MIME || it.mime === HIST_MIME) return 'figure';
+  if (it.mime === PR_MIME || it.mime === HIST_MIME || it.mime === WAVEFORM_MIME) return 'figure';
   if (it.mime === TABLE_MIME) return 'table';
   if (it.kind === 'figure' || /plotly|vega|bokeh|svg/.test(it.mime)) return 'figure';
   return 'image';
