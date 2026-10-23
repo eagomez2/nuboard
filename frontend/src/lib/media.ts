@@ -5,6 +5,8 @@ export interface AudioOptions {
   scale: string;
   fftSize: number;
   spectrogram: boolean;
+  /** Amplitude labels on the waveform. */
+  axis: boolean;
 }
 
 export type MediaKind = 'image' | 'audio' | 'video' | 'figure' | 'table' | 'points' | 'html' | 'text';

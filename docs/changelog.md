@@ -28,13 +28,14 @@
   Shift + drag to move, and month and year ticks on long ranges.
 - **Calmer live updates.** Charts redraw new points only while you are not
   zoomed, pinned or hovering, with a **Live** switch and a **New data ·
-  Update** button otherwise. That button and **Reset zoom** float over the
-  chart's corner, a slow fetch shows a small spinner instead of swapping text,
-  and metric tabs stay on one row, so nothing above the plot moves when data
-  arrives. Runs table rows hold still under the pointer.
+  Update** button otherwise. That button and **Reset zoom** sit in the chart's
+  fixed-height header, a slow fetch shows a small spinner instead of swapping
+  text, and metric tabs stay on one row, so nothing moves when data arrives. Runs table rows hold still under the pointer.
   Media, Sweeps, Timeline, Artifacts and Reports no longer change under you:
   a **New results · Refresh** button appears instead, and heartbeat-only
   changes are ignored.
+- Audio players label the waveform's amplitude (±1 full scale, per
+  channel), with an **Amplitude axis** switch on the Media page.
 - Run details follow the run's status, duration and summary live, so a run
   that finishes shows **Finished** there too.
 - Tables: a highlighted row no longer gets a rounded corner when it is the
