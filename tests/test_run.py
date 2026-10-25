@@ -207,7 +207,7 @@ def test_fork_copies_history_up_to_step():
     assert meta["fork"] == {"run_id": parent.id, "step": 4}
 
 
-def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
+def test_only_rank_zero_logs(monkeypatch, tmp_path):
     monkeypatch.setenv("WORLD_SIZE", "2")
     monkeypatch.setenv("TORCHELASTIC_RUN_ID", "job-42")
     monkeypatch.setenv("RANK", "0")
@@ -216,18 +216,17 @@ def test_nonzero_rank_logs_only_with_all_ranks(monkeypatch, tmp_path):
     r1 = nb.init("dist", run_name="ddp", capture_env=False)
     assert r0.path == r1.path
     r0.add_scalar({"loss": 1.0}, step=0)
-    r1.add_scalar({"loss": 2.0}, step=0)  # ignored: rank 1, not all_ranks
-    r1.add_scalar({"grad_norm": 3.0}, step=0, all_ranks=True)
+    r1.add_scalar({"loss": 2.0}, step=0)  # ignored: rank 1
+    r1.add_text("samples", "hello", step=0)  # ignored too
     (tmp_path / "config.yaml").write_text("lr: 0.001\n", "utf-8")
     assert r1.add_file(tmp_path / "config.yaml") is None  # only rank 0 copies
     assert not (r1.path / "files" / "config.yaml").exists()
     r1.finish()
     r0.finish()
-    files = sorted(os.listdir(r0.path))
-    assert "events.r0.s0.log" in files and "events.r1.s0.log" in files
     reader = RunReader(r0.path)
-    assert reader.scalar_names(rank=1) == ["grad_norm"]
-    assert reader.ranks() == [0, 1]
+    assert reader.scalar_names(rank=0) == ["loss"]
+    assert reader.scalar_names(rank=1) == []
+    assert reader.texts(rank=1) == []
 
 
 def test_nonzero_rank_without_shared_id_is_a_quiet_no_op(monkeypatch):
@@ -237,7 +236,7 @@ def test_nonzero_rank_without_shared_id_is_a_quiet_no_op(monkeypatch):
     with pytest.warns(RuntimeWarning, match="will not log"):
         run = nb.init("dist2", capture_env=False)
 
-    run.add_scalar({"x": 1.0}, step=0, all_ranks=True)
+    run.add_scalar({"x": 1.0}, step=0)
     run.finish()
     assert not (run.project_dir / "runs").exists()
 

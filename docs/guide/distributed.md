@@ -6,19 +6,19 @@
 falling back to `SLURM_PROCID` / `SLURM_LOCALID` / `SLURM_NTASKS` and
 `OMPI_COMM_WORLD_RANK` / `OMPI_COMM_WORLD_SIZE`.
 
-Call `init` on every rank with the same arguments. **Only rank 0 logs by
-default**; on other ranks `add_scalar()` returns immediately. To record a scalar on
-every rank (gradient norms, throughput, memory), pass `all_ranks=True` to that
-call, or to `init` to make it the default:
+Call `init` on every rank with the same arguments. **Only rank 0 logs**; on
+other ranks `add_scalar()`, `add_text()` and the media calls return
+immediately, so the same script runs unchanged on every rank:
 
 ```python
 run = nb.init("llm", run_name="ddp", config=cfg)  # every rank
-run.add_scalar({"train/loss": loss}, step=step)  # rank 0 only
-run.add_scalar({"perf/tokens_per_sec": tps}, step=step, all_ranks=True)
+run.add_scalar({"train/loss": loss}, step=step)  # logged by rank 0 only
 ```
 
-Each rank writes its own `events.r<rank>.s<session>.log` (and
-`media.r<rank>.pack`) in the same run folder, so there is no contention and no
+System metrics are the exception: local rank 0 of each machine samples
+them, so a job on four machines records four sets of `system/` scalars. Each
+rank that writes has its own `events.r<rank>.s<session>.log` (and
+`media.r<rank>.pack`) in the run folder, so there is no contention and no
 lock. Only rank 0 writes `run.json`.
 
 ## One folder for all ranks

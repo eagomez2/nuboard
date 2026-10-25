@@ -268,7 +268,6 @@ class Run:
         fork_from: `(parent_run_id, step)`. Copies the parent's rank 0 scalars up
             to and including `step` into the new run, which then continues from
             `step + 1`.
-        all_ranks: Log scalars from every rank, not only rank 0.
         capture_env: Record the git commit and diff, installed packages, GPUs,
             host and command line.
         compact: On `finish`, compact a single-process run's logs into Parquet
@@ -291,7 +290,6 @@ class Run:
         project_dir: The project's folder.
         config: The run's config as a plain dict.
         dist: Rank and world size of this process.
-        all_ranks: Whether scalars are logged from every rank.
         session: Index of this session; it grows each time the run is resumed.
         job: Name of this helper job, or None for the main job.
         started: Start time of this session, as a Unix timestamp.
@@ -324,7 +322,6 @@ class Run:
         resume: Literal["must", "auto"] | None = None,
         job: str | None = None,
         fork_from: tuple[str, int] | None = None,
-        all_ranks: bool = False,
         capture_env: bool = True,
         compact: bool = True,
         flush_interval: float = 1.0,
@@ -338,7 +335,6 @@ class Run:
         self.project = self.project_dir.name
         self._root = data_root(dir)
         self.dist = _env.detect_dist()
-        self.all_ranks = all_ranks
         self._compact = compact
         self._flush_interval = flush_interval
         self._heartbeat_interval = heartbeat_interval
@@ -435,9 +431,9 @@ class Run:
         atexit.register(self._atexit)
         _install_excepthook()
 
-        if capture_console and (self.dist.is_main or all_ranks):
+        if capture_console and self.dist.is_main:
             base = "output" if self.job is None else f"output.{self.job}"
-            log = f"{base}.log" if self.dist.is_main else f"{base}.r{self.dist.rank}.log"
+            log = f"{base}.log"
             stamp = _dt.datetime.fromtimestamp(self.started).isoformat(" ", "seconds")
             job_note = f", job {self.job}" if self.job else ""
             self._console = ConsoleLog(
@@ -782,12 +778,11 @@ class Run:
         low: Any = None,
         high: Any = None,
         time: float | None = None,
-        all_ranks: bool | None = None,
     ) -> None:
         """Log one scalar, or several at the same step.
 
         Non-blocking: values are converted off-thread. On ranks other than 0 the
-        call is a no-op unless `all_ranks=True` (here or in `init`).
+        call is a no-op.
 
         Args:
             key: The scalar's name, such as `"train/loss"`, or a dict of names
@@ -800,7 +795,6 @@ class Run:
                 with `high`, the viewer shades the range around the line.
             high: Optional upper bound, such as `mean + std`.
             time: Unix timestamp of the values. Defaults to now.
-            all_ranks: Overrides the run's `all_ranks` setting for this call.
 
         Raises:
             TypeError: If `key` is a name and `value` is missing, if only one of
@@ -837,7 +831,7 @@ class Run:
         if step >= self._next_step:
             self._next_step = step + 1
 
-        if not self.dist.is_main and not (self.all_ranks if all_ranks is None else all_ranks):
+        if not self.dist.is_main:
             return
 
         if self.job is not None:
@@ -918,21 +912,19 @@ class Run:
         step: int | None = None,
         *,
         time: float | None = None,
-        all_ranks: bool = False,
     ) -> None:
         """Log a string, such as generated samples or notes.
 
-        On ranks other than 0 the call is a no-op unless `all_ranks=True`.
+        On ranks other than 0 the call is a no-op.
 
         Args:
             key: Name the text is logged under.
             text: The text; other values are converted with `str`.
             step: Training step. Defaults to the step of the latest `add_scalar` call.
             time: Unix timestamp of the item. Defaults to now.
-            all_ranks: Log from every rank, not only rank 0.
         """
 
-        if not self.dist.is_main and not all_ranks:
+        if not self.dist.is_main:
             return
 
         writer = self._ensure_writer()
@@ -1679,7 +1671,6 @@ def init(
     resume: Literal["must", "auto"] | None = None,
     job: str | None = None,
     fork_from: tuple[str, int] | None = None,
-    all_ranks: bool = False,
     capture_env: bool = True,
     compact: bool = True,
     flush_interval: float = 1.0,
@@ -1725,7 +1716,6 @@ def init(
         fork_from: `(parent_run_id, step)`. Copies the parent's rank 0 scalars up
             to and including `step` into the new run, which then continues from
             `step + 1`.
-        all_ranks: Log scalars from every rank, not only rank 0.
         capture_env: Record the git commit and diff, installed packages, GPUs,
             host and command line.
         compact: On `finish`, compact a single-process run's logs into Parquet
@@ -1773,7 +1763,6 @@ def init(
         resume=resume,
         job=job,
         fork_from=fork_from,
-        all_ranks=all_ranks,
         capture_env=capture_env,
         compact=compact,
         flush_interval=flush_interval,

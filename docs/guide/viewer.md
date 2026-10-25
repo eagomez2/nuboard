@@ -128,8 +128,7 @@ on one line and draws color codes as colors (the 16 terminal colors follow
 the light or dark theme; 256-color and true-color codes, bold, dim, italic
 and underline are drawn too). **Raw** shows the text as stored, with each
 escape character as `␛`. The file itself keeps the codes, so `less -R` in a
-terminal shows the same colors. With `all_ranks=True`, each rank's log
-has its own tab (**Console r1**, ...).
+terminal shows the same colors.
 
 **Files** lists everything in the run folder as a tree, with how many files
 each folder holds and their size; `files/` (what `init` and
