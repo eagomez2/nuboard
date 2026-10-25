@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking: `all_ranks` is removed** from `init`, `add_scalar` and
+  `add_text`. In distributed training only rank 0 logs, and the calls are
+  no-ops on other ranks. The viewer only plots rank 0, so values from other
+  ranks could not be seen anyway. System metrics are still sampled by local
+  rank 0 of each machine. Drop the argument from your calls; runs logged
+  before keep their per-rank files and still load.
+
 ## 0.17.1
 
 - **Fixed: a pinned point now follows the chart when you zoom or pan.** In

@@ -31,7 +31,6 @@ nb.init(
     run_id=None, resume=None,   # resume="must" | "auto"
     job=None,               # join run_id as a second job, such as "eval"
     fork_from=None,         # (run_id, step)
-    all_ranks=False,        # log on every rank, not only rank 0
     capture_env=True,       # git, pip freeze, GPUs, command line
     compact=True,           # write data.parquet at finish if PyArrow is installed
     flush_interval=1.0,     # seconds between background writes
@@ -74,7 +73,7 @@ them between runs in Compare.
 ## `run.add_scalar`
 
 ```python
-run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None, all_ranks=None)
+run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None)
 ```
 
 - `run.add_scalar("train/loss", 0.42)` logs one scalar, and

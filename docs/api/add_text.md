@@ -1,7 +1,7 @@
 # `add_text`
 
 ```python
-run.add_text(key, text, step=None, *, time=None, all_ranks=False)
+run.add_text(key, text, step=None, *, time=None)
 ```
 
 Logs a string, such as a generated sample, a decoded transcript or a note
@@ -12,7 +12,6 @@ about the run.
 - **key** (*str*): the name the text is logged under.
 - **text** (*str*): the text. Other values are converted with `str`.
 - **step** (*int*, optional): the training step.
-- **all_ranks** (*bool*): log from every rank, not only rank 0.
 
 **Stored as** UTF-8 in the event log, not the media pack, so text costs about
 its length on disk.

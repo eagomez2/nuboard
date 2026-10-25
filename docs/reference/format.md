@@ -28,7 +28,7 @@ path.
           requirements.txt                installed packages (pip freeze format)
           git.patch                       `git diff HEAD` at start (only if dirty)
           command.txt                     the command line that started the run
-          output.log                      what the script printed (capture_console; rank N: output.rN.log)
+          output.log                      what rank 0 printed (capture_console)
           ...                             files and folders added with run.add_file
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run

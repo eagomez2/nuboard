@@ -88,9 +88,8 @@ the GPU.
 that a background thread writes out every `flush_interval` seconds (one by
 default). [`flush`](finish.md#flush) waits for everything queued so far.
 
-**Ranks.** In distributed training only rank 0 logs, unless you pass
-`all_ranks=True` to `nb.init`, `add_scalar` or `add_text`. Media are always
-logged by rank 0 only. See [Distributed training](../guide/distributed.md).
+**Ranks.** In distributed training only rank 0 logs; the calls are no-ops on
+other ranks. See [Distributed training](../guide/distributed.md).
 
 **Where it goes.** A run is the folder
 `<dir>/<project>/runs/<YYYYMMDDTHHMM>-<hash>/`. Scalars and text go to
