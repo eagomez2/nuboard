@@ -59,7 +59,7 @@
     regions?: { x0: number; x1: number; label: string }[];
     /** A dot on each curve at the data point under the cursor (as in TensorBoard). */
     markers?: boolean;
-    /** The cursor is pinned: the dots stay where they are. */
+    /** The cursor is pinned: the dots stay on the points they mark, through zoom and pan. */
     pinned?: boolean;
     /** Draw the baselines set with `add_scalar_baseline` as dashed lines. */
     baselines?: boolean;
@@ -67,6 +67,9 @@
     zoom?: [number, number] | null;
   } = $props();
   let dots: HTMLElement[] = [];
+  // the data point each dot marks, per series label; kept in data units so a pinned dot
+  // follows its point when the view zooms or pans, and survives rebuilds
+  let dotAt = new Map<string, [number, number]>();
 
   let el: HTMLDivElement;
   let plot: uPlot | null = null;
@@ -277,12 +280,16 @@
             const idx = u.cursor.idx;
             const moveDots = markers && !pinned;
             if (idx === null || idx === undefined) {
-              if (moveDots) for (const d of dots) d.style.display = 'none';
+              if (moveDots) {
+                dotAt.clear();
+                placeDots(u);
+              }
               return onCursor?.(null, []);
             }
+            if (moveDots) dotAt.clear();
             const x = u.data[0][idx];
             const values: CursorValue[] = [];
-            for (const [i, m] of mains.entries()) {
+            for (const m of mains) {
               const col = u.data[m.idx] as (number | null)[];
               let k = idx;
               let found: number | null = col[k] ?? null;
@@ -295,14 +302,7 @@
                   found = col[k] as number;
                 }
               }
-              const dot = dots[i];
-              if (moveDots && dot) {
-                const left = found === null ? NaN : u.valToPos(u.data[0][k], 'x');
-                const top = found === null ? NaN : u.valToPos(found, 'y');
-                const inside = left >= 0 && left <= u.bbox.width / devicePixelRatio && top >= 0;
-                dot.style.display = inside && top <= u.bbox.height / devicePixelRatio ? 'block' : 'none';
-                dot.style.transform = `translate(${left}px, ${top}px)`;
-              }
+              if (moveDots && found !== null) dotAt.set(m.label, [u.data[0][k], found]);
               if (found !== null) {
                 values.push({
                   series: m.series,
@@ -313,10 +313,13 @@
                 });
               }
             }
+            if (moveDots) placeDots(u);
             onCursor?.(x, values);
           },
         ],
         draw: [
+          // a redraw follows every zoom, pan and resize: put the dots back on their points
+          (u) => placeDots(u),
           (u) => {
             if (!lines.length) return;
             const ctx = u.ctx;
@@ -436,6 +439,21 @@
           return d;
         })
       : [];
+    placeDots(plot);
+  }
+
+  /** Put each dot on the point it marks at the current scales; hide it when out of view. */
+  function placeDots(u: uPlot) {
+    mains.forEach((m, i) => {
+      const dot = dots[i];
+      const at = dotAt.get(m.label);
+      if (!dot) return;
+      const left = at ? u.valToPos(at[0], 'x') : NaN;
+      const top = at ? u.valToPos(at[1], 'y') : NaN;
+      const inside = left >= 0 && left <= u.bbox.width / devicePixelRatio && top >= 0;
+      dot.style.display = inside && top <= u.bbox.height / devicePixelRatio ? 'block' : 'none';
+      dot.style.transform = `translate(${left}px, ${top}px)`;
+    });
   }
 
   /** Smoothed y values whose x is in [lo, hi], per series (all of them without a range). */
