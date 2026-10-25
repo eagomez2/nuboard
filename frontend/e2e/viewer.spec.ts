@@ -586,6 +586,29 @@ test('about window and chart points', async ({ page }) => {
   await expect(chart.locator('.nb-dot')).toHaveCount(0);
 });
 
+test('a pinned point stays on its point when the chart zooms', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const chart = page.locator('.main .chart').first();
+  const over = chart.locator('.u-over');
+  const box = (await over.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const dot = chart.locator('.nb-dot').first();
+  await expect(dot).toBeVisible();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByText('Pinned · click chart to release')).toBeVisible();
+  const before = (await dot.boundingBox())!;
+  // zoom in around a quarter of the width: the point, right of it, moves further right
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Control');
+  await expect.poll(async () => ((await dot.boundingBox())?.x ?? before.x) - before.x).toBeGreaterThan(20);
+  // and is still there once the data for the new range has loaded
+  await expect(page).toHaveURL(/zoom=/);
+  await page.waitForTimeout(500);
+  await expect(dot).toBeVisible();
+});
+
 test('notes on a section of audio are saved, edited and deleted', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const frame = page.locator('iframe[src="./audio.html"]').first();

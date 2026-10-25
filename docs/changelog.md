@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.1
+
+- **Fixed: a pinned point now follows the chart when you zoom or pan.** In
+  Charts, the dots of a pinned point kept their place on screen while the
+  axes changed under them, and disappeared once the data for the new range
+  loaded. They now stay on the points they mark.
+
 ## 0.17.0
 
 - **Breaking: `init(name=...)` is now `init(run_name=...)`**, so it reads as
