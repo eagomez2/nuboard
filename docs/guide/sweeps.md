@@ -44,9 +44,10 @@ optuna.create_study(direction="minimize").optimize(objective, n_trials=50)
 Then open Sweeps on `where tags has "sweep"` with `val/loss` as the
 objective. Some notes:
 
-- Finish the run before raising to stop a trial early. Used as a context
-  manager (`with nb.init(...)`), a run that ends with an exception is
-  recorded as `crashed`.
+- To stop a trial early, call `run.finish(status="pruned")` (any status
+  name works) before raising. A run that is already finished keeps its
+  status, even inside `with nb.init(...)`; without that call, an exception
+  ending the run records it as `crashed`.
 - Trials can run in parallel, in several processes or on several machines:
   each run writes its own folder, so nothing needs to be shared on the
   NuBoard side.
