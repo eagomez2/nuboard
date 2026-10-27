@@ -265,6 +265,8 @@
     if (res) await appendToReport(run.project, res.name, embedLine(run.id, it.key, it.step, res.caption));
   }
   let zoom = $state<{ run: RunBrief; item: MediaItem } | null>(null);
+  // The "All runs on one chart" overlay of one key, opened large
+  let zoomAll = $state<{ title: string; kind: 'pr' | 'hist'; curves: ReturnType<typeof prOverlay> } | null>(null);
 
   // Several items picked with the card checkboxes, added to one report in the order picked.
   let selecting = $state(false);
@@ -293,7 +295,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && (zoom = null)} />
+<svelte:window onkeydown={(e) => e.key === 'Escape' && ((zoom = null), (zoomAll = null))} />
 
 {#if !runs.length}
   <div class="card empty">No runs selected. Pick runs on the Runs page and press “Media”.</div>
@@ -561,12 +563,30 @@
         </header>
         {#if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === PR_MIME}
           <div class="prall">
-            <span class="faint small">All runs on one chart</span>
+            <span class="prhead"
+              ><span class="faint small">All runs on one chart</span>
+              <button
+                class="icon"
+                title="Open large"
+                aria-label="Open large"
+                onclick={() => (zoomAll = { title: s.title, kind: 'pr', curves: prOverlay(cards) })}
+                ><Icon name="search" size={14} /></button
+              ></span
+            >
             <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
           </div>
         {:else if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === HIST_MIME}
           <div class="prall">
-            <span class="faint small">All runs on one chart</span>
+            <span class="prhead"
+              ><span class="faint small">All runs on one chart</span>
+              <button
+                class="icon"
+                title="Open large"
+                aria-label="Open large"
+                onclick={() => (zoomAll = { title: s.title, kind: 'hist', curves: prOverlay(cards) })}
+                ><Icon name="search" size={14} /></button
+              ></span
+            >
             <HistChart curves={prOverlay(cards)} height={260} label="Distributions of {s.title} for all runs" />
           </div>
         {/if}
@@ -615,6 +635,32 @@
     >
     <button class="btn btn-ghost sm" onclick={() => (picked = [])} disabled={!picked.length}>Clear</button>
     <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
+  </div>
+{/if}
+
+{#if zoomAll}
+  <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && (zoomAll = null)}>
+    <div class="card big" role="dialog" aria-label="{zoomAll.title}, all runs">
+      <header>
+        <span class="mono stitle">{zoomAll.title}</span>
+        <span class="faint small">All runs on one chart</span>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost sm" aria-label="Close" onclick={() => (zoomAll = null)}
+          ><Icon name="x" size={16} /></button
+        >
+      </header>
+      <div class="bigbody">
+        {#if zoomAll.kind === 'pr'}
+          <PrChart
+            curves={zoomAll.curves}
+            height={560}
+            label="Precision-recall curves of {zoomAll.title} for all runs"
+          />
+        {:else}
+          <HistChart curves={zoomAll.curves} height={520} label="Distributions of {zoomAll.title} for all runs" />
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -850,6 +896,26 @@
     gap: 4px;
     max-width: 760px;
     margin-bottom: 4px;
+  }
+  .prhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .icon:hover {
+    background: var(--panel-2);
+    color: var(--accent);
   }
   .overlay {
     position: fixed;

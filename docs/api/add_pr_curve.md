@@ -27,7 +27,9 @@ predictions themselves are not stored, so a curve over a million examples
 takes the same few kilobytes as one over a hundred.
 
 **In the viewer** PR curves are listed under **Figures**. Each card draws its
-run's curve in the run's color with its average precision, and a chart above
+run's curve in the run's color with its average precision (AP, the area
+under the curve by the trapezoidal rule, so it can differ slightly from
+scikit-learn's step-wise `average_precision_score`), and a chart above
 the cards overlays every run's curve at the chosen step. Hovering a curve
 shows the threshold, precision, recall and the four counts there.
 

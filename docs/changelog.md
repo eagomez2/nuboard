@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Open the all-runs chart large.** The "All runs on one chart" overlay of
+  PR curves and distributions on the Media page has a magnifier button that
+  opens it in the large view, as single cards do; Esc closes it.
+- **Run ids on the Timeline.** Each row shows the end of the run id after the
+  name, so runs with the same name can be told apart, and hovering a bar
+  shows the full id.
+- The AP next to a PR curve says what it is on hover (average precision, the
+  area under the curve), and the docs say how it is computed.
 - **Space plays and pauses audio in full screen.** Waveform figures and the
   audio player toggle playback with Space while in full screen, and only
   there: outside full screen, while typing (such as a note) or with Ctrl, Alt,

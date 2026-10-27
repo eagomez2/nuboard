@@ -83,7 +83,9 @@
     {#each series as s, i (i)}
       <span
         ><i style="background:{s.color}"></i>{s.name}
-        <span class="mono faint">AP {prArea(s.data).toFixed(3)}</span></span
+        <span class="mono faint" title="Average precision: the area under the curve"
+          >AP {prArea(s.data).toFixed(3)}</span
+        ></span
       >
     {/each}
   </div>
