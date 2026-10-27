@@ -4,7 +4,9 @@
 
 - **Open the all-runs chart large.** The "All runs on one chart" overlay of
   PR curves and distributions on the Media page has a magnifier button that
-  opens it in the large view, as single cards do; Esc closes it.
+  opens it in the large view, as single cards do; Esc closes it. It can also
+  be downloaded as a PNG, with its legend, or added to a report as a snapshot
+  with an **Open in Media** button.
 - **Run ids on the Timeline.** Each row shows the end of the run id after the
   name, so runs with the same name can be told apart, and hovering a bar
   shows the full id.

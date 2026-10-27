@@ -6,7 +6,8 @@
   import PrChart from '../components/PrChart.svelte';
   import { api, type MediaItem, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
-  import { appendToReport, askReport } from '../lib/reports.svelte';
+  import { addSnapshotToReport, appendToReport, askReport } from '../lib/reports.svelte';
+  import { chartToPng } from '../lib/snapshot';
   import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
   import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
@@ -265,6 +266,30 @@
     if (res) await appendToReport(run.project, res.name, embedLine(run.id, it.key, it.step, res.caption));
   }
   let zoom = $state<{ run: RunBrief; item: MediaItem } | null>(null);
+  // Save the "All runs on one chart" overlay that holds `button`, with its legend, as a PNG
+  async function overlayPng(button: HTMLElement, key: string) {
+    const root = button.closest('.prall') ?? button.closest('.big')?.querySelector('.bigbody');
+    return root ? await chartToPng(root, `${key} · all runs`) : null;
+  }
+  async function downloadOverlay(e: MouseEvent, key: string) {
+    const png = await overlayPng(e.currentTarget as HTMLElement, key);
+    if (!png) return;
+    const a = document.createElement('a');
+    a.href = png;
+    a.download = `${key.replaceAll('/', '_')}-all-runs.png`;
+    a.click();
+  }
+  async function reportOverlay(e: MouseEvent, key: string) {
+    const project = router.get('project') ?? runs[0]?.project;
+    const png = await overlayPng(e.currentTarget as HTMLElement, key);
+    if (!png || !project) return;
+    zoomAll = null;
+    const find = `^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    await addSnapshotToReport(project, png, `${key}, all runs`, {
+      page: 'media',
+      params: { ...router.params, mfind: find },
+    });
+  }
   // The "All runs on one chart" overlay of one key, opened large
   let zoomAll = $state<{ title: string; kind: 'pr' | 'hist'; curves: ReturnType<typeof prOverlay> } | null>(null);
 
@@ -571,6 +596,16 @@
                 aria-label="Open large"
                 onclick={() => (zoomAll = { title: s.title, kind: 'pr', curves: prOverlay(cards) })}
                 ><Icon name="search" size={14} /></button
+              ><button
+                class="icon"
+                title="Download as PNG"
+                aria-label="Download as PNG"
+                onclick={(e) => downloadOverlay(e, s.title)}><Icon name="download" size={14} /></button
+              ><button
+                class="icon"
+                title="Add to a report"
+                aria-label="Add to a report"
+                onclick={(e) => reportOverlay(e, s.title)}><Icon name="bookmark" size={14} /></button
               ></span
             >
             <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
@@ -585,6 +620,16 @@
                 aria-label="Open large"
                 onclick={() => (zoomAll = { title: s.title, kind: 'hist', curves: prOverlay(cards) })}
                 ><Icon name="search" size={14} /></button
+              ><button
+                class="icon"
+                title="Download as PNG"
+                aria-label="Download as PNG"
+                onclick={(e) => downloadOverlay(e, s.title)}><Icon name="download" size={14} /></button
+              ><button
+                class="icon"
+                title="Add to a report"
+                aria-label="Add to a report"
+                onclick={(e) => reportOverlay(e, s.title)}><Icon name="bookmark" size={14} /></button
               ></span
             >
             <HistChart curves={prOverlay(cards)} height={260} label="Distributions of {s.title} for all runs" />
@@ -645,6 +690,12 @@
         <span class="mono stitle">{zoomAll.title}</span>
         <span class="faint small">All runs on one chart</span>
         <span class="spacer"></span>
+        <button class="btn btn-ghost sm" onclick={(e) => zoomAll && downloadOverlay(e, zoomAll.title)}
+          ><Icon name="download" size={14} /> Download</button
+        >
+        <button class="btn btn-ghost sm" onclick={(e) => zoomAll && reportOverlay(e, zoomAll.title)}
+          ><Icon name="bookmark" size={14} /> Add to report</button
+        >
         <button class="btn btn-ghost sm" aria-label="Close" onclick={() => (zoomAll = null)}
           ><Icon name="x" size={16} /></button
         >
