@@ -65,7 +65,10 @@ export interface ArtifactVersion {
   project: string;
   name: string;
   version: number;
+  /** Total size of the files the manifest lists. */
   size: number;
+  /** Number of files; the list itself comes page by page from `api.artifactFiles`. */
+  file_count: number;
   producers: string[];
   consumers: string[];
   /** Hidden with Unlink; its folder is in `artifacts/.unlinked/` and can be restored. */
@@ -73,7 +76,6 @@ export interface ArtifactVersion {
   manifest: {
     type?: string | null;
     metadata?: Record<string, unknown>;
-    files?: ArtifactFile[];
     created?: number;
     producer_run?: string | null;
     reference?: string;
@@ -379,6 +381,19 @@ export const api = {
   alerts: (keys: string[]) =>
     json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),
   artifacts: (project?: string | null) => json<{ artifacts: ArtifactVersion[] }>(`/api/artifacts?${qs({ project })}`),
+  /** A page of a version's files; `find` keeps the paths that contain it, ignoring case. */
+  artifactFiles: (a: ArtifactVersion, find: string, offset: number, limit = 1000) =>
+    json<{ files: ArtifactFile[]; total: number; matched: number }>(
+      `/api/artifacts/files?${qs({
+        project: a.project,
+        name: a.name,
+        version: a.version,
+        unlinked: a.unlinked ? '1' : null,
+        find: find || null,
+        offset,
+        limit,
+      })}`,
+    ),
   /** Check a path, add a version, or unlink or restore versions (needs `--edit-artifacts`). */
   editArtifacts: <T>(op: 'check' | 'add' | 'unlink', body: Record<string, unknown>) =>
     fetch(`/api/artifacts/${op}`, {

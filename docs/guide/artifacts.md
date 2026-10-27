@@ -139,8 +139,8 @@ with nb.init("llm-pretrain", run_name="lr1e-3-s1") as run:
 
 `use_artifact` returns an `Artifact` whose `files` is a path; NuBoard does not
 open or unpickle anything, so you load the data with your own code.
-Before returning, it compares the files with the manifest by size and
-size, and warns about any that are missing or changed since the version was
+Before returning, it compares the files with the manifest by size, and
+warns about any that are missing or whose size changed since the version was
 registered. Inside the run's own project, the project can be left
 out: `run.use_artifact("model:v1")`.
 
@@ -178,10 +178,40 @@ modification times. If a variable is not set where the artifact is used,
 | --- | --- | --- |
 | Where the files are | `<project>/artifacts/<name>/v<N>/files/` | where they were |
 | Disk | a second copy | nothing beyond the manifest |
-| If the source is deleted or changed | the version is unaffected | `use_artifact` warns |
-| Fingerprint | SHA-256 | size and modification time, SHA-256 with `checksum=True` |
+| If the source is deleted or changed | the version is unaffected | `use_artifact` warns when a file is missing or its size changed |
+| Fingerprint | SHA-256 | size and modification time, SHA-256 with `checksum=True`; checked by size |
 | On another machine | the same files | that machine's copy, through `$NUBOARD_DATA_DIR` |
 | Good for | checkpoints, reports, small datasets | datasets on shared storage |
+
+## Recommendations
+
+A version's manifest lists every file it holds, and each `use_artifact`
+checks every file in it. That is cheap for a few thousand files and becomes
+slow with hundreds of thousands, so register data in a shape that keeps the
+list short:
+
+- **Reference large files, not millions of small ones.** Twenty HDF5 files of
+  3 GB each are a 20-line manifest and take a second to add. A folder of a
+  million images is a manifest of about 100 MB, written in tens of seconds
+  on a local disk and minutes on network storage, and every `use_artifact`
+  then stats a million files. Pack such data into shards (tar, Parquet,
+  HDF5, WebDataset) and reference the shards, or reference a single index
+  file that lists the samples. The viewer's form warns from 10,000 files.
+- **Hash only what you need to prove.** `checksum=True` (or **Checksum** in
+  the form) reads every byte: roughly a minute per 30 GB on a fast local
+  disk, several on network storage. The hashes are stored, not re-checked; a
+  later check is by size only. Use it for a frozen dataset you want a
+  record of, and leave it off for data you register often.
+- **Treat a version as a snapshot.** A change that keeps a file's size, such
+  as an HDF5 file rewritten in place, is not noticed. When the data changes,
+  add a new version instead of editing the files behind an existing one.
+- **Copy small things, reference big ones.** Checkpoints, tokenizers and
+  reports are worth a copy, so the version survives the source being deleted.
+  Datasets on shared storage are better referenced.
+- **Undo a mistake with unlink.** `nuboard artifact unlink
+  datasets/fineweb-edu:v3` (or **Unlink version** in the viewer) hides a
+  version without deleting anything, and `nuboard artifact restore` brings it
+  back. See [Unlinking](#adding-and-unlinking-versions-in-the-viewer).
 
 ## The Artifacts page
 
@@ -199,7 +229,9 @@ modification times. If a variable is not set where the artifact is used,
   evaluation that loaded the checkpoint. Click an artifact to move the graph to
   it, or a run to open it.
 - **Produced by / Used by**, **Metadata** and **Files** (path, size, hash),
-  plus where the files are on disk. A version added with `nb.add_artifact`
+  plus where the files are on disk. Files load 1,000 at a time, with
+  **Show more** and a path filter, so a version with many files opens at
+  once. A version added with `nb.add_artifact`
   shows "Logged outside a run".
 
 The Timeline page marks each artifact version as a diamond on the run that
@@ -225,6 +257,15 @@ The Artifacts page is read-only unless the viewer was started with
   the list and `use_artifact`, and runs that used or produced it show it as
   "(unlinked)". Its number is not reused.
 - **Show unlinked** lists unlinked versions; **Restore** puts one back.
+
+The command line does the same without the viewer:
+
+```bash
+nuboard artifact unlink datasets/fineweb-edu:v3      # one version
+nuboard artifact unlink datasets/fineweb-edu --all   # every version
+nuboard artifact ls --unlinked                        # list them, marked (unlinked)
+nuboard artifact restore datasets/fineweb-edu:v3
+```
 
 Deleting data is left to you: remove a folder under `artifacts/.unlinked/`
 yourself when you no longer need it.

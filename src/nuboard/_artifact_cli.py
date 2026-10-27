@@ -26,8 +26,11 @@ from .artifacts import (
     _versions,
     find_artifact_projects,
     list_artifacts,
+    list_unlinked,
     resolve_artifact,
+    restore_artifact,
     split_ref,
+    unlink_artifact,
 )
 from .run import add_artifact, data_root, project_dir
 
@@ -548,11 +551,11 @@ class Prompter:
 
 
 def add_parser(sub: Any, env_prefix: str, default_root: str) -> None:
-    """Add `artifact add`, `artifact ls` and `artifact show` to the command line."""
+    """Add `artifact add`, `ls`, `show`, `unlink` and `restore` to the command line."""
     p = sub.add_parser(
         "artifact",
-        help="add, list and show artifact versions",
-        description="Add, list and show artifact versions without writing Python.",
+        help="add, list, show, unlink and restore artifact versions",
+        description="Add, list, show, unlink and restore artifact versions without writing Python.",
     )
     asub = p.add_subparsers(dest="artifact_cmd", required=True)
     root_help = f"root folder for projects (default: ${env_prefix}_DIR or ./{default_root})"
@@ -588,11 +591,27 @@ def add_parser(sub: Any, env_prefix: str, default_root: str) -> None:
 
     ls = asub.add_parser("ls", help="list artifact versions")
     ls.add_argument("project", nargs="?", help="only this project")
+    ls.add_argument("--unlinked", action="store_true", help="also list unlinked versions")
     ls.add_argument("--dir", default=None, help=root_help)
 
     show = asub.add_parser("show", help="show a version and check its files")
     show.add_argument("ref", help="project/name, project/name:latest or project/name:v2")
     show.add_argument("--dir", default=None, help=root_help)
+
+    un = asub.add_parser(
+        "unlink",
+        help="hide a version; nothing is deleted",
+        description="Unlink a version, as Unlink does in the viewer: its folder moves to "
+        "artifacts/.unlinked/ in the project, referenced data is never touched, and "
+        "`artifact restore` brings it back. Its number is not reused.",
+    )
+    un.add_argument("ref", help="project/name:v2, or project/name with --all")
+    un.add_argument("--all", action="store_true", help="unlink every version of the artifact")
+    un.add_argument("--dir", default=None, help=root_help)
+
+    re_ = asub.add_parser("restore", help="bring back an unlinked version")
+    re_.add_argument("ref", help="project/name:v2")
+    re_.add_argument("--dir", default=None, help=root_help)
 
 
 def main(
@@ -617,10 +636,14 @@ def main(
     root = data_root(args.dir)
 
     if args.artifact_cmd == "ls":
-        return _ls(root, args.project, say)
+        return _ls(root, args.project, say, args.unlinked)
 
     if args.artifact_cmd == "show":
         return _show(root, args.ref, say)
+
+    if args.artifact_cmd in ("unlink", "restore"):
+        restore = args.artifact_cmd == "restore"
+        return _unlink(root, args.ref, say, restore, not restore and args.all)
 
     if interactive is None:
         interactive = sys.stdin.isatty() and sys.stdout.isatty()
@@ -754,8 +777,8 @@ def _readline() -> None:
         pass
 
 
-def _ls(root: Path, project: str | None, say: Callable[[str], None]) -> int:
-    """List artifact versions, newest first within each name."""
+def _ls(root: Path, project: str | None, say: Callable[[str], None], unlinked: bool = False) -> int:
+    """List artifact versions, newest first within each name; unlinked ones on request."""
     folders = [project_dir(project, root)] if project else find_artifact_projects(root)
     rows = []
 
@@ -763,7 +786,10 @@ def _ls(root: Path, project: str | None, say: Callable[[str], None]) -> int:
         name = folder.relative_to(root).as_posix() if folder != root else root.name
 
         for a in list_artifacts(folder):
-            rows.append((name, a))
+            rows.append((name, a, False))
+
+        if unlinked:
+            rows.extend((name, a, True) for a in list_unlinked(folder))
 
     if not rows:
         say("No artifacts.")
@@ -771,12 +797,12 @@ def _ls(root: Path, project: str | None, say: Callable[[str], None]) -> int:
 
     rows.sort(key=lambda r: (r[0], r[1].name, -r[1].version))
 
-    for proj, a in rows:
+    for proj, a, hidden in rows:
         m = a.manifest
         size = sum(int(f.get("size") or 0) for f in m.get("files") or [])
         store = "ref " if m.get("reference") else "copy"
         when = _dt.datetime.fromtimestamp(m.get("created") or 0).strftime("%Y-%m-%d")
-        ref = f"{proj}/{a.ref}"
+        ref = f"{proj}/{a.ref}" + (" (unlinked)" if hidden else "")
         say(
             f"{ref:<36} {m.get('type') or '-':<11} {store} {fmt_bytes(size):>8}  {when}  "
             f"{(m.get('description') or '')[:50]}"
@@ -830,4 +856,38 @@ def _show(root: Path, ref: str, say: Callable[[str], None]) -> int:
         return 1
 
     say("  ✓ files match the manifest")
+    return 0
+
+
+def _unlink(root: Path, ref: str, say: Callable[[str], None], restore: bool, every: bool) -> int:
+    """Unlink one version (or with `every`, all of them), or restore one."""
+    project, name, version = split_ref(ref)
+    m = re.match(r"^v(\d+)$", version)
+    number = int(m.group(1)) if m else None
+    folder = project_dir(project, root)
+    shown = f"{project or 'default'}/{name}"
+
+    if every and version:
+        say(f"✗ --all unlinks every version: give {shown} without a version")
+        return 2
+
+    if not every and number is None:
+        what = "restore" if restore else "unlink, or --all for every version"
+        say(f"✗ name the version to {what}, such as {shown}:v1")
+        return 2
+
+    try:
+        if restore and number is not None:
+            art = restore_artifact(folder, name, number)
+            say(f"✓ restored {shown}:v{art.version}")
+            return 0
+
+        done = unlink_artifact(folder, name, number)
+    except FileNotFoundError as exc:
+        say(f"✗ {exc}")
+        return 1
+
+    for v in done:
+        say(f"✓ unlinked {shown}:v{v}; `artifact restore {shown}:v{v}` brings it back")
+
     return 0

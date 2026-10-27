@@ -1104,6 +1104,12 @@ test('an artifact version is added from a path, unlinked and restored', async ({
   await page.getByRole('button', { name: 'Add version' }).click();
   await expect(page.locator('.head h2')).toHaveText('demo-folder:v1');
   await expect(page.getByText('from the viewer')).toBeVisible();
+  // its files load when it is opened, and the filter searches them on the server
+  const paths = page.locator('td.path');
+  await expect(paths.first()).toBeVisible();
+  await page.getByLabel('Filter files by path').fill('run.json');
+  await expect(paths.first()).toContainText('run.json');
+  await expect(paths.filter({ hasNotText: 'run.json' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Unlink version' }).click();
   await page.getByRole('button', { name: 'Unlink', exact: true }).click();

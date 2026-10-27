@@ -214,6 +214,30 @@ def test_artifacts_of_a_project_without_runs(client, tmp_path):
     assert client.get("/api/artifacts?project=vision").json()["artifacts"] == []
 
 
+def test_artifact_files_come_a_page_at_a_time(client, tmp_path):
+    folder = tmp_path / "shards"
+    folder.mkdir()
+
+    for i in range(25):
+        (folder / f"part-{i:03d}.bin").write_bytes(b"x" * i)
+
+    nb.add_artifact("datasets", "shards", folder, reference=True)
+    (art,) = client.get("/api/artifacts").json()["artifacts"]
+    # the list has no file list, only what sums it up
+    assert "files" not in art["manifest"]
+    assert (art["file_count"], art["size"]) == (25, sum(range(25)))
+    q = {"project": "datasets", "name": "shards", "version": 1, "limit": 10}
+    page = client.get("/api/artifacts/files", params={**q, "offset": 20}).json()
+    assert [f["path"] for f in page["files"]] == [f"part-{i:03d}.bin" for i in range(20, 25)]
+    assert (page["total"], page["matched"]) == (25, 25)
+    found = client.get("/api/artifacts/files", params={**q, "find": "PART-01"}).json()
+    assert found["matched"] == 10 and len(found["files"]) == 10
+    missing = client.get("/api/artifacts/files", params={**q, "version": 2})
+    assert missing.status_code == 404
+    bad = client.get("/api/artifacts/files", params={**q, "name": "../x"})
+    assert bad.status_code == 400
+
+
 def test_x_axis_by_another_metric(client):
     with nb.init("sweep", run_name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
