@@ -98,7 +98,7 @@ export function mountWaveform(
   const play = el('button', 'nbwf-play') as HTMLButtonElement;
   play.type = 'button';
   play.setAttribute('aria-label', 'Play');
-  play.title = 'Play / pause (click the plot to set where, or select a section)';
+  play.title = 'Play / pause (click the plot to set where, or select a section; Space in full screen)';
   play.innerHTML = icon('nbwf-go', 'M8 5.5v13l10.5-6.5z') + icon('nbwf-pause', 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
   const time = el('span', 'nbwf-time');
   const read = el('span', 'nbwf-read');
@@ -695,12 +695,13 @@ export function mountWaveform(
   audio.addEventListener('play', follow);
   audio.addEventListener('pause', follow);
   audio.addEventListener('seeked', follow);
-  play.addEventListener('click', () => {
+  const togglePlay = () => {
     if (!audio.paused) return audio.pause();
     if (sel && (audio.currentTime < sel[0] || audio.currentTime >= sel[1] - 1e-3)) audio.currentTime = sel[0];
     else if (audio.currentTime >= duration - 1e-3) audio.currentTime = 0;
     void audio.play();
-  });
+  };
+  play.addEventListener('click', togglePlay);
 
   // pressing or dragging on the overview centers the view there
   const onOverview = (e: PointerEvent) => {
@@ -751,13 +752,23 @@ export function mountWaveform(
     if (full) requestAnimationFrame(fitHeight);
     else fitHeight();
   };
+  // In full screen only, a plain Space (no modifier, not typing) plays and pauses, as in the audio
+  // player (audio/player.js). It is held back on key up too, or a focused button would be pressed.
+  const typing = (t: EventTarget | null) =>
+    t instanceof HTMLElement && (t.isContentEditable || !!t.closest('input, textarea, select'));
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && full) {
+    if (!full) return;
+    if (e.type === 'keydown' && e.key === 'Escape') {
       e.stopPropagation();
       setFull(false);
+    } else if (e.key === ' ' && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) && !typing(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'keydown' && !e.repeat) togglePlay();
     }
   };
   document.addEventListener('keydown', onKey, true);
+  document.addEventListener('keyup', onKey, true);
   resize.observe(plotEl);
   // new colors when the light/dark theme changes
   const theme = new MutationObserver(build);
@@ -778,6 +789,7 @@ export function mountWaveform(
       audio.pause();
       window.removeEventListener('resize', fitHeight);
       document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('keyup', onKey, true);
       resize.disconnect();
       theme.disconnect();
       cancelAnimationFrame(frame);

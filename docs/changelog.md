@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Space plays and pauses audio in full screen.** Waveform figures and the
+  audio player toggle playback with Space while in full screen, and only
+  there: outside full screen, while typing (such as a note) or with Ctrl, Alt,
+  Cmd or Shift, Space does what it did before, and Esc still leaves full
+  screen. The audio player used to take Space whenever it had focus; it no
+  longer does outside full screen.
 - **Artifacts with many files stay fast in the viewer.** The Artifacts page
   no longer loads every version's file list: each version comes with its file
   count and size, and its files load 1,000 at a time when you open it, with
