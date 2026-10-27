@@ -12,23 +12,29 @@ Scalars are logged under `system/`:
   `system/cpu/process_percent` (this process, in percent of one core).
 - `memory`: `system/memory/percent`, `system/memory/used_gb` (the machine,
   Linux or psutil) and `system/memory/process_gb` (this process's RSS).
-- `gpu`: per GPU `i` from `nvidia-smi`, `system/gpu{i}/util`,
+- `gpu`: per GPU `cuda:i` from `nvidia-smi`, `system/gpu{i}/util`,
   `system/gpu{i}/memory_gb`, `system/gpu{i}/memory_percent`,
   `system/gpu{i}/temp_c` and `system/gpu{i}/power_w`; and, from PyTorch,
   `system/torch/cuda_allocated_gb`, `system/torch/cuda_peak_gb`,
-  `system/torch/mps_allocated_gb` and `system/torch/mps_driver_gb`.
+  `system/torch/mps_allocated_gb` and `system/torch/mps_driver_gb`. `i` is
+  the index the script sees, after `CUDA_VISIBLE_DEVICES`; `nb.init`'s `gpus`
+  picks which devices are sampled.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any
+
+from . import _env
 
 GROUPS = ("cpu", "memory", "gpu")
 _GB = 1024**3
@@ -62,6 +68,87 @@ def parse_groups(value: bool | str | Iterable[str] | None) -> tuple[str, ...]:
         raise ValueError(f"unknown system_metrics groups {sorted(unknown)}; use {list(GROUPS)}")
 
     return tuple(g for g in GROUPS if g in names)
+
+
+@dataclass(frozen=True)
+class GpuChoice:
+    """The devices whose use the `gpu` group samples.
+
+    Attributes:
+        cuda: The logical index `i` (as in `cuda:i`) of each NVIDIA GPU to sample,
+            by GPU UUID.
+        torch_cuda: Sample PyTorch's CUDA allocator.
+        mps: Sample PyTorch's MPS allocator.
+    """
+
+    cuda: dict[str, int] = field(default_factory=dict)
+    torch_cuda: bool = True
+    mps: bool = True
+
+
+_CUDA_NAME = re.compile(r"cuda(?::(\d+))?")
+
+
+def choose_gpus(value: Any = None) -> GpuChoice:
+    """Return the devices to sample for `nb.init`'s `gpus` argument.
+
+    Args:
+        value: None or `"all"` for every GPU the process can use, or a device
+            name or a list of them: `"cuda:0"`, `"cuda"` (which is `cuda:0`),
+            `"mps"`, or anything whose `str()` is one, such as a `torch.device`.
+
+    Returns:
+        The chosen devices. CUDA indices are those the script sees, after
+        `CUDA_VISIBLE_DEVICES`.
+
+    Raises:
+        ValueError: If a name is not a device name, or names a device this
+            process cannot use or NuBoard cannot sample.
+    """
+    items = list(value) if isinstance(value, (list, tuple, set)) else [value]
+
+    if not items:
+        raise ValueError("gpus is empty; pass device names such as 'cuda:0' or 'mps', or 'all'")
+
+    names = ["all" if v is None else str(v).strip().lower() for v in items]
+    visible = _env.gpus()
+
+    if "all" in names:
+        return GpuChoice({str(g["uuid"]): i for i, g in enumerate(visible)})
+
+    cuda: dict[str, int] = {}
+    mps = False
+
+    for item, name in zip(items, names):
+        match = _CUDA_NAME.fullmatch(name)
+
+        if name == "mps":
+            if sys.platform != "darwin":
+                raise ValueError("cannot track 'mps': MPS is only available on macOS")
+
+            mps = True
+        elif match:
+            i = int(match.group(1) or 0)
+
+            if i >= len(visible):
+                found = "found" if shutil.which("nvidia-smi") else "found (nvidia-smi is missing)"
+                raise ValueError(
+                    f"cannot track {name!r}: {len(visible)} CUDA GPUs {found}" + _visible_note()
+                )
+
+            cuda[str(visible[i]["uuid"])] = i
+        else:
+            raise ValueError(
+                f"cannot track {item!r}: use device names such as 'cuda:0' or 'mps', or 'all'"
+            )
+
+    return GpuChoice(cuda, torch_cuda=bool(cuda), mps=mps)
+
+
+def _visible_note() -> str:
+    """Return a note on `CUDA_VISIBLE_DEVICES` for error messages, if it is set."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    return "" if visible is None else f" with CUDA_VISIBLE_DEVICES={visible!r}"
 
 
 def _psutil() -> Any:
@@ -135,11 +222,15 @@ def _process_rss() -> float | None:
     return pages * os.sysconf("SC_PAGE_SIZE") / _GB
 
 
-def nvidia_smi(exe: str = "nvidia-smi") -> dict[str, float]:
+def nvidia_smi(
+    exe: str = "nvidia-smi", devices: Mapping[str, int] | None = None
+) -> dict[str, float]:
     """Return per-GPU utilization, memory, temperature and power from `nvidia-smi`.
 
     Args:
         exe: The `nvidia-smi` executable.
+        devices: The index `i` to log each GPU under, by UUID; GPUs left out are
+            not sampled. None samples every GPU under its `nvidia-smi` index.
 
     Returns:
         Scalars named `gpu{i}/<field>`; fields `nvidia-smi` reports as `[N/A]`
@@ -150,7 +241,7 @@ def nvidia_smi(exe: str = "nvidia-smi") -> dict[str, float]:
         subprocess.SubprocessError: If it fails or times out.
     """
     out = subprocess.run(
-        [exe, f"--query-gpu={_NVSMI_FIELDS}", "--format=csv,noheader,nounits"],
+        [exe, f"--query-gpu=uuid,{_NVSMI_FIELDS}", "--format=csv,noheader,nounits"],
         capture_output=True,
         text=True,
         timeout=10,
@@ -159,7 +250,13 @@ def nvidia_smi(exe: str = "nvidia-smi") -> dict[str, float]:
     values: dict[str, float] = {}
 
     for i, line in enumerate(out.strip().splitlines()):
-        cells = [c.strip() for c in line.split(",")]
+        uuid, *cells = (c.strip() for c in line.split(","))
+
+        if devices is not None:
+            if uuid not in devices:
+                continue
+
+            i = devices[uuid]
 
         def num(j: int, cells: list[str] = cells) -> float | None:
             """Return cell `j` as a float, or None when missing or not a number."""
@@ -182,12 +279,16 @@ def nvidia_smi(exe: str = "nvidia-smi") -> dict[str, float]:
     return values
 
 
-def torch_memory() -> dict[str, float]:
+def torch_memory(cuda: bool = True, mps: bool = True) -> dict[str, float]:
     """Return PyTorch allocator memory for CUDA and MPS, if torch is already imported.
 
     CUDA is read only once the script has initialized it, so sampling never
     creates a CUDA context. The values are those of this process's current
     device.
+
+    Args:
+        cuda: Read the CUDA allocator.
+        mps: Read the MPS allocator.
     """
     torch = sys.modules.get("torch")
     values: dict[str, float] = {}
@@ -195,18 +296,18 @@ def torch_memory() -> dict[str, float]:
     if torch is None:
         return values
 
-    cuda = getattr(torch, "cuda", None)
+    tc = getattr(torch, "cuda", None) if cuda else None
 
-    if cuda is not None and cuda.is_available() and cuda.is_initialized():
-        values["torch/cuda_allocated_gb"] = cuda.memory_allocated() / _GB
-        values["torch/cuda_peak_gb"] = cuda.max_memory_allocated() / _GB
+    if tc is not None and tc.is_available() and tc.is_initialized():
+        values["torch/cuda_allocated_gb"] = tc.memory_allocated() / _GB
+        values["torch/cuda_peak_gb"] = tc.max_memory_allocated() / _GB
 
-    mps = getattr(torch, "mps", None)
+    tm = getattr(torch, "mps", None) if mps else None
     backend = getattr(getattr(torch, "backends", None), "mps", None)
 
-    if mps is not None and backend is not None and backend.is_available():
-        values["torch/mps_allocated_gb"] = mps.current_allocated_memory() / _GB
-        values["torch/mps_driver_gb"] = mps.driver_allocated_memory() / _GB
+    if tm is not None and backend is not None and backend.is_available():
+        values["torch/mps_allocated_gb"] = tm.current_allocated_memory() / _GB
+        values["torch/mps_driver_gb"] = tm.driver_allocated_memory() / _GB
 
     return values
 
@@ -216,14 +317,17 @@ class Sampler:
 
     Args:
         groups: Groups out of `GROUPS`.
+        gpus: The devices the `gpu` group samples; None for every GPU the
+            process can use.
     """
 
-    def __init__(self, groups: Iterable[str]) -> None:
+    def __init__(self, groups: Iterable[str], gpus: GpuChoice | None = None) -> None:
         self.groups = set(groups)
         self.psutil = _psutil()
         self.cpu = _CpuTimes()
         self.proc_cpu = (time.process_time(), time.monotonic())
         self.smi = shutil.which("nvidia-smi") if "gpu" in self.groups else None
+        self.gpus = gpus or (choose_gpus() if "gpu" in self.groups else GpuChoice())
         self.broken: set[str] = set()  # sources that failed once and are skipped from then on
 
         if self.psutil is not None and self.cpu.last is None:
@@ -293,10 +397,12 @@ class Sampler:
             self._try("memory", self._memory, out)
 
         if "gpu" in self.groups:
-            if self.smi:
-                self._try("nvidia-smi", lambda: nvidia_smi(self.smi or ""), out)
+            gpus = self.gpus
 
-            self._try("torch", torch_memory, out)
+            if self.smi and gpus.cuda:
+                self._try("nvidia-smi", lambda: nvidia_smi(self.smi or "", gpus.cuda), out)
+
+            self._try("torch", lambda: torch_memory(gpus.torch_cuda, gpus.mps), out)
 
         return out
 
@@ -308,12 +414,18 @@ class SystemMonitor:
         groups: Groups out of `GROUPS`.
         interval: Seconds between samples.
         emit: Called with each sample, already prefixed with `system/`.
+        gpus: The devices the `gpu` group samples; None for every GPU the
+            process can use.
     """
 
     def __init__(
-        self, groups: Iterable[str], interval: float, emit: Callable[[dict[str, float]], None]
+        self,
+        groups: Iterable[str],
+        interval: float,
+        emit: Callable[[dict[str, float]], None],
+        gpus: GpuChoice | None = None,
     ) -> None:
-        self.sampler = Sampler(groups)
+        self.sampler = Sampler(groups, gpus)
         self.interval = max(0.1, float(interval))
         self.emit = emit
         self._stop = threading.Event()

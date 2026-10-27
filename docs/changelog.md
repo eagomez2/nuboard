@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **New: `init(gpus=...)` picks the GPUs that system metrics track**, by the
+  device names your script uses: `gpus="cuda:0"`, a list such as
+  `["cuda:0", "cuda:1"]`, a `torch.device`, `"mps"` or `"all"`. A name that
+  cannot be tracked raises `ValueError`. See
+  [Choosing GPUs](api/init.md#choosing-gpus).
+- **Changed: GPU metrics respect `CUDA_VISIBLE_DEVICES`.** Only the GPUs the
+  process can use are tracked, named by the index the script sees, so with
+  `CUDA_VISIBLE_DEVICES=2` the machine's third GPU logs as `system/gpu0/...`.
+  Without the variable nothing changes. `run.json`'s `env.gpus` lists the same
+  GPUs, now with `device`, `index` and `uuid`.
 - **Breaking: `all_ranks` is removed** from `init`, `add_scalar` and
   `add_text`. In distributed training only rank 0 logs, and the calls are
   no-ops on other ranks. The viewer only plots rank 0, so values from other

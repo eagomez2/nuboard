@@ -172,29 +172,86 @@ def pip_freeze() -> str:
     return "\n".join(sorted(seen.values(), key=str.lower)) + "\n"
 
 
-def gpus() -> list[dict[str, str]]:
-    """List NVIDIA GPUs as reported by `nvidia-smi`.
+def cuda_order(gpus: list[tuple[int, str]], visible: str | None) -> list[tuple[int, str]]:
+    """Return the GPUs CUDA shows this process, in `cuda:0`, `cuda:1`, ... order.
+
+    Follows CUDA's reading of `CUDA_VISIBLE_DEVICES`: a comma-separated list of
+    GPU indices or UUIDs (a unique prefix of a `GPU-...` UUID is enough), ended
+    by the first entry that names no GPU or one already listed.
+
+    Args:
+        gpus: `(index, uuid)` of every GPU of the machine, as `nvidia-smi` lists them.
+        visible: The value of `CUDA_VISIBLE_DEVICES`, or None when it is unset.
 
     Returns:
-        One dict per GPU with `name`, `memory` and `driver`; empty when `nvidia-smi`
-        is not installed or fails.
+        The visible GPUs' `(index, uuid)`, the first one being `cuda:0`.
+    """
+
+    if visible is None:
+        return list(gpus)
+
+    order: list[tuple[int, str]] = []
+
+    for token in visible.split(","):
+        token = token.strip()
+
+        if token.isdigit():
+            found = [g for g in gpus if g[0] == int(token)]
+        elif token.startswith("GPU-"):
+            found = [g for g in gpus if g[1].startswith(token)]
+        else:
+            found = []
+
+        if len(found) != 1 or found[0] in order:
+            break
+
+        order.append(found[0])
+
+    return order
+
+
+def gpus() -> list[dict[str, object]]:
+    """List the NVIDIA GPUs this process can use, as reported by `nvidia-smi`.
+
+    `CUDA_VISIBLE_DEVICES` is respected: only the GPUs it names are listed, in
+    its order, so the first one is `cuda:0` in the script.
+
+    Returns:
+        One dict per GPU with `device` (such as `"cuda:0"`), `index` (the GPU's
+        index on the machine), `uuid`, `name`, `memory` and `driver`; empty when
+        `nvidia-smi` is not installed or fails.
     """
 
     if shutil.which("nvidia-smi") is None:
         return []
 
     out = _run(
-        ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]
+        [
+            "nvidia-smi",
+            "--query-gpu=index,uuid,name,memory.total,driver_version",
+            "--format=csv,noheader",
+        ]
     )
-    result = []
+    rows: dict[tuple[int, str], list[str]] = {}
 
     for line in (out or "").splitlines():
         parts = [p.strip() for p in line.split(",")]
 
-        if len(parts) == 3:
-            result.append({"name": parts[0], "memory": parts[1], "driver": parts[2]})
+        if len(parts) == 5 and parts[0].isdigit():
+            rows[(int(parts[0]), parts[1])] = parts[2:]
 
-    return result
+    order = cuda_order(list(rows), os.environ.get("CUDA_VISIBLE_DEVICES"))
+    return [
+        {
+            "device": f"cuda:{i}",
+            "index": index,
+            "uuid": uuid,
+            "name": rows[(index, uuid)][0],
+            "memory": rows[(index, uuid)][1],
+            "driver": rows[(index, uuid)][2],
+        }
+        for i, (index, uuid) in enumerate(order)
+    ]
 
 
 def environment() -> dict[str, object]:

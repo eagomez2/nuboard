@@ -79,7 +79,7 @@ ignore keys they do not know.
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
-| `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. |
+| `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. `gpus` lists the NVIDIA GPUs the process can use (after `CUDA_VISIBLE_DEVICES`), each with `device` (`cuda:i`), `index` (on the machine), `uuid`, `name`, `memory` and `driver`; older runs have only the last three, for every GPU of the machine. |
 | `distributed` | object | `world_size`, `shared_id`. |
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
