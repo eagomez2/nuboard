@@ -39,14 +39,27 @@ The image is a PNG snapshot of the chart, saved in
 `<project>/reports/files/`, so the report shows the chart in any Markdown
 viewer. In NuBoard the title after `chart:` describes the view, and the
 chart is drawn live instead: it follows the theme, updates while runs are
-running, and **Open in Charts** opens it on the Charts page.
+running, and **Open in Charts** opens it on the Charts page. Hovering it
+lists every series' value at that step, best first, as the Inspector does;
+a click pins the values.
+
+## Adding the all-runs chart from the Media page
+
+The bookmark button on the Media page's "All runs on one chart" (PR curves
+and distributions) adds the chart with every run's item at the step shown:
+
+```markdown
+![eval/pr/cat, all runs](files/findings-9c0d1e2f.png "overlay:<run id>/eval/pr/cat@100 <run id>/eval/pr/cat@100")
+```
+
+NuBoard draws it live from those items, with the same hover read-outs as on
+the Media page and an **Open in Media** button; the PNG, legend included, is
+what other Markdown viewers show.
 
 ## Adding Sweeps and Timeline plots
 
 The bookmark buttons on the **Sweeps** page (the parallel coordinates and each
-scatter), on the **Timeline** and on the Media page's "All runs on one chart"
-(PR curves and distributions, with their legend) add a PNG snapshot of the
-plot as shown:
+scatter) and on the **Timeline** add a snapshot of the plot as shown:
 
 ```markdown
 ![lr sweep](files/findings-5e6f7a8b.png "view:sweeps?project=llm-pretrain&metric=train%2Floss")
@@ -54,7 +67,9 @@ plot as shown:
 
 The title after `view:` is the page and its settings; in NuBoard the image
 gets an **Open in Sweeps** (or **Open in Timeline**) button that restores
-that view.
+that view. A Timeline snapshot is an SVG drawing: hovering a bar shows the
+run's name, id, status, start, duration and alerts, in NuBoard and in an
+exported HTML file.
 
 ## Writing
 
@@ -99,8 +114,12 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   hour at 16 kHz is about 460 MB with one signal). Figures and charts saved
   from the Charts page follow the theme:
   the charts are drawn live in the file from their data at export time (the
-  snapshot is used only if the data cannot be loaded). Sweeps and Timeline
-  snapshots are images and keep the colors they were taken with.
+  snapshot is used only if the data cannot be loaded). Hovering a chart lists
+  every series' value at that step, and a click pins it; hovering a PR curve
+  shows the nearest threshold with its precision, recall and counts, and
+  hovering a distribution shows the bin under the pointer for each run.
+  Timeline snapshots keep a hover title on every bar. Sweeps snapshots are
+  images and keep the colors they were taken with.
 - **Print** prints the rendered report, or saves it as a PDF, without the
   viewer's menus.
 

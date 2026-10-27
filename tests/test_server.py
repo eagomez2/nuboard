@@ -433,6 +433,30 @@ def test_chart_snapshots_are_served_and_exported(client):
     assert client.get("/api/reports/sweep/files/..%2Fruns").status_code == 404
 
 
+def test_timeline_snapshots_are_plain_svg(client):
+    import base64
+
+    def post(svg):
+        data = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+        body = {"project": "sweep", "report": "Plots", "png": data}
+        return client.post("/api/reports/snapshot", json=body)
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><g><title>run a</title><rect/></g></svg>'
+    path = post(svg).json()["path"]
+    assert path.endswith(".svg")
+    res = client.get(f"/api/reports/sweep/{path}")
+    assert res.text == svg and "default-src 'none'" in res.headers["content-security-policy"]
+
+    for bad in (
+        "<svg><script>alert(1)</script></svg>",
+        '<svg><rect onload="alert(1)"/></svg>',
+        '<svg><a href="javascript:alert(1)"/></svg>',
+        "<svg><foreignObject><p>x</p></foreignObject></svg>",
+        "<html><svg/></html>",
+    ):
+        assert post(bad).status_code == 400, bad
+
+
 def test_live_stream_ends_when_the_server_stops(tmp_path):
     # An open tab must not keep Ctrl+C from stopping `nuboard up`
     app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")

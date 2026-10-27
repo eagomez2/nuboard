@@ -272,24 +272,45 @@ def save_snapshot(project_dir: Path, report: str, png: bytes) -> str:
     Args:
         project_dir: The project's folder.
         report: The report the snapshot belongs to; used in the file name.
-        png: The PNG image.
+        png: The image: a PNG, or an SVG drawing without scripts, event handlers, links or
+            embedded HTML (the Timeline is saved as SVG so its hover titles survive).
 
     Returns:
         The path to write in the report, such as `files/findings-1a2b3c4d.png`.
 
     Raises:
-        ValueError: If `png` is not a PNG image.
+        ValueError: If `png` is neither a PNG image nor such an SVG drawing.
     """
 
-    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise ValueError("not a PNG image")
+    if png.startswith(b"\x89PNG\r\n\x1a\n"):
+        ext = "png"
+    elif _safe_svg(png):
+        ext = "svg"
+    else:
+        raise ValueError("not a PNG image or a plain SVG drawing")
 
     stem = _fs.sanitize(report.removesuffix(".md"), "report")
-    name = f"{stem}-{hashlib.sha1(png).hexdigest()[:8]}.png"
+    name = f"{stem}-{hashlib.sha1(png).hexdigest()[:8]}.{ext}"
     folder = project_dir / "reports" / "files"
     folder.mkdir(parents=True, exist_ok=True)
     _fs.atomic_write_bytes(folder / name, png)
     return f"files/{name}"
+
+
+_UNSAFE_SVG = re.compile(
+    rb"<script|<foreignobject|<iframe|<object|<embed|javascript:|href\s*=|\son\w+\s*=", re.I
+)
+
+
+def _safe_svg(data: bytes) -> bool:
+    """Return whether `data` is an SVG drawing with nothing that could run or load anything."""
+
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+
+    return text.lstrip().startswith("<svg") and not _UNSAFE_SVG.search(data)
 
 
 def read_fields(project_dir: Path) -> list[dict[str, Any]]:

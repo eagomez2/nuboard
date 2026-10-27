@@ -9,14 +9,15 @@
   import { app } from '../lib/state.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
   import { addSnapshotToReport } from '../lib/reports.svelte';
-  import { svgToPng } from '../lib/snapshot';
+  import { svgToSvg } from '../lib/snapshot';
 
   const fs = new FullScreen();
   onMount(() => fs.listen());
   async function saveToReport() {
     const project = runs[0]?.project ?? router.get('project');
     if (!svg || !project) return;
-    const png = await svgToPng(svg, `Timeline · ${runs.length} runs`);
+    // an SVG, so the exported report keeps a hover title on every bar
+    const png = await svgToSvg(svg, `Timeline · ${runs.length} runs`);
     if (fs.on) await fs.toggle(); // dialogs are not shown over a full-screen element
     await addSnapshotToReport(project, png, `Timeline of ${runs.length} runs`, {
       page: 'timeline',
@@ -409,6 +410,11 @@
           {#if x1 >= LABEL && x0 <= LABEL + plotW}
             <g
               class="bar"
+              data-tip="{r.name} · {r.id}\n{cap(r.status)} · {r.project}\nStarted {fmtDate(
+                r.started,
+              )}\nDuration {fmtDuration(endOf(r) - (r.started ?? 0))}{r.alerts?.length
+                ? `\n${r.alerts.map((a) => a.message).join('\n')}`
+                : ''}"
               role="button"
               tabindex="-1"
               onpointerenter={(e) => (hover = { run: r, x: e.clientX, y: e.clientY })}

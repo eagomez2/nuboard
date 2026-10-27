@@ -80,9 +80,44 @@ test('the all-runs PR chart downloads as a PNG and goes to a report', async ({ p
   await dlg.getByLabel('Report').fill('e2e-pr-all');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
-  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"view:media\?.*mfind=/);
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"overlay:\S+@\d+ \S+@\d+/);
+  // drawn live in the report, as on the Media page
+  await expect(page.locator('.md .pr svg polyline').nth(1)).toBeAttached();
+  await expect(page.locator('.md .legend').first()).toContainText('AP');
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const exportedPath = test.info().outputPath('e2e-pr-all.html');
+  await (await exported).saveAs(exportedPath);
+  const html = readFileSync(exportedPath, 'utf8');
+  expect(html).toMatch(/class="nbpr"><svg[^]*<polyline[^]*<polyline/);
+  // the exported file shows the nearest threshold on hover, as the viewer does
+  const off = await page.context().browser()!.newPage();
+  await off.goto('file://' + exportedPath);
+  const svg = off.locator('.nbpr svg').first();
+  const box = (await svg.boundingBox())!;
+  await off.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.08);
+  await expect(off.locator('.nbpr .nbtip').first()).toContainText('Threshold');
+  await off.mouse.move(box.x + box.width * 0.12, box.y + box.height * 0.85); // far from every curve
+  await expect(off.locator('.nbpr .nbtip').first()).toBeHidden();
+  await off.close();
   await page.getByRole('button', { name: 'Open in Media' }).click();
   await expect(page).toHaveURL(/#\/media.*mfind=/);
+});
+
+test('best-step mode shows each run at its lowest or highest value of the scalar', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mmode=best&mmetric=val%2Floss&mfind=%5Esamples%2Faugmented%24');
+  const note = page.locator('.bestnote').first();
+  const firstCard = page.locator('.grid').first().locator('> *').first();
+  // val/loss: lower is better, so Lowest is the default, late in training; Highest is near the start
+  await expect(page.getByRole('button', { name: 'Lowest', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(note).toContainText(/^Lowest\s+val\/loss:\s+cutmix-s1\s+0\.7\d*\s+at step (9\d|100)\b/);
+  await expect(firstCard).toContainText(/Step (9\d|100)\b/);
+  await page.getByRole('button', { name: 'Highest', exact: true }).click();
+  await expect(note).toContainText(/^Highest\s+val\/loss:\s+cutmix-s1\s+0\.9\d*\s+at step [0-5]\b/);
+  await expect(firstCard).toContainText(/Step [0-5]\b/);
+  await page.getByRole('button', { name: 'Lowest', exact: true }).click();
+  await expect(firstCard).toContainText(/Step (9\d|100)\b/);
 });
 
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
@@ -528,7 +563,10 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   await dlg.getByLabel('Report').fill('e2e-timeline');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
-  await expect(page.locator('.preview .nb-view img')).toBeVisible();
+  // saved as an SVG, drawn inline with a title on every bar
+  await expect(page.locator('.preview .nb-view svg').first()).toBeVisible();
+  await expect(page.locator('.preview .nb-view svg title').first()).toContainText('Started');
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/files\/e2e-timeline-\w+\.svg "view:timeline/);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
@@ -536,7 +574,7 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   expect(file.suggestedFilename()).toBe('e2e-timeline.html');
   const html = await (await file.createReadStream()).toArray();
   const doc = Buffer.concat(html).toString();
-  expect(doc).toContain('src="data:image/png;base64,');
+  expect(doc).toMatch(/<div class="nbsvg"><svg[^]*<title>[^<]*Started/);
   expect(doc).toContain('class="nbtheme"'); // switchable by default
   expect(doc).toMatch(/<footer>Exported with NuBoard \d+\.\d+\.\d+ from /);
   expect(doc).toContain('rel="icon"');
@@ -583,6 +621,12 @@ test('several media items go to a report together and export without a network',
 
 test('a saved chart is drawn live in the exported HTML and follows its theme', async ({ page, browser }) => {
   await page.goto('/#/reports?rproject=vit-ablations&report=augmentation-findings');
+  // in the viewer, hovering the chart shows the values at that step
+  const chart = page.locator('.preview .embed .plot').first();
+  await expect(chart.locator('canvas').first()).toBeVisible();
+  await chart.hover({ position: { x: 300, y: 120 } });
+  await chart.hover({ position: { x: 320, y: 130 } });
+  await expect(page.getByRole('status', { name: 'Values at the cursor' })).toContainText(/Step [\d,]+/);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Switchable', exact: true }).click();
@@ -594,6 +638,12 @@ test('a saved chart is drawn live in the exported HTML and follows its theme', a
   const off = await ctx.newPage();
   await off.goto('file://' + path);
   await expect(off.locator('.nbplot canvas')).toBeVisible();
+  // hovering the chart reads out every series at that step, as the Inspector does
+  const over = off.locator('.nbplot .u-over').first();
+  await over.hover({ position: { x: 200, y: 100 } });
+  await expect(off.locator('.nbplot .nbtip').first()).toContainText(/^Step [\d,]+/);
+  await over.click({ position: { x: 200, y: 100 } });
+  await expect(off.locator('.nbplot .nbtip').first()).toContainText('pinned');
   await expect.poll(() => drawnPixels(off.locator('.nbpoints canvas'))).toBeGreaterThan(500);
   await expect(off.locator('html')).toHaveAttribute('data-theme', 'light');
   await off.getByRole('button', { name: 'Switch between light and dark theme' }).click();

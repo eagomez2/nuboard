@@ -2,6 +2,7 @@
 // snapshots inlined as data URLs, logged text and HTML inlined, and interactive figures drawn from
 // their spec by the Plotly or Vega libraries embedded once in the file (only those it uses).
 
+import DOMPurify from 'dompurify';
 import { api, type AudioNote, type MediaItem } from './api';
 import { DISPLAY_NAME } from './brand';
 import { decodeSpec } from './chartspec';
@@ -9,12 +10,14 @@ import { baselineExtent, baselineLines } from './baselines';
 import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
 import { lowerIsBetter } from './format';
 import { tableHtml, type TableData } from './tables';
-import { fmtTick, histSvg, type HistData, type HistSeries } from './hist';
+import { HIST_BOX, fmtTick, histScale, histSvg, loadHist, type HistData, type HistSeries } from './hist';
+import { resolveOverlay } from './overlay';
 import { mountPoints } from './points';
 import { mountWaveform } from './waveplot';
 import WAVEPLOT_CSS from './waveplot.css?raw';
+import HOVER_JS from './export-hover.js?raw';
 import { waveformKit } from './waveform';
-import { prArea, prSvg, type PRData } from './pr';
+import { PR_BOX, prArea, prSvg, type PRData, type PRSeries } from './pr';
 import { renderMarkdown } from './markdown';
 import { ema, robustRange } from './smooth';
 import LOGO from '../../public/logo.svg?raw';
@@ -72,6 +75,8 @@ interface Needs {
   bokeh?: string;
   /** An audio item has notes, so the script that plays a note's section is added. */
   notes?: boolean;
+  /** A PR curve or distribution is embedded, so the hover read-outs are added. */
+  hover?: boolean;
   /** A point cloud is embedded, so its renderer is added. */
   points?: boolean;
   /** Audio is drawn with the waveform player, so the player is embedded once. */
@@ -246,7 +251,16 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
     high: l.high ?? null,
     c: l.series.length === 1 ? l.series[0] % 8 : null,
   }));
-  const json = JSON.stringify({ xKind: data.xKind, log: spec.log, zoom: spec.zoom, range, extent, baselines, series });
+  const json = JSON.stringify({
+    lower: lowerIsBetter(spec.metric),
+    xKind: data.xKind,
+    log: spec.log,
+    zoom: spec.zoom,
+    range,
+    extent,
+    baselines,
+    series,
+  });
   const sub = spec.group ? `grouped by ${spec.group}` : `${spec.runs.length} runs`;
   const legend = series
     .map((x) => `<span><i style="background:var(--s${x.c + 1})"></i>${esc(x.label)}</span>`)
@@ -317,6 +331,7 @@ function nbCharts() {
       const bands = [];
       let col = 1;
       const hidden = { stroke: 'transparent', width: 0, points: { show: false } };
+      const mains = [];
       for (const s of d.series) {
         const color = v('--s' + (s.c + 1)) || '#0072b2';
         const cols = [];
@@ -331,6 +346,8 @@ function nbCharts() {
         }
         cols.push(s.y);
         series.push({ label: s.label, stroke: color, width: 2, points: { show: false } });
+        const lo = s.lo ? series.length - 3 : -1;
+        mains.push({ i: series.length - 1, lo, hi: s.lo ? lo + 1 : -1, label: s.label, c: s.c });
         col += cols.length;
         tables.push([s.x].concat(cols));
       }
@@ -382,8 +399,9 @@ function nbCharts() {
         scales: { x: { time: d.xKind === 'time' }, y },
         axes: [Object.assign({ size: 40 }, axis), Object.assign({ size: 56 }, axis)],
         cursor: { drag: { x: true, y: false }, points: { show: false } },
-        hooks: { draw: [drawBaselines] },
+        hooks: { draw: [drawBaselines], setCursor: [(p) => p.nbTip && p.nbTip()] },
       }, tables.length === 1 ? tables[0] : uPlot.join(tables), el);
+      if (window.nbLineTip) u.nbTip = nbLineTip(u, el, d, mains, (c) => v('--s' + (c + 1)) || '#0072b2');
       if (d.zoom) u.setScale('x', { min: d.zoom[0], max: d.zoom[1] });
       nbDrawn.set(el, u);
     } catch (e) {
@@ -396,6 +414,73 @@ nbCharts();
 document.addEventListener('nbtheme', () => { nbDraw(); nbCharts(); });
 let nbResize = 0;
 addEventListener('resize', () => { clearTimeout(nbResize); nbResize = setTimeout(nbCharts, 150); });`;
+
+/** An SVG snapshot (the Timeline) inlined, so the title on each bar shows on hover. */
+async function svgFigure(src: string, caption: string): Promise<string> {
+  const res = await fetch(src);
+  const svg = res.ok ? DOMPurify.sanitize(await res.text(), { USE_PROFILES: { svg: true } }) : '';
+  const body = svg ? `<div class="nbsvg">${svg}</div>` : `<p class="missing">Missing snapshot: ${esc(src)}</p>`;
+  return `<figure>${body}${caption ? `<figcaption><span>${esc(caption)}</span></figcaption>` : ''}</figure>`;
+}
+
+/** The series of a PR curve or distribution SVG as JSON, for the hover read-out in the exported file. */
+function hoverJson(needs: Needs, kind: 'pr' | 'hist', w: number, h: number, series: (PRSeries | HistSeries)[]): string {
+  needs.hover = true;
+  const data =
+    kind === 'pr'
+      ? {
+          kind,
+          w,
+          h,
+          box: PR_BOX,
+          series: (series as PRSeries[]).map((s) => ({ name: s.name, color: s.color, data: s.data })),
+        }
+      : {
+          kind,
+          w,
+          h,
+          box: HIST_BOX,
+          ...histScale(series as HistSeries[]),
+          series: (series as HistSeries[]).map((s) => ({
+            name: s.name,
+            color: s.color,
+            edges: s.data.edges,
+            counts: s.data.counts,
+          })),
+        };
+  return `<script type="application/json" class="nbhov">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+}
+
+/** Every run's PR curve or distribution on one chart, as an SVG with its legend; null if not found. */
+async function overlayHtml(project: string, refs: string, caption: string, needs: Needs): Promise<string | null> {
+  let overlay;
+  try {
+    overlay = await resolveOverlay(project, refs);
+  } catch {
+    return null;
+  }
+  const fig = (chart: string, legend: string[]) =>
+    `<figure><div class="nbpr">${chart}<div class="nblegend">${legend.join('')}</div></div>${caption ? `<figcaption><span>${esc(caption)}</span></figcaption>` : ''}</figure>`;
+  const swatch = (color: string, text: string) => `<span><i style="background:${color}"></i>${esc(text)}</span>`;
+  if (overlay.kind === 'pr') {
+    const series = [];
+    for (const c of overlay.curves) {
+      const res = await fetch(c.url);
+      if (res.ok) series.push({ ...c, data: (await res.json()) as PRData });
+    }
+    const legend = series.map((s) => swatch(s.color, `${s.name} · AP ${prArea(s.data).toFixed(3)}`));
+    return fig(prSvg(series, 640, 300) + hoverJson(needs, 'pr', 640, 300, series), legend);
+  }
+  const series: HistSeries[] = [];
+  for (const c of overlay.curves) {
+    const data = await loadHist(c.url);
+    if (data) series.push({ ...c, data });
+  }
+  return fig(
+    histSvg(series, 640, 280) + hoverJson(needs, 'hist', 640, 280, series),
+    series.map((s) => swatch(s.color, s.name)),
+  );
+}
 
 async function mediaHtml(
   project: string,
@@ -454,7 +539,8 @@ async function mediaHtml(
     body = tableHtml(table, base, lowerIsBetter) + since;
   } else if (item.mime === PR_MIME) {
     const data = (await (await fetch(url)).json()) as PRData;
-    const curve = prSvg([{ name: found.run_name, color: 'var(--s1)', data }], 640, 300);
+    const series = [{ name: found.run_name, color: 'var(--s1)', data }];
+    const curve = prSvg(series, 640, 300) + hoverJson(needs, 'pr', 640, 300, series);
     body = `<div class="nbpr">${curve}<small>AP ${prArea(data).toFixed(3)}</small></div>`;
   } else if (item.mime === HIST_MIME) {
     // the step against the one logged before it, as the viewer shows it
@@ -474,7 +560,7 @@ async function mediaHtml(
       `n ${data.count.toLocaleString()}`,
       prev ? `Dashed: step ${prev.step}` : '',
     ].filter(Boolean);
-    body = `<div class="nbpr">${histSvg(series, 640, 280)}<small>${esc(stats.join(' · '))}</small></div>`;
+    body = `<div class="nbpr">${histSvg(series, 640, 280)}${hoverJson(needs, 'hist', 640, 280, series)}<small>${esc(stats.join(' · '))}</small></div>`;
   } else if (item.mime === POINTS_MIME) {
     needs.points = true;
     const base64 = (await dataUrl(url)).replace(/^data:[^,]*,/, '');
@@ -527,7 +613,7 @@ figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;fon
 .nbfig{width:100%;min-height:120px}.frame{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff}.missing{color:var(--faint);font-style:italic}
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
-.nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.nbsvg{overflow-x:auto;border:1px solid var(--border);border-radius:8px}.nbsvg svg{display:block;max-width:100%;height:auto}.nbtip{position:absolute;z-index:5;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;max-width:min(380px,75%);padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 4px 16px rgba(0,0,0,.14);font:12px ui-monospace,Menlo,monospace;color:var(--text);pointer-events:none;white-space:nowrap}.nbtip span{overflow:hidden;text-overflow:ellipsis}.nbtip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}.nbtip-head{font-weight:600}.nbtip-faint{color:var(--faint)}.nbtip-pin{border-color:var(--link)}.nbplot .nbtip{transform:none}.nbtip[hidden],.nbdot[hidden]{display:none}.nbdot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;border:2px solid var(--panel);pointer-events:none;z-index:4}.nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
 footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;text-align:center}
 .nbtheme{position:fixed;top:14px;right:14px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer}
 .nbtheme:hover{color:var(--text)}.nbtheme svg{width:18px;height:18px}
@@ -611,8 +697,19 @@ export async function reportHtml(
       ),
     );
   }
-  for (const el of main.querySelectorAll<HTMLElement>('.nb-view'))
-    jobs.push(swap(el, snapshot(el.dataset.src ?? '', el.dataset.caption ?? '', true)));
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-overlay')) {
+    const { refs = '', caption = '', src = '' } = el.dataset;
+    jobs.push(
+      swap(
+        el,
+        overlayHtml(project, refs, caption, needs).then((html) => html ?? snapshot(src, caption, true)),
+      ),
+    );
+  }
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-view')) {
+    const { src = '', caption = '' } = el.dataset;
+    jobs.push(swap(el, /\.svg$/i.test(src) ? svgFigure(src, caption) : snapshot(src, caption, true)));
+  }
   for (const img of main.querySelectorAll<HTMLImageElement>('img'))
     if (img.getAttribute('src')?.startsWith(files))
       jobs.push(dataUrl(img.getAttribute('src')!).then((d) => img.setAttribute('src', d)));
@@ -625,6 +722,7 @@ export async function reportHtml(
     const bokeh = await bokehScripts(needs.bokeh);
     if (bokeh) scripts.push(...bokeh);
   }
+  if (needs.hover || needs.libs.has('uplot')) scripts.push(HOVER_JS);
   if (needs.libs.size) scripts.push(DRAW);
   if (needs.notes) scripts.push(NOTES_JS);
   if (needs.points) scripts.push(POINTS_JS);
