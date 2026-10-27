@@ -270,7 +270,13 @@ def test_malformed_files_never_raise(tmp_path, name, data):
         for _ in range(500):
             deep = [deep, 1]
 
-        _torch_zip(path, deep)
+        limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(5000)  # Python 3.10 pickles this nesting one Python frame per level
+
+        try:
+            _torch_zip(path, deep)
+        finally:
+            sys.setrecursionlimit(limit)
     elif name == "badshape.pth":
         _torch_zip(path, {"w": _T((3, -1))})
     elif name == "badshape.safetensors":
