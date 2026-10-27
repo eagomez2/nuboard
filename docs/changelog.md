@@ -1,7 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.18.0
 
+- **Interactive charts in reports and exported HTML.** A chart saved from the
+  Charts page lists every series' value at the step under the pointer, best
+  first, as the Inspector does, in the viewer and in the exported HTML file;
+  a click pins the values. In the exported file, PR curves show the nearest
+  threshold with its precision, recall and TP/FP/TN/FN counts on hover, and
+  distributions the bin under the pointer for each run, as in the viewer.
+- **The all-runs chart in reports.** The "All runs on one chart" overlay on
+  the Media page can be added to a report, where it is drawn live from the
+  logged items (hover, legend, **Open in Media**), and exported to HTML with
+  its hover read-outs. It also downloads as a PNG with its legend.
+- **Timeline snapshots are SVG.** A Timeline added to a report is saved as an
+  SVG drawing, sharp at any size, with a hover title on every bar (name, id,
+  status, start, duration, alerts) in the viewer and in exported HTML.
+- **Best-step mode** on the Media page always shows the choice last made:
+  an answer for an earlier choice (Lowest before Highest, another scalar, a
+  live refresh) could arrive later and show the other end. The line under the
+  cards now says Lowest or Highest, and notes when the nearest logged item is
+  from a different step than the best value.
 - **Open the all-runs chart large.** The "All runs on one chart" overlay of
   PR curves and distributions on the Media page has a magnifier button that
   opens it in the large view, as single cards do; Esc closes it. It can also

@@ -37,7 +37,7 @@ path.
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
-    reports/files/*.png                   chart and plot snapshots embedded in reports
+    reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -353,7 +353,14 @@ snapshot.
 
 A snapshot from another page (Sweeps, Timeline) has the title
 `view:<page>?<viewer URL parameters>`; the viewer shows the image with a
-button that reopens that page with those parameters.
+button that reopens that page with those parameters. Timeline snapshots are
+SVG files (no scripts, event handlers or links; each bar has a `<title>`), the
+others PNG.
+
+The Media page's "All runs on one chart" has the title
+`overlay:<ref> <ref> ...`, one `<run id>/<key>@<step>` reference per run
+(as after `media:`), separated by spaces. The viewer draws the chart live
+from those items and shows the PNG snapshot when none of them is found.
 
 ## Property definitions: `fields.json`
 

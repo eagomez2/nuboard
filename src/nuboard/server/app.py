@@ -1507,7 +1507,9 @@ def create_app(
         if target is None or not target.is_file():
             return JSON({"error": "not found"}, status_code=404)
 
-        return FileResponse(target)
+        # an SVG opened on its own runs nothing, whatever the file holds
+        csp = "default-src 'none'; style-src 'unsafe-inline'"
+        return FileResponse(target, headers={"Content-Security-Policy": csp})
 
     async def report_snapshot(request: Request) -> Response:
         """Store a chart snapshot (JSON body: `project`, `report`, `png` as a data URL)."""

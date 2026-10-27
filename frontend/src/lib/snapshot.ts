@@ -47,8 +47,8 @@ function frame(
   return out.toDataURL('image/png');
 }
 
-/** Load an inline SVG as an image, with its computed styles copied on, at its on-screen size. */
-async function svgImage(svg: SVGSVGElement): Promise<{ img: HTMLImageElement; w: number; h: number }> {
+/** A copy of an inline SVG with its computed styles written on, so it draws the same on its own. */
+function styledClone(svg: SVGSVGElement): SVGSVGElement {
   const box = svg.getBoundingClientRect();
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const src = [svg, ...svg.querySelectorAll('*')];
@@ -58,10 +58,78 @@ async function svgImage(svg: SVGSVGElement): Promise<{ img: HTMLImageElement; w:
     const style = STYLE_PROPS.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';');
     dst[i].setAttribute('style', style);
   });
-  clone.querySelectorAll('title').forEach((t) => t.remove());
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   clone.setAttribute('width', String(box.width));
   clone.setAttribute('height', String(box.height));
+  return clone;
+}
+
+/**
+ * Render an inline SVG to a standalone SVG data URL, with the panel background and a title.
+ *
+ * Elements with a `data-tip` get it as their `<title>`, which shows on hover wherever the SVG is
+ * inlined (as in an exported report). Event handlers, classes and other attributes the page used
+ * are dropped, so the file holds only the drawing.
+ */
+export async function svgToSvg(svg: SVGSVGElement, title = ''): Promise<string> {
+  const clone = styledClone(svg);
+  clone.querySelectorAll('title').forEach((t) => t.remove());
+  for (const el of [clone, ...clone.querySelectorAll('*')]) {
+    const tip = el.getAttribute('data-tip');
+    for (const a of [...el.attributes])
+      if (
+        !/^(style|xmlns|width|height|viewBox|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|d|points|transform|text-anchor|fill|stroke)$/.test(
+          a.name,
+        )
+      )
+        el.removeAttribute(a.name);
+    if (tip) {
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      t.textContent = tip;
+      el.prepend(t);
+    }
+  }
+  const w = Number(clone.getAttribute('width'));
+  const h = Number(clone.getAttribute('height'));
+  const top = title ? 34 : 0;
+  const NS = 'http://www.w3.org/2000/svg';
+  const out = document.createElementNS(NS, 'svg');
+  out.setAttribute('xmlns', NS);
+  out.setAttribute('width', String(w));
+  out.setAttribute('height', String(h + top));
+  out.setAttribute('viewBox', `0 0 ${w} ${h + top}`);
+  const bg = document.createElementNS(NS, 'rect');
+  bg.setAttribute('width', '100%');
+  bg.setAttribute('height', '100%');
+  bg.setAttribute('fill', cssVar(svg, '--panel', '#fff'));
+  out.append(bg);
+  if (title) {
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', '12');
+    t.setAttribute('y', '22');
+    t.setAttribute(
+      'style',
+      `fill:${cssVar(svg, '--text', '#111')};font:600 14px ${cssVar(svg, '--mono', 'monospace')}`,
+    );
+    t.textContent = title;
+    out.append(t);
+  }
+  const body = document.createElementNS(NS, 'g');
+  body.setAttribute('transform', `translate(0,${top})`);
+  body.append(...clone.childNodes);
+  out.append(body);
+  const text = new XMLSerializer().serializeToString(out);
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `data:image/svg+xml;base64,${btoa(bin)}`;
+}
+
+/** Load an inline SVG as an image, with its computed styles copied on, at its on-screen size. */
+async function svgImage(svg: SVGSVGElement): Promise<{ img: HTMLImageElement; w: number; h: number }> {
+  const box = svg.getBoundingClientRect();
+  const clone = styledClone(svg);
+  clone.querySelectorAll('title').forEach((t) => t.remove());
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
   try {
     const img = new Image();
