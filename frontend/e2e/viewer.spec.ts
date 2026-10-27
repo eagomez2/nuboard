@@ -52,6 +52,17 @@ test('media page shows logged images', async ({ page }) => {
   await expect(page.getByText('No key matches')).toBeVisible();
 });
 
+test('the all-runs PR chart opens large', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fpr%2F');
+  await expect(page.getByText('All runs on one chart').first()).toBeVisible();
+  await page.locator('.prhead').first().getByRole('button', { name: 'Open large' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('All runs on one chart')).toBeVisible();
+  await expect(dialog.locator('svg polyline').first()).toBeAttached();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&cols=field:verdict');
   await expect(page.getByRole('button', { name: /health alert/ }).first()).toBeVisible();
@@ -90,6 +101,7 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await page.goto('/#/timeline?project=llm-pretrain');
   await expect(page.locator('g.bar').first()).toBeVisible();
   expect(await page.locator('g.bar').count()).toBeGreaterThan(12);
+  await expect(page.locator('text.name tspan.rid').first()).toHaveText(/^ [0-9a-z]{6,12}$/);
   await page.goto('/#/artifacts?project=llm-pretrain');
   await expect(page.getByRole('heading', { name: 'fineweb-edu:v2' })).toBeVisible();
   await expect(page.locator('g.node.run')).toHaveCount(14);

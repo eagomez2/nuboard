@@ -309,7 +309,8 @@ The main chart can go full screen, and any plot can be added to a report. See
 ![Timeline page](../assets/timeline-light.png){ .nb-shot }
 
 Every run as a bar from start to end, grouped by project, colored by status,
-project or group. **Packed** puts runs that never overlap on the same row, so
+project or group. Each row shows the run's name followed by the end of its id,
+which tells apart runs with the same name; hover a bar for the full id. **Packed** puts runs that never overlap on the same row, so
 the chart shows how many ran at once; the summary line gives the peak and the
 total run time. Crashed runs end in ✕, runs with alerts have a dot, and
 diamonds mark artifact versions a run produced. Click a bar to open the run.
@@ -441,10 +442,11 @@ since the previous step.
 ### PR curves
 
 PR curves are listed with the figures. Each card draws its run's curve
-(precision against recall) in the run's color with its average precision, and
-a chart above the cards overlays every run's curve at the chosen step, as
-TensorBoard does. Hover a curve for the threshold, precision, recall and the
-TP, FP, TN and FN counts there.
+(precision against recall) in the run's color with its average precision
+(AP, the area under the curve, by the trapezoidal rule), and a chart above the
+cards overlays every run's curve at the chosen step, as TensorBoard does; its
+magnifier button opens it large. Hover a curve for the threshold, precision,
+recall and the TP, FP, TN and FN counts there.
 
 ### Distributions
 
@@ -456,7 +458,8 @@ fairly. Hover for the bin under the pointer and its share of the values.
 **Over steps** switches the card to TensorBoard's distributions view: the
 median as a line and bands holding 68%, 86% and all of the values at every
 logged step (up to 150, sampled evenly), with the chosen step marked. A chart
-above the cards overlays every run's histogram at the chosen step. In an HTML
+above the cards overlays every run's histogram at the chosen step; its
+magnifier button opens it large. In an HTML
 export a distribution is drawn as a picture with the step before it.
 
 ### Point clouds
