@@ -273,6 +273,24 @@ input[type='range'] {
   cursor: text;
 }
 
+.amp-axis {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.amp-axis span {
+  position: absolute;
+  left: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .message {
   padding: 6px 2px 2px;
   color: var(--muted);

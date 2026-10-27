@@ -122,7 +122,7 @@ data.mkdir(parents=True, exist_ok=True)
 nb.add_artifact("datasets", "labels", data, type="dataset",
                 metadata={"classes": 2}, reference=True)
 
-with nb.init("api-tour", name="artifacts") as run:
+with nb.init("api-tour", run_name="artifacts") as run:
     labels = run.use_artifact("datasets/labels:latest")
     print(labels.ref, labels.files)  # labels:v1 /…/shared/labels
 

@@ -23,7 +23,7 @@ and no database to back up.
 ```python
 import nuboard as nb
 
-with nb.init("llm-pretrain", name="baseline", config={"lr": 3e-4}) as run:
+with nb.init("llm-pretrain", run_name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
         run.add_scalar({"train/loss": loss}, step=step)  # a few µs, never blocks training

@@ -13,7 +13,7 @@ name (the last one used is filled in) and a caption, then appends a line such
 as
 
 ```markdown
-![cutmix-s0 at the best val/acc](media:20261016-0815_cutmix-s0_ab12cd/samples/augmented@80)
+![cutmix-s0 at the best val/acc](media:20261016T0815-e8021047/samples/augmented@80)
 ```
 
 to the end of the report, creating it if needed.

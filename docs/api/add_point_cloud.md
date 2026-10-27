@@ -37,7 +37,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="point-clouds")
+run = nb.init("api-tour", run_name="point-clouds")
 rng = np.random.default_rng(0)
 palette = np.array([[230, 97, 74], [61, 133, 198], [92, 170, 102], [214, 162, 51]], np.uint8)
 centers = rng.normal(0, 3, (4, 3))

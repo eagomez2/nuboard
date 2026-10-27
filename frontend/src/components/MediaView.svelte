@@ -17,7 +17,7 @@
     runName,
     item,
     player = 'wave',
-    audioOptions = { colormap: 'theme', scale: 'linear', fftSize: 1024, spectrogram: true },
+    audioOptions = { colormap: 'theme', scale: 'linear', fftSize: 1024, spectrogram: true, axis: true },
     group = '',
     tall = false,
     color = 'var(--s1)',

@@ -2,6 +2,63 @@
 
 ## Unreleased
 
+- **Breaking: `all_ranks` is removed** from `init`, `add_scalar` and
+  `add_text`. In distributed training only rank 0 logs, and the calls are
+  no-ops on other ranks. The viewer only plots rank 0, so values from other
+  ranks could not be seen anyway. System metrics are still sampled by local
+  rank 0 of each machine. Drop the argument from your calls; runs logged
+  before keep their per-rank files and still load.
+
+## 0.17.1
+
+- **Fixed: a pinned point now follows the chart when you zoom or pan.** In
+  Charts, the dots of a pinned point kept their place on screen while the
+  axes changed under them, and disappeared once the data for the new range
+  loaded. They now stay on the points they mark.
+
+## 0.17.0
+
+- **Breaking: `init(name=...)` is now `init(run_name=...)`**, so it reads as
+  the pair it forms with `run_id`. `run_name` is a free label shown in the
+  viewer; it is no longer sanitized, since it is not part of any path.
+- **New run ids.** The default `run_id` is `<YYYYMMDDTHHMM>-<hash>`, such as
+  `20261001T1833-48ad8bb2`: a local timestamp plus 8 random hex digits,
+  redrawn if the folder already exists. The run name is no longer part of the
+  id. You can still pass your own `run_id`; existing runs keep their ids.
+  TensorBoard imports use the same shape, with a hash of the source folder.
+- Charts: a **Ranges** switch hides the shaded bands (group mean ± std or
+  min–max, logged low/high bounds, rank ranges) when they clutter the chart.
+  It is saved with charts added to reports. Smooth and the display switches
+  moved to their own row under the grouping and x-axis controls.
+- Charts: **Ctrl/⌘ + mouse wheel** (or a trackpad pinch) zooms the focus
+  chart around the cursor, also past the ends of the data, with y fitted to
+  the view; **Alt + wheel** zooms both axes; **Shift + drag** pans in any
+  direction and **Shift + wheel** along x. The view stays put while finer data
+  for it loads, and the data comes with a margin on each side so smoothing does
+  not restart at the edge. Dragging still zooms to a range and double-click
+  still resets.
+- Charts: the inspector's latest values leave out hidden series, and take the
+  last value in the zoomed range.
+- Timeline: **Day / Week / Month / Year / All** windows with **‹ ›** to step
+  through time, Ctrl/⌘ + wheel zoom around the cursor, Shift + wheel or
+  Shift + drag to move, and month and year ticks on long ranges.
+- **Calmer live updates.** Charts redraw new points only while you are not
+  zoomed, pinned or hovering, with a **Live** switch and a **New data ·
+  Update** button otherwise. That button and **Reset zoom** sit in the chart's
+  fixed-height header, a slow fetch shows a small spinner instead of swapping
+  text, and metric tabs stay on one row, so nothing moves when data arrives. Runs table rows hold still under the pointer.
+  Media, Sweeps, Timeline, Artifacts and Reports no longer change under you:
+  a **New results · Refresh** button appears instead, and heartbeat-only
+  changes are ignored.
+- Audio players label the waveform's amplitude (±1 full scale, per
+  channel), with an **Amplitude axis** switch on the Media page.
+- Waveform figures (signals and region lanes, such as VAD) get a full screen
+  button like the audio player's, in Media and in exported reports.
+- Run details follow the run's status, duration and summary live, so a run
+  that finishes shows **Finished** there too.
+- Tables: a highlighted row no longer gets a rounded corner when it is the
+  last row; table frames have square corners.
+- Updated the screenshots in the docs.
 - **Waveform figures.** `run.add_figure(key, nb.WaveformFigure(audio,
   sample_rate, signals))` logs audio with signals over its waveform, one value
   per sample, such as a voice activity probability or a gain mask. The viewer

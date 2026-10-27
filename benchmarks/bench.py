@@ -42,7 +42,7 @@ def main() -> None:
         f"{time.perf_counter() - t1:6.2f} s (background)"
     )
 
-    run = nb.init("bench", name="million", dir=root, capture_env=False, compact=False)
+    run = nb.init("bench", run_name="million", dir=root, capture_env=False, compact=False)
 
     for step in range(100_000):
         run.add_scalar({f"m{i}": step * 0.5 + i for i in range(10)}, step=step)

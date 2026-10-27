@@ -50,7 +50,7 @@ page, shown when a run has a baseline, turns them off.
 ```python
 import nuboard as nb
 
-run = nb.init("api-tour", name="baseline")
+run = nb.init("api-tour", run_name="baseline")
 run.add_scalar_baseline("val/pesq", 1.31, low=1.19, high=1.43)  # the noisy input
 
 for epoch in range(30):

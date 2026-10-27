@@ -39,7 +39,7 @@ import numpy as np
 import nuboard as nb
 
 classes = ["cat", "dog", "bird"]
-run = nb.init("api-tour", name="pr-curves")
+run = nb.init("api-tour", run_name="pr-curves")
 rng = np.random.default_rng(0)
 labels = rng.integers(0, 3, 2000)
 

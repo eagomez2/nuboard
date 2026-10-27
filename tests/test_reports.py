@@ -20,8 +20,8 @@ from nuboard.reports import export_report as export
 
 
 def test_parse_ref():
-    assert parse_ref("20261016-0815_base_ab12cd/samples/recon@1200") == MediaRef(
-        "20261016-0815_base_ab12cd", "samples/recon", 1200
+    assert parse_ref("20261016T0815-f01a036a/samples/recon@1200") == MediaRef(
+        "20261016T0815-f01a036a", "samples/recon", 1200
     )
 
     for bad in ("run-only", "run/key", "run/key@x", "/key@1"):

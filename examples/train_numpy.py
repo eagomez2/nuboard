@@ -73,7 +73,7 @@ def train(lr: float, seed: int, epochs: int = 30, batch: int = 64) -> None:
     }
 
     with nb.init(
-        "numpy-sweep", name=f"lr{lr:g}-s{seed}", config=config, tags=["example", "sweep"]
+        "numpy-sweep", run_name=f"lr{lr:g}-s{seed}", config=config, tags=["example", "sweep"]
     ) as run:
         step = 0
 

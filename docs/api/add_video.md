@@ -49,7 +49,7 @@ import numpy as np
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="video")
+run = nb.init("api-tour", run_name="video")
 rng = np.random.default_rng(0)
 frames, size = 32, 64
 yy, xx = np.mgrid[:size, :size]

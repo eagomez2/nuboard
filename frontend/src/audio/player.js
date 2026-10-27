@@ -762,6 +762,57 @@
     }
   }
 
+  //: Amplitude labels down the waveform's left edge (`args.axis`), one set
+  //: per channel, like the spectrogram's frequency labels. Full scale is
+  //: ±1, or the file's peak when the waveform is normalized
+  let axisBox = null;
+
+  function drawAmplitudeAxis() {
+    if (axisBox) axisBox.remove();
+
+    axisBox = null;
+
+    if (!args || !args.axis || !ws || !ready) return;
+
+    const c = colors();
+    const channels = Math.max(1, args.channels || 1);
+    const height = waveHeight();
+    const data = ws.getDecodedData();
+    axisBox = document.createElement('div');
+    axisBox.className = 'amp-axis';
+    axisBox.setAttribute('aria-hidden', 'true');
+    axisBox.style.height = `${height * channels}px`;
+
+    for (let ch = 0; ch < channels; ch++) {
+      let peak = 1;
+
+      if (args.normalize && data) {
+        const samples = data.getChannelData(Math.min(ch, data.numberOfChannels - 1));
+        let max = 0;
+
+        for (let i = 0; i < samples.length; i++) max = Math.max(max, Math.abs(samples[i]));
+
+        peak = max || 1;
+      }
+
+      // NOTE: Half steps only when the channel is tall enough to read them
+      const steps = height >= 110 ? [1, 0.5, 0, -0.5, -1] : [1, 0, -1];
+
+      for (const v of steps) {
+        const label = document.createElement('span');
+        const y = ch * height + ((1 - v) / 2) * height;
+        // The top and bottom labels sit inside the channel instead of on its edge
+        const shift = v === 1 ? '0%' : v === -1 ? '-100%' : '-50%';
+        const value = Number((v * peak).toPrecision(2));
+        label.textContent = value < 0 ? `\u2212${-value}` : String(value);
+        label.style.cssText = `top: ${y}px; transform: translateY(${shift}); color: ${c.muted}; background: ${rgba(c.bg, 0.7)};`;
+        axisBox.appendChild(label);
+      }
+    }
+
+    el.waveform.appendChild(axisBox);
+  }
+
   function createSpectrogram() {
     spec = null;
     specToken++;
@@ -1092,6 +1143,7 @@
       el.duration.textContent = formatTime(duration);
       el.zoom.value = 0;
       drawRuler();
+      drawAmplitudeAxis();
 
       if (pending) {
         const p = pending;
@@ -1439,6 +1491,7 @@
 
     if (ws.options.height !== wave) {
       ws.setOptions({ height: wave, splitChannels: channelOptions(wave) });
+      drawAmplitudeAxis();
     }
 
     if (specBox) {
@@ -1600,7 +1653,8 @@
     // NOTE: Every rerun sends the same arguments; only rebuild (and decode
     // the audio again) when the arguments or the theme changed
     // (the notes, name and tags do not need a rebuild either)
-    const { annotations: notes, header, ...rest } = newArgs;
+    // (nor does the amplitude axis, which is drawn over the waveform)
+    const { annotations: notes, header, axis, ...rest } = newArgs;
     const key = JSON.stringify([rest, newTheme || {}]);
 
     if (key !== structure) {
@@ -1612,6 +1666,11 @@
 
       if (visible) build();
       else reserveSpace();
+    }
+
+    if (!!args.axis !== !!axis) {
+      args.axis = axis;
+      drawAmplitudeAxis();
     }
 
     setAnnotations(notes);

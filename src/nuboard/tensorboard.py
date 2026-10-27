@@ -28,7 +28,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import _fs
 from ._media import histogram_from_buckets, pr_curve_json
 from .run import Run
 
@@ -604,11 +603,11 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                 result.scalars += len(scalars)
 
 
-def _run_id(source: Path, name: str, started: float) -> str:
+def _run_id(source: Path, started: float) -> str:
     """Return a stable run id, so importing the same folder twice is detected."""
-    digest = hashlib.sha1(str(source.resolve()).encode()).hexdigest()[:6]
-    stamp = datetime.fromtimestamp(started).strftime("%Y%m%d-%H%M")
-    return f"{stamp}_{_fs.sanitize(name)}_{digest}"
+    digest = hashlib.sha1(str(source.resolve()).encode()).hexdigest()[:8]
+    stamp = datetime.fromtimestamp(started).strftime("%Y%m%dT%H%M")
+    return f"{stamp}-{digest}"
 
 
 def import_logdir(
@@ -672,14 +671,14 @@ def import_logdir(
         first, last, hparams = _scan(files + extra)
         started = first if first is not None else os.path.getmtime(files[0])
         ended = last if last is not None else started
-        run_id = _run_id(folder, name, started)
+        run_id = _run_id(folder, started)
         run_dir = Path(dir) if dir is not None else None
         result = ImportResult(folder, name, run_id, Path(), hparams=len(hparams))
 
         try:
             run = Run(
                 project,
-                name=name,
+                run_name=name,
                 config=hparams,
                 dir=run_dir,
                 tags=tags,

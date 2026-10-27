@@ -46,11 +46,16 @@
     const off = onLive('runs', () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        app.loadRuns();
+        app.loadRuns(true);
         app.loadInfo();
       }, 300);
     });
     return off;
+  });
+
+  // Pages that follow live changes catch up with anything held back.
+  $effect(() => {
+    if (router.page === 'runs' || router.page === 'charts') app.applyPending();
   });
 
   // Reload the run list whenever the query or project in the URL changes.
@@ -114,7 +119,13 @@
       </button>
       <div class="title">
         <h1>{title}</h1>
-        <p>{subtitle}</p>
+        <p>
+          {subtitle}{#if app.pending}&nbsp;·&nbsp;<button
+              class="refresh"
+              title="Runs changed since this page was drawn"
+              onclick={() => app.applyPending()}><Icon name="reset" size={12} /> New results · Refresh</button
+            >{/if}
+        </p>
       </div>
       <QueryBar />
       <button
@@ -219,6 +230,19 @@
     flex-direction: column;
     gap: 16px;
     min-width: 0;
+  }
+  .refresh {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    border-radius: 999px;
+    padding: 1px 9px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    cursor: pointer;
   }
   header {
     display: flex;

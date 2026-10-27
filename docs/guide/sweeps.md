@@ -5,6 +5,53 @@ any set of runs: a project, a query result or your selection.
 
 ![Sweeps page with parallel coordinates and per-parameter scatters](../assets/sweeps-light.png){ .nb-shot }
 
+## Logging a sweep
+
+A sweep is nothing special to NuBoard: it is a set of runs, one per trial,
+whose config holds the settings being tried. Any search tool works, from a
+plain loop over a grid to a library that picks the next settings. Give the
+runs a shared `group` or tag so a query can select them.
+
+For example, with [Optuna](https://optuna.org):
+
+```python
+import optuna
+import nuboard as nb
+
+def objective(trial):
+    cfg = {
+        "lr": trial.suggest_float("lr", 1e-5, 1e-2, log=True),
+        "batch": trial.suggest_categorical("batch", [32, 64, 128]),
+    }
+    run = nb.init("mnist", run_name=f"trial-{trial.number}", config=cfg,
+                  group="lr-batch-search", tags=["sweep"])
+
+    for epoch in range(20):
+        val_loss = train_one_epoch_and_eval(cfg)  # your training code
+        run.add_scalar({"val/loss": val_loss}, step=epoch)
+        trial.report(val_loss, epoch)
+
+        if trial.should_prune():
+            run.finish(status="pruned")
+            raise optuna.TrialPruned()
+
+    run.finish()
+    return val_loss
+
+optuna.create_study(direction="minimize").optimize(objective, n_trials=50)
+```
+
+Then open Sweeps on `where tags has "sweep"` with `val/loss` as the
+objective. Some notes:
+
+- To stop a trial early, call `run.finish(status="pruned")` (any status
+  name works) before raising. A run that is already finished keeps its
+  status, even inside `with nb.init(...)`; without that call, an exception
+  ending the run records it as `crashed`.
+- Trials can run in parallel, in several processes or on several machines:
+  each run writes its own folder, so nothing needs to be shared on the
+  NuBoard side.
+
 ## Objective and parameters
 
 - **Objective**: pick a scalar and whether to use its **Best** value (the

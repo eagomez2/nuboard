@@ -19,6 +19,7 @@
     data,
     smoothing = 0,
     showRaw = true,
+    showBands = true,
     robust = true,
     logY = false,
     height = 360,
@@ -35,10 +36,13 @@
     markers = false,
     pinned = false,
     baselines = false,
+    zoom = null,
   }: {
     data: ChartData | null;
     smoothing?: number;
     showRaw?: boolean;
+    /** Shade the ranges (group bands, logged low/high, rank min–max) around each curve. */
+    showBands?: boolean;
     robust?: boolean;
     logY?: boolean;
     height?: number;
@@ -55,18 +59,32 @@
     regions?: { x0: number; x1: number; label: string }[];
     /** A dot on each curve at the data point under the cursor (as in TensorBoard). */
     markers?: boolean;
-    /** The cursor is pinned: the dots stay where they are. */
+    /** The cursor is pinned: the dots stay on the points they mark, through zoom and pan. */
     pinned?: boolean;
     /** Draw the baselines set with `add_scalar_baseline` as dashed lines. */
     baselines?: boolean;
+    /** The x range the data was fetched for, or null for the whole run. */
+    zoom?: [number, number] | null;
   } = $props();
   let dots: HTMLElement[] = [];
+  // the data point each dot marks, per series label; kept in data units so a pinned dot
+  // follows its point when the view zooms or pans, and survives rebuilds
+  let dotAt = new Map<string, [number, number]>();
 
   let el: HTMLDivElement;
   let plot: uPlot | null = null;
   let width = $state(600);
   let mains: { idx: number; label: string; series: number; lo: number | null; hi: number | null }[] = [];
   let frame = 0;
+  // What the user is looking at. It outlives rebuilds (new data, live updates) so the view
+  // never jumps; `zoom` only says which x range the data was fetched for.
+  let view: { x: [number, number] | null; y: [number, number] | null } = { x: null, y: null };
+  let lastZoom = ''; // the zoom this chart last reported, to tell its own changes from outside ones
+  let wheelTimer = 0;
+  let panned = false;
+  // per drawn series: x and smoothed y, to fit the y-axis to what is in view
+  let fitXs: ArrayLike<number>[] = [];
+  let fitYs: Float64Array[] = [];
 
   // Shorten text with an ellipsis so it fits in `max` canvas pixels (long run names would run off the plot).
   function fitText(ctx: CanvasRenderingContext2D, text: string, max: number): string {
@@ -105,13 +123,15 @@
     const bands: uPlot.Band[] = [];
     const nanMarks: { x: number; label: string; color: string }[] = [];
     const yValues: Float64Array[] = [];
+    const xValues: ArrayLike<number>[] = [];
     let col = 1;
     data.series.forEach((s, i) => {
       if (hidden.has(s.label) || !s.x.length) return;
       const color = colorOf(s.label, i);
       const dim = highlight !== null && highlight !== s.label;
       const smooth = smoothing > 0 ? ema(s.y, smoothing) : s.y;
-      const hasBand = (s.band || (s.n ?? 1) > 1) && s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]);
+      const hasBand =
+        showBands && (s.band || (s.n ?? 1) > 1) && s.lo.some((v, k) => Number.isFinite(v) && v !== s.y[k]);
       const cols: (number | null)[][] = [];
       if (showRaw && smoothing > 0) {
         cols.push(clean(s.y));
@@ -143,6 +163,7 @@
       });
       mains.push({ idx: col + cols.length - 1, label: s.label, series: i, lo: loIdx, hi: hiIdx });
       yValues.push(smooth instanceof Float64Array ? smooth : Float64Array.from(smooth));
+      xValues.push(s.x);
       col += cols.length;
       tables.push([s.x as unknown as number[], ...(cols as unknown as number[][])]);
       if (s.nonfinite) {
@@ -155,14 +176,16 @@
     });
     if (!tables.length) return;
     const joined = tables.length === 1 ? tables[0] : uPlot.join(tables);
+    const zkey = zoom ? `${zoom[0]}~${zoom[1]}` : '';
+    if (zkey !== lastZoom) {
+      // zoom set from outside (the URL, Reset zoom, an alert): show that range
+      view = { x: zoom ? [zoom[0], zoom[1]] : null, y: null };
+      lastZoom = zkey;
+    }
+    fitXs = xValues;
+    fitYs = yValues;
     const lines = baselines ? baselineLines(data.series, hidden) : [];
     const extent = baselineExtent(lines, logY);
-    let range = robust ? robustRange(yValues) : null;
-    if (range && extent && !logY && (extent[0] < range[0] || extent[1] > range[1])) {
-      // keep the baselines in view, with the same margin the range has
-      const pad = (Math.max(range[1], extent[1]) - Math.min(range[0], extent[0])) * 0.06;
-      range = [Math.min(range[0], extent[0] - pad), Math.max(range[1], extent[1] + pad)];
-    }
     const xf = xFormatter(data.xKind);
     const errColor = cssVar('--err');
 
@@ -178,7 +201,14 @@
         y: {
           distr: logY ? 3 : 1,
           range: (u, min, max) => {
-            if (range && !logY) return range;
+            if (view.y) return logY ? [Math.max(view.y[0], 1e-12), view.y[1]] : view.y;
+            let range = robust && !logY ? robustRange(inView(u.scales.x.min, u.scales.x.max)) : null;
+            if (range && extent && (extent[0] < range[0] || extent[1] > range[1])) {
+              // keep the baselines in view, with the same margin the range has
+              const pad = (Math.max(range[1], extent[1]) - Math.min(range[0], extent[0])) * 0.06;
+              range = [Math.min(range[0], extent[0] - pad), Math.max(range[1], extent[1] + pad)];
+            }
+            if (range) return range;
             if (extent) {
               min = Math.min(min, extent[0]);
               max = Math.max(max, extent[1]);
@@ -213,10 +243,21 @@
         points: { show: false },
         bind: {
           dblclick: () => () => {
-            onZoom?.(null);
+            resetView();
             return null;
           },
+          mousedown: (u, target, handler) => (e: MouseEvent) => {
+            if (e.shiftKey && onZoom && e.button === 0) {
+              startPan(e);
+              return null;
+            }
+            return handler(e);
+          },
           mouseup: (u, target, handler) => (e: MouseEvent) => {
+            if (panned) {
+              panned = false;
+              return null;
+            }
             if (u.select.width === 0) onPin?.();
             return handler(e);
           },
@@ -228,7 +269,8 @@
             if (u.select.width > 4) {
               const a = u.posToVal(u.select.left, 'x');
               const b = u.posToVal(u.select.left + u.select.width, 'x');
-              onZoom?.([a, b]);
+              view = { x: [a, b], y: null };
+              report(0);
             }
           },
         ],
@@ -238,12 +280,16 @@
             const idx = u.cursor.idx;
             const moveDots = markers && !pinned;
             if (idx === null || idx === undefined) {
-              if (moveDots) for (const d of dots) d.style.display = 'none';
+              if (moveDots) {
+                dotAt.clear();
+                placeDots(u);
+              }
               return onCursor?.(null, []);
             }
+            if (moveDots) dotAt.clear();
             const x = u.data[0][idx];
             const values: CursorValue[] = [];
-            for (const [i, m] of mains.entries()) {
+            for (const m of mains) {
               const col = u.data[m.idx] as (number | null)[];
               let k = idx;
               let found: number | null = col[k] ?? null;
@@ -256,14 +302,7 @@
                   found = col[k] as number;
                 }
               }
-              const dot = dots[i];
-              if (moveDots && dot) {
-                const left = found === null ? NaN : u.valToPos(u.data[0][k], 'x');
-                const top = found === null ? NaN : u.valToPos(found, 'y');
-                const inside = left >= 0 && left <= u.bbox.width / devicePixelRatio && top >= 0;
-                dot.style.display = inside && top <= u.bbox.height / devicePixelRatio ? 'block' : 'none';
-                dot.style.transform = `translate(${left}px, ${top}px)`;
-              }
+              if (moveDots && found !== null) dotAt.set(m.label, [u.data[0][k], found]);
               if (found !== null) {
                 values.push({
                   series: m.series,
@@ -274,10 +313,13 @@
                 });
               }
             }
+            if (moveDots) placeDots(u);
             onCursor?.(x, values);
           },
         ],
         draw: [
+          // a redraw follows every zoom, pan and resize: put the dots back on their points
+          (u) => placeDots(u),
           (u) => {
             if (!lines.length) return;
             const ctx = u.ctx;
@@ -386,6 +428,8 @@
       },
     };
     plot = new uPlot(opts, joined, el);
+    if (view.x) plot.setScale('x', { min: view.x[0], max: view.x[1] });
+    if (onZoom) plot.over.addEventListener('wheel', onWheel, { passive: false });
     dots = markers
       ? mains.map((m) => {
           const d = document.createElement('div');
@@ -395,6 +439,143 @@
           return d;
         })
       : [];
+    placeDots(plot);
+  }
+
+  /** Put each dot on the point it marks at the current scales; hide it when out of view. */
+  function placeDots(u: uPlot) {
+    mains.forEach((m, i) => {
+      const dot = dots[i];
+      const at = dotAt.get(m.label);
+      if (!dot) return;
+      const left = at ? u.valToPos(at[0], 'x') : NaN;
+      const top = at ? u.valToPos(at[1], 'y') : NaN;
+      const inside = left >= 0 && left <= u.bbox.width / devicePixelRatio && top >= 0;
+      dot.style.display = inside && top <= u.bbox.height / devicePixelRatio ? 'block' : 'none';
+      dot.style.transform = `translate(${left}px, ${top}px)`;
+    });
+  }
+
+  /** Smoothed y values whose x is in [lo, hi], per series (all of them without a range). */
+  function inView(lo: number | null | undefined, hi: number | null | undefined): Float64Array[] {
+    if (lo == null || hi == null) return fitYs;
+    return fitYs.map((ys, i) => {
+      const xs = fitXs[i];
+      let a = 0;
+      while (a < xs.length && xs[a] < lo) a++;
+      let b = xs.length;
+      while (b > a && xs[b - 1] > hi) b--;
+      return ys.subarray(a, b);
+    });
+  }
+
+  // y is zoomed and panned in log space on a log axis
+  const toY = (v: number) => (logY ? Math.log10(Math.max(v, 1e-300)) : v);
+  const fromY = (v: number) => (logY ? 10 ** v : v);
+
+  /** Show x and y; a null y fits the y-axis to the data in view. */
+  function setView(x: [number, number], y: [number, number] | null) {
+    const u = plot;
+    if (!u) return;
+    view = { x, y };
+    u.batch(() => {
+      u.setScale('x', { min: x[0], max: x[1] });
+      if (y) u.setScale('y', { min: y[0], max: y[1] });
+    });
+  }
+
+  /** Tell the page the x range in view (after `delay` ms of quiet), so it fetches finer data. */
+  function report(delay: number) {
+    clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => {
+      if (!view.x) return;
+      let [a, b] = view.x;
+      // round to ~5 significant digits of the span, to keep the URL readable
+      const digits = Math.min(Math.max(4 - Math.floor(Math.log10(b - a)), 0), 20);
+      [a, b] = [Number(a.toFixed(digits)), Number(b.toFixed(digits))];
+      lastZoom = `${a}~${b}`;
+      onZoom?.([a, b]);
+    }, delay);
+  }
+
+  function resetView() {
+    clearTimeout(wheelTimer);
+    view = { x: null, y: null };
+    const had = lastZoom !== '';
+    lastZoom = '';
+    if (had) onZoom?.(null);
+    else schedule();
+  }
+
+  function currentScales(u: uPlot): [[number, number], [number, number]] | null {
+    const { min: x0, max: x1 } = u.scales.x;
+    const { min: y0, max: y1 } = u.scales.y;
+    if (x0 == null || x1 == null || y0 == null || y1 == null || !(x1 > x0) || !(y1 > y0)) return null;
+    return [
+      [x0, x1],
+      [y0, y1],
+    ];
+  }
+
+  /**
+   * Ctrl/⌘ + wheel (or a trackpad pinch) zooms x around the cursor, past the data if you
+   * like, with y fitted to what is in view (unless y was panned or zoomed); Alt + wheel
+   * zooms both axes, as in TensorBoard; Shift + wheel pans along x. The view moves at once
+   * and the data for the new x range is fetched when the wheel stops.
+   */
+  function onWheel(e: WheelEvent) {
+    const u = plot;
+    if (!u) return;
+    const zooming = e.ctrlKey || e.metaKey || e.altKey;
+    if (!zooming && !e.shiftKey) return;
+    const now = currentScales(u);
+    if (!now) return;
+    e.preventDefault();
+    const [[x0, x1], [y0, y1]] = now;
+    const delta = (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.deltaY || e.deltaX);
+    if (zooming) {
+      const f = Math.min(Math.max(Math.exp(delta * 0.002), 0.5), 2);
+      const ax = u.posToVal(e.offsetX, 'x');
+      const x: [number, number] = [ax - (ax - x0) * f, ax + (x1 - ax) * f];
+      if (e.altKey) {
+        const ay = toY(u.posToVal(e.offsetY, 'y'));
+        const [ly0, ly1] = [toY(y0), toY(y1)];
+        setView(x, [fromY(ay - (ay - ly0) * f), fromY(ay + (ly1 - ay) * f)]);
+      } else setView(x, view.y);
+    } else {
+      const shift = (x1 - x0) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
+      setView([x0 + shift, x1 + shift], view.y);
+    }
+    report(250);
+  }
+
+  /** Shift + drag pans the view on both axes. */
+  function startPan(e: MouseEvent) {
+    const u = plot;
+    const now = u && currentScales(u);
+    if (!u || !now) return;
+    const [[x0, x1], [y0, y1]] = now;
+    const [ly0, ly1] = [toY(y0), toY(y1)];
+    const w = u.over.clientWidth || 1;
+    const h = u.over.clientHeight || 1;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    panned = false;
+    const move = (ev: MouseEvent) => {
+      const dx = ((ev.clientX - sx) / w) * (x1 - x0);
+      const dy = ((ev.clientY - sy) / h) * (ly1 - ly0);
+      if (dx || dy) panned = true;
+      setView([x0 - dx, x1 - dx], [fromY(ly0 + dy), fromY(ly1 + dy)]);
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      u.over.style.cursor = '';
+      if (panned) report(0);
+    };
+    u.over.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
   }
 
   function schedule() {
@@ -408,6 +589,7 @@
       data,
       smoothing,
       showRaw,
+      showBands,
       robust,
       logY,
       height,
@@ -434,6 +616,7 @@
   });
   onDestroy(() => {
     cancelAnimationFrame(frame);
+    clearTimeout(wheelTimer);
     plot?.destroy();
   });
 </script>

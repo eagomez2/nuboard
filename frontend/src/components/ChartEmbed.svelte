@@ -58,6 +58,8 @@
       {data}
       smoothing={s.smooth}
       showRaw={s.raw}
+      showBands={s.bands}
+      zoom={s.zoom}
       robust={s.robust}
       logY={s.log}
       baselines={s.base}

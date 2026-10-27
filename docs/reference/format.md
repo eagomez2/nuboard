@@ -16,7 +16,7 @@ path.
 <root>/                                   any folder; may hold many projects
   <project>/                              may be nested: team/llm/<project>/
     runs/
-      <YYYYMMDD-HHMM>_<name>_<rand6>/     one run (the folder name is the run id)
+      <YYYYMMDDTHHMM>-<hash8>/            one run (the folder name is the run id)
         run.json                          metadata, rewritten atomically
         annotations.json                  viewer-owned: star, notes, tags, archived, reviewed, fields
         events.r<rank>.s<session>.log     append-only event log, one per rank and session
@@ -28,7 +28,7 @@ path.
           requirements.txt                installed packages (pip freeze format)
           git.patch                       `git diff HEAD` at start (only if dirty)
           command.txt                     the command line that started the run
-          output.log                      what the script printed (capture_console; rank N: output.rN.log)
+          output.log                      what rank 0 printed (capture_console)
           ...                             files and folders added with run.add_file
     artifacts/<name>/v<N>/
       manifest.json                       hashes, sizes, type, metadata, producing run
@@ -44,16 +44,19 @@ path.
 
 ### Run ids and names
 
-- Run id: `<YYYYMMDD-HHMM>_<name>_<rand6>`, e.g. `20261013-0720_lr3e-4-s1_x5bq2k`.
-  The timestamp is local time at `init`. `<rand6>` uses a lowercase alphabet
-  without look-alike characters (`abcdefghijkmnpqrstuvwxyz23456789`), so ids
+- Run id: `<YYYYMMDDTHHMM>-<hash8>`, e.g. `20261013T0720-755037e9`.
+  The timestamp is local time at `init`. `<hash8>` is 8 random lowercase hex
+  digits (32 bits), and `init` draws again if the folder already exists, so ids
   are globally unique in practice and never collide on case-insensitive
-  filesystems.
-- `name` is sanitized to `[A-Za-z0-9._-]` (anything else becomes `-`), at most
-  64 characters. No colons appear in any file name, so folders work on Windows.
+  filesystems. An explicit `run_id` passed to `init` is used as given.
+  Runs created before 0.17 keep their `<YYYYMMDD-HHMM>_<name>_<rand6>` ids;
+  readers treat ids as opaque strings.
+- The id does not contain the run name. `run_name` (stored as `name` in
+  `run.json`) is a free label; no colons appear in any file name, so folders
+  work on Windows.
 - In a distributed job with a shared id (`TORCHELASTIC_RUN_ID` or
-  `SLURM_JOB_ID`), `<rand6>` is derived from a hash of that id so every rank
-  finds the same folder.
+  `SLURM_JOB_ID`), `<hash8>` is the first 8 hex digits of the SHA-1 of that id
+  so every rank finds the same folder.
 
 ## `run.json`
 
@@ -65,7 +68,8 @@ ignore keys they do not know.
 | --- | --- | --- |
 | `format_version` | int | Run folder format version (1). |
 | `run_id` | str | Same as the folder name. |
-| `project`, `name`, `group` | str | As given to `init`. |
+| `project`, `group` | str | As given to `init`. |
+| `name` | str | The `run_name` given to `init` (default `"run"`). |
 | `tags` | list[str] | Tags given to `init` (the viewer adds its own in `annotations.json`). |
 | `notes` | str | Notes given to `init`. |
 | `config` | object | The config passed to `init`. |
@@ -253,7 +257,7 @@ renaming it into place, so a version is either complete or absent.
   "description": "Final checkpoint of the lr=1e-3 seed 1 run",
   "metadata": {"step": 25000},
   "files": [{"path": "model.safetensors", "size": 2048, "sha256": "…"}],
-  "created": 1791970000.0, "producer_run": "20261014-0831_lr1e-3-s1_k2x9mf",
+  "created": 1791970000.0, "producer_run": "20261014T0831-f0885bdb",
   "created_by": {"user": "esteban", "host": "gpu-box", "command": "train.py --lr 1e-3"}
 }
 ```
@@ -306,7 +310,7 @@ their `inputs` and `outputs` entries, and the viewer shows them as unlinked.
 ## Collections: `collections/<name>.json`
 
 ```json
-{"name": "shortlist", "runs": ["20261014-1045_lr1e-3-s1_ei9ssn", "…"],
+{"name": "shortlist", "runs": ["20261014T1045-9dc071b6", "…"],
  "description": "Candidates for the 7B run", "created": 1791980000.0, "updated": 1791981000.0}
 ```
 
@@ -326,7 +330,7 @@ commit. The first `# ` heading is the report's title. A logged item is embedded
 with an image line whose target is a media reference:
 
 ```markdown
-![CutMix samples at epoch 100](media:20261016-0815_cutmix-s0_ab12cd/samples/augmented@100)
+![CutMix samples at epoch 100](media:20261016T0815-e8021047/samples/augmented@100)
 ```
 
 that is `media:<run id>/<key>@<step>`, where the run id is the run's folder

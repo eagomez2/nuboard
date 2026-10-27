@@ -10,7 +10,7 @@ only when you pass arrays yourself.
 ```python
 import nuboard as nb
 
-run = nb.init("mnist", name="baseline", config={"lr": 1e-3, "batch_size": 64})
+run = nb.init("mnist", run_name="baseline", config={"lr": 1e-3, "batch_size": 64})
 
 for step in range(1000):
     loss = 1 / (1 + step / 100)
@@ -88,12 +88,11 @@ the GPU.
 that a background thread writes out every `flush_interval` seconds (one by
 default). [`flush`](finish.md#flush) waits for everything queued so far.
 
-**Ranks.** In distributed training only rank 0 logs, unless you pass
-`all_ranks=True` to `nb.init`, `add_scalar` or `add_text`. Media are always
-logged by rank 0 only. See [Distributed training](../guide/distributed.md).
+**Ranks.** In distributed training only rank 0 logs; the calls are no-ops on
+other ranks. See [Distributed training](../guide/distributed.md).
 
 **Where it goes.** A run is the folder
-`<dir>/<project>/runs/<YYYYMMDD-HHMM>_<name>_<rand>/`. Scalars and text go to
+`<dir>/<project>/runs/<YYYYMMDDTHHMM>-<hash>/`. Scalars and text go to
 `events.r0.s0.log`, media bytes to `media.r0.pack`, indexed by frames in the
 event log. The [file format](../reference/format.md) describes both. Copying
 the folder copies the run.

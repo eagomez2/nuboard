@@ -10,7 +10,7 @@ Log from Python with three calls. Every run is a folder. View thousands of runs 
 ```python
 import nuboard as nb
 
-with nb.init("my-project", name="baseline", config={"lr": 3e-4}) as run:
+with nb.init("my-project", run_name="baseline", config={"lr": 3e-4}) as run:
     for step in range(10_000):
         loss = train_step()
         run.add_scalar({"train/loss": loss}, step=step)  # ~3 µs, never blocks training
@@ -40,7 +40,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.16.0-py3-none-any.whl[viewer]"
+uv tool install "nuboard-0.17.1-py3-none-any.whl[viewer]"
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 

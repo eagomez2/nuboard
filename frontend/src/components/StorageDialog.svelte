@@ -46,7 +46,6 @@
   }
 
   const res = $derived(st?.result ?? null);
-  const busy = $derived(st?.state === 'measuring' || st?.state === 'paused');
   const projects = $derived(res?.projects ?? []);
   const totals = $derived({
     runs: projects.reduce((a, p) => a + p.runs_bytes, 0),

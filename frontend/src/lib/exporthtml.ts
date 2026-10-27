@@ -433,6 +433,7 @@ async function mediaHtml(
       colormap: 'theme',
       waveHeight: 72,
       spectrogramHeight: 140,
+      axis: true,
       normalize: false,
       notes: false,
       annotations: item.notes ?? [],

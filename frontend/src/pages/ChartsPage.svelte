@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade } from 'svelte/transition';
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
@@ -24,6 +25,7 @@
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
   const showBase = $derived(router.get('base', '1') === '1');
+  const showBands = $derived(router.get('bands', '1') === '1');
   const zoom = $derived.by((): [number, number] | null => {
     const z = router.get('zoom');
     if (!z) return null;
@@ -41,7 +43,21 @@
 
   let metrics = $state<string[]>([]);
   let focusData = $state<ChartData | null>(null);
+  // Offer the Ranges toggle only when something draws a range around a curve.
+  const hasRanges = $derived(
+    (!!groupBy && agg !== 'none') || !!focusData?.series.some((s) => s.band || (s.n ?? 1) > 1),
+  );
   let loading = $state(false);
+  // the spinner shows only for a fetch slower than 300 ms, so quick live updates show nothing
+  let slow = $state(false);
+  $effect(() => {
+    if (!loading) {
+      slow = false;
+      return;
+    }
+    const t = setTimeout(() => (slow = true), 300);
+    return () => clearTimeout(t);
+  });
   let tick = $state(0);
   let hidden = $state(new Set<string>());
   let highlight = $state<string | null>(null);
@@ -89,9 +105,11 @@
         x: xKind,
         group: groupBy,
         agg,
-        points: 1400,
-        xmin: zoom?.[0],
-        xmax: zoom?.[1],
+        // a zoomed chart also gets half a view on each side, so smoothing is warmed up at the
+        // edges and a small pan or zoom out shows data before the next fetch arrives
+        points: zoom ? 2800 : 1400,
+        xmin: zoom ? zoom[0] - (zoom[1] - zoom[0]) / 2 : undefined,
+        xmax: zoom ? zoom[1] + (zoom[1] - zoom[0]) / 2 : undefined,
         signal: ctrl.signal,
       })
       .then((d) => {
@@ -104,11 +122,33 @@
     return () => ctrl.abort();
   });
 
+  // Live: new points redraw the charts (at most every 2 s) unless updates are paused or you
+  // are working with the chart (zoomed, pinned or hovering it); then an Update button
+  // waits, and it applies by itself once you stop hovering a chart that is not zoomed or pinned.
+  let live = $state(prefs.get('chartsLive', true));
+  let stale = $state(false);
+  const interacting = $derived(zoom !== null || pinned || cursorX !== null);
+  function setLive(on: boolean) {
+    live = on;
+    prefs.set('chartsLive', on);
+  }
+  function update() {
+    stale = false;
+    tick++;
+  }
+  $effect(() => {
+    if (stale && live && !interacting) update();
+  });
+
   onMount(() => {
     let last = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     return onLive('data', (changed) => {
       if (!changed.some((k) => runKeys.includes(k))) return;
+      if (!live || interacting) {
+        stale = true;
+        return;
+      }
       const wait = Math.max(0, 2000 - (Date.now() - last));
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -248,6 +288,7 @@
         robust,
         log: logY,
         base: showBase,
+        bands: showBands,
         zoom,
         hidden: [...hidden],
       });
@@ -301,11 +342,12 @@
     return [...map.entries()];
   });
 
-  // Without a hover, the inspector shows each series' latest value.
+  // Without a hover, the inspector shows each shown series' latest value (in the zoomed range).
   const lastValues = $derived(
     (focusData?.series ?? []).flatMap((s, i) => {
+      if (hidden.has(s.label)) return [];
       for (let k = s.y.length - 1; k >= 0; k--)
-        if (Number.isFinite(s.y[k]))
+        if (Number.isFinite(s.y[k]) && (!zoom || s.x[k] <= zoom[1]))
           return [{ series: i, label: s.label, value: s.y[k], lo: s.lo[k], hi: s.hi[k], x: s.x[k] }];
       return [];
     }),
@@ -573,129 +615,154 @@
         >
       {/if}
     </div>
-    <div class="knobs">
-      <select
-        class="input sm groupsel"
-        value={router.get('group') || (groupBy ?? 'none')}
-        title={groupBy ? `group by ${groupBy}` : 'no grouping'}
-        onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
-        aria-label="Group by"
-      >
-        <option value="none">No grouping</option>
-        {#each [...new Set([...(groupBy ? [groupBy] : []), ...groupOptions])] as g (g)}<option value={g}
-            >Group by {g}</option
-          >{/each}
-      </select>
-      {#if groupBy}
+    <div class="knobrows">
+      <div class="knobs">
         <select
-          class="input sm"
-          value={agg}
-          onchange={(e) => router.set({ agg: (e.currentTarget as HTMLSelectElement).value })}
-          aria-label="Band"
+          class="input sm groupsel"
+          value={router.get('group') || (groupBy ?? 'none')}
+          title={groupBy ? `group by ${groupBy}` : 'no grouping'}
+          onchange={(e) => router.set({ group: (e.currentTarget as HTMLSelectElement).value })}
+          aria-label="Group by"
         >
-          <option value="std">Mean ± std</option>
-          <option value="sem">Mean ± sem</option>
-          <option value="minmax">Mean · min–max</option>
-          <option value="median">Median · min–max</option>
-          <option value="none">Mean only</option>
+          <option value="none">No grouping</option>
+          {#each [...new Set([...(groupBy ? [groupBy] : []), ...groupOptions])] as g (g)}<option value={g}
+              >Group by {g}</option
+            >{/each}
         </select>
-      {/if}
-      <div class="seg" role="group" aria-label="X axis">
-        {#each [['step', 'Step'], ['time', 'Wall time'], ['relative', 'Relative'], ['active', 'Active time']] as [k, label] (k)}
-          <button aria-pressed={xKind === k} onclick={() => router.set({ x: k === 'step' ? null : k, zoom: null })}
-            >{label}</button
+        {#if groupBy}
+          <select
+            class="input sm"
+            value={agg}
+            onchange={(e) => router.set({ agg: (e.currentTarget as HTMLSelectElement).value })}
+            aria-label="Band"
           >
-        {/each}
+            <option value="std">Mean ± std</option>
+            <option value="sem">Mean ± sem</option>
+            <option value="minmax">Mean · min–max</option>
+            <option value="median">Median · min–max</option>
+            <option value="none">Mean only</option>
+          </select>
+        {/if}
+        <div class="seg" role="group" aria-label="X axis">
+          {#each [['step', 'Step'], ['time', 'Wall time'], ['relative', 'Relative'], ['active', 'Active time']] as [k, label] (k)}
+            <button aria-pressed={xKind === k} onclick={() => router.set({ x: k === 'step' ? null : k, zoom: null })}
+              >{label}</button
+            >
+          {/each}
+        </div>
+        <select
+          class="input sm mono xmetric"
+          class:on={xMetric !== null}
+          value={xMetric ?? ''}
+          onchange={(e) => {
+            const v = (e.currentTarget as HTMLSelectElement).value;
+            router.set({ x: v ? `metric:${v}` : null, zoom: null });
+          }}
+          aria-label="X axis scalar"
+          title="Plot against another scalar, matched by step"
+        >
+          <option value="">X by scalar…</option>
+          {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
+        </select>
       </div>
-      <select
-        class="input sm mono xmetric"
-        class:on={xMetric !== null}
-        value={xMetric ?? ''}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
-          router.set({ x: v ? `metric:${v}` : null, zoom: null });
-        }}
-        aria-label="X axis scalar"
-        title="Plot against another scalar, matched by step"
-      >
-        <option value="">X by scalar…</option>
-        {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
-      </select>
-      <label class="smooth"
-        >Smooth
-        <input
-          type="range"
-          min="0"
-          max="0.99"
-          step="0.01"
-          value={smoothing}
-          oninput={(e) => setSmooth(Number((e.currentTarget as HTMLInputElement).value))}
-        />
-        <span class="mono">{smoothing.toFixed(2)}</span>
-      </label>
-      <label class="tg"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={showRaw}
-          aria-label="Show raw"
-          onclick={() => router.set({ raw: showRaw ? '0' : null })}
-        ></button>Raw</label
-      >
-      <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={showDots}
-          aria-label="Points"
-          onclick={() => router.set({ dots: showDots ? '0' : null })}
-        ></button>Points</label
-      >
-      {#if hasBaselines}
-        <label class="tg" title="Dashed lines at the reference values set with add_scalar_baseline"
+      <div class="knobs">
+        <label class="smooth"
+          >Smooth
+          <input
+            type="range"
+            min="0"
+            max="0.99"
+            step="0.01"
+            value={smoothing}
+            oninput={(e) => setSmooth(Number((e.currentTarget as HTMLInputElement).value))}
+          />
+          <span class="mono">{smoothing.toFixed(2)}</span>
+        </label>
+        <label class="tg"
           ><button
             class="switch"
             role="switch"
-            aria-checked={showBase}
-            aria-label="Baseline"
-            onclick={() => router.set({ base: showBase ? '0' : null })}
-          ></button>Baseline</label
+            aria-checked={showRaw}
+            aria-label="Show raw"
+            onclick={() => router.set({ raw: showRaw ? '0' : null })}
+          ></button>Raw</label
         >
-      {/if}
-      <label
-        class="tg"
-        title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={robust}
-          aria-label="Ignore outliers"
-          onclick={() => router.set({ robust: robust ? '0' : null })}
-        ></button>Ignore outliers</label
-      >
-      <label class="tg"
-        ><button
-          class="switch"
-          role="switch"
-          aria-checked={logY}
-          aria-label="Log y"
-          onclick={() => router.set({ log: logY ? null : '1' })}
-        ></button>Log y</label
-      >
+        {#if hasRanges}
+          <label
+            class="tg"
+            title="Shade the range around each curve: the group's band, logged low/high bounds or the min–max across ranks"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={showBands}
+              aria-label="Ranges"
+              onclick={() => router.set({ bands: showBands ? '0' : null })}
+            ></button>Ranges</label
+          >
+        {/if}
+        <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={showDots}
+            aria-label="Points"
+            onclick={() => router.set({ dots: showDots ? '0' : null })}
+          ></button>Points</label
+        >
+        {#if hasBaselines}
+          <label class="tg" title="Dashed lines at the reference values set with add_scalar_baseline"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={showBase}
+              aria-label="Baseline"
+              onclick={() => router.set({ base: showBase ? '0' : null })}
+            ></button>Baseline</label
+          >
+        {/if}
+        <label
+          class="tg"
+          title="Fit the y-axis to the 1st–99th percentile of the values, so a few spikes (such as a huge first loss) don't flatten the curves. Off: the axis fits every point."
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={robust}
+            aria-label="Ignore outliers"
+            onclick={() => router.set({ robust: robust ? '0' : null })}
+          ></button>Ignore outliers</label
+        >
+        <label class="tg"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={logY}
+            aria-label="Log y"
+            onclick={() => router.set({ log: logY ? null : '1' })}
+          ></button>Log y</label
+        >
+        <label
+          class="tg"
+          title="Draw new points as runs log them. Off, or while you zoom, pin or hover a chart, an Update button appears instead."
+          ><button class="switch" role="switch" aria-checked={live} aria-label="Live" onclick={() => setLive(!live)}
+          ></button>Live</label
+        >
+      </div>
     </div>
   </section>
 
   <section class="focus" class:full bind:this={focusEl}>
     <div class="card main">
       <div class="tabs">
-        {#each tabs as m (m)}
-          <button
-            class="mono tab"
-            aria-pressed={m === focus}
-            title={m}
-            onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
-          >
-        {/each}
+        <div class="tabscroll">
+          {#each tabs as m (m)}
+            <button
+              class="mono tab"
+              aria-pressed={m === focus}
+              title={m}
+              onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
+            >
+          {/each}
+        </div>
         {#if metrics.length > tabs.length}
           <div class="picker" bind:this={pickEl}>
             <button
@@ -739,15 +806,29 @@
             {/if}
           </div>
         {/if}
-        <span class="note">
-          {#if zoom}<button class="btn btn-ghost sm" onclick={() => router.set({ zoom: null })}>Reset zoom</button>{/if}
-          {loading
-            ? 'loading…'
-            : groupBy
-              ? agg === 'std'
-                ? 'mean ± std'
-                : agg
-              : 'Drag to zoom · double-click to reset'}
+        <span class="note"
+          >{groupBy
+            ? agg === 'std'
+              ? 'mean ± std'
+              : agg
+            : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
+        >
+        <!-- these take the hint's room in the fixed-height header, so neither the tabs nor the plot move -->
+        <span class="pills">
+          {#if stale}<button
+              class="btn sm newdata"
+              title="New points were logged; draw them"
+              onclick={update}
+              transition:fade={{ duration: 150 }}>New data · Update</button
+            >{/if}
+          {#if zoom}<button
+              class="btn sm resetzoom"
+              onclick={() => router.set({ zoom: null })}
+              transition:fade={{ duration: 150 }}>Reset zoom</button
+            >{/if}
+        </span>
+        <span class="acts">
+          <span class="spin" class:on={slow} role="status" aria-label={slow ? 'Loading' : undefined}></span>
           <button
             class="btn btn-ghost sm icon-btn"
             title="Add this chart to a report"
@@ -764,30 +845,34 @@
           >
         </span>
       </div>
-      <LineChart
-        data={focusData}
-        {smoothing}
-        {showRaw}
-        {robust}
-        {logY}
-        {hidden}
-        {highlight}
-        {colorOf}
-        themeVersion={app.themeVersion}
-        height={full ? Math.max(320, innerHeight - (alerts.length ? 190 : 120)) : 420}
-        onCursor={(x, v) => {
-          if (!pinned) {
-            cursorX = x;
-            cursorValues = v;
-          }
-        }}
-        onPin={() => (pinned = !pinned)}
-        onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
-        {regions}
-        markers={showDots}
-        {pinned}
-        baselines={showBase}
-      />
+      <div class="plotwrap">
+        <LineChart
+          data={focusData}
+          {smoothing}
+          {showRaw}
+          {showBands}
+          {robust}
+          {logY}
+          {zoom}
+          {hidden}
+          {highlight}
+          {colorOf}
+          themeVersion={app.themeVersion}
+          height={full ? Math.max(320, innerHeight - (alerts.length ? 190 : 120)) : 420}
+          onCursor={(x, v) => {
+            if (!pinned) {
+              cursorX = x;
+              cursorValues = v;
+            }
+          }}
+          onPin={() => (pinned = !pinned)}
+          onZoom={(r) => router.set({ zoom: r ? `${r[0]}~${r[1]}` : null })}
+          {regions}
+          markers={showDots}
+          {pinned}
+          baselines={showBase}
+        />
+      </div>
       {#if alerts.length}
         <div class="alerts" aria-label="Health alerts">
           <span class="label">Alerts</span>
@@ -957,6 +1042,7 @@
                 {agg}
                 {smoothing}
                 {showRaw}
+                {showBands}
                 {robust}
                 baselines={showBase}
                 {hidden}
@@ -1225,6 +1311,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .newdata {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent-soft) 85%, var(--panel));
+    border-color: transparent;
+    font-weight: 600;
+  }
+  .knobrows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
   .knobs {
     display: flex;
     gap: 12px;
@@ -1260,7 +1358,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     margin-bottom: 6px;
   }
   .tab {
@@ -1282,13 +1380,70 @@
     font-weight: 600;
     box-shadow: inset 0 0 0 1px var(--border);
   }
+  /* one row whatever happens: tabs that do not fit scroll sideways (and are in All) */
+  .tabscroll {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabscroll::-webkit-scrollbar {
+    display: none;
+  }
+  .tabscroll .tab {
+    flex: none;
+  }
+  /* the hint takes whatever room the tabs leave and truncates; the buttons never shrink */
   .note {
-    margin-left: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: right;
     color: var(--faint);
     font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .acts {
+    flex: none;
     display: inline-flex;
     gap: 8px;
     align-items: center;
+  }
+  .spin {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    visibility: hidden;
+  }
+  .spin.on {
+    visibility: visible;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .pills {
+    flex: none;
+    display: inline-flex;
+    gap: 6px;
+  }
+  .pills .btn {
+    height: 28px;
+    padding-block: 0;
+  }
+  .main > .tabs {
+    height: 34px; /* fixed, so the pills and spinner coming and going never move the plot */
+  }
+  .resetzoom {
+    background: var(--panel);
   }
   .inspector {
     padding: 14px 16px;

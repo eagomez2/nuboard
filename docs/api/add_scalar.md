@@ -1,7 +1,7 @@
 # `add_scalar`
 
 ```python
-run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None, all_ranks=None)
+run.add_scalar(key, value=None, step=None, *, low=None, high=None, time=None)
 ```
 
 Logs a scalar, such as a loss, an accuracy or a learning rate, or several
@@ -31,8 +31,6 @@ run.add_scalar({"train/loss": 0.42, "train/lr": 3e-4}, step=10)  # several
   max over an epoch's batches. Any number type `value` accepts works. Only
   with a single name, not a dict. Leave both out for a plain scalar.
 - **time** (*float*, optional): a Unix timestamp. Defaults to now.
-- **all_ranks** (*bool*, optional): log from this rank even if it is not rank
-  0, overriding `nb.init`'s setting for this call.
 
 **Raises** `TypeError` when `key` is a name and `value` is missing, when only
 one of `low` and `high` is given, or when they are given with a dict.
@@ -65,7 +63,7 @@ import math
 
 import nuboard as nb
 
-run = nb.init("api-tour", name="scalars")
+run = nb.init("api-tour", run_name="scalars")
 
 for step in range(500):
     lr = 1e-3 * min(1, step / 50) * 0.5 * (1 + math.cos(math.pi * step / 500))

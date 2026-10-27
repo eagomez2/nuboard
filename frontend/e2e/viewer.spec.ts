@@ -136,6 +136,13 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect(page).toHaveURL(/cmap=magma/);
   await expect(page).toHaveURL(/fscale=mel/);
   await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
+  // the amplitude axis is on by default, and its switch takes it off without decoding again
+  await expect(player.locator('.amp-axis span')).toHaveText(['1', '0', '−1']);
+  await page.getByRole('switch', { name: 'Amplitude axis' }).click();
+  await expect(page).toHaveURL(/amp=0/);
+  await expect(player.locator('.amp-axis')).toHaveCount(0);
+  await page.getByRole('switch', { name: 'Amplitude axis' }).click();
+  await expect(player.locator('.amp-axis span')).toHaveCount(3);
   await page.getByRole('button', { name: 'simple' }).click();
   await expect(page).toHaveURL(/player=simple/);
   const audio = page.locator('audio').first();
@@ -152,6 +159,13 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(fig.locator('.nbwf-time')).toHaveText('0:00.000 / 0:02.600');
   await expect(fig.locator('.nbwf-tracks')).toBeVisible();
   const box = (await over.boundingBox())!;
+  // full screen covers the window with a taller plot; its button (or Esc) puts it back
+  await fig.getByRole('button', { name: 'Full screen' }).click();
+  await expect(fig).toHaveClass(/nbwf-full/);
+  await expect.poll(async () => (await over.boundingBox())!.height).toBeGreaterThan(box.height + 100);
+  await fig.getByRole('button', { name: 'Exit full screen' }).click();
+  await expect(fig).not.toHaveClass(/nbwf-full/);
+  await expect.poll(async () => Math.round((await over.boundingBox())!.height)).toBe(Math.round(box.height));
   await over.hover({ position: { x: box.width / 2, y: box.height / 2 } });
   const readout = fig.locator('.nbwf-read');
   await expect(readout).toContainText(/#\d+/);
@@ -572,6 +586,29 @@ test('about window and chart points', async ({ page }) => {
   await expect(chart.locator('.nb-dot')).toHaveCount(0);
 });
 
+test('a pinned point stays on its point when the chart zooms', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const chart = page.locator('.main .chart').first();
+  const over = chart.locator('.u-over');
+  const box = (await over.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const dot = chart.locator('.nb-dot').first();
+  await expect(dot).toBeVisible();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByText('Pinned · click chart to release')).toBeVisible();
+  const before = (await dot.boundingBox())!;
+  // zoom in around a quarter of the width: the point, right of it, moves further right
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Control');
+  await expect.poll(async () => ((await dot.boundingBox())?.x ?? before.x) - before.x).toBeGreaterThan(20);
+  // and is still there once the data for the new range has loaded
+  await expect(page).toHaveURL(/zoom=/);
+  await page.waitForTimeout(500);
+  await expect(dot).toBeVisible();
+});
+
 test('notes on a section of audio are saved, edited and deleted', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const frame = page.locator('iframe[src="./audio.html"]').first();
@@ -741,6 +778,13 @@ test('a report with a table and audio notes exports them, with either audio play
   await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
   await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
   await off.getByRole('button', { name: 'Fit' }).click();
+  // full screen, as the audio player has: the figure covers the window and its plot grows
+  await off.locator('.nbwavefig').getByRole('button', { name: 'Full screen' }).click();
+  await expect(off.locator('.nbwavefig .nbwf-full')).toBeVisible();
+  await expect.poll(async () => (await wave.boundingBox())!.height).toBeGreaterThan(wbox.height + 100);
+  await off.keyboard.press('Escape');
+  await expect(off.locator('.nbwavefig .nbwf-full')).toHaveCount(0);
+  await expect.poll(async () => Math.round((await wave.boundingBox())!.height)).toBe(Math.round(wbox.height));
 
   // the browser's player, whose notes play their section
   await off.goto('file://' + (await exportAs('Simple', 'listening-notes-simple.html')));
@@ -925,6 +969,106 @@ test('a scalar logged with low and high is drawn with its band', async ({ page }
   await page.keyboard.type('eval/loss');
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options).toHaveCount(1);
+});
+
+test('the Ranges switch hides the bands around the curves', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=eval%2Floss');
+  const row = page.locator('.irow').first();
+  await expect(row).toContainText(/\d to \d/);
+  await page.getByRole('switch', { name: 'Ranges' }).click();
+  await expect(page).toHaveURL(/bands=0/);
+  await expect(page.getByRole('switch', { name: 'Ranges' })).toHaveAttribute('aria-checked', 'false');
+  await expect(row).toContainText(/\d to \d/); // the inspector still lists the range
+  await page.getByRole('switch', { name: 'Ranges' }).click();
+  await expect(page).not.toHaveURL(/bands=0/);
+});
+
+test('Ctrl + wheel zooms the focus chart and double-click resets it', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const over = page.locator('.focus .u-over').first();
+  await expect(over).toBeVisible();
+  const box = (await over.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect(page).toHaveURL(/zoom=[\d.e+-]+(~|%7E)[\d.e+-]+/);
+  await page.mouse.wheel(0, 0); // plain wheel scrolls the page, it does not zoom
+  await over.dblclick();
+  await expect(page).not.toHaveURL(/zoom=/);
+});
+
+test('Shift + drag pans a chart, and the inspector leaves out hidden series', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const over = page.locator('.focus .u-over').first();
+  await expect(over).toBeVisible();
+  const chips = page.locator('.legend-chip');
+  await chips.first().dblclick(); // solo the first series
+  await page.mouse.move(5, 5);
+  await expect(page.locator('.irow:not(.base)')).toHaveCount(1);
+  const box = (await over.boundingBox())!;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(page).toHaveURL(/zoom=/);
+  await page.mouse.move(5, 5);
+  await expect(page.locator('.irow:not(.base)')).toHaveCount(1);
+});
+
+test('the timeline zooms with presets, steps back and forth, and with Ctrl + wheel', async ({ page }) => {
+  await page.goto('/#/timeline?project=llm-pretrain');
+  await expect(page.locator('.wrap svg')).toBeVisible();
+  const span = () => {
+    const m = decodeURIComponent(page.url()).match(/tz=(\d+)~(\d+)/);
+    return m ? [Number(m[1]), Number(m[2])] : null;
+  };
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect.poll(() => span()?.[1]! - span()?.[0]!).toBe(86400);
+  const day = span()!;
+  await page.getByRole('button', { name: 'Back one window' }).click();
+  await expect.poll(() => span()?.[0]).toBe(day[0] - 86400);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page).not.toHaveURL(/tz=/);
+  const box = (await page.locator('.wrap svg').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 60);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect(page).toHaveURL(/tz=/);
+});
+
+test('live updates wait behind an Update button when Charts are paused, and a Refresh pill elsewhere', async ({
+  page,
+}) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  await expect(page.locator('.focus .u-over').first()).toBeVisible();
+  // the plot's offset inside its card (content above the card may still be loading); a live
+  // redraw replaces the plot for a frame, so measure again until it is there
+  const top = async () => {
+    for (;;) {
+      const plot = await page.locator('.focus .u-over').first().boundingBox();
+      const card = await page.locator('.focus .main').first().boundingBox();
+      if (plot && card) return plot.y - card.y;
+      await page.waitForTimeout(50);
+    }
+  };
+  const before = await top();
+  await page.getByRole('switch', { name: 'Live' }).click();
+  const update = page.getByRole('button', { name: 'New data · Update' });
+  await expect(update).toBeVisible({ timeout: 20_000 }); // the demo's live run keeps logging
+  expect(await top()).toBe(before); // the button sits in the fixed-height header, so the chart does not move
+  await update.click();
+  await expect(update).toHaveCount(0);
+  expect(await top()).toBe(before);
+  await page.getByRole('switch', { name: 'Live' }).click();
+  await page.goto('/#/sweeps?project=llm-pretrain');
+  const refresh = page.getByRole('button', { name: /New results · Refresh/ });
+  await expect(refresh).toBeVisible({ timeout: 30_000 });
+  await refresh.click();
+  await expect(refresh).toHaveCount(0);
 });
 
 test('scalar baselines are drawn, listed in the inspector and can be turned off', async ({ page }) => {

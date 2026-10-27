@@ -474,11 +474,11 @@
     color: var(--s5);
     background: color-mix(in srgb, var(--s5) 14%, transparent);
   }
+  /* square corners: rounded ones clipped the highlighted row when it was the last one */
   .scroll {
     overflow: auto;
     max-height: 480px;
     border: 1px solid var(--border);
-    border-radius: 8px;
   }
   table {
     border-collapse: separate;

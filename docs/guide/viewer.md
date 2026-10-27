@@ -128,8 +128,7 @@ on one line and draws color codes as colors (the 16 terminal colors follow
 the light or dark theme; 256-color and true-color codes, bold, dim, italic
 and underline are drawn too). **Raw** shows the text as stored, with each
 escape character as `␛`. The file itself keeps the codes, so `less -R` in a
-terminal shows the same colors. With `all_ranks=True`, each rank's log
-has its own tab (**Console r1**, ...).
+terminal shows the same colors.
 
 **Files** lists everything in the run folder as a tree, with how many files
 each folder holds and their size; `files/` (what `init` and
@@ -208,7 +207,8 @@ are selected, every run matching the query.
   [`add_scalar`](../api/add_scalar.md)) is drawn with a shaded band around
   each run's line, smoothed along with it, and the inspector shows the range
   after the value. When runs are grouped, the band is the spread across runs
-  instead.
+  instead. The **Ranges** switch (shown when a chart has bands) hides every
+  band when they clutter the chart; it is kept in the URL as `bands=0`.
 - **Baselines**: a scalar with a reference value set with
   [`add_scalar_baseline`](../api/add_scalar_baseline.md) shows it as a dashed
   horizontal line, with a light band for its range. Runs with the same
@@ -230,6 +230,9 @@ are selected, every run matching the query.
   scalar is matched to each point by step (interpolated when the two were
   logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.
+- **Display row**: Smooth and the Raw, Ranges, Points, Baseline, Ignore
+  outliers and Log y switches sit on their own row under the grouping and
+  x-axis controls.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **Raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
 - **Points**: a dot on each curve at the logged point under the cursor, so
@@ -240,12 +243,20 @@ are selected, every run matching the query.
   fits the y-axis to the 1st–99th percentile of the values, so a few spikes
   (such as a huge loss at step 0) do not flatten every curve. Off, the axis
   fits every point. **Log y** switches to a log scale.
-- **Zoom**: drag across a chart to zoom in; the server sends a finer
-  resolution for the visible range (from the precomputed zoom levels in
-  `data.parquet`, or from the raw log for live runs). Double-click to reset.
+- **Zoom and pan**: drag across a chart to zoom into a range. Over the
+  focused chart, **Ctrl** (**⌘** on a Mac) + scroll, or a trackpad pinch,
+  zooms in and out around the cursor, also past the ends of the data, with
+  the y-axis fitted to what is in view. **Alt** + scroll zooms both axes, as
+  in TensorBoard. **Shift** + drag pans in any direction, and **Shift** +
+  scroll pans along x. The server sends a finer resolution for the x range
+  (from the precomputed zoom levels in `data.parquet`, or from the raw log
+  for live runs) once you stop, with some data on each side so smoothing
+  does not restart at the edge; the view stays where you left it while it
+  loads. Double-click, or **Reset zoom**, to reset.
 - **Inspector**: hover a chart to see every series' value at that step,
   sorted best first, with ± std for grouped series. Click to pin the step.
-  Without hovering it shows the latest values.
+  Without hovering it shows the latest values of the series shown (in the
+  zoomed range).
 - **Linked crosshair**: hovering any chart moves the crosshair on all of them.
 - **Full screen**: the corner button above the focused chart (or Esc to
   leave) fills the screen with the chart and the inspector.
@@ -264,11 +275,27 @@ are selected, every run matching the query.
 - A run that logged NaN gets a dashed marker at the first NaN with a
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
-  Server-Sent Events and the charts refresh about every two seconds.
+  Server-Sent Events and the charts redraw at most every two seconds. They
+  hold still while you work with them: when the chart is zoomed, the cursor
+  is pinned or you hover a chart, or when the **Live** switch is off, new
+  points wait behind a **New data · Update** button. Hovering away from an
+  unzoomed, unpinned chart draws them by itself.
 
 - **Alerts strip**: under the focused chart, the
   [health alerts](alerts.md) of the runs in view. Click one to jump to it;
   spikes and drops are shaded on the chart.
+
+## Live updates
+
+The server checks the folder every 1.5 s and pushes changes. The **Runs** page
+follows them as they come: values change in place, and rows do not move while
+the pointer is over the table. Open run details follow the run's status,
+duration and summary, and read the run once more when it finishes or crashes.
+**Charts** behave as described above. **Media**, **Sweeps**, **Timeline**,
+**Artifacts** and **Reports** do not change under you: when runs change, a
+**New results · Refresh** button appears next to the page title (changes that
+are only heartbeats are ignored). Going back to Runs or Charts catches up by
+itself.
 
 ## Sweeps page
 
@@ -285,8 +312,15 @@ Every run as a bar from start to end, grouped by project, colored by status,
 project or group. **Packed** puts runs that never overlap on the same row, so
 the chart shows how many ran at once; the summary line gives the peak and the
 total run time. Crashed runs end in ✕, runs with alerts have a dot, and
-diamonds mark artifact versions a run produced. Drag to zoom into a time
-range, double-click to reset, click a bar to open the run. The corner button
+diamonds mark artifact versions a run produced. Click a bar to open the run.
+
+To move around in time: **Day**, **Week**, **Month** and **Year** show that
+much time up to the latest activity, **‹** and **›** step one window back or
+forward, and **All** fits every run. Drag across the chart to zoom into a
+range, **Ctrl** (**⌘**) + scroll (or a pinch) zooms around the cursor, and
+**Shift** + scroll, a sideways scroll or **Shift** + drag moves along time.
+Double-click fits every run again. The axis switches to months and years for
+long ranges. The corner button
 shows the timeline full screen (Esc leaves), and the bookmark button adds it
 to a [report](reports.md) as a snapshot.
 
@@ -374,7 +408,9 @@ lanes under the plot, a row per class where classes overlap). Drag to select a
 section, then loop it, zoom to it or add a **Note**; notes show in a lane above
 the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
-the view. The play button plays the clip, or the selection, from where you
+the view. The full screen button (next to **Fit**) spreads the figure over the
+window with a taller plot, in the viewer and in exported reports alike; Esc
+puts it back. The play button plays the clip, or the selection, from where you
 click. It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
 
@@ -462,8 +498,10 @@ remembered):
   **Colors** picks the spectrogram colormap (theme, viridis, magma or gray),
   **Frequency** its scale (linear, log or mel), **Window** the FFT size (256
   to 4096 samples; the hop is a quarter of it), and **Spectrogram** hides it
-  to show only waveforms. The choices are remembered in the browser and kept
-  in the URL (`cmap`, `fscale`, `fft`, `spec`), so a shared link shows the
+  to show only waveforms. **Amplitude axis** labels the waveform's amplitude
+  (±1 is full scale) down its left edge. The choices are remembered in the
+  browser and kept in the URL (`cmap`, `fscale`, `fft`, `spec`, `amp`), so a
+  shared link shows the
   same view.
 - **Simple**: the browser's own audio controls, as in TensorBoard.
 
