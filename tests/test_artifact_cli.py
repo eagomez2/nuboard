@@ -169,3 +169,20 @@ def test_ls_and_show(data, capsys):
     assert code == 1 and "  ✗ missing: a.txt" in said
     assert _run(["show", "datasets/nope"])[0] == 1
     json.dumps(said)  # plain strings
+
+
+def test_unlink_and_restore(data):
+    for _ in range(2):
+        _run(["add", "datasets/fw", str(data), "--ref", "-t", "dataset", "-d", "two files"])
+
+    assert _run(["unlink", "datasets/fw"])[0] == 2  # a version or --all is required
+    assert _run(["unlink", "datasets/fw:v1", "--all"])[0] == 2
+    code, said, _ = _run(["unlink", "datasets/fw:v1"])
+    assert code == 0 and said[0].startswith("✓ unlinked datasets/fw:v1")
+    assert [line.split()[0] for line in _run(["ls"])[1]] == ["datasets/fw:v2"]
+    assert "(unlinked)" in _run(["ls", "--unlinked"])[1][-1]
+    assert (data / "a.txt").exists()  # referenced data is never touched
+    assert _run(["restore", "datasets/fw:v1"])[1] == ["✓ restored datasets/fw:v1"]
+    assert _run(["restore", "datasets/fw:v1"])[0] == 1  # no longer unlinked
+    code, said, _ = _run(["unlink", "datasets/fw", "--all"])
+    assert code == 0 and len(said) == 2 and _run(["ls"])[1] == ["No artifacts."]

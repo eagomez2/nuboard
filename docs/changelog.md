@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Artifacts with many files stay fast in the viewer.** The Artifacts page
+  no longer loads every version's file list: each version comes with its file
+  count and size, and its files load 1,000 at a time when you open it, with
+  **Show more** and a path filter. Before, one version with a million files
+  slowed the whole page. The **New version** form warns from 10,000 files and
+  suggests referencing shards or an index file instead.
+- **New: `nuboard artifact unlink` and `nuboard artifact restore`.** They
+  unlink a version (or with `--all`, every version) and restore one, as the
+  viewer does: nothing is deleted. `nuboard artifact ls --unlinked` lists
+  unlinked versions too.
+- **Docs:** [Recommendations](guide/artifacts.md#recommendations) for
+  registering data: shards over millions of files, when to hash, versions as
+  snapshots. The guide no longer says references are checked by modification
+  time: they are checked by size.
 - **New: `init(gpus=...)` picks the GPUs that system metrics track**, by the
   device names your script uses: `gpus="cuda:0"`, a list such as
   `["cuda:0", "cuda:1"]`, a `torch.device`, `"mps"` or `"all"`. A name that
