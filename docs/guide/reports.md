@@ -44,7 +44,9 @@ running, and **Open in Charts** opens it on the Charts page.
 ## Adding Sweeps and Timeline plots
 
 The bookmark buttons on the **Sweeps** page (the parallel coordinates and each
-scatter) and on the **Timeline** add a PNG snapshot of the plot as shown:
+scatter), on the **Timeline** and on the Media page's "All runs on one chart"
+(PR curves and distributions, with their legend) add a PNG snapshot of the
+plot as shown:
 
 ```markdown
 ![lr sweep](files/findings-5e6f7a8b.png "view:sweeps?project=llm-pretrain&metric=train%2Floss")

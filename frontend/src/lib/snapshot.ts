@@ -47,13 +47,8 @@ function frame(
   return out.toDataURL('image/png');
 }
 
-/**
- * Render an inline SVG to a PNG data URL.
- *
- * Styles come from CSS (often variables), which a standalone SVG image cannot see, so the
- * computed styles are copied onto a clone first.
- */
-export async function svgToPng(svg: SVGSVGElement, title = ''): Promise<string> {
+/** Load an inline SVG as an image, with its computed styles copied on, at its on-screen size. */
+async function svgImage(svg: SVGSVGElement): Promise<{ img: HTMLImageElement; w: number; h: number }> {
   const box = svg.getBoundingClientRect();
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const src = [svg, ...svg.querySelectorAll('*')];
@@ -75,8 +70,69 @@ export async function svgToPng(svg: SVGSVGElement, title = ''): Promise<string> 
       img.onerror = () => fail(new Error('could not render the SVG'));
       img.src = url;
     });
-    return frame(svg, box.width, box.height, title, (ctx, top) => ctx.drawImage(img, 0, top, box.width, box.height));
+    return { img, w: box.width, h: box.height };
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * Render an inline SVG to a PNG data URL.
+ *
+ * Styles come from CSS (often variables), which a standalone SVG image cannot see, so the
+ * computed styles are copied onto a clone first.
+ */
+export async function svgToPng(svg: SVGSVGElement, title = ''): Promise<string> {
+  const { img, w, h } = await svgImage(svg);
+  return frame(svg, w, h, title, (ctx, top) => ctx.drawImage(img, 0, top, w, h));
+}
+
+/**
+ * Render a chart and its HTML legend to a PNG data URL.
+ *
+ * `root` holds the chart's `.plot > svg` and a `.legend` of `<span>`s, each with an `<i>` swatch; the
+ * legend is drawn under the chart, wrapped to its width, so the image says which line is which.
+ */
+export async function chartToPng(root: Element, title = ''): Promise<string> {
+  const svg = root.querySelector<SVGSVGElement>('.plot > svg');
+  if (!svg) throw new Error('no chart to save');
+  const { img, w, h } = await svgImage(svg);
+  const font = `11.5px ${cssVar(root, '--mono', 'monospace')}`;
+  const measure = document.createElement('canvas').getContext('2d')!;
+  measure.font = font;
+  const items = [...root.querySelectorAll('.legend > span')].map((el) => {
+    const swatch = el.querySelector('i');
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    return {
+      text,
+      color: swatch ? getComputedStyle(swatch).backgroundColor : '#888',
+      width: 14 + measure.measureText(text).width,
+    };
+  });
+  // lay the items out in rows, as the page does
+  const LINE = 18;
+  let x = 12;
+  let row = 0;
+  const placed = items.map((it) => {
+    if (x > 12 && x + it.width > w - 12) {
+      x = 12;
+      row++;
+    }
+    const at = { ...it, x, row };
+    x += it.width + 14;
+    return at;
+  });
+  const legendH = items.length ? (row + 1) * LINE + 8 : 0;
+  return frame(svg, w, h + legendH, title, (ctx, top) => {
+    ctx.drawImage(img, 0, top, w, h);
+    ctx.font = font;
+    ctx.textBaseline = 'middle';
+    for (const it of placed) {
+      const y = top + h + 4 + it.row * LINE + LINE / 2;
+      ctx.fillStyle = it.color;
+      ctx.fillRect(it.x, y - 1.5, 10, 3);
+      ctx.fillStyle = cssVar(root, '--text', '#111');
+      ctx.fillText(it.text, it.x + 14, y);
+    }
+  });
 }

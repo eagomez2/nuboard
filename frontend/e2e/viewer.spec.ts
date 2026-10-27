@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
 test('runs table lists the demo projects and filters with the query bar', async ({ page }) => {
@@ -61,6 +63,26 @@ test('the all-runs PR chart opens large', async ({ page }) => {
   await expect(dialog.locator('svg polyline').first()).toBeAttached();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+});
+
+test('the all-runs PR chart downloads as a PNG and goes to a report', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fpr%2F');
+  const head = page.locator('.prhead').first();
+  await expect(page.locator('.prall .legend span').first()).toBeVisible();
+  const download = page.waitForEvent('download');
+  await head.getByRole('button', { name: 'Download as PNG' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^eval_pr_\w+-all-runs\.png$/);
+  const png = readFileSync((await file.path())!);
+  expect(png.readUInt32BE(16)).toBeGreaterThan(600); // the whole chart, not a stray icon
+  await head.getByRole('button', { name: 'Add to a report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-pr-all');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"view:media\?.*mfind=/);
+  await page.getByRole('button', { name: 'Open in Media' }).click();
+  await expect(page).toHaveURL(/#\/media.*mfind=/);
 });
 
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
