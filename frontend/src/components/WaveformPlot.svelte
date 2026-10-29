@@ -3,7 +3,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { waveformKit } from '../lib/waveform';
-  import { mountWaveform, type WaveformNote } from '../lib/waveplot';
+  import { mountWaveform, type WaveformDownload, type WaveformNote } from '../lib/waveplot';
   import '../lib/waveplot.css';
 
   /**
@@ -22,6 +22,7 @@
     regions = null,
     notes = [],
     onnotes,
+    download,
   }: {
     url: string;
     title: string;
@@ -38,6 +39,8 @@
     /** Notes added in the viewer; `onnotes` gets the new list after each change. */
     notes?: WaveformNote[];
     onnotes?: (notes: WaveformNote[]) => void;
+    /** What the Download menu names its files after and writes in the bundle. */
+    download?: WaveformDownload;
   } = $props();
 
   const kit = waveformKit();
@@ -68,8 +71,10 @@
       caption,
       height,
       regions: $state.snapshot(regions),
+      download: $state.snapshot(download),
     };
-    const key = JSON.stringify([target, opts]);
+    // the download names alone (such as the run list arriving) do not mount the figure again
+    const key = JSON.stringify([target, { ...opts, download: null }]);
     if (key === untrack(() => shown)) return;
     shown = key;
     error = '';

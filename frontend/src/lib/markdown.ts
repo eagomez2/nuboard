@@ -19,6 +19,9 @@ const marked = new Marked({
       // `![caption](files/x.png "chart:<spec>")`: a chart snapshot the viewer draws live
       if (title?.startsWith('chart:'))
         return `<span class="nb-chart" data-spec="${escape(title.slice(6))}" data-caption="${escape(text)}" data-src="${escape(src)}"></span>`;
+      // `![caption](files/x.png "overlay:<ref> <ref> ...")`: every run's PR curve or distribution, drawn live
+      if (title?.startsWith('overlay:'))
+        return `<span class="nb-overlay" data-refs="${escape(title.slice(8))}" data-caption="${escape(text)}" data-src="${escape(src)}"></span>`;
       // `![caption](files/x.png "view:<page>?<params>")`: a snapshot linked to the page it came from
       if (title?.startsWith('view:'))
         return `<span class="nb-view" data-view="${escape(title.slice(5))}" data-caption="${escape(text)}" data-src="${escape(src)}"></span>`;
@@ -38,7 +41,7 @@ export function renderMarkdown(text: string, files = ''): string {
   try {
     const html = marked.parse(text, { async: false }) as string;
     return DOMPurify.sanitize(html, {
-      ADD_ATTR: ['data-ref', 'data-caption', 'data-spec', 'data-src', 'data-view', 'target'],
+      ADD_ATTR: ['data-ref', 'data-refs', 'data-caption', 'data-spec', 'data-src', 'data-view', 'target'],
     });
   } finally {
     base = '';

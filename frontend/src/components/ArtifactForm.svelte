@@ -120,6 +120,12 @@
                 : metaError,
   );
 
+  // Above this many files the form suggests referencing shards or an index file instead
+  const MANY_FILES = 10_000;
+  const large = $derived(
+    !!check?.exists && check.kind === 'folder' && (!!check.partial || (check.files ?? 0) > MANY_FILES),
+  );
+
   function summary(c: Check): string {
     const what = c.kind === 'file' ? 'File' : 'Folder';
     const files =
@@ -228,6 +234,13 @@
             <span class="mono path">{check.resolved}</span> · {summary(check)}
           {/if}
         </span>
+        {#if large}
+          <span class="hint warn" role="note">
+            That is a lot of files: the manifest lists every one, so adding it takes a while and each
+            <span class="mono">use_artifact</span> checks them all. Consider referencing the shards (tar or Parquet files)
+            or an index file instead; the artifacts guide has recommendations.
+          </span>
+        {/if}
       </div>
       <div class="two">
         <div class="field">
@@ -396,6 +409,9 @@
   }
   .check.bad {
     color: var(--err);
+  }
+  .warn {
+    color: var(--warn, var(--muted));
   }
   .mrow {
     display: grid;

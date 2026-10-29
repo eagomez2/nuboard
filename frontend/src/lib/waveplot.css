@@ -122,12 +122,40 @@
   border-radius: 6px;
   cursor: pointer;
 }
-.nbwf-zoom button.nbwf-full-btn {
+.nbwf-zoom button.nbwf-full-btn,
+.nbwf-zoom button.nbwf-icon-btn {
   display: grid;
   place-items: center;
   padding: 0;
 }
-.nbwf-full-btn svg {
+.nbwf-dl {
+  position: relative;
+  display: flex;
+}
+.nbwf-dl-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.15);
+}
+.nbwf-dl-menu[hidden] {
+  display: none;
+}
+.nbwf-zoom .nbwf-dl-menu button {
+  border-color: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+.nbwf-full-btn svg,
+.nbwf-icon-btn svg {
   width: 15px;
   height: 15px;
   fill: currentColor;

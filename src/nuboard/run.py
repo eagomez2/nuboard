@@ -26,7 +26,7 @@ from . import _env, _fs
 from . import _format as fmt
 from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
-from ._system import SystemMonitor, parse_groups
+from ._system import SystemMonitor, choose_gpus, parse_groups
 from ._writer import Writer, _flatten, _to_float
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
@@ -278,6 +278,12 @@ class Run:
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
+        gpus: The devices the `gpu` group samples: a device name such as
+            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+            `str()` is a device name works too, such as a `torch.device`. CUDA
+            indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
+            name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
+            samples every GPU the process can use.
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
@@ -304,8 +310,8 @@ class Run:
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, or if `job` is given
-            with `fork_from`.
+        ValueError: If `system_metrics` names an unknown group, if `gpus` names a
+            device that cannot be tracked, or if `job` is given with `fork_from`.
     """
 
     def __init__(
@@ -327,6 +333,7 @@ class Run:
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
         system_metrics: bool | str | Sequence[str] = True,
+        gpus: Any = None,
         system_interval: float = 30.0,
         capture_console: bool = True,
         _started: float | None = None,
@@ -347,6 +354,7 @@ class Run:
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
+        gpu_choice = choose_gpus(gpus) if gpus is not None and "gpu" in groups else None
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
         name = (run_name or "").strip() or "run"
@@ -441,7 +449,7 @@ class Run:
             )
 
         if groups and self.dist.local_rank == 0:
-            self._system = SystemMonitor(groups, system_interval, self._log_system)
+            self._system = SystemMonitor(groups, system_interval, self._log_system, gpu_choice)
 
     # -- setup ----------------------------------------------------------------
     def _new_run_id(self, runs_dir: Path) -> str | None:
@@ -1676,6 +1684,7 @@ def init(
     flush_interval: float = 1.0,
     heartbeat_interval: float = 10.0,
     system_metrics: bool | str | Sequence[str] = True,
+    gpus: Any = None,
     system_interval: float = 30.0,
     capture_console: bool = True,
     _started: float | None = None,
@@ -1726,6 +1735,12 @@ def init(
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
+        gpus: The devices the `gpu` group samples: a device name such as
+            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+            `str()` is a device name works too, such as a `torch.device`. CUDA
+            indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
+            name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
+            samples every GPU the process can use.
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
@@ -1744,7 +1759,8 @@ def init(
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group.
+        ValueError: If `system_metrics` names an unknown group, or if `gpus` names a
+            device that cannot be tracked.
 
     Example:
         >>> import nuboard as nb
@@ -1768,6 +1784,7 @@ def init(
         flush_interval=flush_interval,
         heartbeat_interval=heartbeat_interval,
         system_metrics=system_metrics,
+        gpus=gpus,
         system_interval=system_interval,
         capture_console=capture_console,
         _started=_started,

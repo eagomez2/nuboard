@@ -67,3 +67,24 @@ export async function addSnapshotToReport(
   await appendToReport(project, res.name, `![${cap}](${shot.path} "view:${view.page}?${params}")`);
   return true;
 }
+
+/**
+ * Ask for a report and add the "All runs on one chart" overlay of PR curves or distributions.
+ *
+ * The line is `![caption](files/x.png "overlay:<ref> <ref> ...")`, one `media:` reference per run:
+ * a PNG in any Markdown viewer, and in nuboard the chart drawn live from the logged items.
+ */
+export async function addOverlayToReport(
+  project: string,
+  png: string,
+  caption: string,
+  refs: string[],
+): Promise<boolean> {
+  const res = await askReport(project, caption, 'The chart of every run, drawn live in the report.');
+  if (!res) return false;
+  const shot = await api.saveSnapshot(project, res.name, png);
+  if (!shot.path) throw new Error(shot.error ?? 'could not save the snapshot');
+  const cap = res.caption.replace(/[[\]\n]/g, ' ');
+  await appendToReport(project, res.name, `![${cap}](${shot.path} "overlay:${refs.join(' ')}")`);
+  return true;
+}

@@ -2,6 +2,7 @@
   import { mount, unmount } from 'svelte';
   import ChartEmbed from './ChartEmbed.svelte';
   import MediaEmbed from './MediaEmbed.svelte';
+  import OverlayEmbed from './OverlayEmbed.svelte';
   import ViewEmbed from './ViewEmbed.svelte';
   import { api } from '../lib/api';
   import { renderMarkdown } from '../lib/markdown';
@@ -27,6 +28,17 @@
         mount(ChartEmbed, {
           target: slot,
           props: { spec: slot.dataset.spec ?? '', caption: slot.dataset.caption ?? '', src: slot.dataset.src ?? '' },
+        }),
+      ),
+      ...[...el.querySelectorAll<HTMLElement>('.nb-overlay')].map((slot) =>
+        mount(OverlayEmbed, {
+          target: slot,
+          props: {
+            project,
+            refs: slot.dataset.refs ?? '',
+            caption: slot.dataset.caption ?? '',
+            src: slot.dataset.src ?? '',
+          },
         }),
       ),
       ...[...el.querySelectorAll<HTMLElement>('.nb-view')].map((slot) =>

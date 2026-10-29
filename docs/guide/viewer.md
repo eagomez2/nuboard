@@ -309,7 +309,8 @@ The main chart can go full screen, and any plot can be added to a report. See
 ![Timeline page](../assets/timeline-light.png){ .nb-shot }
 
 Every run as a bar from start to end, grouped by project, colored by status,
-project or group. **Packed** puts runs that never overlap on the same row, so
+project or group. Each row shows the run's name followed by the end of its id,
+which tells apart runs with the same name; hover a bar for the full id. **Packed** puts runs that never overlap on the same row, so
 the chart shows how many ran at once; the summary line gives the peak and the
 total run time. Crashed runs end in ✕, runs with alerts have a dot, and
 diamonds mark artifact versions a run produced. Click a bar to open the run.
@@ -409,9 +410,13 @@ section, then loop it, zoom to it or add a **Note**; notes show in a lane above
 the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (next to **Fit**) spreads the figure over the
-window with a taller plot, in the viewer and in exported reports alike; Esc
-puts it back. The play button plays the clip, or the selection, from where you
-click. It has no spectrogram; [Audio](#audio) has that. See
+window with a taller plot, in the viewer and in exported reports alike; there
+Space plays and pauses, and Esc puts it back. The play button plays the clip, or the selection, from where you
+click. The download button next to it saves the **Audio (.wav)** as logged or
+the **Data (.zip)**: the audio, one `.npy` per signal and a `metadata.json`
+([details](../api/add_figure.md#downloading-the-audio-and-signals)). Other
+items download from their card with an extension that matches their type
+(`.png`, `.wav`, `.json`, ...). It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
 
 ### Tables
@@ -441,10 +446,12 @@ since the previous step.
 ### PR curves
 
 PR curves are listed with the figures. Each card draws its run's curve
-(precision against recall) in the run's color with its average precision, and
-a chart above the cards overlays every run's curve at the chosen step, as
-TensorBoard does. Hover a curve for the threshold, precision, recall and the
-TP, FP, TN and FN counts there.
+(precision against recall) in the run's color with its average precision
+(AP, the area under the curve, by the trapezoidal rule), and a chart above the
+cards overlays every run's curve at the chosen step, as TensorBoard does; its
+buttons open it large, download it as a PNG with its legend, or add it to a
+report. Hover a curve for the threshold, precision,
+recall and the TP, FP, TN and FN counts there.
 
 ### Distributions
 
@@ -456,7 +463,9 @@ fairly. Hover for the bin under the pointer and its share of the values.
 **Over steps** switches the card to TensorBoard's distributions view: the
 median as a line and bands holding 68%, 86% and all of the values at every
 logged step (up to 150, sampled evenly), with the chosen step marked. A chart
-above the cards overlays every run's histogram at the chosen step. In an HTML
+above the cards overlays every run's histogram at the chosen step; its
+buttons open it large, download it as a PNG with its legend, or add it to a
+report. In an HTML
 export a distribution is drawn as a picture with the step before it.
 
 ### Point clouds
@@ -489,7 +498,7 @@ remembered):
 - **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
-  and full screen (`F`). The spectrogram is computed in the browser (Hann
+  and full screen (`F`), where Space plays and pauses. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
   follow each other's zoom, scroll, cursor and selection, and starting one

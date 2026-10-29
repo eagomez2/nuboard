@@ -37,7 +37,7 @@ path.
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
-    reports/files/*.png                   chart and plot snapshots embedded in reports
+    reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -79,7 +79,7 @@ ignore keys they do not know.
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
-| `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. |
+| `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. `gpus` lists the NVIDIA GPUs the process can use (after `CUDA_VISIBLE_DEVICES`), each with `device` (`cuda:i`), `index` (on the machine), `uuid`, `name`, `memory` and `driver`; older runs have only the last three, for every GPU of the machine. |
 | `distributed` | object | `world_size`, `shared_id`. |
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
@@ -218,7 +218,48 @@ bytes after the last indexed entry (from a crash) are harmless.
 | `application/x-nuboard-histogram+json` | `add_histogram`: `{edges, counts, count}` with `edges` one longer than `counts` (every bin includes its left edge, the last also its right edge), and optionally `min`, `max`, `mean`, `std` of the finite values, `outside` (finite values outside the edges) and `nonfinite` (NaN and infinite values, not binned); `count` includes both. The frame's `bins` and `count` give the counts |
 | `application/x-nuboard-table+json` | `add_table`: `{columns: [{name, type}], id, rows}`; `type` is `number`, `bool`, `text`, `audio` or `image`, `id` names the column that matches rows across steps, and each row is a list of cells in column order. A media cell is `{"$cell": "<key>#<row>/<column>"}`, the key of a media item logged at the same step with `kind` `cell` (not listed on its own in the viewer). The frame's `rows` and `columns` give the counts |
 | `application/x-nuboard-points` | `add_point_cloud`: N x 3 little-endian float32 x, y, z, then N x 3 RGB bytes when the frame's `colors` is true; `points` holds N, and `axes`, when present, the three axis names the viewer starts showing |
+| `application/x-nuboard-waveform` | `add_figure` with a `nb.WaveformFigure`: the audio as 16-bit PCM WAV (`audio_bytes` long), then each signal as `samples` little-endian float32 values, in the order of the frame's `signals`; the frame also holds `sample_rate`, `channels`, `duration`, `range`, `caption` and `regions` (`{track: [[start, end, label], ...]}` in seconds, or null) |
 | `text/html` | `add_html` (the viewer renders it in a sandboxed iframe) |
+
+### Waveform bundles
+
+A waveform figure downloads (**Data (.zip)** in the viewer and in exported
+HTML) and goes into a report's .zip export as a bundle, a zip with every
+member stored uncompressed:
+
+```text
+<run>-<key>-<step>.zip
+  audio.wav                 the audio, byte for byte as logged (16-bit PCM)
+  signals/<name>.npy        one float32 array per signal, one value per audio sample (NaN = gap)
+  metadata.json
+```
+
+Each `.npy` is NumPy format 1.0 with `descr` `<f4` and shape `(samples,)`. A
+signal's file name is its name with characters some systems do not allow in
+file names (`/ \ : * ? " < > |` and control characters) replaced by `_`; names
+that then collide, ignoring case, get `-2`, `-3`, ...; `metadata.json` maps
+each name to its file.
+
+```json
+{
+  "format": "nuboard-waveform", "format_version": 1,
+  "run": {"id": "20261028T1012-1a2b3c4d", "name": "unet-l1", "project": "speech-denoise"},
+  "key": "eval/vad", "step": 1200, "caption": "VAD on sample 3",
+  "audio": {"file": "audio.wav", "sample_rate": 16000, "channels": 1, "samples": 160000, "duration": 10.0},
+  "signals": [{"name": "speech_prob", "file": "signals/speech_prob.npy", "dtype": "float32", "samples": 160000}],
+  "range": [0.0, 1.0],
+  "regions": {"target": [[0.42, 1.87, "speech"]], "predicted": [[0.40, 1.95, "speech"]]},
+  "notes": [{"id": "...", "start": 0.4, "end": 0.6, "text": "false alarm"}],
+  "exported_with": "nuboard 0.18.0"
+}
+```
+
+`samples` counts per channel. `range` is the values at the bottom and top of
+the plot (`[-1, 1]`, the waveform's own scale, unless the figure set one),
+`regions` is null when none were logged, and `notes` lists the notes added in
+the viewer. Readers ignore keys they do not know; a newer `format_version`
+means a change they cannot read. `nb.WaveformFigure.load(path)` rebuilds the
+figure from a bundle.
 
 ## Compacted scalars: `data.parquet`
 
@@ -335,7 +376,9 @@ with an image line whose target is a media reference:
 
 that is `media:<run id>/<key>@<step>`, where the run id is the run's folder
 name in the same project and `<key>` may contain `/`. A reference that no
-longer resolves is shown as missing.
+longer resolves is shown as missing. In a .zip export, an embedded waveform
+figure is its [bundle](#waveform-bundles) in `files/`, linked from the
+Markdown.
 
 A chart saved from the Charts page is an ordinary image of a PNG snapshot in
 `reports/files/`, whose title describes the chart as a URL query string after
@@ -353,7 +396,14 @@ snapshot.
 
 A snapshot from another page (Sweeps, Timeline) has the title
 `view:<page>?<viewer URL parameters>`; the viewer shows the image with a
-button that reopens that page with those parameters.
+button that reopens that page with those parameters. Timeline snapshots are
+SVG files (no scripts, event handlers or links; each bar has a `<title>`), the
+others PNG.
+
+The Media page's "All runs on one chart" has the title
+`overlay:<ref> <ref> ...`, one `<run id>/<key>@<step>` reference per run
+(as after `media:`), separated by spaces. The viewer draws the chart live
+from those items and shows the PNG snapshot when none of them is found.
 
 ## Property definitions: `fields.json`
 

@@ -214,6 +214,30 @@ def test_artifacts_of_a_project_without_runs(client, tmp_path):
     assert client.get("/api/artifacts?project=vision").json()["artifacts"] == []
 
 
+def test_artifact_files_come_a_page_at_a_time(client, tmp_path):
+    folder = tmp_path / "shards"
+    folder.mkdir()
+
+    for i in range(25):
+        (folder / f"part-{i:03d}.bin").write_bytes(b"x" * i)
+
+    nb.add_artifact("datasets", "shards", folder, reference=True)
+    (art,) = client.get("/api/artifacts").json()["artifacts"]
+    # the list has no file list, only what sums it up
+    assert "files" not in art["manifest"]
+    assert (art["file_count"], art["size"]) == (25, sum(range(25)))
+    q = {"project": "datasets", "name": "shards", "version": 1, "limit": 10}
+    page = client.get("/api/artifacts/files", params={**q, "offset": 20}).json()
+    assert [f["path"] for f in page["files"]] == [f"part-{i:03d}.bin" for i in range(20, 25)]
+    assert (page["total"], page["matched"]) == (25, 25)
+    found = client.get("/api/artifacts/files", params={**q, "find": "PART-01"}).json()
+    assert found["matched"] == 10 and len(found["files"]) == 10
+    missing = client.get("/api/artifacts/files", params={**q, "version": 2})
+    assert missing.status_code == 404
+    bad = client.get("/api/artifacts/files", params={**q, "name": "../x"})
+    assert bad.status_code == 400
+
+
 def test_x_axis_by_another_metric(client):
     with nb.init("sweep", run_name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):
@@ -407,6 +431,30 @@ def test_chart_snapshots_are_served_and_exported(client):
     assert f"![loss]({path})" in zf.read("Charts.md").decode()
     assert zf.read(path) == png
     assert client.get("/api/reports/sweep/files/..%2Fruns").status_code == 404
+
+
+def test_timeline_snapshots_are_plain_svg(client):
+    import base64
+
+    def post(svg):
+        data = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+        body = {"project": "sweep", "report": "Plots", "png": data}
+        return client.post("/api/reports/snapshot", json=body)
+
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><g><title>run a</title><rect/></g></svg>'
+    path = post(svg).json()["path"]
+    assert path.endswith(".svg")
+    res = client.get(f"/api/reports/sweep/{path}")
+    assert res.text == svg and "default-src 'none'" in res.headers["content-security-policy"]
+
+    for bad in (
+        "<svg><script>alert(1)</script></svg>",
+        '<svg><rect onload="alert(1)"/></svg>',
+        '<svg><a href="javascript:alert(1)"/></svg>',
+        "<svg><foreignObject><p>x</p></foreignObject></svg>",
+        "<html><svg/></html>",
+    ):
+        assert post(bad).status_code == 400, bad
 
 
 def test_live_stream_ends_when_the_server_stops(tmp_path):

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import LineChart from './LineChart.svelte';
+  import LineChart, { type CursorValue } from './LineChart.svelte';
   import { api, type ChartData } from '../lib/api';
   import { chartsParams, decodeSpec } from '../lib/chartspec';
   import { seriesColor } from '../lib/colors';
+  import { fmtDuration, fmtNum, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -45,6 +46,28 @@
   const colorOf = (label: string, i: number) => seriesColor(index.get(label) ?? i);
   const hidden = $derived(new Set(s?.hidden ?? []));
   const shown = $derived((data?.series ?? []).filter((x) => !hidden.has(x.label)));
+
+  // The values under the cursor, as the Charts inspector shows them; a click pins them.
+  let cursorX = $state<number | null>(null);
+  let values = $state<CursorValue[]>([]);
+  let pinned = $state(false);
+  let at = $state<{ x: number; y: number; w: number } | null>(null);
+  const rows = $derived.by(() => {
+    const lower = lowerIsBetter(s?.metric ?? '');
+    return [...values].sort((a, b) => (lower ? a.value - b.value : b.value - a.value));
+  });
+  function fmtX(x: number): string {
+    const kind = s?.x ?? 'step';
+    if (kind === 'time') return new Date(x * 1000).toLocaleString();
+    if (kind === 'relative' || kind === 'active') return fmtDuration(x);
+    if (kind.startsWith('metric:')) return `${kind.slice(7)} ${fmtNum(x)}`;
+    return `Step ${Math.round(x).toLocaleString()}`;
+  }
+  function track(e: PointerEvent) {
+    if (pinned) return;
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    at = { x: e.clientX - box.left, y: e.clientY - box.top, w: box.width };
+  }
 </script>
 
 <figure class="embed">
@@ -54,21 +77,60 @@
       <span class="faint small">{s.group ? `grouped by ${s.group}` : `${s.runs.length} runs`} · live</span>
       <button class="btn btn-ghost sm" onclick={() => router.go('charts', chartsParams(s))}>Open in Charts</button>
     </div>
-    <LineChart
-      {data}
-      smoothing={s.smooth}
-      showRaw={s.raw}
-      showBands={s.bands}
-      zoom={s.zoom}
-      robust={s.robust}
-      logY={s.log}
-      baselines={s.base}
-      {hidden}
-      {colorOf}
-      syncKey="report"
-      themeVersion={app.themeVersion}
-      height={300}
-    />
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="plot"
+      onpointermove={track}
+      onpointerleave={() => {
+        if (!pinned) at = null;
+      }}
+    >
+      <LineChart
+        {data}
+        smoothing={s.smooth}
+        showRaw={s.raw}
+        showBands={s.bands}
+        zoom={s.zoom}
+        robust={s.robust}
+        logY={s.log}
+        baselines={s.base}
+        {hidden}
+        {colorOf}
+        syncKey="report"
+        themeVersion={app.themeVersion}
+        height={300}
+        markers
+        {pinned}
+        onCursor={(x, v) => {
+          if (pinned) return;
+          cursorX = x;
+          values = v;
+        }}
+        onPin={() => (pinned = !pinned && cursorX !== null)}
+      />
+      {#if at && cursorX !== null && rows.length}
+        <div
+          class="tip"
+          class:pinned
+          role="status"
+          aria-label="Values at the cursor"
+          style={at.x > at.w / 2 ? `right:${at.w - at.x + 14}px` : `left:${at.x + 14}px`}
+        >
+          <div class="tx mono">{fmtX(cursorX)}{pinned ? ' · pinned' : ''}</div>
+          {#each rows.slice(0, 12) as v (v.label)}
+            <div class="trow">
+              <i style="background:{colorOf(v.label, v.series)}"></i>
+              <span class="mono trunc tl" title={v.label}>{v.label}</span>
+              <span class="mono tv">{fmtNum(v.value)}</span>
+              {#if s.group && v.lo !== null && v.hi !== null && s.agg === 'std'}<span class="mono faint"
+                  >±{fmtNum((v.hi - v.lo) / 2, 2)}</span
+                >{/if}
+            </div>
+          {/each}
+          {#if rows.length > 12}<div class="faint more">+{rows.length - 12} more</div>{/if}
+        </div>
+      {/if}
+    </div>
     <div class="legend">
       {#each shown as x (x.label)}
         <span class="chip-l"
@@ -163,7 +225,59 @@
     text-align: center;
     font-size: 13px;
   }
+  .plot {
+    position: relative;
+  }
+  .tip {
+    position: absolute;
+    top: 8px;
+    z-index: 5;
+    min-width: 180px;
+    max-width: min(360px, 70%);
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+    font-size: 12px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .tip.pinned {
+    border-color: var(--accent);
+  }
+  .tx {
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .trow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .trow i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .tl {
+    flex: 1;
+    min-width: 0;
+  }
+  .tv {
+    flex: none;
+  }
+  .more {
+    font-size: 11px;
+  }
   @media print {
+    .tip {
+      display: none;
+    }
     .head .btn {
       display: none;
     }

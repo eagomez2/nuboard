@@ -209,6 +209,32 @@ def _versions(adir: Path) -> list[int]:
     return sorted(int(m.group(1)) for e in os.listdir(adir) if (m := _VERSION_RE.match(e)))
 
 
+def version_folders(project_dir: Path) -> list[tuple[str, int, Path, bool]]:
+    """Return `(name, version, folder, unlinked)` of every artifact version of a project.
+
+    Only folders are listed; no manifest is read.
+    """
+    out = []
+
+    art = project_dir / "artifacts"
+
+    for base, unlinked in ((art, False), (art / UNLINKED, True)):
+        try:
+            names = [e for e in os.scandir(base) if e.is_dir() and not e.name.startswith(".")]
+        except OSError:
+            continue
+
+        for n in names:
+            try:
+                for v in os.scandir(n.path):
+                    if v.is_dir() and v.name[:1] == "v" and v.name[1:].isdigit():
+                        out.append((n.name, int(v.name[1:]), Path(v.path), unlinked))
+            except OSError:
+                continue
+
+    return sorted(out, key=lambda x: (x[0], x[1]))
+
+
 def _sha256(path: Path) -> str:
     """Return the hex SHA-256 digest of a file, read in 1 MiB chunks."""
     h = hashlib.sha256()

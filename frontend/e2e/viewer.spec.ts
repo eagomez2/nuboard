@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
 test('runs table lists the demo projects and filters with the query bar', async ({ page }) => {
@@ -52,6 +55,72 @@ test('media page shows logged images', async ({ page }) => {
   await expect(page.getByText('No key matches')).toBeVisible();
 });
 
+test('the all-runs PR chart opens large', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fpr%2F');
+  await expect(page.getByText('All runs on one chart').first()).toBeVisible();
+  await page.locator('.prhead').first().getByRole('button', { name: 'Open large' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('All runs on one chart')).toBeVisible();
+  await expect(dialog.locator('svg polyline').first()).toBeAttached();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('the all-runs PR chart downloads as a PNG and goes to a report', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mfind=%5Eeval%2Fpr%2F');
+  const head = page.locator('.prhead').first();
+  await expect(page.locator('.prall .legend span').first()).toBeVisible();
+  const download = page.waitForEvent('download');
+  await head.getByRole('button', { name: 'Download as PNG' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^eval_pr_\w+-all-runs\.png$/);
+  const png = readFileSync((await file.path())!);
+  expect(png.readUInt32BE(16)).toBeGreaterThan(600); // the whole chart, not a stray icon
+  await head.getByRole('button', { name: 'Add to a report' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Report').fill('e2e-pr-all');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"overlay:\S+@\d+ \S+@\d+/);
+  // drawn live in the report, as on the Media page
+  await expect(page.locator('.md .pr svg polyline').nth(1)).toBeAttached();
+  await expect(page.locator('.md .legend').first()).toContainText('AP');
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const exportedPath = test.info().outputPath('e2e-pr-all.html');
+  await (await exported).saveAs(exportedPath);
+  const html = readFileSync(exportedPath, 'utf8');
+  expect(html).toMatch(/class="nbpr"><svg[^]*<polyline[^]*<polyline/);
+  // the exported file shows the nearest threshold on hover, as the viewer does
+  const off = await page.context().browser()!.newPage();
+  await off.goto('file://' + exportedPath);
+  const svg = off.locator('.nbpr svg').first();
+  const box = (await svg.boundingBox())!;
+  await off.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.08);
+  await expect(off.locator('.nbpr .nbtip').first()).toContainText('Threshold');
+  await off.mouse.move(box.x + box.width * 0.12, box.y + box.height * 0.85); // far from every curve
+  await expect(off.locator('.nbpr .nbtip').first()).toBeHidden();
+  await off.close();
+  await page.getByRole('button', { name: 'Open in Media' }).click();
+  await expect(page).toHaveURL(/#\/media.*mfind=/);
+});
+
+test('best-step mode shows each run at its lowest or highest value of the scalar', async ({ page }) => {
+  await page.goto('/#/media?project=vit-ablations&mmode=best&mmetric=val%2Floss&mfind=%5Esamples%2Faugmented%24');
+  const note = page.locator('.bestnote').first();
+  const firstCard = page.locator('.grid').first().locator('> *').first();
+  // val/loss: lower is better, so Lowest is the default, late in training; Highest is near the start
+  await expect(page.getByRole('button', { name: 'Lowest', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(note).toContainText(/^Lowest\s+val\/loss:\s+cutmix-s1\s+0\.7\d*\s+at step (9\d|100)\b/);
+  await expect(firstCard).toContainText(/Step (9\d|100)\b/);
+  await page.getByRole('button', { name: 'Highest', exact: true }).click();
+  await expect(note).toContainText(/^Highest\s+val\/loss:\s+cutmix-s1\s+0\.9\d*\s+at step [0-5]\b/);
+  await expect(firstCard).toContainText(/Step [0-5]\b/);
+  await page.getByRole('button', { name: 'Lowest', exact: true }).click();
+  await expect(firstCard).toContainText(/Step (9\d|100)\b/);
+});
+
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&cols=field:verdict');
   await expect(page.getByRole('button', { name: /health alert/ }).first()).toBeVisible();
@@ -90,6 +159,7 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await page.goto('/#/timeline?project=llm-pretrain');
   await expect(page.locator('g.bar').first()).toBeVisible();
   expect(await page.locator('g.bar').count()).toBeGreaterThan(12);
+  await expect(page.locator('text.name tspan.rid').first()).toHaveText(/^ [0-9a-z]{6,12}$/);
   await page.goto('/#/artifacts?project=llm-pretrain');
   await expect(page.getByRole('heading', { name: 'fineweb-edu:v2' })).toBeVisible();
   await expect(page.locator('g.node.run')).toHaveCount(14);
@@ -210,6 +280,46 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(page.locator('.nbwf').first().locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible({
     timeout: 15000,
   });
+});
+
+test('a waveform figure downloads its audio as .wav and its data as a .zip bundle', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
+  const fig = page.locator('.nbwf').first();
+  await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
+  const save = async (item: string) => {
+    const download = page.waitForEvent('download');
+    await fig.getByRole('button', { name: 'Download' }).click();
+    await fig.getByRole('menuitem', { name: item }).click();
+    const file = await download;
+    const path = test.info().outputPath(file.suggestedFilename());
+    await file.saveAs(path);
+    return { name: file.suggestedFilename(), path };
+  };
+  const wav = await save('Audio (.wav)');
+  expect(wav.name).toMatch(/-vad_enhanced-0\.wav$/);
+  expect(readFileSync(wav.path).subarray(0, 4).toString()).toBe('RIFF');
+  await expect(fig.getByRole('menu')).toBeHidden();
+
+  // the bundle, read back with the Python loader: the same audio, one signal per name, the metadata
+  const zip = await save('Data (.zip)');
+  expect(zip.name).toMatch(/-vad_enhanced-0\.zip$/);
+  const python = process.env.PYTHON ?? '../.venv/bin/python';
+  const script = [
+    'import json, sys',
+    'from nuboard._waveform import read_bundle',
+    'audio, rate, signals, meta = read_bundle(sys.argv[1])',
+    'print(json.dumps({"rate": rate, "frames": audio.shape[-1], "wav": open(sys.argv[2], "rb").read() == __import__("zipfile").ZipFile(sys.argv[1]).read("audio.wav"), "signals": {k: len(v) for k, v in signals.items()}, "meta": meta}))',
+  ].join('\n');
+  const out = JSON.parse(execFileSync(python, ['-c', script, zip.path, wav.path]).toString());
+  expect(out.wav).toBe(true);
+  expect(out.meta.key).toBe('vad/enhanced');
+  expect(out.meta.step).toBe(0);
+  expect(out.meta.run.project).toBe('speech-denoise');
+  expect(out.meta.exported_with).toMatch(/^nuboard \d/);
+  expect(out.meta.regions).not.toBeNull();
+  expect(Object.keys(out.signals)).toEqual(out.meta.signals.map((s: { name: string }) => s.name));
+  for (const n of Object.values(out.signals)) expect(n).toBe(out.frames);
+  expect(out.frames).toBe(Math.round(out.rate * 2.6));
 });
 
 test('properties: define one from Columns, edit a cell, set it on selected runs', async ({ page }) => {
@@ -494,7 +604,12 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   await dlg.getByLabel('Report').fill('e2e-timeline');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
-  await expect(page.locator('.preview .nb-view img')).toBeVisible();
+  // saved as an SVG, drawn inline with a title on every bar
+  await expect(page.locator('.preview .nb-view svg').first()).toBeVisible();
+  await expect(page.locator('.preview .nb-view svg title').first()).toContainText('Started');
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(
+    /files\/e2e-timeline-\w+\.svg "view:timeline/,
+  );
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
@@ -502,7 +617,7 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   expect(file.suggestedFilename()).toBe('e2e-timeline.html');
   const html = await (await file.createReadStream()).toArray();
   const doc = Buffer.concat(html).toString();
-  expect(doc).toContain('src="data:image/png;base64,');
+  expect(doc).toMatch(/<div class="nbsvg"><svg[^]*<title>[^<]*Started/);
   expect(doc).toContain('class="nbtheme"'); // switchable by default
   expect(doc).toMatch(/<footer>Exported with NuBoard \d+\.\d+\.\d+ from /);
   expect(doc).toContain('rel="icon"');
@@ -549,6 +664,12 @@ test('several media items go to a report together and export without a network',
 
 test('a saved chart is drawn live in the exported HTML and follows its theme', async ({ page, browser }) => {
   await page.goto('/#/reports?rproject=vit-ablations&report=augmentation-findings');
+  // in the viewer, hovering the chart shows the values at that step
+  const chart = page.locator('.preview .embed .plot').first();
+  await expect(chart.locator('canvas').first()).toBeVisible();
+  await chart.hover({ position: { x: 300, y: 120 } });
+  await chart.hover({ position: { x: 320, y: 130 } });
+  await expect(page.getByRole('status', { name: 'Values at the cursor' })).toContainText(/Step [\d,]+/);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Switchable', exact: true }).click();
@@ -560,6 +681,12 @@ test('a saved chart is drawn live in the exported HTML and follows its theme', a
   const off = await ctx.newPage();
   await off.goto('file://' + path);
   await expect(off.locator('.nbplot canvas')).toBeVisible();
+  // hovering the chart reads out every series at that step, as the Inspector does
+  const over = off.locator('.nbplot .u-over').first();
+  await over.hover({ position: { x: 200, y: 100 } });
+  await expect(off.locator('.nbplot .nbtip').first()).toContainText(/^Step [\d,]+/);
+  await over.click({ position: { x: 200, y: 100 } });
+  await expect(off.locator('.nbplot .nbtip').first()).toContainText('pinned');
   await expect.poll(() => drawnPixels(off.locator('.nbpoints canvas'))).toBeGreaterThan(500);
   await expect(off.locator('html')).toHaveAttribute('data-theme', 'light');
   await off.getByRole('button', { name: 'Switch between light and dark theme' }).click();
@@ -607,6 +734,55 @@ test('a pinned point stays on its point when the chart zooms', async ({ page }) 
   await expect(page).toHaveURL(/zoom=/);
   await page.waitForTimeout(500);
   await expect(dot).toBeVisible();
+});
+
+test('Space plays and pauses a waveform figure in full screen only', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
+  const fig = page.locator('.nbwf').first();
+  await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
+  await page.keyboard.press(' ');
+  await expect(fig).not.toHaveClass(/playing/);
+  // the focused full screen button is not pressed by Space: the figure stays in full screen
+  await fig.getByRole('button', { name: 'Full screen' }).click();
+  await page.keyboard.press(' ');
+  await expect(fig).toHaveClass(/playing/);
+  await expect(fig).toHaveClass(/nbwf-full/);
+  await page.keyboard.press('Control+ ');
+  await expect(fig).toHaveClass(/playing/);
+  await page.keyboard.press(' ');
+  await expect(fig).not.toHaveClass(/playing/);
+  await page.keyboard.press('Escape');
+  await expect(fig).not.toHaveClass(/nbwf-full/);
+});
+
+test('Space plays and pauses the audio player in full screen only', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
+  const player = page.frameLocator('iframe[src="./audio.html"]').first();
+  const root = player.locator('#player');
+  await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
+  await root.click({ position: { x: 5, y: 5 } }); // focus the frame without playing
+  await page.keyboard.press(' ');
+  await expect(root).not.toHaveClass(/playing/);
+  await player.locator('#fullscreen').click();
+  await expect(root).toHaveClass(/fullscreen/);
+  await page.keyboard.press(' ');
+  await expect(root).toHaveClass(/playing/);
+  await expect(root).toHaveClass(/fullscreen/);
+  await page.keyboard.press(' ');
+  await expect(root).not.toHaveClass(/playing/);
+  // typing a note in full screen types the space
+  const box = (await player.locator('#waveform').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.2, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + 30, { steps: 8 });
+  await page.mouse.up();
+  await player.getByRole('button', { name: 'Note', exact: true }).click();
+  await player.locator('#note-text').pressSequentially('a b');
+  await expect(player.locator('#note-text')).toHaveValue('a b');
+  await expect(root).not.toHaveClass(/playing/);
+  await player.locator('#note-text').press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(root).not.toHaveClass(/fullscreen/);
 });
 
 test('notes on a section of audio are saved, edited and deleted', async ({ page }) => {
@@ -778,6 +954,15 @@ test('a report with a table and audio notes exports them, with either audio play
   await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
   await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
   await off.getByRole('button', { name: 'Fit' }).click();
+  // the Download menu works offline too: the data bundle carries the figure's note
+  const bundle = off.waitForEvent('download');
+  await off.locator('.nbwavefig').getByRole('button', { name: 'Download' }).click();
+  await off.locator('.nbwavefig').getByRole('menuitem', { name: 'Data (.zip)' }).click();
+  const zipPath = test.info().outputPath('exported-bundle.zip');
+  await (await bundle).saveAs(zipPath);
+  const zipped = readFileSync(zipPath);
+  expect(zipped.subarray(0, 2).toString()).toBe('PK');
+  expect(zipped.toString('latin1')).toContain('pause: stays below 0.01');
   // full screen, as the audio player has: the figure covers the window and its plot grows
   await off.locator('.nbwavefig').getByRole('button', { name: 'Full screen' }).click();
   await expect(off.locator('.nbwavefig .nbwf-full')).toBeVisible();
@@ -1104,6 +1289,12 @@ test('an artifact version is added from a path, unlinked and restored', async ({
   await page.getByRole('button', { name: 'Add version' }).click();
   await expect(page.locator('.head h2')).toHaveText('demo-folder:v1');
   await expect(page.getByText('from the viewer')).toBeVisible();
+  // its files load when it is opened, and the filter searches them on the server
+  const paths = page.locator('td.path');
+  await expect(paths.first()).toBeVisible();
+  await page.getByLabel('Filter files by path').fill('run.json');
+  await expect(paths.first()).toContainText('run.json');
+  await expect(paths.filter({ hasNotText: 'run.json' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Unlink version' }).click();
   await page.getByRole('button', { name: 'Unlink', exact: true }).click();

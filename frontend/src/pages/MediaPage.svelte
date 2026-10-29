@@ -6,9 +6,10 @@
   import PrChart from '../components/PrChart.svelte';
   import { api, type MediaItem, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
-  import { appendToReport, askReport } from '../lib/reports.svelte';
+  import { addOverlayToReport, appendToReport, askReport } from '../lib/reports.svelte';
+  import { chartToPng } from '../lib/snapshot';
   import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
-  import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, type MediaKind } from '../lib/media';
+  import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, mediaRef, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -167,16 +168,21 @@
   );
   const bestDir = $derived((router.get('mdir') || (lowerIsBetter(bestMetric) ? 'min' : 'max')) as 'min' | 'max');
   let best = $state<Record<string, { step: number; value: number }>>({});
+  let bestAsked = 0;
   $effect(() => {
     if (mode !== 'best' || !bestMetric || !runs.length) return;
-    const metric = bestMetric;
+    // only the newest answer counts: one for an older choice (Lowest before Highest, another
+    // scalar, a live refresh) can arrive after it and would show the other end
+    const asked = ++bestAsked;
     api
       .best(
         runs.map((r) => r.key),
-        metric,
+        bestMetric,
         bestDir,
       )
-      .then((res) => (best = res.best));
+      .then((res) => {
+        if (asked === bestAsked) best = res.best;
+      });
   });
   // The item a card shows for the page-wide step (its own slider aside), as MediaCard picks it
   function shownItem(list: MediaItem[], target: number | null, nearest: boolean): MediaItem | null {
@@ -197,6 +203,7 @@
               name: `${c.run.name} · step ${it.step.toLocaleString()}`,
               color: seriesVar(runIndex.get(c.run.key) ?? 0),
               url: api.mediaUrl(c.run.key, it.index),
+              ref: mediaRef(c.run.id, it.key, it.step),
             },
           ]
         : [];
@@ -265,6 +272,33 @@
     if (res) await appendToReport(run.project, res.name, embedLine(run.id, it.key, it.step, res.caption));
   }
   let zoom = $state<{ run: RunBrief; item: MediaItem } | null>(null);
+  // Save the "All runs on one chart" overlay that holds `button`, with its legend, as a PNG
+  async function overlayPng(button: HTMLElement, key: string) {
+    const root = button.closest('.prall') ?? button.closest('.big')?.querySelector('.bigbody');
+    return root ? await chartToPng(root, `${key} · all runs`) : null;
+  }
+  async function downloadOverlay(e: MouseEvent, key: string) {
+    const png = await overlayPng(e.currentTarget as HTMLElement, key);
+    if (!png) return;
+    const a = document.createElement('a');
+    a.href = png;
+    a.download = `${key.replaceAll('/', '_')}-all-runs.png`;
+    a.click();
+  }
+  async function reportOverlay(e: MouseEvent, key: string, curves: { ref: string }[]) {
+    const project = router.get('project') ?? runs[0]?.project;
+    const png = await overlayPng(e.currentTarget as HTMLElement, key);
+    if (!png || !project) return;
+    zoomAll = null;
+    await addOverlayToReport(
+      project,
+      png,
+      `${key}, all runs`,
+      curves.map((c) => c.ref),
+    );
+  }
+  // The "All runs on one chart" overlay of one key, opened large
+  let zoomAll = $state<{ title: string; kind: 'pr' | 'hist'; curves: ReturnType<typeof prOverlay> } | null>(null);
 
   // Several items picked with the card checkboxes, added to one report in the order picked.
   let selecting = $state(false);
@@ -293,7 +327,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && (zoom = null)} />
+<svelte:window onkeydown={(e) => e.key === 'Escape' && ((zoom = null), (zoomAll = null))} />
 
 {#if !runs.length}
   <div class="card empty">No runs selected. Pick runs on the Runs page and press “Media”.</div>
@@ -561,12 +595,50 @@
         </header>
         {#if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === PR_MIME}
           <div class="prall">
-            <span class="faint small">All runs on one chart</span>
+            <span class="prhead"
+              ><span class="faint small">All runs on one chart</span>
+              <button
+                class="icon"
+                title="Open large"
+                aria-label="Open large"
+                onclick={() => (zoomAll = { title: s.title, kind: 'pr', curves: prOverlay(cards) })}
+                ><Icon name="search" size={14} /></button
+              ><button
+                class="icon"
+                title="Download as PNG"
+                aria-label="Download as PNG"
+                onclick={(e) => downloadOverlay(e, s.title)}><Icon name="download" size={14} /></button
+              ><button
+                class="icon"
+                title="Add to a report"
+                aria-label="Add to a report"
+                onclick={(e) => reportOverlay(e, s.title, prOverlay(cards))}><Icon name="bookmark" size={14} /></button
+              ></span
+            >
             <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
           </div>
         {:else if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === HIST_MIME}
           <div class="prall">
-            <span class="faint small">All runs on one chart</span>
+            <span class="prhead"
+              ><span class="faint small">All runs on one chart</span>
+              <button
+                class="icon"
+                title="Open large"
+                aria-label="Open large"
+                onclick={() => (zoomAll = { title: s.title, kind: 'hist', curves: prOverlay(cards) })}
+                ><Icon name="search" size={14} /></button
+              ><button
+                class="icon"
+                title="Download as PNG"
+                aria-label="Download as PNG"
+                onclick={(e) => downloadOverlay(e, s.title)}><Icon name="download" size={14} /></button
+              ><button
+                class="icon"
+                title="Add to a report"
+                aria-label="Add to a report"
+                onclick={(e) => reportOverlay(e, s.title, prOverlay(cards))}><Icon name="bookmark" size={14} /></button
+              ></span
+            >
             <HistChart curves={prOverlay(cards)} height={260} label="Distributions of {s.title} for all runs" />
           </div>
         {/if}
@@ -592,10 +664,12 @@
           </div>
           {#if mode === 'best' && by === 'key'}
             <p class="faint small bestnote">
-              Best {bestMetric}:
-              {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{i ? ' · ' : ''}{c
-                    .run.name}
-                  {fmtNum(best[c.run.key].value)} at step {best[c.run.key].step.toLocaleString()}{/if}{/each}
+              {bestDir === 'min' ? 'Lowest' : 'Highest'}
+              {bestMetric}:
+              {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{@const b =
+                    best[c.run.key]}{@const shown = shownItem(c.items, b.step, true)}{i ? ' · ' : ''}{c.run.name}
+                  {fmtNum(b.value)} at step {b.step.toLocaleString()}{#if shown && shown.step !== b.step}
+                    {' '}(item from step {shown.step.toLocaleString()}){/if}{/if}{/each}
             </p>
           {/if}
         {/if}
@@ -615,6 +689,38 @@
     >
     <button class="btn btn-ghost sm" onclick={() => (picked = [])} disabled={!picked.length}>Clear</button>
     <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
+  </div>
+{/if}
+
+{#if zoomAll}
+  <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && (zoomAll = null)}>
+    <div class="card big" role="dialog" aria-label="{zoomAll.title}, all runs">
+      <header>
+        <span class="mono stitle">{zoomAll.title}</span>
+        <span class="faint small">All runs on one chart</span>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost sm" onclick={(e) => zoomAll && downloadOverlay(e, zoomAll.title)}
+          ><Icon name="download" size={14} /> Download</button
+        >
+        <button class="btn btn-ghost sm" onclick={(e) => zoomAll && reportOverlay(e, zoomAll.title, zoomAll.curves)}
+          ><Icon name="bookmark" size={14} /> Add to report</button
+        >
+        <button class="btn btn-ghost sm" aria-label="Close" onclick={() => (zoomAll = null)}
+          ><Icon name="x" size={16} /></button
+        >
+      </header>
+      <div class="bigbody">
+        {#if zoomAll.kind === 'pr'}
+          <PrChart
+            curves={zoomAll.curves}
+            height={560}
+            label="Precision-recall curves of {zoomAll.title} for all runs"
+          />
+        {:else}
+          <HistChart curves={zoomAll.curves} height={520} label="Distributions of {zoomAll.title} for all runs" />
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -850,6 +956,26 @@
     gap: 4px;
     max-width: 760px;
     margin-bottom: 4px;
+  }
+  .prhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .icon:hover {
+    background: var(--panel-2);
+    color: var(--accent);
   }
   .overlay {
     position: fixed;

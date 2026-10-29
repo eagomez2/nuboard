@@ -9,14 +9,15 @@
   import { app } from '../lib/state.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
   import { addSnapshotToReport } from '../lib/reports.svelte';
-  import { svgToPng } from '../lib/snapshot';
+  import { svgToSvg } from '../lib/snapshot';
 
   const fs = new FullScreen();
   onMount(() => fs.listen());
   async function saveToReport() {
     const project = runs[0]?.project ?? router.get('project');
     if (!svg || !project) return;
-    const png = await svgToPng(svg, `Timeline · ${runs.length} runs`);
+    // an SVG, so the exported report keeps a hover title on every bar
+    const png = await svgToSvg(svg, `Timeline · ${runs.length} runs`);
     if (fs.on) await fs.toggle(); // dialogs are not shown over a full-screen element
     await addSnapshotToReport(project, png, `Timeline of ${runs.length} runs`, {
       page: 'timeline',
@@ -312,6 +313,10 @@
     if (text.length <= max) return text;
     return max > 1 ? text.slice(0, max - 1) + '…' : '';
   }
+  // The end of the run id (the hash in `<time>-<hash>`), which tells apart runs that share a name.
+  function shortId(r: RunBrief): string {
+    return r.id.slice(Math.max(r.id.lastIndexOf('-'), r.id.lastIndexOf('_')) + 1).slice(0, 12);
+  }
   // Keep the hover card on screen near the right and bottom edges.
   const tipLeft = $derived(hover ? Math.max(8, Math.min(hover.x + 14, window.innerWidth - 356)) : 0);
 </script>
@@ -395,13 +400,21 @@
           {@const x0 = Math.max(xOf(r.started ?? 0), LABEL)}
           {@const x1 = Math.min(xOf(endOf(r)), LABEL + plotW)}
           {#if !packed}
+            {@const sid = shortId(r)}
             <text class="name" class:dim={r.archived} x={20} y={y + 16}
-              ><title>{r.name}</title>{fit(r.name, LABEL - 20 - 14, 7.3)}</text
+              ><title>{r.name} · {r.id}</title>{fit(r.name, LABEL - 20 - 14 - (sid.length + 1) * 7.3, 7.3)}<tspan
+                class="rid">{' ' + sid}</tspan
+              ></text
             >
           {/if}
           {#if x1 >= LABEL && x0 <= LABEL + plotW}
             <g
               class="bar"
+              data-tip="{r.name} · {r.id}\n{cap(r.status)} · {r.project}\nStarted {fmtDate(
+                r.started,
+              )}\nDuration {fmtDuration(endOf(r) - (r.started ?? 0))}{r.alerts?.length
+                ? `\n${r.alerts.map((a) => a.message).join('\n')}`
+                : ''}"
               role="button"
               tabindex="-1"
               onpointerenter={(e) => (hover = { run: r, x: e.clientX, y: e.clientY })}
@@ -461,6 +474,7 @@
 {#if hover}
   <div class="tip card" style="left:{tipLeft}px; top:{hover.y + 14}px">
     <div class="tname mono">{hover.run.name}</div>
+    <div class="trow mono faint">{hover.run.id}</div>
     <div class="trow"><Status status={hover.run.status} /> <span class="faint">{hover.run.project}</span></div>
     <div class="trow">Started {fmtDate(hover.run.started)}</div>
     <div class="trow">Duration {fmtDuration(endOf(hover.run) - (hover.run.started ?? 0))}</div>
@@ -550,6 +564,9 @@
   .name {
     fill: var(--muted);
     font: 12px var(--mono);
+  }
+  .rid {
+    fill: var(--faint);
   }
   .name.dim {
     opacity: 0.5;

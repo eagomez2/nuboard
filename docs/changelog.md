@@ -2,6 +2,83 @@
 
 ## Unreleased
 
+- **Download a waveform figure's audio and signals.** Waveform figures
+  (`nb.WaveformFigure`) have a Download menu next to **Fit**, on the Media
+  page, in the large view, in report embeds and in exported HTML:
+  **Audio (.wav)** saves the audio exactly as logged, and **Data (.zip)** a
+  bundle of `audio.wav`, one float32 `.npy` per signal and a `metadata.json`
+  with the sample rate, signal names, range, regions, caption, notes, run, key
+  and step. The raw item, which no other tool could open, is no longer offered.
+- **The report .zip export writes the same bundle** for a waveform figure,
+  instead of a `.wav` and a `-signals.csv` that lost the regions and range and
+  grew to millions of rows for long clips.
+- **`nb.WaveformFigure.load(path)`** rebuilds a figure from a bundle; logging
+  it again stores an identical figure. **`run.waveform(key, step)`** in the
+  analysis API returns `(audio, sample_rate, signals, meta)` without
+  downloading.
+- Other media downloaded from their card get a file name extension from their
+  type (`.png`, `.wav`, `.json`, ...).
+
+## 0.18.0
+
+- **Interactive charts in reports and exported HTML.** A chart saved from the
+  Charts page lists every series' value at the step under the pointer, best
+  first, as the Inspector does, in the viewer and in the exported HTML file;
+  a click pins the values. In the exported file, PR curves show the nearest
+  threshold with its precision, recall and TP/FP/TN/FN counts on hover, and
+  distributions the bin under the pointer for each run, as in the viewer.
+- **The all-runs chart in reports.** The "All runs on one chart" overlay on
+  the Media page can be added to a report, where it is drawn live from the
+  logged items (hover, legend, **Open in Media**), and exported to HTML with
+  its hover read-outs. It also downloads as a PNG with its legend.
+- **Timeline snapshots are SVG.** A Timeline added to a report is saved as an
+  SVG drawing, sharp at any size, with a hover title on every bar (name, id,
+  status, start, duration, alerts) in the viewer and in exported HTML.
+- **Best-step mode** on the Media page always shows the choice last made:
+  an answer for an earlier choice (Lowest before Highest, another scalar, a
+  live refresh) could arrive later and show the other end. The line under the
+  cards now says Lowest or Highest, and notes when the nearest logged item is
+  from a different step than the best value.
+- **Open the all-runs chart large.** The "All runs on one chart" overlay of
+  PR curves and distributions on the Media page has a magnifier button that
+  opens it in the large view, as single cards do; Esc closes it. It can also
+  be downloaded as a PNG, with its legend, or added to a report as a snapshot
+  with an **Open in Media** button.
+- **Run ids on the Timeline.** Each row shows the end of the run id after the
+  name, so runs with the same name can be told apart, and hovering a bar
+  shows the full id.
+- The AP next to a PR curve says what it is on hover (average precision, the
+  area under the curve), and the docs say how it is computed.
+- **Space plays and pauses audio in full screen.** Waveform figures and the
+  audio player toggle playback with Space while in full screen, and only
+  there: outside full screen, while typing (such as a note) or with Ctrl, Alt,
+  Cmd or Shift, Space does what it did before, and Esc still leaves full
+  screen. The audio player used to take Space whenever it had focus; it no
+  longer does outside full screen.
+- **Artifacts with many files stay fast in the viewer.** The Artifacts page
+  no longer loads every version's file list: each version comes with its file
+  count and size, and its files load 1,000 at a time when you open it, with
+  **Show more** and a path filter. Before, one version with a million files
+  slowed the whole page. The **New version** form warns from 10,000 files and
+  suggests referencing shards or an index file instead.
+- **New: `nuboard artifact unlink` and `nuboard artifact restore`.** They
+  unlink a version (or with `--all`, every version) and restore one, as the
+  viewer does: nothing is deleted. `nuboard artifact ls --unlinked` lists
+  unlinked versions too.
+- **Docs:** [Recommendations](guide/artifacts.md#recommendations) for
+  registering data: shards over millions of files, when to hash, versions as
+  snapshots. The guide no longer says references are checked by modification
+  time: they are checked by size.
+- **New: `init(gpus=...)` picks the GPUs that system metrics track**, by the
+  device names your script uses: `gpus="cuda:0"`, a list such as
+  `["cuda:0", "cuda:1"]`, a `torch.device`, `"mps"` or `"all"`. A name that
+  cannot be tracked raises `ValueError`. See
+  [Choosing GPUs](api/init.md#choosing-gpus).
+- **Changed: GPU metrics respect `CUDA_VISIBLE_DEVICES`.** Only the GPUs the
+  process can use are tracked, named by the index the script sees, so with
+  `CUDA_VISIBLE_DEVICES=2` the machine's third GPU logs as `system/gpu0/...`.
+  Without the variable nothing changes. `run.json`'s `env.gpus` lists the same
+  GPUs, now with `device`, `index` and `uuid`.
 - **Breaking: `all_ranks` is removed** from `init`, `add_scalar` and
   `add_text`. In distributed training only rank 0 logs, and the calls are
   no-ops on other ranks. The viewer only plots rank 0, so values from other

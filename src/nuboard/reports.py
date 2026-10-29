@@ -21,12 +21,10 @@ Standard library only.
 
 from __future__ import annotations
 
-import array
 import hashlib
 import io
 import math
 import re
-import sys
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -35,6 +33,7 @@ from typing import Any
 from urllib.parse import quote, unquote
 
 from . import _fs
+from ._waveform import waveform_bundle
 
 REF = re.compile(r"!\[(?P<alt>[^\]]*)\]\(media:(?P<ref>[^)\s]+)\)")
 # a report-local image such as a chart snapshot: `![caption](files/x.png "chart:...")`
@@ -56,8 +55,8 @@ _EXT = {
     "application/vnd.plotly.v1+json": ".plotly.json",
     "application/vnd.vegalite+json": ".vl.json",
     "application/vnd.bokeh+json": ".bokeh.json",
-    # a waveform figure: its audio as a WAV, and its signals as a CSV next to it
-    "application/x-nuboard-waveform": ".wav",
+    # a waveform figure: a zip of its audio, signals and metadata (see `_waveform.py`)
+    "application/x-nuboard-waveform": ".zip",
 }
 
 
@@ -158,19 +157,6 @@ def save_report(project_dir: Path, name: str, text: str) -> Path:
 Resolver = Callable[[MediaRef], "tuple[dict[str, Any], bytes] | None"]
 
 
-def _signals_csv(data: bytes, names: list[str]) -> str:
-    """Return a waveform figure's signals (float32, one after the other) as CSV rows of samples."""
-    values = array.array("f", data[: len(data) // 4 * 4])
-
-    if sys.byteorder == "big":
-        values.byteswap()  # stored little-endian
-
-    n = len(values) // max(1, len(names))
-    columns = [values[k * n : (k + 1) * n] for k in range(len(names))]
-    rows = (",".join(f"{v:.7g}" for v in row) for row in zip(*columns, strict=True))
-    return ",".join(names) + "\n" + "\n".join(rows) + "\n"
-
-
 def export_report(
     text: str,
     resolve: Resolver,
@@ -181,14 +167,16 @@ def export_report(
 
     Images and audio become files in `files/` that the Markdown links to, text
     entries are inlined as code blocks, and interactive figures and HTML are
-    saved as files with a link to them. References that no longer resolve are
-    replaced by a note.
+    saved as files with a link to them. A waveform figure becomes its bundle
+    (a `.zip` with `audio.wav`, one `.npy` per signal and `metadata.json`).
+    References that no longer resolve are replaced by a note.
 
     Args:
         text: The report's Markdown.
         resolve: Returns `(item, data)` for a reference, where `item` holds at
-            least `kind` and `mime` (and `text` for text entries), or None when
-            it is missing.
+            least `kind` and `mime` (and `text` for text entries; `run_name`
+            and `project` name the run in a waveform bundle), or None when it
+            is missing.
         title: Base name of the Markdown file in the zip.
         local: Returns the bytes of a report-local file such as
             `files/chart.png` (a chart snapshot), or None when it is missing.
@@ -229,17 +217,15 @@ def export_report(
 
             label = alt or f"{ref.key} at step {ref.step}"
 
-            if mime == "application/x-nuboard-waveform":
-                cut = int(item.get("audio_bytes") or 0)
-                csv = name.removesuffix(".wav") + "-signals.csv"
-
-                if name not in zf.namelist():
-                    zf.writestr(name, data[:cut])
-                    zf.writestr(csv, _signals_csv(data[cut:], list(item.get("signals") or [])))
-
-                return f"[{label}]({name}) ([signals]({csv}))"
-
             if name not in zf.namelist():
+                if mime == "application/x-nuboard-waveform":
+                    run = {
+                        "id": ref.run_id,
+                        "name": item.get("run_name", ref.run_id),
+                        "project": item.get("project"),
+                    }
+                    data = waveform_bundle(item, data, run=run, key=ref.key, step=ref.step)
+
                 zf.writestr(name, data)
 
             if mime.startswith("image/"):
@@ -272,24 +258,45 @@ def save_snapshot(project_dir: Path, report: str, png: bytes) -> str:
     Args:
         project_dir: The project's folder.
         report: The report the snapshot belongs to; used in the file name.
-        png: The PNG image.
+        png: The image: a PNG, or an SVG drawing without scripts, event handlers, links or
+            embedded HTML (the Timeline is saved as SVG so its hover titles survive).
 
     Returns:
         The path to write in the report, such as `files/findings-1a2b3c4d.png`.
 
     Raises:
-        ValueError: If `png` is not a PNG image.
+        ValueError: If `png` is neither a PNG image nor such an SVG drawing.
     """
 
-    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise ValueError("not a PNG image")
+    if png.startswith(b"\x89PNG\r\n\x1a\n"):
+        ext = "png"
+    elif _safe_svg(png):
+        ext = "svg"
+    else:
+        raise ValueError("not a PNG image or a plain SVG drawing")
 
     stem = _fs.sanitize(report.removesuffix(".md"), "report")
-    name = f"{stem}-{hashlib.sha1(png).hexdigest()[:8]}.png"
+    name = f"{stem}-{hashlib.sha1(png).hexdigest()[:8]}.{ext}"
     folder = project_dir / "reports" / "files"
     folder.mkdir(parents=True, exist_ok=True)
     _fs.atomic_write_bytes(folder / name, png)
     return f"files/{name}"
+
+
+_UNSAFE_SVG = re.compile(
+    rb"<script|<foreignobject|<iframe|<object|<embed|javascript:|href\s*=|\son\w+\s*=", re.I
+)
+
+
+def _safe_svg(data: bytes) -> bool:
+    """Return whether `data` is an SVG drawing with nothing that could run or load anything."""
+
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+
+    return text.lstrip().startswith("<svg") and not _UNSAFE_SVG.search(data)
 
 
 def read_fields(project_dir: Path) -> list[dict[str, Any]]:

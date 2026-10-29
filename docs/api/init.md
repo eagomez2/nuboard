@@ -18,6 +18,7 @@ nb.init(
     flush_interval=1.0,
     heartbeat_interval=10.0,
     system_metrics=True,
+    gpus=None,
     system_interval=30.0,
     capture_console=True,
 ) -> Run
@@ -63,6 +64,12 @@ marks it crashed.
   groups out of `"cpu"`, `"memory"` and `"gpu"`, such as
   `system_metrics=["gpu"]` to skip CPU and RAM. See
   [System scalars](init.md#system-scalars).
+- **gpus** (*str or list*, optional): which devices the `gpu` group tracks,
+  by the names your script uses: `"cuda:0"`, `["cuda:0", "cuda:2"]`, `"mps"`,
+  or `"all"`. A `torch.device` works too, so `gpus=device` tracks the device
+  you train on. None, the default, tracks every GPU the process can use. A
+  name that cannot be tracked raises `ValueError`. See
+  [Choosing GPUs](init.md#choosing-gpus).
 - **system_interval** (*float*): seconds between system samples. Defaults to
   30, which is about 14,000 points per scalar over a 5-day run.
 - **capture_console** (*bool*): copy what the script prints to stdout and
@@ -139,15 +146,15 @@ nothing the script did not import already.
 | --- | --- | --- |
 | `cpu` | `system/cpu/percent` (the whole machine), `system/cpu/process_percent` (this process, 100 is one full core) | `/proc` on Linux, `psutil` elsewhere if it is installed |
 | `memory` | `system/memory/used_gb`, `system/memory/percent` (the machine's RAM), `system/memory/process_gb` (this process's resident memory) | `/proc` on Linux, `psutil` elsewhere if it is installed |
-| `gpu` | per GPU `i`: `system/gpu{i}/util`, `memory_gb`, `memory_percent`, `temp_c`, `power_w` | `nvidia-smi`, when it is on the `PATH` |
+| `gpu` | per GPU `cuda:i`: `system/gpu{i}/util`, `memory_gb`, `memory_percent`, `temp_c`, `power_w` | `nvidia-smi`, when it is on the `PATH` |
 | `gpu` | `system/torch/cuda_allocated_gb`, `system/torch/cuda_peak_gb` | PyTorch's CUDA allocator, once the script has used CUDA |
 | `gpu` | `system/torch/mps_allocated_gb`, `system/torch/mps_driver_gb` | PyTorch's MPS allocator on Apple silicon |
 
 What each machine gives:
 
-- **NVIDIA GPUs** give everything in the table. `nvidia-smi` reports every GPU
-  of the machine, and PyTorch's allocator only the current device of the
-  process that logs.
+- **NVIDIA GPUs** give everything in the table: `nvidia-smi` for each GPU the
+  process can use (see [Choosing GPUs](init.md#choosing-gpus)), and
+  PyTorch's allocator for the current device of the process that logs.
 - **CPU only** gives the `cpu` and `memory` groups. The `gpu` group is skipped
   quietly.
 - **Apple silicon (MPS)** gives the `cpu` and `memory` groups when `psutil` is
@@ -172,6 +179,37 @@ nb.init("llm", system_metrics=False)  # none
 nb.init("llm", system_metrics=["gpu"])  # GPU only: skip CPU and RAM
 nb.init("llm", system_interval=120)  # one sample every two minutes
 ```
+
+### Choosing GPUs
+
+By default the `gpu` group tracks the GPUs the process can use, which are all
+of them unless `CUDA_VISIBLE_DEVICES` says otherwise. To track fewer, set
+`CUDA_VISIBLE_DEVICES` or pass `gpus` with the device names of your script:
+
+```python
+nb.init("llm", gpus="cuda:0")  # only the GPU you train on
+nb.init("llm", gpus=["cuda:0", "cuda:1"])
+nb.init("llm", gpus=device)  # a torch.device, such as model.device
+nb.init("llm", gpus="mps")  # Apple silicon: the MPS allocator only
+nb.init("llm", gpus="all")  # the same as the default
+```
+
+Names mean what they mean in PyTorch: `cuda:0` is the first GPU the process
+sees after `CUDA_VISIBLE_DEVICES`, and `cuda` is `cuda:0`. Scalars are named by
+that index too, so with `CUDA_VISIBLE_DEVICES=2` the machine's third GPU logs
+as `system/gpu0/...`. The `env.gpus` entry of `run.json` records each visible
+GPU's `device`, its `index` on the machine and its `uuid`, so you can tell
+which card it was. Choosing only `"mps"` skips the CUDA scalars, and choosing
+only CUDA devices skips the MPS ones.
+
+`init` raises `ValueError` for a name that cannot be tracked: an unknown name
+such as `"tpu"` or `"cpu"`, a `cuda:i` past the GPUs the process sees (or any
+`cuda` name without `nvidia-smi`), or `"mps"` outside macOS.
+
+On a machine with different GPU models, CUDA numbers GPUs fastest first while
+`nvidia-smi` and `CUDA_VISIBLE_DEVICES` indices follow the PCI bus. Set
+`CUDA_DEVICE_ORDER=PCI_BUS_ID` there so that `cuda:i` and the tracked GPU are
+the same card.
 
 
 ## Console output

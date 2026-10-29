@@ -3,7 +3,8 @@
   import ArtifactForm from '../components/ArtifactForm.svelte';
   import Icon from '../components/Icon.svelte';
   import Status from '../components/Status.svelte';
-  import { api, type ArtifactVersion } from '../lib/api';
+  import { untrack } from 'svelte';
+  import { api, type ArtifactFile, type ArtifactVersion } from '../lib/api';
   import { confirmAction, notice } from '../lib/dialog.svelte';
   import { fmtAgo, fmtBytes, fmtDate, fmtValue } from '../lib/format';
   import { router } from '../lib/router.svelte';
@@ -164,6 +165,44 @@
     const mid = (x0 + x1) / 2;
     return `M${x0},${y0} C${mid},${y0} ${mid},${y1} ${x1},${y1}`;
   }
+
+  // The selected version's files come a page at a time: a version can list a million.
+  const FILES_PAGE = 1000;
+  let files = $state<ArtifactFile[]>([]);
+  let filesMatched = $state(0);
+  let filesLoading = $state(false);
+  let filesError = $state('');
+  let fileFind = $state('');
+  let filesFor = ''; // the version and filter `files` belongs to; later answers win
+  const selectedKey = $derived(selected ? `${id(selected)}|${selected.unlinked ? 'u' : ''}` : '');
+
+  async function loadFiles(a: ArtifactVersion, find: string, more: boolean) {
+    const key = `${id(a)}|${a.unlinked ? 'u' : ''}|${find}`;
+    filesFor = key;
+    filesLoading = true;
+    const res = await api.artifactFiles(a, find, more ? files.length : 0, FILES_PAGE).catch((e) => String(e));
+    if (filesFor !== key) return;
+    filesLoading = false;
+    filesError = typeof res === 'string' ? res : '';
+    if (typeof res === 'string') return;
+    files = more ? [...files, ...res.files] : res.files;
+    filesMatched = res.matched;
+  }
+
+  // a new version starts with the whole list
+  $effect(() => {
+    void selectedKey;
+    untrack(() => (fileFind = ''));
+  });
+
+  $effect(() => {
+    void selectedKey;
+    const find = fileFind.trim();
+    const a = untrack(() => selected);
+    if (!a) return;
+    const timer = setTimeout(() => loadFiles(a, find, false), find ? 250 : 0);
+    return () => clearTimeout(timer);
+  });
 
   async function unlink(a: ArtifactVersion, whole: boolean) {
     const versions = whole ? all.filter((x) => x.project === a.project && x.name === a.name && !x.unlinked) : [a];
@@ -330,7 +369,9 @@ run.use_artifact("dataset:latest")</pre>
               </div>
             {/if}
             <div><span class="label">Size</span><span class="mono">{fmtBytes(selected.size)}</span></div>
-            <div><span class="label">Files</span><span class="mono">{selected.manifest.files?.length ?? 0}</span></div>
+            <div>
+              <span class="label">Files</span><span class="mono">{selected.file_count.toLocaleString('en-US')}</span>
+            </div>
             <div>
               <span class="label">Stored</span><span>{selected.manifest.reference ? 'Reference' : 'Copy'}</span>
             </div>
@@ -410,11 +451,23 @@ run.use_artifact("dataset:latest")</pre>
         </div>
 
         <div class="card box">
-          <div class="label">Files</div>
+          <div class="fhead">
+            <div class="label">Files</div>
+            {#if selected.file_count > 10}
+              <input
+                class="input sm find"
+                type="search"
+                bind:value={fileFind}
+                placeholder="Filter paths"
+                aria-label="Filter files by path"
+                spellcheck="false"
+              />
+            {/if}
+          </div>
           <table>
             <thead><tr><th>Path</th><th class="right">Size</th><th>SHA-256</th></tr></thead>
             <tbody>
-              {#each selected.manifest.files ?? [] as f (f.path)}
+              {#each files as f (f.path)}
                 <tr>
                   <td class="mono path">{f.path}</td>
                   <td class="mono right keep">{fmtBytes(f.size)}</td>
@@ -425,6 +478,24 @@ run.use_artifact("dataset:latest")</pre>
               {/each}
             </tbody>
           </table>
+          {#if filesError}
+            <p class="faint small" role="alert">The file list could not be loaded: {filesError}</p>
+          {:else if !filesLoading && fileFind.trim() && !filesMatched}
+            <p class="faint small">No path contains “{fileFind.trim()}”.</p>
+          {:else if filesMatched > files.length}
+            <div class="more">
+              <span class="faint small"
+                >Showing {files.length.toLocaleString('en-US')} of {filesMatched.toLocaleString('en-US')}
+                {fileFind.trim() ? 'matching files' : 'files'}</span
+              >
+              <button
+                class="btn btn-ghost sm"
+                disabled={filesLoading}
+                onclick={() => selected && loadFiles(selected, fileFind.trim(), true)}
+                >{filesLoading ? 'Loading…' : 'Show more'}</button
+              >
+            </div>
+          {/if}
           <p class="faint small">
             {#if selected.manifest.reference}
               References <code>{selected.manifest.reference}</code>; the files are not copied.
@@ -709,6 +780,23 @@ run.use_artifact("dataset:latest")</pre>
     font-size: 13px;
     padding: 3px 0;
     border-bottom: 1px solid var(--border);
+  }
+  .fhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .find {
+    width: min(260px, 60%);
+    height: 30px;
+  }
+  .more {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 8px;
   }
   table {
     width: 100%;

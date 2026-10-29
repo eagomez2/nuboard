@@ -33,6 +33,19 @@ export interface WaveformInput {
   notes?: WaveformNote[];
   /** Called with the new list when a note is added, edited or deleted; without it notes are read-only. */
   onnotes?: (notes: WaveformNote[]) => void;
+  /** With it, a Download menu saves the audio (`<name>.wav`) and the data bundle (`<name>.zip`). */
+  download?: WaveformDownload;
+}
+
+/** What the Download menu names the files after and writes in the bundle's metadata.json. */
+export interface WaveformDownload {
+  /** File name without the extension, such as `<run>-<key>-<step>`. */
+  name: string;
+  run: { id: string; name: string; project: string | null };
+  key: string;
+  step: number;
+  /** Such as `nuboard 0.18.0`. */
+  exportedWith: string;
 }
 
 /**
@@ -98,7 +111,7 @@ export function mountWaveform(
   const play = el('button', 'nbwf-play') as HTMLButtonElement;
   play.type = 'button';
   play.setAttribute('aria-label', 'Play');
-  play.title = 'Play / pause (click the plot to set where, or select a section)';
+  play.title = 'Play / pause (click the plot to set where, or select a section; Space in full screen)';
   play.innerHTML = icon('nbwf-go', 'M8 5.5v13l10.5-6.5z') + icon('nbwf-pause', 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
   const time = el('span', 'nbwf-time');
   const read = el('span', 'nbwf-read');
@@ -648,6 +661,74 @@ export function mountWaveform(
   button(zoomBox, '−', 'Zoom out', () => zoom(2));
   button(zoomBox, '+', 'Zoom in', () => zoom(0.5));
   button(zoomBox, 'Fit', 'Fit', () => setView(0, duration));
+  // the Download menu: the audio as logged, or the bundle of audio, signals and metadata
+  const dl = input.download;
+  let closeMenu = () => {};
+  if (dl) {
+    const wrap = el('span', 'nbwf-dl');
+    const menu = el('span', 'nbwf-dl-menu');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    const toggle = button(wrap, '', 'Download', () => setMenu(menu.hidden));
+    toggle.classList.add('nbwf-icon-btn');
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = icon('nbwf-dlicon', 'M11 4h2v9.2l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3zM5 18h14v2H5z');
+    const setMenu = (open: boolean) => {
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) document.addEventListener('pointerdown', outside, true);
+      else document.removeEventListener('pointerdown', outside, true);
+    };
+    const outside = (e: Event) => {
+      if (!wrap.contains(e.target as Node)) setMenu(false);
+    };
+    closeMenu = () => setMenu(false);
+    const saveFile = (bytes: Uint8Array<ArrayBuffer>, type: string, filename: string) => {
+      const url = URL.createObjectURL(new Blob([bytes], { type }));
+      const a = el('a') as HTMLAnchorElement;
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMenu(false);
+    };
+    const item = (text: string, title: string, onclick: () => void) => {
+      const b = button(menu, text, text, onclick);
+      b.setAttribute('role', 'menuitem');
+      b.title = title;
+    };
+    item('Audio (.wav)', 'The audio as logged', () =>
+      saveFile(new Uint8Array(input.buffer, 0, input.offset), 'audio/wav', `${dl.name}.wav`),
+    );
+    item('Data (.zip)', 'The audio, one .npy per signal and metadata.json', () => {
+      const { zip } = kit.waveformBundle(input.buffer, {
+        offset: input.offset,
+        names: input.names,
+        samples: input.samples,
+        range: input.range,
+        caption: input.caption,
+        regions: input.regions,
+        notes,
+        run: dl.run,
+        key: dl.key,
+        step: dl.step,
+        exportedWith: dl.exportedWith,
+      });
+      saveFile(zip, 'application/zip', `${dl.name}.zip`);
+    });
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setMenu(false);
+        toggle.focus();
+      }
+    });
+    wrap.append(menu);
+    zoomBox.append(wrap);
+  }
   const fullButton = button(zoomBox, '', 'Full screen', () => setFull(!full));
   fullButton.classList.add('nbwf-full-btn');
   fullButton.setAttribute('aria-pressed', 'false');
@@ -695,12 +776,13 @@ export function mountWaveform(
   audio.addEventListener('play', follow);
   audio.addEventListener('pause', follow);
   audio.addEventListener('seeked', follow);
-  play.addEventListener('click', () => {
+  const togglePlay = () => {
     if (!audio.paused) return audio.pause();
     if (sel && (audio.currentTime < sel[0] || audio.currentTime >= sel[1] - 1e-3)) audio.currentTime = sel[0];
     else if (audio.currentTime >= duration - 1e-3) audio.currentTime = 0;
     void audio.play();
-  });
+  };
+  play.addEventListener('click', togglePlay);
 
   // pressing or dragging on the overview centers the view there
   const onOverview = (e: PointerEvent) => {
@@ -751,13 +833,23 @@ export function mountWaveform(
     if (full) requestAnimationFrame(fitHeight);
     else fitHeight();
   };
+  // In full screen only, a plain Space (no modifier, not typing) plays and pauses, as in the audio
+  // player (audio/player.js). It is held back on key up too, or a focused button would be pressed.
+  const typing = (t: EventTarget | null) =>
+    t instanceof HTMLElement && (t.isContentEditable || !!t.closest('input, textarea, select'));
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && full) {
+    if (!full) return;
+    if (e.type === 'keydown' && e.key === 'Escape') {
       e.stopPropagation();
       setFull(false);
+    } else if (e.key === ' ' && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) && !typing(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'keydown' && !e.repeat) togglePlay();
     }
   };
   document.addEventListener('keydown', onKey, true);
+  document.addEventListener('keyup', onKey, true);
   resize.observe(plotEl);
   // new colors when the light/dark theme changes
   const theme = new MutationObserver(build);
@@ -776,8 +868,10 @@ export function mountWaveform(
     },
     destroy: () => {
       audio.pause();
+      closeMenu();
       window.removeEventListener('resize', fitHeight);
       document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('keyup', onKey, true);
       resize.disconnect();
       theme.disconnect();
       cancelAnimationFrame(frame);

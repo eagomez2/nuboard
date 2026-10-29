@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import _fs
-from ..artifacts import UNLINKED
+from ..artifacts import version_folders
 
 PAUSE_AFTER_S = 10.0
 RUNS_PER_PROJECT = 200  # largest runs listed per project; the rest are summed
@@ -168,7 +168,7 @@ class Meter:
 
         dirs = {str(p) for _, p in projects}
         units = sum(len(runs_by_dir.get(p, [])) for _, p in projects)
-        units += sum(len(_versions(p)) for _, p in projects)
+        units += sum(len(version_folders(p)) for _, p in projects)
         self.progress["total"] = units
         out: list[dict[str, Any]] = []
         artifacts: list[dict[str, Any]] = []
@@ -215,7 +215,7 @@ class Meter:
 
             art_total = 0
 
-            for name, version, vdir, unlinked in _versions(pdir) if not partial else []:
+            for name, version, vdir, unlinked in version_folders(pdir) if not partial else []:
                 stored = folder_size(str(vdir))
                 manifest = _fs.read_json(vdir / "manifest.json", {}) or {}
                 ref = bool(manifest.get("reference"))
@@ -271,26 +271,3 @@ class Meter:
             self.result = result
             self.state = "idle"
             self.progress = {}
-
-
-def _versions(project_dir: Path) -> list[tuple[str, int, Path, bool]]:
-    """Return `(name, version, folder, unlinked)` of every artifact version of a project."""
-    out = []
-
-    art = project_dir / "artifacts"
-
-    for base, unlinked in ((art, False), (art / UNLINKED, True)):
-        try:
-            names = [e for e in os.scandir(base) if e.is_dir() and not e.name.startswith(".")]
-        except OSError:
-            continue
-
-        for n in names:
-            try:
-                for v in os.scandir(n.path):
-                    if v.is_dir() and v.name[:1] == "v" and v.name[1:].isdigit():
-                        out.append((n.name, int(v.name[1:]), Path(v.path), unlinked))
-            except OSError:
-                continue
-
-    return sorted(out, key=lambda x: (x[0], x[1]))

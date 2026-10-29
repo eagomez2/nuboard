@@ -37,10 +37,9 @@ from ..artifacts import (
     UNLINKED,
     add_artifact,
     find_artifact_projects,
-    list_artifacts,
-    list_unlinked,
     restore_artifact,
     unlink_artifact,
+    version_folders,
 )
 from ..catalog import Catalog
 from ..catalog import cache_dir as default_cache_dir
@@ -849,6 +848,42 @@ def create_app(
 
         return JSON(meter.status())
 
+    # Manifests never change in place, so each is read once: a version with a
+    # million files would otherwise be parsed on every load of the Artifacts page.
+    summaries: dict[Path, tuple[tuple[int, int], dict[str, Any]]] = {}
+    file_lists: dict[Path, tuple[tuple[int, int], list[dict[str, Any]]]] = {}
+
+    def manifest_stamp(vdir: Path) -> tuple[int, int] | None:
+        """Return the manifest's modification time and size, or None if it is missing."""
+
+        try:
+            st = (vdir / "manifest.json").stat()
+        except OSError:
+            return None
+
+        return (st.st_mtime_ns, st.st_size)
+
+    def summary_of(vdir: Path) -> dict[str, Any]:
+        """Return a version's manifest without its file list, plus `file_count` and `size`."""
+        stamp = manifest_stamp(vdir)
+        cached = summaries.get(vdir)
+
+        if cached and cached[0] == stamp:
+            return cached[1]
+
+        manifest = _fs.read_json(vdir / "manifest.json", {}) or {}
+        files = manifest.pop("files", None) or []
+        out = {
+            "manifest": manifest,
+            "file_count": len(files),
+            "size": sum(int(f.get("size") or 0) for f in files),
+        }
+
+        if stamp is not None:
+            summaries[vdir] = (stamp, out)
+
+        return out
+
     def artifacts(request: Request) -> Response:
         """Return artifact versions with the runs that produced and used them.
 
@@ -860,6 +895,9 @@ def create_app(
         Query parameter `project` limits the list to the artifacts of one project
         and those its runs produced or used. Unlinked versions are listed too,
         with `unlinked: true`.
+
+        Each manifest comes without its file list, which can be huge; `file_count`
+        and `size` sum it up, and `/api/artifacts/files` pages through it.
         """
         root = catalog.root.resolve()
         users: dict[tuple[str, str, int], list[str]] = {}
@@ -892,13 +930,14 @@ def create_app(
             if project is None:
                 continue
 
-            listed = [(a, False) for a in list_artifacts(pdir)]
+            listed = sorted(version_folders(pdir), key=lambda v: (v[3], v[0], v[1]))
 
-            for a, unlinked in listed + [(a, True) for a in list_unlinked(pdir)]:
-                k = (project, a.name, a.version)
+            for aname, version, vdir, unlinked in listed:
+                k = (project, aname, version)
                 producer = makers.get(k) or []
                 consumers = users.get(k, [])
-                pid = a.manifest.get("producer_run")
+                summary = summary_of(vdir)
+                pid = summary["manifest"].get("producer_run")
 
                 if not producer and pid and (project, pid) in by_id:
                     producer = [by_id[(project, pid)]]
@@ -911,17 +950,59 @@ def create_app(
                 out.append(
                     {
                         "project": project,
-                        "name": a.name,
-                        "version": a.version,
-                        "manifest": a.manifest,
+                        "name": aname,
+                        "version": version,
+                        **summary,
                         "producers": producer,
                         "consumers": consumers,
-                        "size": sum(int(f.get("size") or 0) for f in a.manifest.get("files") or []),
                         "unlinked": unlinked,
                     }
                 )
 
         return JSON({"artifacts": out})
+
+    def artifact_files(request: Request) -> Response:
+        """Return a page of one version's files, in manifest order.
+
+        Query parameters: `project`, `name`, `version`, `unlinked` (1 for an
+        unlinked version), `find` (only paths containing it, ignoring case),
+        `offset` and `limit` (default 1,000, at most 5,000). Returns `files`,
+        `total` (files in the version) and `matched` (files that match `find`).
+        """
+        q = request.query_params
+        pdir = artifact_project(q.get("project") or "")
+        name = q.get("name") or ""
+
+        try:
+            version = int(q.get("version") or "")
+            offset = max(int(q.get("offset") or 0), 0)
+            limit = min(max(int(q.get("limit") or 1000), 1), 5000)
+        except ValueError:
+            return JSON({"error": "version, offset and limit must be numbers"}, status_code=400)
+
+        if pdir is None or not name or name != _fs.sanitize(name, ""):
+            return JSON({"error": "unknown project or artifact"}, status_code=400)
+
+        base = pdir / "artifacts" / (UNLINKED if q.get("unlinked") == "1" else "")
+        vdir = base / name / f"v{version}"
+        stamp = manifest_stamp(vdir)
+
+        if stamp is None:
+            return JSON({"error": f"no v{version} of artifact {name!r}"}, status_code=404)
+
+        cached = file_lists.get(vdir)
+
+        if cached and cached[0] == stamp:
+            files = cached[1]
+        else:
+            files = (_fs.read_json(vdir / "manifest.json", {}) or {}).get("files") or []
+            file_lists.clear()  # keep only the version being browsed
+            file_lists[vdir] = (stamp, files)
+
+        find = (q.get("find") or "").strip().lower()
+        matched = [f for f in files if find in str(f.get("path", "")).lower()] if find else files
+        page = matched[offset : offset + limit]
+        return JSON({"files": page, "total": len(files), "matched": len(matched)})
 
     def artifact_source(raw: str) -> tuple[str, Path]:
         """Return what to pass to `add_artifact` for a typed path, and the path it points at.
@@ -1358,6 +1439,8 @@ def create_app(
             if item.get("kind") == "text":
                 return item, b""
 
+            record = catalog.get(key) or {}
+            item = {**item, "run_name": record.get("name", ref.run_id), "project": project}
             reader = store.fresh_reader(key)
             assert reader is not None
             return item, reader.read_media(reader.media()[item["index"]])
@@ -1426,7 +1509,9 @@ def create_app(
         if target is None or not target.is_file():
             return JSON({"error": "not found"}, status_code=404)
 
-        return FileResponse(target)
+        # an SVG opened on its own runs nothing, whatever the file holds
+        csp = "default-src 'none'; style-src 'unsafe-inline'"
+        return FileResponse(target, headers={"Content-Security-Policy": csp})
 
     async def report_snapshot(request: Request) -> Response:
         """Store a chart snapshot (JSON body: `project`, `report`, `png` as a data URL)."""
@@ -1599,6 +1684,7 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/artifacts", artifacts),
+        Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),
         Route("/api/artifacts/add", artifact_add, methods=["POST"]),
         Route("/api/artifacts/unlink", artifact_unlink, methods=["POST"]),
