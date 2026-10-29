@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.0
 
 - **Download a waveform figure's audio and signals.** Waveform figures
   (`nb.WaveformFigure`) have a Download menu next to **Fit**, on the Media
