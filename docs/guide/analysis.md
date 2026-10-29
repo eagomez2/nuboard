@@ -39,6 +39,10 @@ summary = project.summary().to_pandas()
 run = project.run("20261013T0720-755037e9")
 run.scalars()  # columns key, step, time, value
 run.scalars("train/loss")
+
+# a waveform figure (nb.WaveformFigure): int16 audio, float32 signals by name, and the
+# metadata a downloaded bundle holds (range, regions, caption, run, key, step)
+audio, rate, signals, meta = run.waveform("vad/enhanced", step=30)  # the last step by default
 ```
 
 Collections can be edited from Python too:

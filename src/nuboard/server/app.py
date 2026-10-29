@@ -1439,6 +1439,8 @@ def create_app(
             if item.get("kind") == "text":
                 return item, b""
 
+            record = catalog.get(key) or {}
+            item = {**item, "run_name": record.get("name", ref.run_id), "project": project}
             reader = store.fresh_reader(key)
             assert reader is not None
             return item, reader.read_media(reader.media()[item["index"]])

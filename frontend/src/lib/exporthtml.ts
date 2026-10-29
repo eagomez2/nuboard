@@ -4,7 +4,7 @@
 
 import DOMPurify from 'dompurify';
 import { api, type AudioNote, type MediaItem } from './api';
-import { DISPLAY_NAME } from './brand';
+import { DISPLAY_NAME, NAME } from './brand';
 import { decodeSpec } from './chartspec';
 import { baselineExtent, baselineLines } from './baselines';
 import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
@@ -19,6 +19,7 @@ import HOVER_JS from './export-hover.js?raw';
 import { waveformKit } from './waveform';
 import { PR_BOX, prArea, prSvg, type PRData, type PRSeries } from './pr';
 import { renderMarkdown } from './markdown';
+import { app } from './state.svelte';
 import { ema, robustRange } from './smooth';
 import LOGO from '../../public/logo.svg?raw';
 import AUDIO_PAGE from '../../audio.html?raw';
@@ -136,7 +137,7 @@ var part=function(n){return box.querySelector('script[data-part='+n+']').textCon
 var bytes=function(b){var s=atob(b),u=new Uint8Array(s.length);for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
 var a=part('audio'),w=bytes(a),g=bytes(part('signals')),all=new Uint8Array(w.length+g.length);all.set(w);all.set(g,w.length);
 var m=JSON.parse(box.dataset.meta);
-mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,regions:m.regions,notes:m.notes,audioSrc:'data:audio/wav;base64,'+a});
+mountWaveform(box,kit,uPlot,{buffer:all.buffer,offset:w.length,names:m.names,range:m.range,samples:m.samples,caption:m.caption,regions:m.regions,notes:m.notes,download:m.download,audioSrc:'data:audio/wav;base64,'+a});
 });`;
 
 /** Base64 of `bytes`, a chunk at a time (a spread of millions of arguments would overflow the stack). */
@@ -580,6 +581,14 @@ async function mediaHtml(
       caption: item.caption ?? null,
       regions: item.regions ?? null,
       notes: item.notes ?? [],
+      // the Download menu under the player: the audio, or the bundle of audio, signals and metadata
+      download: {
+        name: `${found.run_name}-${item.key.replaceAll('/', '_')}-${item.step}`,
+        run: { id: decodeURIComponent(ref.split('/')[0]), name: found.run_name, project },
+        key: item.key,
+        step: item.step,
+        exportedWith: `${NAME} ${app.info?.version ?? ''}`.trim(),
+      },
     };
     body =
       `<div class="nbwavefig" data-meta="${esc(JSON.stringify(info))}">` +

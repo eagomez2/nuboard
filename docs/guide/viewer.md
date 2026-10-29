@@ -412,7 +412,11 @@ double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (next to **Fit**) spreads the figure over the
 window with a taller plot, in the viewer and in exported reports alike; there
 Space plays and pauses, and Esc puts it back. The play button plays the clip, or the selection, from where you
-click. It has no spectrogram; [Audio](#audio) has that. See
+click. The download button next to it saves the **Audio (.wav)** as logged or
+the **Data (.zip)**: the audio, one `.npy` per signal and a `metadata.json`
+([details](../api/add_figure.md#downloading-the-audio-and-signals)). Other
+items download from their card with an extension that matches their type
+(`.png`, `.wav`, `.json`, ...). It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
 
 ### Tables

@@ -3,7 +3,7 @@
   import MediaView from './MediaView.svelte';
   import type { MediaItem, RunBrief } from '../lib/api';
   import { api } from '../lib/api';
-  import type { AudioOptions } from '../lib/media';
+  import { extensionOf, WAVEFORM_MIME, type AudioOptions } from '../lib/media';
 
   // One run's items under one key, with its own step slider (as in TensorBoard).
   let {
@@ -83,13 +83,15 @@
             ><Icon name="search" size={14} /></button
           >
         {/if}
-        {#if it.index !== undefined}
+        {#if it.index !== undefined && it.mime !== WAVEFORM_MIME}
+          <!-- a waveform figure has its own Download menu: the audio, or the audio with its signals -->
           <a
             class="icon"
             title="Download"
             aria-label="Download"
             href={api.mediaUrl(run.key, it.index)}
-            download="{run.name}-{it.key.replaceAll('/', '_')}-{it.step}"><Icon name="download" size={14} /></a
+            download="{run.name}-{it.key.replaceAll('/', '_')}-{it.step}{extensionOf(it.mime)}"
+            ><Icon name="download" size={14} /></a
           >
         {/if}
         <button class="icon" title="Add to a report" aria-label="Add to a report" onclick={() => onsave(it)}

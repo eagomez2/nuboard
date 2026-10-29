@@ -149,6 +149,45 @@ class RunHandle:
         names = [c["name"] for c in data["columns"]]
         return [dict(zip(names, row, strict=True)) for row in data["rows"]]
 
+    def waveform(
+        self, key: str, step: int | None = None
+    ) -> tuple[np.ndarray, int, dict[str, np.ndarray], dict[str, Any]]:
+        """Return a waveform figure logged with `add_figure(key, nb.WaveformFigure(...))`.
+
+        Args:
+            key: The figure's key.
+            step: The step to read. Defaults to the last one logged.
+
+        Returns:
+            `(audio, sample_rate, signals, meta)`: the audio as stored, int16
+            samples (`(samples,)` for mono, else `(channels, samples)`; divide
+            by 32768 for floats), the float32 signals by name (NaN marks a
+            gap), and the metadata a downloaded bundle's `metadata.json` holds
+            (range, regions, caption, run, key, step).
+
+        Raises:
+            KeyError: If no waveform figure is logged under `key` (at `step`).
+        """
+        from ._media import WAVEFORM_MIME
+        from ._waveform import bundle_metadata, read_stored
+
+        reader = self.reader()
+        found = [e for e in reader.media(key) if e.meta.get("mime") == WAVEFORM_MIME]
+
+        if step is not None:
+            found = [e for e in found if e.step == step]
+
+        if not found:
+            at = "" if step is None else f" at step {step}"
+            raise KeyError(f"no waveform figure {key!r}{at} in run {self.id}")
+
+        entry = found[-1]
+        item = {**entry.meta, "notes": self.audio_notes.get(f"{entry.key}@{entry.step}") or []}
+        audio, rate, signals = read_stored(item, reader.read_media(entry))
+        run = {"id": self.id, "name": self.name, "project": self.record.get("project")}
+        meta = bundle_metadata(item, run=run, key=entry.key, step=entry.step)
+        return audio, rate, signals, meta
+
     def scalars(self, key: str | None = None, rank: int = 0) -> pa.Table:
         """Return one scalar, or all of them, as a long table.
 
