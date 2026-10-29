@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Download a waveform figure's audio and signals.** Waveform figures
+  (`nb.WaveformFigure`) have a Download menu next to **Fit**, on the Media
+  page, in the large view, in report embeds and in exported HTML:
+  **Audio (.wav)** saves the audio exactly as logged, and **Data (.zip)** a
+  bundle of `audio.wav`, one float32 `.npy` per signal and a `metadata.json`
+  with the sample rate, signal names, range, regions, caption, notes, run, key
+  and step. The raw item, which no other tool could open, is no longer offered.
+- **The report .zip export writes the same bundle** for a waveform figure,
+  instead of a `.wav` and a `-signals.csv` that lost the regions and range and
+  grew to millions of rows for long clips.
+- **`nb.WaveformFigure.load(path)`** rebuilds a figure from a bundle; logging
+  it again stores an identical figure. **`run.waveform(key, step)`** in the
+  analysis API returns `(audio, sample_rate, signals, meta)` without
+  downloading.
+- Other media downloaded from their card get a file name extension from their
+  type (`.png`, `.wav`, `.json`, ...).
+
 ## 0.18.0
 
 - **Interactive charts in reports and exported HTML.** A chart saved from the

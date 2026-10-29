@@ -33,6 +33,19 @@ export interface WaveformInput {
   notes?: WaveformNote[];
   /** Called with the new list when a note is added, edited or deleted; without it notes are read-only. */
   onnotes?: (notes: WaveformNote[]) => void;
+  /** With it, a Download menu saves the audio (`<name>.wav`) and the data bundle (`<name>.zip`). */
+  download?: WaveformDownload;
+}
+
+/** What the Download menu names the files after and writes in the bundle's metadata.json. */
+export interface WaveformDownload {
+  /** File name without the extension, such as `<run>-<key>-<step>`. */
+  name: string;
+  run: { id: string; name: string; project: string | null };
+  key: string;
+  step: number;
+  /** Such as `nuboard 0.18.0`. */
+  exportedWith: string;
 }
 
 /**
@@ -648,6 +661,74 @@ export function mountWaveform(
   button(zoomBox, '−', 'Zoom out', () => zoom(2));
   button(zoomBox, '+', 'Zoom in', () => zoom(0.5));
   button(zoomBox, 'Fit', 'Fit', () => setView(0, duration));
+  // the Download menu: the audio as logged, or the bundle of audio, signals and metadata
+  const dl = input.download;
+  let closeMenu = () => {};
+  if (dl) {
+    const wrap = el('span', 'nbwf-dl');
+    const menu = el('span', 'nbwf-dl-menu');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    const toggle = button(wrap, '', 'Download', () => setMenu(menu.hidden));
+    toggle.classList.add('nbwf-icon-btn');
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = icon('nbwf-dlicon', 'M11 4h2v9.2l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3zM5 18h14v2H5z');
+    const setMenu = (open: boolean) => {
+      menu.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) document.addEventListener('pointerdown', outside, true);
+      else document.removeEventListener('pointerdown', outside, true);
+    };
+    const outside = (e: Event) => {
+      if (!wrap.contains(e.target as Node)) setMenu(false);
+    };
+    closeMenu = () => setMenu(false);
+    const saveFile = (bytes: Uint8Array<ArrayBuffer>, type: string, filename: string) => {
+      const url = URL.createObjectURL(new Blob([bytes], { type }));
+      const a = el('a') as HTMLAnchorElement;
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMenu(false);
+    };
+    const item = (text: string, title: string, onclick: () => void) => {
+      const b = button(menu, text, text, onclick);
+      b.setAttribute('role', 'menuitem');
+      b.title = title;
+    };
+    item('Audio (.wav)', 'The audio as logged', () =>
+      saveFile(new Uint8Array(input.buffer, 0, input.offset), 'audio/wav', `${dl.name}.wav`),
+    );
+    item('Data (.zip)', 'The audio, one .npy per signal and metadata.json', () => {
+      const { zip } = kit.waveformBundle(input.buffer, {
+        offset: input.offset,
+        names: input.names,
+        samples: input.samples,
+        range: input.range,
+        caption: input.caption,
+        regions: input.regions,
+        notes,
+        run: dl.run,
+        key: dl.key,
+        step: dl.step,
+        exportedWith: dl.exportedWith,
+      });
+      saveFile(zip, 'application/zip', `${dl.name}.zip`);
+    });
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setMenu(false);
+        toggle.focus();
+      }
+    });
+    wrap.append(menu);
+    zoomBox.append(wrap);
+  }
   const fullButton = button(zoomBox, '', 'Full screen', () => setFull(!full));
   fullButton.classList.add('nbwf-full-btn');
   fullButton.setAttribute('aria-pressed', 'false');
@@ -787,6 +868,7 @@ export function mountWaveform(
     },
     destroy: () => {
       audio.pause();
+      closeMenu();
       window.removeEventListener('resize', fitHeight);
       document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('keyup', onKey, true);

@@ -8,7 +8,9 @@
   import VideoView from './VideoView.svelte';
   import WaveformPlot from './WaveformPlot.svelte';
   import { api, type AudioNote, type MediaItem } from '../lib/api';
+  import { NAME } from '../lib/brand';
   import { notice } from '../lib/dialog.svelte';
+  import { app } from '../lib/state.svelte';
   import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME, type AudioOptions } from '../lib/media';
 
   // One logged item (image, audio, figure, HTML or text) of a run.
@@ -33,6 +35,18 @@
     /** The run's series color, for curves. */
     color?: string;
   } = $props();
+
+  // What a waveform figure's Download menu names its files after and writes in its bundle
+  const waveDownload = $derived.by(() => {
+    const run = app.runByKey(runKey);
+    return {
+      name: `${runName}-${item.key.replaceAll('/', '_')}-${item.step}`,
+      run: { id: run?.id ?? runKey, name: runName, project: run?.project ?? null },
+      key: item.key,
+      step: item.step,
+      exportedWith: `${NAME} ${app.info?.version ?? ''}`.trim(),
+    };
+  });
 
   // Notes on the audio, saved in the run's annotations.json
   let notes = $derived<AudioNote[]>(item.notes ?? []);
@@ -128,6 +142,7 @@
     regions={item.regions}
     {notes}
     onnotes={saveNotes}
+    download={waveDownload}
   />
 {:else if item.mime === TABLE_MIME}
   <TableView {runKey} {runName} {item} />

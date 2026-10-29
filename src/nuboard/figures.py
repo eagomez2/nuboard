@@ -8,6 +8,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import KW_ONLY, dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -49,3 +50,44 @@ class WaveformFigure:
     range: tuple[float, float] | None = None
     regions: dict[str, Any] | None = None
     caption: str | None = None
+
+    @classmethod
+    def load(cls, path: str | Path) -> WaveformFigure:
+        """Rebuild a figure from a downloaded bundle (the waveform's **Data (.zip)**).
+
+        Logging the result again with `Run.add_figure` stores an identical
+        figure: the same 16-bit audio, signals, range, regions and caption.
+        Needs NumPy.
+
+        Args:
+            path: The bundle's `.zip` file.
+
+        Returns:
+            The figure, with the audio as int16 samples, `(samples,)` for mono
+            or `(channels, samples)`, and the signals as float32 by name.
+
+        Raises:
+            ValueError: If the file is not a waveform bundle.
+
+        Example:
+            >>> fig = nb.WaveformFigure.load("unet-l1-eval_vad-1200.zip")
+            >>> run.add_figure("eval/vad", fig, step=0)
+        """
+        from ._waveform import read_bundle
+
+        audio, rate, signals, meta = read_bundle(path)
+        regions = meta.get("regions") or None
+        tracks = (
+            {name: [tuple(seg) for seg in segs] for name, segs in regions.items()}
+            if regions
+            else None
+        )
+        bounds = meta.get("range")
+        return cls(
+            audio,
+            rate,
+            signals,
+            range=(float(bounds[0]), float(bounds[1])) if bounds else None,
+            regions=tracks,
+            caption=meta.get("caption"),
+        )

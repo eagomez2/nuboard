@@ -27,6 +27,40 @@ export const HIST_MIME = 'application/x-nuboard-histogram+json';
 /** MIME type of waveforms with signals logged with `add_figure(key, nb.WaveformFigure(...))`. */
 export const WAVEFORM_MIME = 'application/x-nuboard-waveform';
 
+/** File name extensions of downloaded media, by MIME type. */
+const EXTENSIONS: Record<string, string> = {
+  'image/png': '.png',
+  'image/apng': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'audio/wav': '.wav',
+  'audio/flac': '.flac',
+  'audio/mpeg': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/mp4': '.m4a',
+  'audio/webm': '.webm',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'video/ogg': '.ogv',
+  'text/html': '.html',
+  'text/plain': '.txt',
+  'application/vnd.plotly.v1+json': '.plotly.json',
+  'application/vnd.vegalite+json': '.vl.json',
+  'application/vnd.bokeh+json': '.bokeh.json',
+  [TABLE_MIME]: '.json',
+  [PR_MIME]: '.json',
+  [HIST_MIME]: '.json',
+  [POINTS_MIME]: '.bin',
+};
+
+/** The file name extension a downloaded item gets from its MIME type, such as `.png`. */
+export function extensionOf(mime: string): string {
+  return EXTENSIONS[mime] ?? (mime.endsWith('+json') || mime.endsWith('/json') ? '.json' : '.bin');
+}
+
 /** The kind a media item is filtered by on the Media page. */
 export function kindOf(it: Pick<MediaItem, 'kind' | 'mime'>): MediaKind {
   if (it.kind === 'text') return 'text';

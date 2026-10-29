@@ -229,11 +229,50 @@ interactive plot, not in the audio player:
   to move there.
 - **Playback.** The play button plays the audio and the playhead follows it.
   Click the plot to start from there.
+- **Download.** The download button next to **Fit** saves the
+  **Audio (.wav)** exactly as logged, or the **Data (.zip)**: everything
+  needed to rebuild the figure elsewhere (see below).
 
 In a report, the figure embeds like any logged item. An HTML export keeps it
 interactive and looks the same, offline: the same plot, regions, notes (read
-only, and listed under it) and the clip's audio. A .zip export writes its
-audio as a `.wav` and its signals as a CSV.
+only, and listed under it), the clip's audio and the Download menu. A .zip
+export writes the figure's data bundle.
+
+### Downloading the audio and signals
+
+**Data (.zip)** is a bundle named `<run>-<key>-<step>.zip`:
+
+```text
+audio.wav              the audio, as logged (16-bit PCM)
+signals/<name>.npy     one float32 array per signal, one value per audio sample (NaN = gap)
+metadata.json          sample rate, signal names and files, range, regions, caption, run, key, step
+```
+
+The signals are `.npy` files: exact float32 values, 4 bytes per sample,
+memory-mappable, read by NumPy and PyTorch and by readers for MATLAB
+(`npy-matlab`), Julia (`NPZ.jl`), R (`RcppCNPy`) and JavaScript. The
+bundle's layout and `metadata.json` are described in
+[the format reference](../reference/format.md#waveform-bundles).
+
+```python
+import json, wave, zipfile
+import numpy as np
+
+with zipfile.ZipFile("unet-l1-vad_enhanced-30.zip") as zf:
+    meta = json.loads(zf.read("metadata.json"))
+    speech = np.load(zf.open("signals/speech.npy"))
+```
+
+`nb.WaveformFigure.load(path)` rebuilds the figure from a bundle, with the
+audio as int16 samples; logging it again stores an identical figure:
+
+```python
+fig = nb.WaveformFigure.load("unet-l1-vad_enhanced-30.zip")
+run.add_figure("vad/enhanced", fig, step=0)
+```
+
+Without downloading, [`nb.load(project).run(id).waveform(key, step)`](../guide/analysis.md)
+returns the same data: `(audio, sample_rate, signals, meta)`.
 
 The plot has no spectrogram. For one, also log the clip with
 [`add_audio`](add_audio.md), which opens in the waveform and spectrogram

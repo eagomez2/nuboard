@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
@@ -279,6 +280,46 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(page.locator('.nbwf').first().locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible({
     timeout: 15000,
   });
+});
+
+test('a waveform figure downloads its audio as .wav and its data as a .zip bundle', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
+  const fig = page.locator('.nbwf').first();
+  await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
+  const save = async (item: string) => {
+    const download = page.waitForEvent('download');
+    await fig.getByRole('button', { name: 'Download' }).click();
+    await fig.getByRole('menuitem', { name: item }).click();
+    const file = await download;
+    const path = test.info().outputPath(file.suggestedFilename());
+    await file.saveAs(path);
+    return { name: file.suggestedFilename(), path };
+  };
+  const wav = await save('Audio (.wav)');
+  expect(wav.name).toMatch(/-vad_enhanced-0\.wav$/);
+  expect(readFileSync(wav.path).subarray(0, 4).toString()).toBe('RIFF');
+  await expect(fig.getByRole('menu')).toBeHidden();
+
+  // the bundle, read back with the Python loader: the same audio, one signal per name, the metadata
+  const zip = await save('Data (.zip)');
+  expect(zip.name).toMatch(/-vad_enhanced-0\.zip$/);
+  const python = process.env.PYTHON ?? '../.venv/bin/python';
+  const script = [
+    'import json, sys',
+    'from nuboard._waveform import read_bundle',
+    'audio, rate, signals, meta = read_bundle(sys.argv[1])',
+    'print(json.dumps({"rate": rate, "frames": audio.shape[-1], "wav": open(sys.argv[2], "rb").read() == __import__("zipfile").ZipFile(sys.argv[1]).read("audio.wav"), "signals": {k: len(v) for k, v in signals.items()}, "meta": meta}))',
+  ].join('\n');
+  const out = JSON.parse(execFileSync(python, ['-c', script, zip.path, wav.path]).toString());
+  expect(out.wav).toBe(true);
+  expect(out.meta.key).toBe('vad/enhanced');
+  expect(out.meta.step).toBe(0);
+  expect(out.meta.run.project).toBe('speech-denoise');
+  expect(out.meta.exported_with).toMatch(/^nuboard \d/);
+  expect(out.meta.regions).not.toBeNull();
+  expect(Object.keys(out.signals)).toEqual(out.meta.signals.map((s: { name: string }) => s.name));
+  for (const n of Object.values(out.signals)) expect(n).toBe(out.frames);
+  expect(out.frames).toBe(Math.round(out.rate * 2.6));
 });
 
 test('properties: define one from Columns, edit a cell, set it on selected runs', async ({ page }) => {
@@ -566,7 +607,9 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   // saved as an SVG, drawn inline with a title on every bar
   await expect(page.locator('.preview .nb-view svg').first()).toBeVisible();
   await expect(page.locator('.preview .nb-view svg title').first()).toContainText('Started');
-  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/files\/e2e-timeline-\w+\.svg "view:timeline/);
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(
+    /files\/e2e-timeline-\w+\.svg "view:timeline/,
+  );
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export as HTML' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
@@ -911,6 +954,15 @@ test('a report with a table and audio notes exports them, with either audio play
   await wave.hover({ position: { x: wbox.width / 2, y: 20 } });
   await expect(off.locator('.nbwf-read')).toContainText(/0:01\.3\d{2}/);
   await off.getByRole('button', { name: 'Fit' }).click();
+  // the Download menu works offline too: the data bundle carries the figure's note
+  const bundle = off.waitForEvent('download');
+  await off.locator('.nbwavefig').getByRole('button', { name: 'Download' }).click();
+  await off.locator('.nbwavefig').getByRole('menuitem', { name: 'Data (.zip)' }).click();
+  const zipPath = test.info().outputPath('exported-bundle.zip');
+  await (await bundle).saveAs(zipPath);
+  const zipped = readFileSync(zipPath);
+  expect(zipped.subarray(0, 2).toString()).toBe('PK');
+  expect(zipped.toString('latin1')).toContain('pause: stays below 0.01');
   // full screen, as the audio player has: the figure covers the window and its plot grows
   await off.locator('.nbwavefig').getByRole('button', { name: 'Full screen' }).click();
   await expect(off.locator('.nbwavefig .nbwf-full')).toBeVisible();

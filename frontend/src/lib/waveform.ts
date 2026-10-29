@@ -179,8 +179,161 @@ export function waveformKit() {
     return [x, ...ys];
   }
 
-  return { parseWaveform, Pyramid, decimate };
+  /**
+   * The bundle path of each signal, `signals/<name>.npy`: characters some OS do not allow in file
+   * names become `_`, and names that then collide, ignoring case, get `-2`, `-3`, ... (as
+   * `signal_files` in `_waveform.py`).
+   */
+  function signalFiles(names: string[]): string[] {
+    const taken = new Set<string>();
+    return names.map((name) => {
+      // eslint-disable-next-line no-control-regex
+      const stem = name.replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g, '_').replace(/^[ .]+|[ .]+$/g, '') || 'signal';
+      let candidate = stem;
+      for (let n = 2; taken.has(candidate.toLowerCase()); n++) candidate = `${stem}-${n}`;
+      taken.add(candidate.toLowerCase());
+      return `signals/${candidate}.npy`;
+    });
+  }
+
+  /** `count` little-endian float32 values as a `.npy` file (format 1.0, shape `(count,)`). */
+  function npyBytes(values: Uint8Array, count: number): Uint8Array<ArrayBuffer> {
+    let header = `{'descr': '<f4', 'fortran_order': False, 'shape': (${count},), }`;
+    header += ' '.repeat((64 - ((10 + header.length + 1) % 64)) % 64) + '\n';
+    const out = new Uint8Array(10 + header.length + values.length);
+    out.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0, header.length & 0xff, header.length >> 8]);
+    for (let i = 0; i < header.length; i++) out[10 + i] = header.charCodeAt(i);
+    out.set(values, 10 + header.length);
+    return out;
+  }
+
+  /** A zip of `files` with every member stored (PCM and float32 hardly compress). */
+  function zipStored(files: [string, Uint8Array][]): Uint8Array<ArrayBuffer> {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    const crc32 = (data: Uint8Array) => {
+      let c = 0xffffffff;
+      for (let i = 0; i < data.length; i++) c = table[(c ^ data[i]) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const now = new Date();
+    const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    const encoder = new TextEncoder();
+    const parts: Uint8Array[] = [];
+    const central: Uint8Array[] = [];
+    let offset = 0;
+    for (const [path, data] of files) {
+      const name = encoder.encode(path);
+      const crc = crc32(data);
+      // the fields shared by the local header (from byte 4) and the central directory (from byte 6)
+      const common = (view: DataView, at: number) => {
+        view.setUint16(at, 20, true); // version needed
+        view.setUint16(at + 2, 0x0800, true); // UTF-8 names
+        view.setUint16(at + 4, 0, true); // stored
+        view.setUint16(at + 6, time, true);
+        view.setUint16(at + 8, date, true);
+        view.setUint32(at + 10, crc, true);
+        view.setUint32(at + 14, data.length, true);
+        view.setUint32(at + 18, data.length, true);
+        view.setUint16(at + 22, name.length, true);
+      };
+      const local = new Uint8Array(30 + name.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      common(lv, 4);
+      local.set(name, 30);
+      const entry = new Uint8Array(46 + name.length);
+      const cv = new DataView(entry.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true); // version made by
+      common(cv, 6);
+      cv.setUint32(42, offset, true);
+      entry.set(name, 46);
+      parts.push(local, data);
+      central.push(entry);
+      offset += local.length + data.length;
+    }
+    const size = central.reduce((n, c) => n + c.length, 0);
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, files.length, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, size, true);
+    ev.setUint32(16, offset, true);
+    const out = new Uint8Array(offset + size + 22);
+    let at = 0;
+    for (const part of [...parts, ...central, end]) {
+      out.set(part, at);
+      at += part.length;
+    }
+    return out;
+  }
+
+  /**
+   * A waveform item's bundle (as `waveform_bundle` in `_waveform.py` writes it): a zip of
+   * `audio.wav` (the logged WAV), `signals/<name>.npy` (float32, one value per sample) and
+   * `metadata.json`. Returns the zip's bytes and the metadata.
+   */
+  function waveformBundle(
+    buffer: ArrayBuffer,
+    info: {
+      offset: number;
+      names: string[];
+      samples: number;
+      range: [number, number];
+      caption?: string | null;
+      regions?: Record<string, [number, number, string][]> | null;
+      notes?: unknown[];
+      run: { id: string; name: string; project: string | null };
+      key: string;
+      step: number;
+      exportedWith: string;
+    },
+  ): { zip: Uint8Array<ArrayBuffer>; metadata: Record<string, unknown> } {
+    const wav = parseWaveform(buffer, info.offset, info.names, info.samples);
+    const frames = wav.channels[0].length;
+    const files = signalFiles(info.names);
+    const metadata = {
+      format: 'nuboard-waveform',
+      format_version: 1,
+      run: info.run,
+      key: info.key,
+      step: info.step,
+      caption: info.caption ?? null,
+      audio: {
+        file: 'audio.wav',
+        sample_rate: wav.sampleRate,
+        channels: wav.channels.length,
+        samples: info.samples,
+        duration: Math.round((frames / wav.sampleRate) * 1e6) / 1e6,
+      },
+      signals: info.names.map((name, k) => ({ name, file: files[k], dtype: 'float32', samples: info.samples })),
+      range: info.range,
+      regions: info.regions && Object.keys(info.regions).length ? info.regions : null,
+      notes: info.notes ?? [],
+      exported_with: info.exportedWith,
+    };
+    const bytes = new Uint8Array(buffer);
+    const size = info.samples * 4;
+    const zip = zipStored([
+      ['audio.wav', bytes.subarray(0, info.offset)],
+      ...info.names.map((_, k): [string, Uint8Array] => {
+        const from = info.offset + k * size;
+        return [files[k], npyBytes(bytes.subarray(from, from + size), info.samples)];
+      }),
+      ['metadata.json', new TextEncoder().encode(JSON.stringify(metadata, null, 2) + '\n')],
+    ]);
+    return { zip, metadata };
+  }
+
+  return { parseWaveform, Pyramid, decimate, signalFiles, npyBytes, waveformBundle };
 }
 
-export const { parseWaveform, Pyramid, decimate } = waveformKit();
+export const { parseWaveform, Pyramid, decimate, signalFiles, npyBytes, waveformBundle } = waveformKit();
 export type Pyramid = InstanceType<typeof Pyramid>;

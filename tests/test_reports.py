@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import struct
 import zipfile
 
@@ -47,7 +48,10 @@ def test_export_report_bundles_items():
         "img": ({"kind": "image", "mime": "image/png"}, b"PNG"),
         "log": ({"kind": "text", "mime": "text/plain", "text": "hello"}, b""),
         "fig": ({"kind": "figure", "mime": "application/vnd.plotly.v1+json"}, b"{}"),
-        "vad": ({**wave, "signals": ["vad", "gain"]}, b"RIFF" + signals),
+        "vad": (
+            {**wave, "signals": ["vad", "gain"], "samples": 2, "run_name": "base"},
+            b"RIFF" + signals,
+        ),
     }
 
     def resolve(ref):
@@ -60,9 +64,20 @@ def test_export_report_bundles_items():
     assert "[fig](files/r1-fig-3.plotly.json)" in md
     assert "*(missing: img at step 9 of run r2)*" in md
     assert zf.read("files/r1-img-3.png") == b"PNG"
-    assert "[vad](files/r1-vad-3.wav) ([signals](files/r1-vad-3-signals.csv))" in md
-    assert zf.read("files/r1-vad-3.wav") == b"RIFF"
-    assert zf.read("files/r1-vad-3-signals.csv").decode() == "vad,gain\n0.5,-1\n1,0.25\n"
+    assert "[vad](files/r1-vad-3.zip)" in md
+    bundle = zipfile.ZipFile(io.BytesIO(zf.read("files/r1-vad-3.zip")))
+    assert sorted(bundle.namelist()) == [
+        "audio.wav",
+        "metadata.json",
+        "signals/gain.npy",
+        "signals/vad.npy",
+    ]
+    assert bundle.read("audio.wav") == b"RIFF"
+    assert bundle.read("signals/vad.npy").endswith(struct.pack("<2f", 0.5, 1.0))
+    assert bundle.read("signals/gain.npy").endswith(struct.pack("<2f", -1.0, 0.25))
+    meta = json.loads(bundle.read("metadata.json"))
+    assert meta["run"] == {"id": "r1", "name": "base", "project": None}
+    assert (meta["key"], meta["step"]) == ("vad", 3)
 
 
 def test_fields_are_validated(tmp_path):
