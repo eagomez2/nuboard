@@ -1688,18 +1688,6 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect(page).not.toHaveURL(/sel=/);
   await expect(banner).toHaveCount(0);
   await expect.poll(() => page.locator('.legend-chip').count()).toBeGreaterThan(2);
-
-  // shortcuts on the Runs page, never while typing
-  await page.goto('/#/runs?project=vit-ablations');
-  await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click(); // still the two above
-  await boxes.nth(0).check();
-  await boxes.nth(2).check();
-  await page.getByLabel('Run query').press('s');
-  await expect(page).toHaveURL(/#\/runs/);
-  await page.locator('.selbar .count').click();
-  await page.keyboard.press('s');
-  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
-  await expect(banner).toContainText('Showing 2 selected runs');
 });
 
 test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {

@@ -3,7 +3,7 @@
 ## Unreleased
 
 - **Open selected runs in Charts and Sweeps.** The Runs selection bar has
-  **Charts** and **Sweeps** next to **Media** (shortcuts `c`, `s`, `m`). Charts,
+  **Charts** and **Sweeps** next to **Media**. Charts,
   Sweeps, Media and Timeline show a **Showing N selected runs** banner while
   limited to a selection, with buttons to the other pages (which keep it) and
   **Show all**; **Clear selection** also drops it from the URL (#7). A run

@@ -444,22 +444,10 @@
   }
   /** Open a page limited to the selected runs. */
   const openSelected = (page: 'charts' | 'sweeps' | 'media') => router.go(page, { sel: selected.join(',') });
-  // c, s and m open Charts, Sweeps and Media with the selected runs, unless typing somewhere
-  function onWindowKey(e: KeyboardEvent) {
-    if (!selected.length || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-    const t = e.target as HTMLElement | null;
-    if (t?.closest('input, textarea, select, [contenteditable], dialog')) return;
-    const page = ({ c: 'charts', s: 'sweeps', m: 'media' } as const)[e.key as 'c' | 's' | 'm'];
-    if (!page) return;
-    e.preventDefault();
-    openSelected(page);
-  }
   const selected = $derived([...app.selected]);
   const selectedArchived = $derived(selected.length > 0 && selected.every((k) => app.runByKey(k)?.archived));
   const arrow = (col: string) => (router.get('sort') === col ? (router.get('desc') ? ' ↓' : ' ↑') : '');
 </script>
-
-<svelte:window onkeydown={onWindowKey} />
 
 <div class="card panel">
   <div class="toolbar">
@@ -591,13 +579,13 @@
       <button class="btn" onclick={addToCollection}>
         <Icon name="collection" size={15} /> Add to collection…
       </button>
-      <button class="btn" title="Charts of the selected runs (c)" onclick={() => openSelected('charts')}>
+      <button class="btn" title="Charts of the selected runs" onclick={() => openSelected('charts')}>
         <Icon name="charts" size={15} /> Charts
       </button>
-      <button class="btn" title="Sweeps of the selected runs (s)" onclick={() => openSelected('sweeps')}>
+      <button class="btn" title="Sweeps of the selected runs" onclick={() => openSelected('sweeps')}>
         <Icon name="sweep" size={15} /> Sweeps
       </button>
-      <button class="btn" title="Media of the selected runs (m)" onclick={() => openSelected('media')}>
+      <button class="btn" title="Media of the selected runs" onclick={() => openSelected('media')}>
         <Icon name="media" size={15} /> Media
       </button>
       <button

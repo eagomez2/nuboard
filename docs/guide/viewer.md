@@ -44,7 +44,7 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
   edit their **Tags…**, **Set property…**, **Add to collection…**, open them in
-  **Charts**, **Sweeps** or **Media** (or press `c`, `s` or `m`), **Compare**
+  **Charts**, **Sweeps** or **Media**, **Compare**
   up to eight of them, or **Plot selected**. Charts, Sweeps, Media and
   Timeline then show a **Showing N selected runs** banner with buttons to the
   other pages, which keep the selection, and **Show all**, which goes back to
