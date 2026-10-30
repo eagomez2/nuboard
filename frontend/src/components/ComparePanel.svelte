@@ -173,6 +173,10 @@
       'git.commit': m.git?.commit ?? null,
       'git.branch': m.git?.branch ?? null,
       'git.dirty': m.git?.dirty ?? null,
+      'git.pushed': gitPushed(m.git),
+      'git.untracked': gitUntracked(m.git),
+      'git.remote': m.git?.remote ?? null,
+      'git.source': gitSource(m.git),
       host: m.env?.host ?? null,
       python: m.env?.python ?? null,
       platform: m.env?.platform ?? null,
@@ -187,6 +191,26 @@
     for (const [k, s] of Object.entries(d.run.summary ?? {})) out[`last.${k}`] = fmtNum(num(s.last), 6);
     return out;
   }
+
+  // Whether the run can be checked out again elsewhere; older runs lack these fields
+  type Git = { pushed?: boolean | null; untracked?: number | null; source?: string | null } | null | undefined;
+  function gitPushed(g: Git): string | null {
+    if (!g || g.pushed === undefined) return null;
+    if (g.pushed === null) return 'unknown (no remote-tracking branches)';
+    return g.pushed ? 'yes' : 'no: this commit is on no remote branch, so only this machine has it';
+  }
+  function gitUntracked(g: Git): string | null {
+    if (!g || g.untracked === undefined || g.untracked === null) return null;
+    return g.untracked ? `${g.untracked} file${g.untracked === 1 ? '' : 's'}, not in git.patch` : 'none';
+  }
+  const GIT_SOURCES: Record<string, string> = {
+    code_dir: 'code_dir passed to init',
+    script: "the script's folder",
+    cwd: 'the working directory (a best guess)',
+  };
+  // rows that say the run cannot be fully restored from git
+  const GIT_WARN = /^git\.(pushed|untracked)$/;
+  const gitSource = (g: Git) => (g?.source ? (GIT_SOURCES[g.source] ?? g.source) : null);
 
   const allSettingRows = $derived.by(() => {
     const maps = details.map(settings);
@@ -369,7 +393,12 @@
         </div>
       {/if}
       {#each settingRows as row (row.k)}
-        <div class="srow" class:changed={row.diff} style="grid-template-columns: {cols}; min-width: {rowWidth}">
+        <div
+          class="srow"
+          class:changed={row.diff}
+          class:warn={GIT_WARN.test(row.k) && row.vals.some((v) => /^(no|\d+ files?)\b/.test(v))}
+          style="grid-template-columns: {cols}; min-width: {rowWidth}"
+        >
           <span class="k" title={row.k}
             >{#each splitMarked(row.k, finder.highlight(row.k)) as part, j (j)}{#if part.mark}<mark>{part.text}</mark
                 >{:else}{part.text}{/if}{/each}</span
@@ -580,6 +609,9 @@
     flex: none;
   }
   /* not `.diff`: that class is the file diff view, whose border and grid it picked up */
+  .srow.warn .v {
+    color: var(--warn);
+  }
   .srow.changed {
     background: var(--diff-del);
   }

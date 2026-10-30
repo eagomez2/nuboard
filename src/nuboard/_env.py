@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
 import sys
 from dataclasses import dataclass
 from importlib import metadata
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,11 @@ def broadcast_run_id(run_id: str | None) -> str | None:
         return run_id
 
 
+# git never asks for a password, never takes the index lock (so a `git` command the user
+# runs at the same time is not refused), and speaks plain English
+_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
+
+
 def _run(cmd: list[str], cwd: str | None = None, timeout: float = 3.0) -> str | None:
     """Run `cmd` and return its stdout, or None if it fails, is missing or times out."""
 
@@ -112,62 +121,244 @@ def _run(cmd: list[str], cwd: str | None = None, timeout: float = 3.0) -> str | 
             timeout=timeout,
             check=True,
             stdin=subprocess.DEVNULL,
+            env={**os.environ, **_GIT_ENV} if cmd[:1] == ["git"] else None,
         )
         return out.stdout.decode("utf-8", errors="replace")
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
-def git_info(cwd: str | None = None) -> tuple[dict[str, object] | None, str | None]:
-    """Describe the git checkout the run was started from.
+def safe_url(url: str) -> str:
+    """Return `url` without anything that could be a credential.
 
-    Args:
-        cwd: Directory to inspect. Defaults to the current working directory.
+    The user and password (`https://user:TOKEN@host/...`), query and fragment of
+    a URL with a scheme are removed. An scp-like remote (`git@host:org/repo`)
+    names a user, never a password, and is kept.
+    """
+    url = url.strip()
+
+    if not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", url):
+        return url
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+
+    host = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+def _cwd() -> str | None:
+    """The working directory, or None when it no longer exists."""
+
+    try:
+        return os.getcwd()
+    except OSError:
+        return None
+
+
+def _script_dir() -> str | None:
+    """The folder of the script that started this process, or None (notebooks, `-c`, REPL)."""
+    main = sys.modules.get("__main__")
+    candidates = [getattr(main, "__file__", None), sys.argv[0] if sys.argv else None]
+
+    for path in candidates:
+        if not path or not isinstance(path, str):
+            continue
+
+        try:
+            file = Path(path).resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+
+        if file.is_file():
+            return str(file.parent)
+
+    return None
+
+
+def _repo_root(directory: str | None) -> str | None:
+    """The top folder of the git working tree `directory` is in, or None."""
+
+    if not directory or not os.path.isdir(directory):
+        return None
+
+    root = _run(["git", "rev-parse", "--show-toplevel"], directory)
+    return root.strip() or None if root else None
+
+
+def _code_repo(code_dir: str | os.PathLike[str] | None) -> tuple[str | None, str | None]:
+    """Find the repository of the training code: `code_dir`, the script's folder, then the cwd.
 
     Returns:
-        A pair `(info, diff)`. `info` holds `commit`, `branch`, `remote`, `root` and
-        `dirty`; `diff` is the `git diff HEAD` text (empty when clean). Both are None
-        outside a repository or when `git` is not installed.
+        `(root, source)`: the repository's top folder and which place it was
+        found from (`"code_dir"`, `"script"` or `"cwd"`), or `(None, None)`.
+    """
+    import warnings
+
+    places = [
+        ("code_dir", os.fspath(code_dir) if code_dir is not None else None),
+        ("script", _script_dir()),
+        ("cwd", _cwd()),
+    ]
+    found = [(source, _repo_root(d)) for source, d in places if d]
+
+    if code_dir is not None and not found[0][1]:
+        warnings.warn(
+            f"code_dir={os.fspath(code_dir)!r} is not inside a git repository; "
+            "looking for one from the script's folder and the working directory instead",
+            stacklevel=4,
+        )
+
+    roots = [(source, root) for source, root in found if root]
+
+    if not roots:
+        return None, None
+
+    source, root = roots[0]
+    cwd_root = dict(roots).get("cwd")
+
+    if source == "script" and cwd_root and cwd_root != root:
+        warnings.warn(
+            f"recording git info of the script's repository {root}, not of the working "
+            f"directory's {cwd_root}; pass code_dir= to choose",
+            stacklevel=4,
+        )
+
+    return root, source
+
+
+def git_info(
+    cwd: str | None = None, code_dir: str | os.PathLike[str] | None = None
+) -> tuple[dict[str, object] | None, str | None]:
+    """Describe the git checkout of the code the run was started from.
+
+    Every git command is optional: one that fails, is refused (an unsafe
+    repository owner, say) or times out leaves its field None, and this never
+    raises.
+
+    Args:
+        cwd: Directory to inspect, as is. When None, the repository is looked
+            for from `code_dir`, then the running script's folder, then the
+            working directory (see `git.source` in the format reference).
+        code_dir: Folder of the training code, when the script is not (a
+            notebook, `python -m` of an installed package, a CLI entry point).
+
+    Returns:
+        A pair `(info, diff)`. `info` holds `commit` (None in a repository with
+        no commits yet), `branch` (None when detached), `remote` (without any
+        credential), `root`, `dirty`, `pushed`, `untracked` and `source`;
+        `diff` is the `git diff HEAD` text (the staged changes before the first
+        commit; empty when clean). Both are None outside a repository or when
+        `git` is not installed.
     """
 
-    if shutil.which("git") is None:
+    try:
+        if shutil.which("git") is None:
+            return None, None
+
+        if cwd is not None:
+            root, source = _repo_root(cwd), "cwd"
+        else:
+            root, source = _code_repo(code_dir)
+
+        if root is None:
+            return None, None
+
+        return _describe(root, source)
+    except Exception:  # never let tracking break training
         return None, None
 
-    commit = _run(["git", "rev-parse", "HEAD"], cwd)
 
-    if not commit:
-        return None, None
+def _describe(root: str, source: str | None) -> tuple[dict[str, object], str]:
+    """`git_info` for the working tree at `root`."""
+    commit = (_run(["git", "rev-parse", "--verify", "-q", "HEAD"], root) or "").strip() or None
+    branch = (_run(["git", "symbolic-ref", "-q", "--short", "HEAD"], root) or "").strip() or None
+    remote = (_run(["git", "config", "--get", "remote.origin.url"], root) or "").strip()
 
-    branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
-    remote = _run(["git", "config", "--get", "remote.origin.url"], cwd)
-    root = _run(["git", "rev-parse", "--show-toplevel"], cwd)
-    diff = _run(["git", "diff", "HEAD"], cwd, timeout=10.0) or ""
-    info = {
-        "commit": commit.strip(),
-        "branch": (branch or "").strip() or None,
-        "remote": (remote or "").strip() or None,
-        "root": (root or "").strip() or None,
-        "dirty": bool(diff.strip()),
+    # before the first commit there is no HEAD to compare with: the staged files are the change
+    diff_cmd = ["git", "diff", "HEAD"] if commit else ["git", "diff", "--cached"]
+    diff = _run([*diff_cmd, "--no-ext-diff", "--no-color"], root, timeout=10.0)
+
+    untracked_out = _run(["git", "ls-files", "--others", "--exclude-standard", "-z"], root, 10.0)
+    untracked = None if untracked_out is None else len([f for f in untracked_out.split("\0") if f])
+
+    pushed: bool | None = None
+
+    if commit:
+        remotes = _run(["git", "for-each-ref", "--count=1", "refs/remotes"], root)
+        containing = _run(["git", "branch", "-r", "--contains", commit], root)
+
+        if remotes and containing is not None:
+            pushed = bool(containing.strip())
+
+    info: dict[str, object] = {
+        "commit": commit,
+        "branch": branch,
+        "remote": safe_url(remote) or None,
+        "root": root,
+        "dirty": None if diff is None else bool(diff.strip()),
+        "pushed": pushed,
+        "untracked": untracked,
+        "source": source,
     }
-    return info, diff
+    return info, diff or ""
+
+
+def _requirement(dist: metadata.Distribution, name: str, version: str) -> str:
+    """One `pip freeze` line, keeping a VCS install's commit (PEP 610), never a local path."""
+
+    try:
+        direct = json.loads(dist.read_text("direct_url.json") or "null")
+    except (OSError, ValueError):
+        direct = None
+
+    if not isinstance(direct, dict):
+        return f"{name}=={version}"
+
+    url = str(direct.get("url") or "")
+    vcs = direct.get("vcs_info")
+
+    if isinstance(vcs, dict) and url and not url.startswith("file:"):
+        commit = vcs.get("commit_id") or vcs.get("requested_revision")
+        kind = vcs.get("vcs") or "git"
+        return f"{name} @ {kind}+{safe_url(url)}" + (f"@{commit}" if commit else "")
+
+    if isinstance(direct.get("archive_info"), dict) and url and not url.startswith("file:"):
+        return f"{name} @ {safe_url(url)}"
+
+    return f"{name}=={version}  # editable/local install"
 
 
 def pip_freeze() -> str:
     """List installed packages in `pip freeze` style, from distribution metadata.
 
     No subprocess is started. Each distribution appears once, as `name==version`,
-    sorted case-insensitively.
+    sorted case-insensitively. A package installed from a VCS URL is written as
+    `name @ git+URL@commit` (URL without credentials); one installed from a
+    local folder or in editable mode keeps `name==version`, marked with a
+    comment, and its path is not recorded. Broken metadata is skipped.
 
     Returns:
         The list, one package per line, ending with a newline.
     """
     seen: dict[str, str] = {}
 
-    for dist in metadata.distributions():
-        name = dist.metadata["Name"]
+    try:
+        dists = list(metadata.distributions())
+    except Exception:
+        dists = []
 
-        if name and name.lower() not in seen:
-            seen[name.lower()] = f"{name}=={dist.version}"
+    for dist in dists:
+        try:
+            name = dist.metadata["Name"]
+            version = dist.version
+        except Exception:
+            continue
+
+        if name and version and name.lower() not in seen:
+            seen[name.lower()] = _requirement(dist, name, version)
 
     return "\n".join(sorted(seen.values(), key=str.lower)) + "\n"
 
@@ -267,7 +458,7 @@ def environment() -> dict[str, object]:
         "python": sys.version.split()[0],
         "executable": sys.executable,
         "argv": list(sys.argv),
-        "cwd": os.getcwd(),
+        "cwd": _cwd(),
         "pid": os.getpid(),
         "gpus": gpus(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Reproducibility.** A new [guide](guide/reproducibility.md) explains what a
+  run records, how to replay it, and what is not covered. `init` now:
+  - removes any user, password or token from the recorded git remote URL;
+  - records the repository of your code: `code_dir=` if given, else the
+    running script's folder, else the working directory (`git.source`), with
+    a warning when the script and the working directory are in different
+    repositories;
+  - records `git.pushed` (whether a remote-tracking branch has the commit)
+    and `git.untracked` (how many untracked files, never their names),
+    shown and highlighted in **All settings**;
+  - keeps the commit of packages installed from git in `requirements.txt`,
+    without credentials or local paths;
+  - records what it can in a repository with no commits, on a detached
+    `HEAD`, from a deleted working directory or with broken package
+    metadata, and never fails the run over it (#11).
 - **Report editor: formatting toolbar and Insert menu.** Buttons for bold,
   italic, underline (`<u>`), strikethrough, headings, lists, checklists,
   quotes, code, links, rules and tables write plain Markdown, with Ctrl/⌘+B,

@@ -43,6 +43,24 @@ path.
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
 
+### Git info
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `commit` | str/null | `HEAD`'s full hash; null in a repository with no commits yet. |
+| `branch` | str/null | The checked-out branch; null when `HEAD` is detached. |
+| `remote` | str/null | `remote.origin.url`, with any user, password, query and fragment removed from a URL with a scheme. |
+| `root` | str | The working tree's top folder. |
+| `dirty` | bool/null | Whether `files/git.patch` has changes; null when the diff could not be read. |
+| `pushed` | bool/null | Whether a remote-tracking branch contains `commit` (read locally, as of the last fetch or push); null when there are none or it could not be read. |
+| `untracked` | int/null | Untracked, not ignored files: their number only. |
+| `source` | str | Where the repository was found: `code_dir`, `script` or `cwd`. |
+
+`pushed`, `untracked` and `source` are absent from runs recorded by older versions.
+`files/requirements.txt` lists packages as `name==version`; one installed from
+git is `name @ git+URL@commit` (URL without credentials), and one installed
+from a local folder or in editable mode is `name==version  # editable/local install`.
+
 ### Run ids and names
 
 - Run id: `<YYYYMMDDTHHMM>-<hash8>`, e.g. `20261013T0720-755037e9`.
@@ -79,7 +97,7 @@ ignore keys they do not know.
 | `sessions` | list | One `{session, started, ended}` per start or resume. |
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
-| `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
+| `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`, `pushed`, `untracked`, `source`; see below. Null outside a git repository or without git. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. `gpus` lists the NVIDIA GPUs the process can use (after `CUDA_VISIBLE_DEVICES`), each with `device` (`cuda:i`), `index` (on the machine), `uuid`, `name`, `memory` and `driver`; older runs have only the last three, for every GPU of the machine. |
 | `distributed` | object | `world_size`, `shared_id`. |
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
