@@ -204,8 +204,8 @@ def main(argv: list[str] | None = None) -> None:
     Subcommands: `up` (start the viewer), `demo` (write a demo workspace and
     optionally serve it with a live run), `compact` (write `data.parquet` for
     finished runs), `ls` (list runs, optionally filtered by a query),
-    `artifact` (add, list and show artifact versions), `merge` (merge one
-    folder of projects into another), `import-tensorboard` (import
+    `rm` (delete runs), `artifact` (add, list and show artifact versions),
+    `merge` (merge one folder of projects into another), `import-tensorboard` (import
     TensorBoard logs) and `version`.
 
     Args:
@@ -322,6 +322,29 @@ def main(argv: list[str] | None = None) -> None:
         "--include-running", action="store_true", help="also copy runs still logging in SRC"
     )
 
+    p = sub.add_parser(
+        "rm",
+        help="delete runs chosen by a query or id (lists them and asks first)",
+        description="Delete the runs under DIR that match the query and/or are named with --run. "
+        "The runs are listed with their sizes and nothing is deleted until you confirm. Running "
+        "runs are skipped unless --include-running; artifact versions they produced are kept. "
+        "To hide runs without deleting them, archive them in the viewer.",
+    )
+    p.add_argument(
+        "dir",
+        nargs="?",
+        default=None,
+        help=f"folder of projects, a project or a run (default: ${ENV_PREFIX}_DIR or "
+        f"./{DEFAULT_ROOT})",
+    )
+    p.add_argument("-q", "--query", default="", help="runs to delete, as in ls")
+    p.add_argument(
+        "--run", action="append", dest="runs", help="a run id or name; repeat for several"
+    )
+    p.add_argument("--dry-run", action="store_true", help="list the runs and exit")
+    p.add_argument("-y", "--yes", action="store_true", help="delete without asking")
+    p.add_argument("--include-running", action="store_true", help="also delete runs still logging")
+
     from . import _artifact_cli
 
     _artifact_cli.add_parser(sub, ENV_PREFIX, DEFAULT_ROOT)
@@ -342,6 +365,20 @@ def main(argv: list[str] | None = None) -> None:
                 yes=args.yes,
                 verbose=args.verbose,
                 as_json=args.json,
+            )
+        )
+
+    if args.cmd == "rm":
+        from . import remove
+
+        raise SystemExit(
+            remove.main(
+                args.dir or _default_dir(),
+                query=args.query,
+                runs=args.runs,
+                include_running=args.include_running,
+                dry_run=args.dry_run,
+                yes=args.yes,
             )
         )
 

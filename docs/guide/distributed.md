@@ -37,8 +37,8 @@ All ranks must agree on the run folder. In order of preference:
 ## Viewing ranks
 
 The viewer and `RunReader` show rank 0 by default; `RunReader.scalars(...,
-rank=k)` reads another rank. A rank-0 line with min/mean/max bands across ranks
-is on the [roadmap](../roadmap.md).
+rank=k)` reads another rank. Only one rank is plotted at a time (see
+[Known limitations](../reference/limitations.md)).
 
 ## Resume after preemption
 

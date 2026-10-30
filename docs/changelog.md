@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **`nuboard rm`** deletes runs chosen by a query (`-q 'status = crashed'`)
+  or by id or name (`--run`, repeatable). It lists the runs with their sizes
+  and deletes nothing until you confirm; `--dry-run` and `--yes` work as in
+  `merge`. Running runs are skipped unless `--include-running`, artifact
+  versions the runs produced are kept, and with neither a query nor `--run`
+  it refuses, so it never deletes every run by accident (#18).
+- **Command line reference.** A new [page](reference/cli.md) lists every
+  command with its options and defaults (#18).
+- **Known limitations** have their own [page](reference/limitations.md).
+
 ## 0.19.2
 
 - **`nuboard merge SRC DEST`** merges a project logged on two machines into

@@ -15,6 +15,7 @@ src/nuboard/            Python package (the name lives here and in pyproject.tom
   catalog.py query.py   run discovery, SQLite cache, query language
   collection.py         collections of runs (stdlib only)
   tensorboard.py        TensorBoard event-file import (stdlib only)
+  merge.py remove.py    nuboard merge and nuboard rm
   analysis.py           nb.load(...) → Arrow tables
   server/               Starlette app and data access
   static/               built frontend (generated, not in git)
