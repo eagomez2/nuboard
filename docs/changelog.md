@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Filter the settings of compared runs.** A filter box in **All settings**
+  narrows its rows by key: plain text, `/regex/` (or the **.\*** toggle),
+  `!exclusions` and several terms at once, optionally matching values too. It
+  works with **Only changes**, shows "12 of 340 keys", highlights the matches
+  and is kept in the URL. `/` focuses it and `Esc` clears it (#9).
 - **Sweeps sees every config key.** A key that differs between runs gets a
   parameter chip however deep it sits in a large config. Sweeps read its
   parameters from the run list, which keeps only the first 64 config values of

@@ -12,6 +12,7 @@
   import { api, num, type RunDetail, type RunTree } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
   import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
+  import { keyFilter, splitMarked } from '../lib/keyfilter';
   import { pinMatches } from '../lib/pattern';
   import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
@@ -24,6 +25,30 @@
 
   const tab = $derived(router.get('tab', 'settings'));
   const onlyChanges = $derived(router.get('changes') === '1');
+  // The settings filter: text, regex mode and matching values too, all kept in the URL
+  let findText = $state(router.get('sfind'));
+  let findEl = $state<HTMLInputElement>();
+  let findFocused = $state(false);
+  $effect(() => {
+    const t = router.get('sfind');
+    if (!findFocused) findText = t;
+  });
+  const findRegex = $derived(router.get('sre') === '1');
+  const findValues = $derived(router.get('svals') === '1');
+  const finder = $derived(keyFilter(findText, { regex: findRegex, values: findValues }));
+  function setFind(text: string) {
+    findText = text;
+    router.set({ sfind: text || null });
+  }
+  function onWindowKey(e: KeyboardEvent) {
+    const el = e.target as HTMLElement | null;
+    const typing = !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+    if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && tab === 'settings') {
+      e.preventDefault();
+      findEl?.focus();
+      findEl?.select();
+    }
+  }
   const multi = $derived(details.length >= 2);
   // File diffs are pairwise: which two of the compared runs (indices into keys).
   const pairIdx = $derived.by(() => {
@@ -163,7 +188,7 @@
     return out;
   }
 
-  const settingRows = $derived.by(() => {
+  const allSettingRows = $derived.by(() => {
     const maps = details.map(settings);
     const keysAll = [...new Set(maps.flatMap((m) => Object.keys(m)))];
     return keysAll
@@ -171,9 +196,9 @@
         k,
         vals: maps.map((m) => fmtValue(m[k])),
       }))
-      .map((row) => ({ ...row, diff: multi && new Set(row.vals).size > 1 }))
-      .filter((r) => !onlyChanges || r.diff);
+      .map((row) => ({ ...row, diff: multi && new Set(row.vals).size > 1 }));
   });
+  const settingRows = $derived(allSettingRows.filter((r) => (!onlyChanges || r.diff) && finder.test(r.k, r.vals)));
 
   const diffRows = $derived(pairTexts.length === 2 ? sideBySide(pairTexts[0] ?? '', pairTexts[1] ?? '') : []);
   const shownDiff = $derived(
@@ -200,6 +225,8 @@
 
   const errorText = $derived(details.map((d) => d.run.error).find(Boolean));
 </script>
+
+<svelte:window onkeydown={onWindowKey} />
 
 <div class="card cmp" bind:this={panel}>
   <div class="top">
@@ -253,6 +280,45 @@
         onclick={() => router.set({ tab: `pin:${p}` })}><Icon name="pin" size={12} /> {pinLabel(p)}</button
       >
     {/each}
+    {#if tab === 'settings'}
+      <div class="find" class:bad={!!finder.error}>
+        <Icon name="search" size={14} />
+        <input
+          class="mono"
+          placeholder="Filter keys  (/regex/, !exclude)"
+          aria-label="Filter settings"
+          aria-invalid={!!finder.error}
+          title={finder.error ?? 'Press / to focus, Esc to clear'}
+          bind:this={findEl}
+          value={findText}
+          oninput={(e) => setFind(e.currentTarget.value)}
+          onfocus={() => (findFocused = true)}
+          onblur={() => (findFocused = false)}
+          onkeydown={(e) => {
+            if (e.key !== 'Escape') return;
+            if (findText) setFind('');
+            else findEl?.blur();
+          }}
+        />
+        <button
+          class="tog mono"
+          aria-pressed={findRegex}
+          aria-label="Regular expression"
+          title="Every term is a regular expression"
+          onclick={() => router.set({ sre: findRegex ? null : '1' })}>.*</button
+        >
+        <button
+          class="tog"
+          aria-pressed={findValues}
+          aria-label="Match values"
+          title="Also match the values, not only the keys"
+          onclick={() => router.set({ svals: findValues ? null : '1' })}>Values</button
+        >
+      </div>
+      {#if !finder.empty || onlyChanges}
+        <span class="count">{settingRows.length} of {allSettingRows.length} keys</span>
+      {/if}
+    {/if}
     {#if multi}
       <label class="only">
         <button
@@ -304,7 +370,10 @@
       {/if}
       {#each settingRows as row (row.k)}
         <div class="srow" class:changed={row.diff} style="grid-template-columns: {cols}; min-width: {rowWidth}">
-          <span class="k">{row.k}</span>
+          <span class="k" title={row.k}
+            >{#each splitMarked(row.k, finder.highlight(row.k)) as part, j (j)}{#if part.mark}<mark>{part.text}</mark
+                >{:else}{part.text}{/if}{/each}</span
+          >
           {#each row.vals as v, i (i)}<span class="v" title={v}>{v}</span>{/each}
         </div>
       {/each}
@@ -407,6 +476,59 @@
     color: var(--accent);
     background: var(--accent-soft);
     font-weight: 600;
+  }
+  .find {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 4px 0 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--faint);
+  }
+  .find:focus-within {
+    border-color: var(--accent);
+  }
+  .find.bad {
+    border-color: var(--err);
+    background: var(--err-bg);
+  }
+  .find input {
+    width: 230px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  .tog {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .tog[aria-pressed='true'] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .count {
+    color: var(--faint);
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .find ~ .only {
+    margin-left: 6px;
+  }
+  .k mark {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 2px;
   }
   .only {
     margin-left: auto;

@@ -37,6 +37,40 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
 
+test('compare filters settings by text, regex and exclusions, kept in the URL', async ({ page }) => {
+  await page.goto('/#/runs?project=speech-denoise');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check(); // convtasnet
+  await boxes.nth(2).check(); // unet-l1
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.getByRole('switch', { name: 'Only changes' }).click();
+  const rows = page.locator('.settings .srow:not(.head) .k');
+  const find = page.getByRole('textbox', { name: 'Filter settings' });
+
+  await find.fill('/^config\\.generator\\..*\\.(min|max)$/');
+  await expect(rows).toHaveText(['config.generator.config.weighted_sir_db.edge.min']);
+  await expect(rows.first().locator('mark')).toHaveText('config.generator.config.weighted_sir_db.edge.min');
+  await expect(page.locator('.tabs .count')).toHaveText(/^1 of \d+ keys$/);
+
+  await find.fill('config !generator');
+  await expect(rows).toHaveText(['config.model', 'config.loss']);
+
+  await find.fill('/(broken/');
+  await expect(find).toHaveAttribute('aria-invalid', 'true');
+  expect(await rows.count()).toBeGreaterThan(2); // the list stays as Only changes leaves it
+
+  await find.fill('edge.min');
+  await expect(page).toHaveURL(/sfind=edge\.min/);
+  await page.reload();
+  await expect(rows).toHaveText(['config.generator.config.weighted_sir_db.edge.min']);
+
+  await find.press('Escape');
+  await expect(find).toHaveValue('');
+  await page.locator('.settings').click();
+  await page.keyboard.press('/');
+  await expect(find).toBeFocused();
+});
+
 test('charts render grouped bands, a legend and small multiples', async ({ page }) => {
   await page.goto('/#/charts?q=where%20tags%20has%20sweep%20group%20by%20config.optim.lr');
   await expect(page.locator('.legend-chip')).toHaveCount(4);
