@@ -1520,3 +1520,143 @@ test('text files go in inline as code or a table, or attached as a collapsible b
   expect(html).toMatch(/<details class="nb-attachment"><summary><b>train\.log<\/b>[^]*<pre>epoch 1 loss 0\.9\n<\/pre>/);
   expect(html).toContain('download="train.log"');
 });
+
+/** A short mono 16-bit WAV: a 440 Hz tone. */
+function wav(seconds = 0.2, rate = 8000): Buffer {
+  const n = Math.round(seconds * rate);
+  const out = Buffer.alloc(44 + 2 * n);
+  out.write('RIFF', 0);
+  out.writeUInt32LE(36 + 2 * n, 4);
+  out.write('WAVEfmt ', 8);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20); // PCM
+  out.writeUInt16LE(1, 22); // mono
+  out.writeUInt32LE(rate, 24);
+  out.writeUInt32LE(2 * rate, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write('data', 36);
+  out.writeUInt32LE(2 * n, 40);
+  for (let i = 0; i < n; i++) out.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / rate)), 44 + 2 * i);
+  return out;
+}
+
+test('audio is uploaded from the Insert menu and by drop, plays in the preview and exports', async ({ page }) => {
+  const box = await openReport(page, 'e2e-audio', '# Audio\n');
+  const sound = wav();
+  await select(box, 8, 8);
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Audio/ }).click();
+  const dlg = page.getByRole('dialog', { name: 'Insert audio' });
+  await dlg
+    .getByLabel('Choose an audio file')
+    .setInputFiles({ name: 'take-1.wav', mimeType: 'audio/wav', buffer: sound });
+  await expect(dlg.getByLabel('Caption')).toHaveValue('take 1');
+  await dlg.getByLabel('Caption').fill('First take');
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/\[First take\]\(files\/[0-9a-f]{16}\.wav\)/);
+  const path = (await box.inputValue()).match(/files\/[0-9a-f]{16}\.wav/)![0];
+  const player = page.locator('.preview .nb-audio');
+  await expect(player.locator('iframe')).toBeVisible();
+  await expect(player.locator('figcaption')).toContainText('First take');
+  const served = await page.request.get(`/api/reports/vit-ablations/${path}`);
+  expect(served.headers()['content-type']).toBe('audio/wav');
+
+  // text renamed to .wav is refused
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Audio/ }).click();
+  await dlg.getByLabel('Choose an audio file').setInputFiles({
+    name: 'fake.wav',
+    mimeType: 'audio/wav',
+    buffer: Buffer.from('not audio'),
+  });
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(dlg.getByRole('alert')).toContainText('not a WAV, FLAC, MP3');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+
+  // dropped on the text box, it goes straight in
+  await box.evaluate((el: HTMLTextAreaElement, b64) => {
+    const data = new DataTransfer();
+    data.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'room_tone.wav', { type: '' }));
+    el.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  }, sound.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`\\[room tone\\]\\(${path.replace('.', '\\.')}\\)`));
+
+  await page.waitForTimeout(900);
+  const zip = await page.request.get('/api/reports/vit-ablations/e2e-audio/export');
+  expect((await zip.body()).includes(Buffer.from(path))).toBe(true);
+  for (const player of ['Simple', 'Waveform']) {
+    const exported = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export as HTML' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: player, exact: true }).click();
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+    const out = test.info().outputPath(`e2e-audio-${player}.html`);
+    await (await exported).saveAs(out);
+    const html = readFileSync(out, 'utf8');
+    if (player === 'Simple')
+      expect(html).toMatch(
+        new RegExp(`<audio controls(="")? src="data:audio/wav;base64,${sound.toString('base64').slice(0, 40)}`),
+      );
+    else expect(html).toContain('class="nbwave"');
+    expect(html).toContain('First take');
+    expect(html).not.toContain('/api/reports/');
+  }
+});
+
+test('the report picker lists reports by title, narrows as you type and makes new ones', async ({ page }) => {
+  for (let i = 0; i < 32; i++) {
+    const n = String(i).padStart(2, '0');
+    await page.request.post('/api/reports', {
+      data: { project: 'vit-ablations', name: `e2e-pick-${n}`, text: `# Pick ${n}\n` },
+    });
+  }
+  const openPicker = async () => {
+    await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples');
+    await page.getByRole('button', { name: 'Add to a report' }).first().click();
+    return page.getByRole('dialog');
+  };
+  let dlg = await openPicker();
+  const field = dlg.getByRole('combobox', { name: 'Report' });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('');
+  const options = dlg.getByRole('option');
+  expect(await options.count()).toBeGreaterThanOrEqual(32);
+  await expect(dlg.getByRole('option', { name: /Pick 31/ })).toContainText('e2e-pick-31.md');
+
+  await field.fill('pick 1');
+  await expect(options).toHaveCount(11); // Pick 10 to Pick 19, then New report
+  await expect(options.first().locator('mark').first()).toHaveText(/pick 1/i);
+  await field.press('ArrowDown');
+  await field.press('Enter'); // the second match
+  await expect(field).toHaveValue(/^e2e-pick-1\d$/);
+  const picked = await field.inputValue();
+  await expect(options).toHaveCount(0);
+  await field.press('Enter'); // the list is closed: Enter submits
+  await expect(dlg).toBeHidden();
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/reports/vit-ablations/${picked}`)).json()).text)
+    .toMatch(/media:.*samples\//);
+
+  // a name that does not exist is offered as a new report
+  dlg = await openPicker();
+  await expect(dlg.getByRole('option', { name: new RegExp(picked) })).toContainText('last used');
+  await field.fill('e2e-pick-fresh');
+  await expect(dlg.getByRole('option', { name: 'New report “e2e-pick-fresh”' })).toBeVisible();
+  await field.press('Enter');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect
+    .poll(async () => (await page.request.get('/api/reports/vit-ablations/e2e-pick-fresh')).status())
+    .toBe(200);
+});
+
+test('toolbar buttons use theme icons, and Media item is on when the project has media', async ({ page }) => {
+  await openReport(page, 'e2e-icons', '# Icons\n');
+  for (const name of ['Link', 'Bulleted list', 'Quote', 'Code block', 'Horizontal rule', 'Table', 'Undo'])
+    await expect(page.getByRole('button', { name, exact: true }).locator('svg')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Link', exact: true })).not.toContainText('🔗');
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  const media = page.getByRole('menuitem', { name: /Media item/ });
+  await expect(media).toBeEnabled();
+  await expect(media).toContainText('Opens Media');
+});

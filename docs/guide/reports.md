@@ -9,14 +9,20 @@ committed next to the runs.
 ## Adding items from the Media page
 
 Every card on the **Media** page has a bookmark button. It asks for a report
-name (the last one used is filled in) and a caption, then appends a line such
-as
+and a caption, then appends a line such as
 
 ```markdown
 ![cutmix-s0 at the best val/acc](media:20261016T0815-e8021047/samples/augmented@80)
 ```
 
 to the end of the report, creating it if needed.
+
+The **Report** field lists the project's reports as soon as it is focused,
+most recently updated first, each with its title and file name; the last one
+used is highlighted and taken if you type nothing. Typing narrows the list by
+title or file name, ↑/↓ and Enter pick one, and a name that is not in the list
+is offered as **New report "name"**. Every bookmark button (Media, Charts,
+Sweeps, Timeline) and **Add N to report** use the same field.
 
 To add several at once, press **Select for report** above the sections, tick
 the cards whose shown item you want, and press **Add N to report** in the bar
@@ -89,27 +95,37 @@ viewers and the exports:
 | --- | --- | --- |
 | **B**, *I*, U, S | `**bold**`, `_italic_`, `<u>underline</u>`, `~~strikethrough~~` | Ctrl/⌘+B, I, U, Shift+X |
 | H1, H2, H3, ¶ | `# `, `## `, `### `, or a plain paragraph | |
-| •, 1., ☐, ❝ | `- `, `1. `, `- [ ] ` and `> ` on each selected line | |
-| `` `c` ``, { } | inline code and a fenced code block | |
-| 🔗 | `[text](https://)`, with the URL selected to type over | Ctrl/⌘+K |
-| ―, ▦ | a horizontal rule, and a table of the size you pick | |
-| ↶, ↷ | undo and redo | Ctrl/⌘+Z, Shift+Z |
+| Bulleted list, Numbered list, Checklist, Quote | `- `, `1. `, `- [ ] ` and `> ` on each selected line | |
+| `` `c` ``, Code block | inline code and a fenced code block | |
+| Link | `[text](https://)`, with the URL selected to type over | Ctrl/⌘+K |
+| Horizontal rule, Table | a horizontal rule, and a table of the size you pick | |
+| Undo, Redo | undo and redo | Ctrl/⌘+Z, Shift+Z |
+
+Buttons other than the text styles and headings are icons; hover one for its name.
 
 A button shows as pressed when the cursor is inside its formatting, and
 pressing it again removes it. Underline has no Markdown syntax, so it is
 written as `<u>…</u>`, which the viewer and the HTML export show.
 
-### Inserting images and text files
+### Inserting images, audio and text files
 
-**Insert** gathers everything a report can hold: **Image**, **Text file**,
-**Table**, and shortcuts to the Charts and Media pages for charts and logged
-items.
+**Insert** gathers everything a report can hold: **Image**, **Audio**,
+**Text file**, **Table**, and shortcuts to the Charts and Media pages for
+charts and logged items. **Media item** is grayed out, with "No media logged
+in <project> yet", when no run of the report's project logged any media or
+text; the run list the viewer already has tells, so opening the menu costs
+nothing.
 
 - **Image**: drop, paste (a clipboard screenshot) or choose a PNG, JPEG, GIF
   or WebP file, and add alt text and a caption. It is written as
   `![alt](files/3f2a9c0d1e2b4a5f.png)`, with the caption as an italic line
   below. Dropping or pasting an image straight into the text box does the
   same without the panel.
+- **Audio**: drop or choose a WAV, FLAC, MP3, Ogg, M4A or WebM file and add a
+  caption. It is written as `[caption](files/3f2a9c0d1e2b4a5f.wav)`, which the
+  viewer plays with the waveform player (waveform, spectrogram and zoom) and
+  other Markdown viewers show as a link to the file. Dropping an audio file
+  straight into the text box does the same without the panel.
 - **Text file**: choose or drop a `.txt`, `.md`, `.log`, `.csv`, `.json`,
   `.yaml` or source file, then pick how it goes in. **Inline** pastes its
   content into the report: Markdown as it is, a CSV or TSV as a table (or as
@@ -125,11 +141,11 @@ content, so the same file uploaded twice is stored once and the project stays
 self-contained when it is copied, zipped or committed. The .zip and HTML
 exports include them.
 
-The viewer checks every upload on the server: images by their first bytes
-(an SVG only if it has no scripts, links or embedded HTML), text by decoding
-it as UTF-8 with no NUL bytes. Nothing is converted. An image can be up to
-20 MB and a text file up to 5 MB; `nuboard up --max-image-mb N --max-text-mb N`
-changes that. Files are served with a fixed type, `nosniff` and a strict
+The viewer checks every upload on the server: images and audio by their first
+bytes (an SVG only if it has no scripts, links or embedded HTML), text by
+decoding it as UTF-8 with no NUL bytes. Nothing is converted. An image can be
+up to 20 MB, an audio file up to 50 MB and a text file up to 5 MB;
+`nuboard up --max-image-mb N --max-audio-mb N --max-text-mb N` changes that. Files are served with a fixed type, `nosniff` and a strict
 content security policy, and text files always download, so a renamed HTML
 page never runs. Images on other websites (`![x](https://...)`) are not
 loaded, since that would tell their host who reads the report and break

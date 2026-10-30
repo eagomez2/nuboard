@@ -71,6 +71,7 @@ def up(
     read_only_reports: bool = False,
     max_image_mb: float = 20,
     max_text_mb: float = 5,
+    max_audio_mb: float = 50,
 ) -> None:
     """Serve a folder of runs with the web viewer until interrupted.
 
@@ -91,6 +92,7 @@ def up(
         read_only_reports: Refuse changes to reports, including uploads.
         max_image_mb: Size limit, in MB, of an image uploaded into a report.
         max_text_mb: Size limit, in MB, of a text file uploaded into a report.
+        max_audio_mb: Size limit, in MB, of an audio file uploaded into a report.
 
     Raises:
         SystemExit: If the viewer dependencies are missing, `directory` does not
@@ -123,6 +125,7 @@ def up(
         read_only_reports=read_only_reports,
         max_image_bytes=int(max_image_mb * 1024 * 1024),
         max_text_bytes=int(max_text_mb * 1024 * 1024),
+        max_audio_bytes=int(max_audio_mb * 1024 * 1024),
     )
     port = _free_port(host, port)
     shown = "localhost" if loopback else socket.gethostname() if host in ("0.0.0.0", "::") else host
@@ -254,6 +257,12 @@ def main(argv: list[str] | None = None) -> None:
         default=5,
         help="size limit of a text file uploaded into a report (default: 5)",
     )
+    p.add_argument(
+        "--max-audio-mb",
+        type=float,
+        default=50,
+        help="size limit of an audio file uploaded into a report (default: 50)",
+    )
 
     p = sub.add_parser(
         "demo", help="write a demo workspace (and optionally start the viewer with a live run)"
@@ -317,6 +326,7 @@ def main(argv: list[str] | None = None) -> None:
             read_only_reports=args.read_only_reports,
             max_image_mb=args.max_image_mb,
             max_text_mb=args.max_text_mb,
+            max_audio_mb=args.max_audio_mb,
         )
     elif args.cmd == "demo":
         from .demo import generate, live

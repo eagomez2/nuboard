@@ -15,6 +15,19 @@ export interface DialogField {
   inputType?: 'text' | 'date' | 'url';
   /** A switch instead of a text box; the value is `'1'` or `'0'`. */
   toggle?: boolean;
+  /** A text box with a list of these that opens on focus and narrows as you type. */
+  combo?: ComboOption[];
+  /** With `combo`: the option highlighted first, and the value when nothing is typed. */
+  preselect?: string;
+  /** With `combo`: the label of the option that takes a typed value that is not listed. */
+  newLabel?: string;
+}
+
+export interface ComboOption {
+  value: string;
+  label: string;
+  /** Shown dimmed after the label, such as a file name. */
+  detail?: string;
 }
 
 export interface DialogRequest {

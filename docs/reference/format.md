@@ -39,7 +39,7 @@ path.
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
-    reports/files/<hash>.<ext>            images and text files uploaded into reports
+    reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -129,6 +129,7 @@ ignore keys they do not know.
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
 | `exit` | object/null | `{code, error}`; `error` holds the last 4,000 characters of the traceback. |
+| `media_count` | int | Media and text items logged, across sessions; a helper job keeps its own in `jobs/<job>.json`. Absent from runs recorded by older versions; the viewer then checks for a `media.r*.pack` file. |
 | `compacted` | object | Written after compaction: `{bytes: {log file: size}, time}`. |
 | `alerts` | list | Written after compaction: the run's [health alerts](../guide/alerts.md), see below. |
 
@@ -452,7 +453,7 @@ from those items and shows the PNG snapshot when none of them is found.
 
 ### Uploaded files
 
-Images and text files uploaded in the report editor are stored in
+Images, audio and text files uploaded in the report editor are stored in
 `reports/files/` as uploaded, named by the first 16 hex digits of the SHA-256
 of their bytes plus an extension (`files/3f2a9c0d1e2b4a5f.png`), so identical
 uploads share one file.
@@ -460,6 +461,10 @@ uploads share one file.
 - **Images**: `.png`, `.jpg`, `.gif` or `.webp`, the extension chosen from
   the file's first bytes, or `.svg` for an SVG drawing with no scripts, event
   handlers, links or embedded HTML. Embedded as `![alt](files/<hash>.<ext>)`.
+- **Audio**: `.wav`, `.flac`, `.mp3`, `.ogg`, `.m4a` or `.webm`, chosen from
+  the file's first bytes (RIFF/WAVE, `fLaC`, an ID3 tag or MPEG frame sync,
+  `OggS`, `ftyp`, EBML). Embedded as `[caption](files/<hash>.<ext>)`, which the
+  viewer plays with the waveform player.
 - **Text files**: UTF-8 with no NUL bytes; the extension is the uploaded
   file's when it is a known text or source extension (`.txt`, `.md`, `.log`,
   `.csv`, `.json`, `.yaml`, `.py`, ...), else `.txt`. An attached file is a

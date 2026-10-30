@@ -48,6 +48,7 @@ from ..collection import delete_collection, list_collections, save_collection
 from ..jobs import read_meta
 from ..query import QueryError, parse
 from ..reports import (
+    MAX_AUDIO_BYTES,
     MAX_IMAGE_BYTES,
     MAX_TEXT_BYTES,
     MediaRef,
@@ -284,6 +285,7 @@ def create_app(
     read_only_reports: bool = False,
     max_image_bytes: int = MAX_IMAGE_BYTES,
     max_text_bytes: int = MAX_TEXT_BYTES,
+    max_audio_bytes: int = MAX_AUDIO_BYTES,
 ) -> Starlette:
     """Create the viewer's Starlette app for a folder of runs.
 
@@ -304,6 +306,7 @@ def create_app(
             and uploads, as on a shared server.
         max_image_bytes: Size limit of an image uploaded into a report.
         max_text_bytes: Size limit of a text file uploaded into a report.
+        max_audio_bytes: Size limit of an audio file uploaded into a report.
 
     Returns:
         The app. Its `state.store` holds the `Store` it reads runs through.
@@ -359,7 +362,11 @@ def create_app(
                 "catalog_version": catalog.version,
                 "edit_artifacts": edit_artifacts,
                 "read_only_reports": read_only_reports,
-                "upload_limits": {"image": max_image_bytes, "text": max_text_bytes},
+                "upload_limits": {
+                    "image": max_image_bytes,
+                    "text": max_text_bytes,
+                    "audio": max_audio_bytes,
+                },
             }
         )
 
@@ -1606,11 +1613,11 @@ def create_app(
         )
 
     async def report_upload(request: Request) -> Response:
-        """Store an image or text file uploaded into a report (see `save_upload`).
+        """Store an image, audio or text file uploaded into a report (see `save_upload`).
 
         The body is the file's bytes, sent as `application/octet-stream`; query
-        parameters `project`, `name` (the file's name) and `kind` (`image` or
-        `text`). Returns the stored file's `path`, `kind`, `size` and `name`, or
+        parameters `project`, `name` (the file's name) and `kind` (`image`,
+        `audio` or `text`). Returns the stored file's `path`, `kind`, `size` and `name`, or
         an `error` that says why it was refused.
         """
 
@@ -1627,7 +1634,7 @@ def create_app(
 
         kind = request.query_params.get("kind", "")
         name = request.query_params.get("name", "file")
-        limit = max_text_bytes if kind == "text" else max_image_bytes
+        limit = {"text": max_text_bytes, "audio": max_audio_bytes}.get(kind, max_image_bytes)
         too_large = JSON(
             {"error": f"{name} is too large; {kind} files can be at most {limit / 1e6:.0f} MB"},
             status_code=413,

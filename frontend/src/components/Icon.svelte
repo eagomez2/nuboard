@@ -34,6 +34,17 @@
     shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
     pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v7',
     disk: 'M3 13h18v7H3zM3 13l3-9h12l3 9M7 16.5h.01M11 16.5h6',
+    audio: 'M3 12h1M7 9v6M11 5v14M15 8v8M19 11v2M22 12h-.01',
+    link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+    'list-bullet': 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+    'list-numbered': 'M10 6h10M10 12h10M10 18h10M4 4.5h1.5V9M4 9h3M4 14.5a1.5 1.5 0 0 1 3 0c0 1.5-3 2-3 4h3',
+    'list-check': 'M3.5 4.5h5v5h-5zM3.5 14.5h5v5h-5zM12 7h8M12 17h8M4.8 16.8l1.4 1.4 2.3-2.7',
+    quote: 'M10 7c-3 1-5 3-5 6v4h5v-5H6.5M19 7c-3 1-5 3-5 6v4h5v-5h-3.5',
+    codeblock: 'M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14',
+    rule: 'M3 12h18M7 6h10M7 18h10',
+    table: 'M3 5h18v14H3zM3 10h18M3 15h18M9 5v14M15 5v14',
+    undo: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
+    redo: 'M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>

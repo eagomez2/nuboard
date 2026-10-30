@@ -38,6 +38,9 @@ const marked = new Marked({
       // `[train.log](files/x.log "attachment")`: an attached file, shown as a collapsible block
       if (title === 'attachment')
         return `<span class="nb-attach" data-src="${escape(src)}" data-name="${escape(text)}"></span>`;
+      // `[caption](files/x.wav)`: an uploaded audio file, drawn with the audio player
+      if (/^files\/[^/]+\.(wav|flac|mp3|ogg|m4a|webm)$/i.test(href))
+        return `<span class="nb-audio" data-src="${escape(src)}" data-caption="${escape(text)}"></span>`;
       return `<a href="${escape(src)}">${this.parser.parseInline(tokens)}</a>`;
     },
   },

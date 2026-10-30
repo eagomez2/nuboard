@@ -307,6 +307,7 @@ def save_snapshot(project_dir: Path, report: str, png: bytes) -> str:
 
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_TEXT_BYTES = 5 * 1024 * 1024
+MAX_AUDIO_BYTES = 50 * 1024 * 1024
 # Report files are served with a type chosen from their extension here, never guessed
 IMAGE_TYPES = {
     ".png": "image/png",
@@ -314,6 +315,14 @@ IMAGE_TYPES = {
     ".gif": "image/gif",
     ".webp": "image/webp",
     ".svg": "image/svg+xml",
+}
+AUDIO_TYPES = {
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".webm": "audio/webm",
 }
 TEXT_EXTENSIONS = frozenset(
     ".txt .md .markdown .log .csv .tsv .json .jsonl .yaml .yml .toml .ini .cfg .conf .xml "
@@ -345,6 +354,36 @@ def image_type(data: bytes) -> str | None:
     return None
 
 
+def audio_type(data: bytes) -> str | None:
+    """Return the extension of a WAV, FLAC, MP3, Ogg, M4A or WebM file from its first bytes.
+
+    None when the bytes are none of these.
+    """
+
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return ".wav"
+
+    if data.startswith(b"fLaC"):
+        return ".flac"
+
+    # an ID3 tag, or an MPEG audio frame: 11 sync bits, then a layer that is not 0 (that is AAC)
+    if data.startswith(b"ID3") or (
+        len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0 and data[1] & 0x06
+    ):
+        return ".mp3"
+
+    if data.startswith(b"OggS"):
+        return ".ogg"
+
+    if data[4:8] == b"ftyp":
+        return ".m4a"
+
+    if data.startswith(b"\x1a\x45\xdf\xa3"):  # EBML, the container of WebM
+        return ".webm"
+
+    return None
+
+
 def save_upload(
     project_dir: Path,
     data: bytes,
@@ -352,23 +391,24 @@ def save_upload(
     kind: str,
     max_bytes: int | None = None,
 ) -> dict[str, Any]:
-    """Check an image or text file uploaded into a report and store it in `reports/files/`.
+    """Check an image, audio or text file uploaded into a report and store it in `reports/files/`.
 
     The type is decided from the bytes, never from the file name or the
     browser: an image must be a PNG, JPEG, GIF or WebP (or an SVG drawing that
-    passes the same check as chart snapshots), and a text file must decode as
-    UTF-8 with no NUL bytes. Nothing is decoded or converted: the file is
-    stored as uploaded, named by the first 16 hex digits of its SHA-256, so
-    identical uploads are stored once.
+    passes the same check as chart snapshots), audio a WAV, FLAC, MP3, Ogg,
+    M4A or WebM file, and a text file must decode as UTF-8 with no NUL bytes.
+    Nothing is decoded or converted: the file is stored as uploaded, named by
+    the first 16 hex digits of its SHA-256, so identical uploads are stored
+    once.
 
     Args:
         project_dir: The project's folder.
         data: The file's bytes.
         filename: The name it was uploaded with; only its extension is used, for
             a text file (`.txt` when it is not a known text extension).
-        kind: `image` or `text`.
-        max_bytes: The size limit, or None for `MAX_IMAGE_BYTES` or
-            `MAX_TEXT_BYTES`.
+        kind: `image`, `audio` or `text`.
+        max_bytes: The size limit, or None for `MAX_IMAGE_BYTES`,
+            `MAX_AUDIO_BYTES` or `MAX_TEXT_BYTES`.
 
     Returns:
         `path` (to write in the report, such as `files/3f2a9c0d1e2b4a5f.png`),
@@ -379,14 +419,12 @@ def save_upload(
     """
     name = re.split(r"[\\/]", filename)[-1] or "file"
 
-    if kind not in ("image", "text"):
-        raise UploadError(f"unknown upload kind {kind!r}; expected image or text")
+    limits = {"image": MAX_IMAGE_BYTES, "audio": MAX_AUDIO_BYTES, "text": MAX_TEXT_BYTES}
 
-    limit = (
-        max_bytes
-        if max_bytes is not None
-        else (MAX_IMAGE_BYTES if kind == "image" else MAX_TEXT_BYTES)
-    )
+    if kind not in limits:
+        raise UploadError(f"unknown upload kind {kind!r}; expected image, audio or text")
+
+    limit = max_bytes if max_bytes is not None else limits[kind]
 
     if not data:
         raise UploadError(f"{name} is empty")
@@ -403,6 +441,11 @@ def save_upload(
             raise UploadError(
                 f"{name} is not a PNG, JPEG, GIF or WebP image (or a plain SVG drawing)"
             )
+    elif kind == "audio":
+        ext = audio_type(data)
+
+        if ext is None:
+            raise UploadError(f"{name} is not a WAV, FLAC, MP3, Ogg, M4A or WebM audio file")
     else:
         if b"\x00" in data:
             raise UploadError(f"{name} is not a text file: it has NUL bytes")
@@ -428,7 +471,7 @@ def save_upload(
 def served_type(name: str) -> tuple[str, bool]:
     """Return the `Content-Type` a report file is served with, and whether it is a download.
 
-    Images are shown inline with their type, text files are sent as UTF-8
+    Images and audio are shown inline with their type, text files are sent as UTF-8
     `text/plain` attachments, and anything else as an `application/octet-stream`
     attachment, so a file renamed to `.html` never renders.
     """
@@ -436,6 +479,9 @@ def served_type(name: str) -> tuple[str, bool]:
 
     if ext in IMAGE_TYPES:
         return IMAGE_TYPES[ext], False
+
+    if ext in AUDIO_TYPES:
+        return AUDIO_TYPES[ext], False
 
     if ext in TEXT_EXTENSIONS:
         return "text/plain; charset=utf-8", True

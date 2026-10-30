@@ -14,12 +14,16 @@
     type Sel,
   } from '../lib/mdedit';
   import {
+    AUDIO_ACCEPT,
     attachmentMarkdown,
+    audioMarkdown,
     decodeText,
     imageMarkdown,
     inlineText,
+    isAudio,
     isTable,
     LIMITS,
+    noMediaIn,
     TEXT_ACCEPT,
   } from '../lib/reportfiles';
   import { router } from '../lib/router.svelte';
@@ -38,7 +42,8 @@
   } = $props();
 
   const readOnly = $derived(!!app.info?.read_only_reports);
-  const limits = $derived(app.info?.upload_limits ?? LIMITS);
+  const noMedia = $derived(noMediaIn(app.runs, project));
+  const limits = $derived({ ...LIMITS, ...app.info?.upload_limits });
   let area = $state<HTMLTextAreaElement>();
   let sel = $state<Sel>({ text: '', start: 0, end: 0 });
   const active = $derived(activeFormats(sel));
@@ -78,7 +83,7 @@
   }
 
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
-  const BUTTONS: { f: Format; label: string; title: string; cls?: string }[][] = [
+  const BUTTONS: { f: Format; label: string; title: string; cls?: string; icon?: string }[][] = [
     [
       { f: 'bold', label: 'B', title: `Bold (${mod}B)`, cls: 'b' },
       { f: 'italic', label: 'I', title: `Italic (${mod}I)`, cls: 'i' },
@@ -92,15 +97,15 @@
       { f: 'paragraph', label: '¶', title: 'Paragraph: no heading, list or quote' },
     ],
     [
-      { f: 'bullet', label: '•', title: 'Bulleted list' },
-      { f: 'numbered', label: '1.', title: 'Numbered list' },
-      { f: 'check', label: '☐', title: 'Checklist' },
-      { f: 'quote', label: '❝', title: 'Quote' },
+      { f: 'bullet', label: '•', title: 'Bulleted list', icon: 'list-bullet' },
+      { f: 'numbered', label: '1.', title: 'Numbered list', icon: 'list-numbered' },
+      { f: 'check', label: '☐', title: 'Checklist', icon: 'list-check' },
+      { f: 'quote', label: '❝', title: 'Quote', icon: 'quote' },
     ],
     [
       { f: 'code', label: '`c`', title: 'Inline code', cls: 'mono' },
-      { f: 'codeblock', label: '{ }', title: 'Code block', cls: 'mono' },
-      { f: 'link', label: '🔗', title: `Link (${mod}K)` },
+      { f: 'codeblock', label: '{ }', title: 'Code block', icon: 'codeblock' },
+      { f: 'link', label: 'Link', title: `Link (${mod}K)`, icon: 'link' },
     ],
   ];
 
@@ -136,8 +141,9 @@
     apply(insertTable(current(), rows, cols));
   }
 
-  // ---- uploads: the image and text-file panels, drag and drop, paste ----
-  let panel = $state<'image' | 'text' | null>(null);
+  // ---- uploads: the image, audio and text-file panels, drag and drop, paste ----
+  type Kind = 'image' | 'audio' | 'text';
+  let panel = $state<Kind | null>(null);
   let dialogEl = $state<HTMLDialogElement>();
   let file = $state<File | null>(null);
   let preview = $state('');
@@ -152,7 +158,7 @@
   $effect(() => {
     if (panel && dialogEl && !dialogEl.open) dialogEl.showModal();
   });
-  function openPanel(kind: 'image' | 'text', f: File | null = null) {
+  function openPanel(kind: Kind, f: File | null = null) {
     menu = null;
     panel = kind;
     problem = '';
@@ -172,14 +178,15 @@
     preview = f && panel === 'image' ? URL.createObjectURL(f) : '';
     problem = f ? checkSize(f, panel ?? 'image') : '';
     if (f && panel === 'image' && !alt) alt = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+    if (f && panel === 'audio' && !caption) caption = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
   }
-  function checkSize(f: File, kind: 'image' | 'text') {
+  function checkSize(f: File, kind: Kind) {
     const limit = limits[kind];
     return f.size > limit ? `${f.name} is ${fmtBytes(f.size)}; ${kind} files can be at most ${fmtBytes(limit)}.` : '';
   }
   const isImage = (f: File) => f.type.startsWith('image/');
 
-  async function upload(f: File, kind: 'image' | 'text') {
+  async function upload(f: File, kind: Kind) {
     return api.uploadReportFile(project, f, f.name || (kind === 'image' ? 'pasted.png' : 'file.txt'), kind);
   }
   async function confirmPanel() {
@@ -189,6 +196,9 @@
       if (panel === 'image') {
         const up = await upload(file, 'image');
         insertAndClose(imageMarkdown(up.path, alt, caption));
+      } else if (panel === 'audio') {
+        const up = await upload(file, 'audio');
+        insertAndClose(audioMarkdown(up.path, caption));
       } else if (mode === 'attach') {
         const up = await upload(file, 'text');
         insertAndClose(attachmentMarkdown(up.name, up.path));
@@ -208,23 +218,28 @@
     apply(insertBlock(current(), md));
   }
 
-  /** An image dropped or pasted into the text box goes in straight away; a text file opens its panel. */
+  /** Images and audio dropped or pasted into the text box go in straight away; a text file opens its panel. */
   async function takeFiles(files: File[]) {
     notice = '';
     for (const f of files) {
-      if (!isImage(f)) {
+      const kind = isImage(f) ? 'image' : isAudio(f) ? 'audio' : null;
+      if (!kind) {
         openPanel('text', f);
         return;
       }
-      const tooBig = checkSize(f, 'image');
+      const tooBig = checkSize(f, kind);
       if (tooBig) {
         notice = tooBig;
         continue;
       }
       try {
-        const up = await upload(f, 'image');
-        const name = f.name && f.name !== 'image.png' ? f.name.replace(/\.[^.]+$/, '') : 'Pasted image';
-        apply(insertBlock(current(), imageMarkdown(up.path, name, '')));
+        const up = await upload(f, kind);
+        const stem = f.name.replace(/\.[^.]+$/, '');
+        const md =
+          kind === 'audio'
+            ? audioMarkdown(up.path, stem.replace(/[-_]+/g, ' '))
+            : imageMarkdown(up.path, f.name && f.name !== 'image.png' ? stem : 'Pasted image', '');
+        apply(insertBlock(current(), md));
       } catch (e) {
         notice = (e as Error).message;
       }
@@ -244,14 +259,14 @@
         title="Undo ({mod}Z)"
         aria-label="Undo"
         onmousedown={(e) => e.preventDefault()}
-        onclick={() => history('undo')}>↶</button
+        onclick={() => history('undo')}><Icon name="undo" size={16} /></button
       >
       <button
         class="tool"
         title="Redo ({mod}Shift+Z)"
         aria-label="Redo"
         onmousedown={(e) => e.preventDefault()}
-        onclick={() => history('redo')}>↷</button
+        onclick={() => history('redo')}><Icon name="redo" size={16} /></button
       >
       {#each BUTTONS as group, g (g)}
         <span class="sep"></span>
@@ -262,7 +277,8 @@
             aria-label={b.title.replace(/ \(.*$/, '').replace(/:.*$/, '')}
             aria-pressed={active.has(b.f)}
             onmousedown={(e) => e.preventDefault()}
-            onclick={() => run(b.f)}>{b.label}</button
+            onclick={() => run(b.f)}
+            >{#if b.icon}<Icon name={b.icon} size={16} />{:else}{b.label}{/if}</button
           >
         {/each}
       {/each}
@@ -272,7 +288,7 @@
         title="Horizontal rule"
         aria-label="Horizontal rule"
         onmousedown={(e) => e.preventDefault()}
-        onclick={() => apply(insertRule(current()))}>―</button
+        onclick={() => apply(insertRule(current()))}><Icon name="rule" size={16} /></button
       >
       <div class="pop-anchor">
         <button
@@ -281,7 +297,7 @@
           aria-label="Table"
           aria-expanded={menu === 'table'}
           onmousedown={(e) => e.preventDefault()}
-          onclick={() => (menu = menu === 'table' ? null : 'table')}>▦</button
+          onclick={() => (menu = menu === 'table' ? null : 'table')}><Icon name="table" size={16} /></button
         >
         {#if menu === 'table'}
           <div class="card pop grid-pop" role="dialog" aria-label="Table size">
@@ -318,6 +334,11 @@
             <button role="menuitem" onclick={() => openPanel('image')}>
               <Icon name="media" size={15} /><span><b>Image</b><small>Upload, drop or paste a picture</small></span>
             </button>
+            <button role="menuitem" onclick={() => openPanel('audio')}>
+              <Icon name="audio" size={15} /><span
+                ><b>Audio</b><small>Upload or drop a recording; plays with the waveform player</small></span
+              >
+            </button>
             <button role="menuitem" onclick={() => openPanel('text')}>
               <Icon name="file" size={15} /><span
                 ><b>Text file</b><small>Paste its content in, or attach it for download</small></span
@@ -331,9 +352,13 @@
                 ><b>Chart</b><small>Opens Charts: add one with its bookmark button</small></span
               >
             </button>
-            <button role="menuitem" onclick={() => router.go('media', { project })}>
+            <button role="menuitem" disabled={noMedia} onclick={() => router.go('media', { project })}>
               <Icon name="media" size={15} /><span
-                ><b>Media item</b><small>Opens Media: add items with their bookmark button</small></span
+                ><b>Media item</b><small
+                  >{noMedia
+                    ? `No media logged in ${project} yet`
+                    : 'Opens Media: add items with their bookmark button'}</small
+                ></span
               >
             </button>
           </div>
@@ -406,7 +431,9 @@
         confirmPanel();
       }}
     >
-      <h2 id="upload-title">{panel === 'image' ? 'Insert an image' : 'Insert a text file'}</h2>
+      <h2 id="upload-title">
+        {panel === 'image' ? 'Insert an image' : panel === 'audio' ? 'Insert audio' : 'Insert a text file'}
+      </h2>
       <label
         class="drop"
         class:has={!!file}
@@ -420,8 +447,16 @@
         <input
           type="file"
           class="sr"
-          aria-label={panel === 'image' ? 'Choose an image' : 'Choose a text file'}
-          accept={panel === 'image' ? 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml' : TEXT_ACCEPT}
+          aria-label={panel === 'image'
+            ? 'Choose an image'
+            : panel === 'audio'
+              ? 'Choose an audio file'
+              : 'Choose a text file'}
+          accept={panel === 'image'
+            ? 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml'
+            : panel === 'audio'
+              ? AUDIO_ACCEPT
+              : TEXT_ACCEPT}
           onchange={(e) => setFile(e.currentTarget.files?.[0] ?? null)}
         />
         {#if preview}
@@ -435,7 +470,9 @@
               class="faint small"
               >{panel === 'image'
                 ? `PNG, JPEG, GIF or WebP, up to ${fmtBytes(limits.image)}.`
-                : `UTF-8 text such as .txt, .md, .log, .csv, .json, .yaml or code, up to ${fmtBytes(limits.text)}.`}</span
+                : panel === 'audio'
+                  ? `WAV, FLAC, MP3, Ogg, M4A or WebM, up to ${fmtBytes(limits.audio)}.`
+                  : `UTF-8 text such as .txt, .md, .log, .csv, .json, .yaml or code, up to ${fmtBytes(limits.text)}.`}</span
             ></span
           >
         {/if}
@@ -453,6 +490,11 @@
             bind:value={caption}
             placeholder="Shown under the image; say where it comes from if useful"
           />
+        </div>
+      {:else if panel === 'audio'}
+        <div class="field">
+          <label class="label" for="up-caption">Caption</label>
+          <input id="up-caption" class="input" bind:value={caption} placeholder="Shown under the player" />
         </div>
       {:else}
         <div class="field">
@@ -500,6 +542,9 @@
     background: var(--panel-2);
   }
   .tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 28px;
     height: 28px;
     padding: 0 6px;
@@ -574,9 +619,13 @@
     padding: 7px 8px;
     color: var(--text);
   }
-  .menu button:hover,
+  .menu button:not(:disabled):hover,
   .menu button:focus-visible {
     background: var(--panel-2);
+  }
+  .menu button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .menu span {
     display: flex;

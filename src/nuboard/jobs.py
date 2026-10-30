@@ -96,6 +96,12 @@ def merge_jobs(meta: dict[str, Any], jobs: list[dict[str, Any]]) -> dict[str, An
             }
         )
 
+    counts = [meta.get("media_count"), *(j.get("media_count") for j in jobs)]
+    counts = [n for n in counts if isinstance(n, int)]
+
+    if counts:
+        meta["media_count"] = sum(counts)
+
     meta.update(summary=summary, baselines=baselines, inputs=inputs, outputs=outputs, jobs=listed)
     return meta
 

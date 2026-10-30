@@ -862,7 +862,8 @@ def test_report_uploads_are_checked_stored_by_hash_and_served_locked_down(client
         "latin-1 text": upload(client, "caf\xe9".encode("latin-1"), "x.txt", "text"),
         "empty": upload(client, b"", "x.png", "image"),
         "unknown project": upload(client, PNG, "x.png", "image", project="zzz"),
-        "unknown kind": upload(client, PNG, "x.png", "audio"),
+        "png as audio": upload(client, PNG, "x.wav", "audio"),
+        "unknown kind": upload(client, PNG, "x.png", "video"),
     }
 
     for what, res in refused.items():
@@ -879,6 +880,41 @@ def test_report_uploads_are_checked_stored_by_hash_and_served_locked_down(client
     assert wrong_type.status_code == 415
 
 
+WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 28
+AUDIO = {
+    "a.wav": (WAV, ".wav", "audio/wav"),
+    "a.flac": (b"fLaC\x00\x00\x00\x22" + b"\x00" * 20, ".flac", "audio/flac"),
+    "tagged.mp3": (b"ID3\x04\x00" + b"\x00" * 20, ".mp3", "audio/mpeg"),
+    "frame.mp3": (b"\xff\xfb\x90\x64" + b"\x00" * 20, ".mp3", "audio/mpeg"),
+    "a.ogg": (b"OggS\x00\x02" + b"\x00" * 20, ".ogg", "audio/ogg"),
+    "a.m4a": (b"\x00\x00\x00\x20ftypM4A " + b"\x00" * 20, ".m4a", "audio/mp4"),
+    "a.webm": (b"\x1a\x45\xdf\xa3" + b"\x00" * 20, ".webm", "audio/webm"),
+}
+
+
+def test_report_audio_uploads_are_typed_from_their_bytes(client):
+    for name, (data, ext, mime) in AUDIO.items():
+        saved = upload(client, data, f"renamed-{name}.bin", "audio").json()
+        assert saved["kind"] == "audio" and saved["path"].endswith(ext), name
+        served = client.get(f"/api/reports/sweep/files/{saved['path'][6:]}")
+        assert served.headers["content-type"] == mime, name
+        assert served.headers["x-content-type-options"] == "nosniff"
+        assert served.headers["content-security-policy"].startswith("default-src 'none'")
+        assert "attachment" not in served.headers.get("content-disposition", "")
+
+    refused = {
+        "aac frame": b"\xff\xf1\x50\x80" + b"\x00" * 20,  # ADTS AAC: layer 0, not MPEG audio
+        "riff avi": b"RIFF\x00\x00\x00\x00AVI " + b"\x00" * 20,
+        "html": b"<html><audio></audio></html>",
+        "text": b"not audio at all",
+    }
+
+    for what, data in refused.items():
+        res = upload(client, data, "x.wav", "audio")
+        assert res.status_code == 400, what
+        assert "WAV, FLAC, MP3" in res.json()["error"], what
+
+
 def test_report_upload_limits_and_read_only_reports(tmp_path):
     with nb.init("p", config={}, capture_env=False) as run:
         run.add_scalar({"loss": 1.0}, step=0)
@@ -891,11 +927,19 @@ def test_report_upload_limits_and_read_only_reports(tmp_path):
         assert big.status_code == 413 and "at most" in big.json()["error"]
         assert upload(c, b"x" * 10, "a.txt", "text", project="p").status_code == 200
 
+    tiny_audio = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", max_audio_bytes=44)
+
+    with TestClient(tiny_audio) as c:
+        assert c.get("/api/info").json()["upload_limits"]["audio"] == 44
+        assert upload(c, WAV + b"\x00" * 10, "a.wav", "audio", project="p").status_code == 413
+        assert upload(c, WAV, "a.wav", "audio", project="p").status_code == 200
+
     locked = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_reports=True)
 
     with TestClient(locked) as c:
         assert c.get("/api/info").json()["read_only_reports"] is True
         assert upload(c, PNG, "a.png", "image", project="p").status_code == 403
+        assert upload(c, WAV, "a.wav", "audio", project="p").status_code == 403
         save = c.post("/api/reports", json={"project": "p", "name": "r", "text": "# r"})
         assert save.status_code == 403 and "read-only" in save.json()["error"]
 
@@ -903,9 +947,11 @@ def test_report_upload_limits_and_read_only_reports(tmp_path):
 def test_report_export_includes_uploaded_images_and_attachments(client):
     image = upload(client, PNG, "shot.png", "image").json()["path"]
     log = upload(client, b"step 1\n", "train.log", "text").json()["path"]
-    text = f'# Up\n\n![a shot]({image})\n\n[train.log]({log} "attachment")\n'
+    sound = upload(client, WAV, "take.wav", "audio").json()["path"]
+    text = f'# Up\n\n![a shot]({image})\n\n[train.log]({log} "attachment")\n\n[a take]({sound})\n'
     client.post("/api/reports", json={"project": "sweep", "name": "Up", "text": text})
     zf = zipfile.ZipFile(io.BytesIO(client.get("/api/reports/sweep/Up/export").content))
     md = zf.read("Up.md").decode()
     assert f"![a shot]({image})" in md and f"[train.log]({log})" in md
     assert zf.read(image) == PNG and zf.read(log) == b"step 1\n"
+    assert f"[a take]({sound})" in md and zf.read(sound) == WAV

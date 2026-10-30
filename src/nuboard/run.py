@@ -358,6 +358,7 @@ class Run:
         self._next_step = 0
         self._last_step = 0
         self._finished = False
+        self._media_new = 0  # media and text items logged since run.json was last written
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
@@ -770,6 +771,8 @@ class Run:
             if self._writer is not None:
                 self._meta["summary"] = self._writer.summary()
 
+            new, self._media_new = self._media_new, 0
+            self._meta["media_count"] = int(self._meta.get("media_count") or 0) + new
             _fs.atomic_write_json(self._meta_path, self._meta)
 
     def _log_system(self, values: dict[str, float]) -> None:
@@ -978,6 +981,7 @@ class Run:
 
         if writer is not None:
             writer.put_text(key, self._step(step), _now() if time is None else time, str(text))
+            self._media_new += 1
 
     def add_image(
         self,
@@ -1437,6 +1441,7 @@ class Run:
             writer.put_media(
                 key, self._step(step), _now() if time is None else time, producer, meta
             )
+            self._media_new += 1
 
     def _step(self, step: int | None) -> int:
         """Return `step`, or the step of the latest `add_scalar` call when it is None."""

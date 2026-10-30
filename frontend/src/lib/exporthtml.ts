@@ -654,6 +654,7 @@ export interface ExportOptions {
 /** Whether a report embeds any audio, so the export can offer a choice of player. */
 export async function reportHasAudio(project: string, text: string): Promise<boolean> {
   const doc = new DOMParser().parseFromString(renderMarkdown(text, ''), 'text/html');
+  if (doc.querySelector('.nb-audio')) return true; // an uploaded audio file
   const refs = [...doc.querySelectorAll<HTMLElement>('.nb-embed')].map((el) => el.dataset.ref ?? '');
   const items = await Promise.all(refs.map((ref) => api.mediaRef(project, ref).catch(() => null)));
   return items.some((f) => f && (f.item.kind === 'audio' || f.item.mime.startsWith('audio/')));
@@ -733,6 +734,45 @@ export async function reportHtml(
           const text = new TextDecoder().decode(bytes);
           const href = `data:text/plain;charset=utf-8;base64,${base64(bytes)}`;
           return `<details class="nb-attachment"><summary><b>${esc(name)}</b> · <a href="${href}" download="${esc(name)}">Download</a></summary><pre>${esc(text)}</pre></details>`;
+        })(),
+      ),
+    );
+  }
+  // an uploaded audio file: the chosen player, playing from a data URL
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-audio')) {
+    const { src = '', caption = '' } = el.dataset;
+    const name = src.split('/').pop() ?? '';
+    jobs.push(
+      swap(
+        el,
+        (async () => {
+          const res = await fetch(src, { method: 'HEAD' });
+          if (!res.ok) return `<p><em>(missing: ${esc(caption || name)})</em></p>`;
+          const url = await dataUrl(src);
+          let body = `<audio controls src="${url}"></audio>`;
+          if ((opts.audioPlayer ?? 'wave') === 'wave') {
+            needs.wave = true;
+            const args = {
+              url,
+              sampleRate: 0,
+              channels: 1,
+              duration: 0,
+              group: `export-${name}`,
+              link: false,
+              scale: 'linear',
+              fftSize: 1024,
+              colormap: 'theme',
+              waveHeight: 72,
+              spectrogramHeight: 140,
+              axis: true,
+              normalize: false,
+              notes: false,
+              annotations: [],
+              header: { label: caption || name },
+            };
+            body = `<div class="nbwave" data-args="${esc(JSON.stringify(args))}"><iframe title="${esc(caption || name)}"></iframe></div>`;
+          }
+          return `<figure>${body}<figcaption>${caption ? `<span>${esc(caption)}</span>` : ''}<small>${esc(name)}</small></figcaption></figure>`;
         })(),
       ),
     );

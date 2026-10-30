@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Report picker.** The **Report** field of **Add to a report** (every
+  bookmark button, and **Add N to report** on Media) lists the project's
+  reports as soon as it is focused, newest first, with their titles and file
+  names. Typing narrows it by title or name with the matches highlighted, ↑/↓
+  and Enter pick, the last used report is highlighted (and taken when nothing
+  is typed), and a new name is offered as **New report "name"** (#12).
+- **Audio in reports.** **Insert → Audio** (or dropping an audio file on the
+  text box) uploads a WAV, FLAC, MP3, Ogg, M4A or WebM file, checked from its
+  bytes and capped at 50 MB (`--max-audio-mb`), and writes
+  `[caption](files/<hash>.wav)`. It plays with the waveform player in the
+  preview, is copied by the .zip export and embedded in the HTML export with
+  the player chosen there (#12).
+- **Report toolbar icons.** Link, lists, checklist, quote, code block, rule,
+  table, undo and redo are drawn as theme icons instead of emoji and symbols,
+  so they follow the light and dark themes and the pressed color (#12).
+- **Media item is grayed out** in **Insert** when no run of the report's
+  project logged media, saying so. Runs now record `media_count` in
+  `run.json` with each write they already make; runs from older versions are
+  checked once for a media pack when indexed (#12).
+
 - **Reproducibility.** A new [guide](guide/reproducibility.md) explains what a
   run records, how to replay it, and what is not covered. `init` now:
   - removes any user, password or token from the recorded git remote URL;
