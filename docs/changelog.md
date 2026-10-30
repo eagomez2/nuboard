@@ -2,8 +2,6 @@
 
 ## 0.19.2
 
-### New features
-
 - **`nuboard merge SRC DEST`** merges a project logged on two machines into
   one folder. It shows the full plan first (runs to copy, identical items,
   conflicts, renamed or renumbered items) and writes nothing until you
@@ -13,56 +11,63 @@
   is copied next to DEST's. `--dry-run`, `--yes`, `--json`, `-v`,
   `--project` and `--include-running` (#16). See
   [Working on several machines](guide/machines.md).
-- **Datasets as Sweeps parameters.** The artifact versions each run used are
-  parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared
-  by data version without copying it into the config (#14).
-- **Split a list into element axes.** A list of plain values with one length
-  in every run can be split in the picker into `key[0]`, `key[1]`, ..., kept
-  in the URL as `split=` (#14).
+
+- **TensorBoard import: videos and meshes.** `import-tensorboard` now imports
+  `add_video` clips (animated GIFs) as videos and `add_mesh` summaries as
+  point clouds with their colors, instead of an image and a skipped plugin.
 - **Small charts show values on hover.** Hovering a chart in the **All
   scalars** grid shows each run's value at the cursor, best first, up to eight
   and "+N more" (#3).
 - **A pinned step shows on every chart.** While the main chart is pinned,
   every small chart draws a dashed line at that step with a dot on each
   curve, and hovering one shows its values there (#3).
+- **Full scalar names under small charts**, wrapping instead of cut off;
+  **Full names** in the display row turns them off (#3).
 - **Timeline hover cards in reports.** A Timeline snapshot in a report shows
   the Timeline page's hover card on each bar (name, id, status, project,
   start, duration, alerts) in the preview and in exported HTML, instead of a
   slow browser tooltip; in NuBoard, clicking a bar opens the run (#3).
-- **TensorBoard import: videos and meshes.** `import-tensorboard` now imports
-  `add_video` clips (animated GIFs) as videos and `add_mesh` summaries as
-  point clouds with their colors, instead of an image and a skipped plugin.
-
-### Improvements
-
-- **Readable list and dict values in Sweeps.** Axis labels, scatter labels and
-  the Best runs table show only what differs between values (`[0]=0.08`,
-  `flip, mixup`, `[1].dim=512`), with the full value on hover and, on click,
-  pretty-printed with a **Copy** button (#14).
-- **Full scalar names under small charts**, wrapping instead of cut off;
-  **Full names** in the display row turns them off (#3).
 - **More room for reports.** A report with text opens in **Preview** (the
   view you pick is remembered). The report list and the **Workspace** list on
   the Runs page fold into a thin bar with their button or `[`, remembered per
   browser (#3).
 
-### Demo
-
-- Half of the `llm-pretrain` sweep trains on the older `fineweb-edu:v1` (a
-  little worse), and `vit-ablations` runs have list-valued `transforms` and
-  `crop_scale` settings. Delete an existing demo folder to get the new data.
+- **Datasets as Sweeps parameters.** The artifact versions each run used are
+  parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared
+  by data version without copying it into the config (#14).
+- **Readable list and dict values in Sweeps.** Axis labels, scatter labels and
+  the Best runs table show only what differs between values (`[0]=0.08`,
+  `flip, mixup`, `[1].dim=512`), with the full value on hover and, on click,
+  pretty-printed with a **Copy** button (#14).
+- **Split a list into element axes.** A list of plain values with one length
+  in every run can be split in the picker into `key[0]`, `key[1]`, ..., kept
+  in the URL as `split=` (#14).
+- **The demo shows them.** Half of the `llm-pretrain` sweep trains on the
+  older `fineweb-edu:v1` (a little worse), and `vit-ablations` runs have
+  list-valued `transforms` and `crop_scale` settings. Delete an existing demo
+  folder to get the new data.
 
 ## 0.19.1
-
-### New features
 
 - **Sweeps parameter picker.** **Parameters** opens a searchable list of every
   differing key, grouped by prefix, with its type, number of values and
   correlation with the objective. Chosen keys are chips you can drag to
   reorder and remove with **×**. **Clear all** and **Reset to defaults** are
   in the list.
+- **Better default parameters.** With nothing picked, Sweeps shows up to six
+  keys, the most correlated with the objective first, leaving out seeds,
+  paths, id-like keys, long text and keys with many values. The last choice is
+  remembered per project.
 - **Hide rules for Sweeps.** A project can hide keys from the picker with a
   filter such as `!seed !.path`, saved in `<project>/sweeps.json`.
+- **Categories with many values** keep their 11 most common values on the axis
+  and gather the rest in **(other)**.
+
+- **`nuboard demo` no longer piles up runs.** Run again on a folder that
+  already holds the demo, it opens it instead of adding 31 more runs each
+  time, so it starts in about the same time on every run. Delete the folder
+  for a fresh demo.
+
 - **Open selected runs in Charts and Sweeps.** The Runs selection bar has
   **Charts** and **Sweeps** next to **Media**. Charts,
   Sweeps, Media and Timeline show a **Showing N selected runs** banner while
@@ -70,6 +75,7 @@
   **Show all**; **Clear selection** also drops it from the URL (#7). A run
   opened for inspection (or the runs being compared) has the same **Charts**,
   **Sweeps** and **Media** buttons after its tabs.
+
 - **Report picker.** The **Report** field of **Add to a report** (every
   bookmark button, and **Add N to report** on Media) lists the project's
   reports as soon as it is focused, newest first, with their titles and file
@@ -83,22 +89,17 @@
   `[caption](files/<hash>.wav)`. It plays with the waveform player in the
   preview, is copied by the .zip export and embedded in the HTML export with
   the player chosen there (#12).
-- **Report editor: formatting toolbar and Insert menu.** Buttons for bold,
-  italic, underline (`<u>`), strikethrough, headings, lists, checklists,
-  quotes, code, links, rules and tables write plain Markdown, with Ctrl/⌘+B,
-  I, U, Shift+X and K, undo and redo, and show as pressed when the cursor is
-  inside their formatting (pressing again removes it). **Insert** adds an
-  **Image** (pick, drop or paste, with alt text and a caption), a **Text file**
-  (inline as Markdown, a table or code, or attached as a collapsible block with
-  a download link), a **Table**, or goes to Charts and Media. Dropping or
-  pasting an image into the text box uploads it too (#4).
-- **Filter the settings of compared runs.** A filter box in **All settings**
-  narrows its rows by key: plain text, `/regex/` (or the **.\*** toggle),
-  `!exclusions` and several terms at once, optionally matching values too. It
-  works with **Only changes**, shows "12 of 340 keys", highlights the matches
-  and is kept in the URL. `/` focuses it and `Esc` clears it (#9).
+- **Report toolbar icons.** Link, lists, checklist, quote, code block, rule,
+  table, undo and redo are drawn as theme icons instead of emoji and symbols,
+  so they follow the light and dark themes and the pressed color (#12).
+- **Media item is grayed out** in **Insert** when no run of the report's
+  project logged media, saying so. Runs now record `media_count` in
+  `run.json` with each write they already make; runs from older versions are
+  checked once for a media pack when indexed (#12).
+
 - **Reproducibility.** A new [guide](guide/reproducibility.md) explains what a
   run records, how to replay it, and what is not covered. `init` now:
+  - removes any user, password or token from the recorded git remote URL;
   - records the repository of your code: `code_dir=` if given, else the
     running script's folder, else the working directory (`git.source`), with
     a warning when the script and the working directory are in different
@@ -111,47 +112,22 @@
   - records the folder and git state of packages installed from a local
     folder (`pip install -e ../lib`): a clean, pushed checkout becomes an
     installable `git+URL@commit` line, uncommitted changes are saved as
-    `files/git-<package>.patch` (#13).
-
-### Improvements
-
-- **Better default parameters.** With nothing picked, Sweeps shows up to six
-  keys, the most correlated with the objective first, leaving out seeds,
-  paths, id-like keys, long text and keys with many values. The last choice is
-  remembered per project.
-- **Categories with many values** keep their 11 most common values on the axis
-  and gather the rest in **(other)**.
-- **Report toolbar icons.** Link, lists, checklist, quote, code block, rule,
-  table, undo and redo are drawn as theme icons instead of emoji and symbols,
-  so they follow the light and dark themes and the pressed color (#12).
-- **Media item is grayed out** in **Insert** when no run of the report's
-  project logged media, saying so. Runs now record `media_count` in
-  `run.json` with each write they already make; runs from older versions are
-  checked once for a media pack when indexed (#12).
-
-### Bug fixes
-
-- **Sweeps sees every config key.** A key that differs between runs gets a
-  parameter chip however deep it sits in a large config. Sweeps read its
-  parameters from the run list, which keeps only the first 64 config values of
-  each run, so later keys (such as
-  `generator.config.weighted_sir_db.edge.min`) were missed. It now asks the new
-  `GET /api/sweep-keys?runs=...` endpoint, which returns every differing key
-  with each run's value; the run list stays small.
-- **`nuboard demo` no longer piles up runs.** Run again on a folder that
-  already holds the demo, it opens it instead of adding 31 more runs each
-  time, so it starts in about the same time on every run. Delete the folder
-  for a fresh demo.
-- **Run capture never fails the run.** `init` records what it can in a
-  repository with no commits, on a detached `HEAD`, from a deleted working
-  directory or with broken package metadata (#11).
-
-### Security
-
-- The recorded git remote URL no longer includes any user, password or token.
-- A repository's config can never run a program during capture
-  (`core.fsmonitor` off, diffs with `--no-textconv`), and patches over 10 MB
-  are skipped, recording `git.patch_bytes` instead (#13).
+    `files/git-<package>.patch` (#13);
+  - never lets a repository's config run a program during capture
+    (`core.fsmonitor` off, diffs with `--no-textconv`), and skips patches over
+    10 MB, recording `git.patch_bytes` instead (#13);
+  - records what it can in a repository with no commits, on a detached
+    `HEAD`, from a deleted working directory or with broken package
+    metadata, and never fails the run over it (#11).
+- **Report editor: formatting toolbar and Insert menu.** Buttons for bold,
+  italic, underline (`<u>`), strikethrough, headings, lists, checklists,
+  quotes, code, links, rules and tables write plain Markdown, with Ctrl/⌘+B,
+  I, U, Shift+X and K, undo and redo, and show as pressed when the cursor is
+  inside their formatting (pressing again removes it). **Insert** adds an
+  **Image** (pick, drop or paste, with alt text and a caption), a **Text file**
+  (inline as Markdown, a table or code, or attached as a collapsible block with
+  a download link), a **Table**, or goes to Charts and Media. Dropping or
+  pasting an image into the text box uploads it too (#4).
 - **Uploads are checked and stored in the project.** They go in
   `reports/files/`, named by content hash, and are part of the .zip and HTML
   exports. The server checks the bytes (PNG, JPEG, GIF, WebP or a plain SVG;
@@ -160,16 +136,23 @@
   fixed type, `nosniff` and a strict CSP; text files always download.
   `nuboard up --read-only-reports` turns off every change to reports.
 - **Report images from other websites are not loaded**; they show as a link.
-
-### Demo
-
-- `speech-denoise` runs now carry a long training-mix generator config, and
-  differ in `generator.config.weighted_sir_db.edge.min`, its 73rd value: open
-  Sweeps on that project to see the chip.
+- **Filter the settings of compared runs.** A filter box in **All settings**
+  narrows its rows by key: plain text, `/regex/` (or the **.\*** toggle),
+  `!exclusions` and several terms at once, optionally matching values too. It
+  works with **Only changes**, shows "12 of 340 keys", highlights the matches
+  and is kept in the URL. `/` focuses it and `Esc` clears it (#9).
+- **Sweeps sees every config key.** A key that differs between runs gets a
+  parameter chip however deep it sits in a large config. Sweeps read its
+  parameters from the run list, which keeps only the first 64 config values of
+  each run, so later keys (such as
+  `generator.config.weighted_sir_db.edge.min`) were missed. It now asks the new
+  `GET /api/sweep-keys?runs=...` endpoint, which returns every differing key
+  with each run's value; the run list stays small.
+- **The demo shows it.** `speech-denoise` runs now carry a long training-mix
+  generator config, and differ in `generator.config.weighted_sir_db.edge.min`,
+  its 73rd value: open Sweeps on that project to see the chip.
 
 ## 0.19.0
-
-### New features
 
 - **Download a waveform figure's audio and signals.** Waveform figures
   (`nb.WaveformFigure`) have a Download menu next to **Fit**, on the Media
@@ -178,19 +161,13 @@
   bundle of `audio.wav`, one float32 `.npy` per signal and a `metadata.json`
   with the sample rate, signal names, range, regions, caption, notes, run, key
   and step. The raw item, which no other tool could open, is no longer offered.
+- **The report .zip export writes the same bundle** for a waveform figure,
+  instead of a `.wav` and a `-signals.csv` that lost the regions and range and
+  grew to millions of rows for long clips.
 - **`nb.WaveformFigure.load(path)`** rebuilds a figure from a bundle; logging
   it again stores an identical figure. **`run.waveform(key, step)`** in the
   analysis API returns `(audio, sample_rate, signals, meta)` without
   downloading.
-
-### Changes
-
-- **The report .zip export writes the same bundle** for a waveform figure,
-  instead of a `.wav` and a `-signals.csv` that lost the regions and range and
-  grew to millions of rows for long clips.
-
-### Improvements
-
 - Other media downloaded from their card get a file name extension from their
   type (`.png`, `.wav`, `.json`, ...).
 
