@@ -1,11 +1,11 @@
-<p align="center"><img src="docs/assets/logo.svg" width="72" alt=""></p>
+<p align="center"><img src="https://raw.githubusercontent.com/eagomez2/nuboard/main/docs/assets/logo.svg" width="72" alt=""></p>
 
 <h1 align="center">NuBoard</h1>
 
 <p align="center"><b>Experiment tracking that lives in a folder.</b><br>
 Log from Python with three calls. Every run is a folder. View thousands of runs in your browser.</p>
 
-![Charts page: a learning-rate sweep grouped by lr, mean ± std over three seeds](docs/assets/charts-light.png)
+![Charts page: a learning-rate sweep grouped by lr, mean ± std over three seeds](https://raw.githubusercontent.com/eagomez2/nuboard/main/docs/assets/charts-light.png)
 
 ```python
 import nuboard as nb
@@ -40,21 +40,20 @@ nuboard up experiments        # http://localhost:6070
 ## Quick start
 
 ```bash
-# nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install nuboard-0.19.2-py3-none-any.whl
+pip install nuboard                   # or: uv pip install nuboard
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
 Then try `where tags has "sweep" group by config.optim.lr` in the query bar and
-open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
-[installation](docs/installation.md) covers building from source.
+open the Charts page. The [quickstart](https://eagomez2.github.io/nuboard/quickstart/) has a tour, and
+[installation](https://eagomez2.github.io/nuboard/installation/) covers building from source.
 
 ## What's in 0.13
 
 | Area | Included |
 | --- | --- |
 | Python API | `init` (+ resume, fork, ranks), `add_scalar`, `add_file`, `add_text`, `add_image`, `add_audio`, `add_video`, `add_figure`, `add_pr_curve`, `add_histogram`, `add_table`, `add_point_cloud`, `add_html`, `add_artifact` (copies or references), `use_artifact` (across projects), `nb.add_artifact`, `nb.get_artifact`, `finish`, context manager; system scalars (CPU, memory, GPU) and console capture |
-| Storage | documented [log format](docs/reference/format.md), Parquet compaction with zoom levels, versioned artifacts, collections |
+| Storage | documented [log format](https://eagomez2.github.io/nuboard/reference/format/), Parquet compaction with zoom levels, versioned artifacts, collections |
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables; properties, collections and alerts per run |
 | Runs | query language, stars, Markdown notes, archive, typed properties, tag editing, column chooser, collections, saved views, run details and config/file diffs |
 | Charts | grouped lines with bands, smoothing, zoom, linked crosshair, inspector, live updates, alerts strip, x axis by any scalar (tokens, epochs), solo or show all series |
@@ -64,10 +63,10 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
 | Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per scalar and rank |
-| CLI | `nuboard up`, `demo`, `ls`, `rm`, `compact`, `merge`, `artifact add`/`ls`/`show`, `import-tensorboard` (TensorBoard logs to runs); see the [command line reference](docs/reference/cli.md) |
+| CLI | `nuboard up`, `demo`, `ls`, `rm`, `compact`, `merge`, `artifact add`/`ls`/`show`, `import-tensorboard` (TensorBoard logs to runs); see the [command line reference](https://eagomez2.github.io/nuboard/reference/cli/) |
 
-See the [changelog](docs/changelog.md) and the
-[known limitations](docs/reference/limitations.md).
+See the [changelog](https://eagomez2.github.io/nuboard/changelog/) and the
+[known limitations](https://eagomez2.github.io/nuboard/reference/limitations/).
 
 ## Documentation
 
@@ -77,14 +76,14 @@ The docs are a [MkDocs](https://www.mkdocs.org/) site in `docs/`:
 uv run mkdocs serve    # http://localhost:8000
 ```
 
-- [Installation](docs/installation.md) and [Quickstart](docs/quickstart.md)
-- [Logging from Python](docs/guide/logging.md), [Using the viewer](docs/guide/viewer.md),
-  [Sweeps](docs/guide/sweeps.md), [Health alerts](docs/guide/alerts.md),
-  [Artifacts and lineage](docs/guide/artifacts.md), [Analysis API](docs/guide/analysis.md),
-  [Distributed training](docs/guide/distributed.md),
-  [Importing from TensorBoard](docs/guide/tensorboard.md)
-- Reference: [query language](docs/reference/query.md), [file format](docs/reference/format.md),
-  [architecture](docs/reference/architecture.md), [development](docs/reference/development.md)
+- [Installation](https://eagomez2.github.io/nuboard/installation/) and [Quickstart](https://eagomez2.github.io/nuboard/quickstart/)
+- [Logging from Python](https://eagomez2.github.io/nuboard/guide/logging/), [Using the viewer](https://eagomez2.github.io/nuboard/guide/viewer/),
+  [Sweeps](https://eagomez2.github.io/nuboard/guide/sweeps/), [Health alerts](https://eagomez2.github.io/nuboard/guide/alerts/),
+  [Artifacts and lineage](https://eagomez2.github.io/nuboard/guide/artifacts/), [Analysis API](https://eagomez2.github.io/nuboard/guide/analysis/),
+  [Distributed training](https://eagomez2.github.io/nuboard/guide/distributed/),
+  [Importing from TensorBoard](https://eagomez2.github.io/nuboard/guide/tensorboard/)
+- Reference: [query language](https://eagomez2.github.io/nuboard/reference/query/), [file format](https://eagomez2.github.io/nuboard/reference/format/),
+  [architecture](https://eagomez2.github.io/nuboard/reference/architecture/), [development](https://eagomez2.github.io/nuboard/reference/development/)
 
 ## Development
 
@@ -96,17 +95,17 @@ uv run pytest && uv run ruff check . && uv run pyright
 uv build                                             # wheel with the frontend bundled
 ```
 
-See [Development](docs/reference/development.md) for the repository layout, the rules for
+See [Development](https://eagomez2.github.io/nuboard/reference/development/) for the repository layout, the rules for
 the logging side, and how to rename the project (the name lives in three
 places).
 
 ## License
 
-NuBoard is released under the [MIT License](LICENSE).
+NuBoard is released under the [MIT License](https://github.com/eagomez2/nuboard/blob/main/LICENSE).
 
 ## Requirements
 
 Python 3.10+ on Linux, macOS or Windows. It installs NumPy, PyArrow, Starlette and
 uvicorn for the viewer; logging uses only the standard library. Building the
 frontend from source needs Node 20+ and pnpm (`brew install pnpm` on macOS);
-installing a wheel does not.
+installing from PyPI does not.

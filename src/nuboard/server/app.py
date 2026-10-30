@@ -1865,6 +1865,7 @@ def create_app(
                 f"<h1>{NAME}</h1><p>The frontend is not built. Run <code>pnpm install</code> and"
                 " <code>pnpm build</code> in <code>frontend/</code>, or install a wheel.</p>",
                 503,
+                headers=_NO_FRAMING,
             )
 
         return FileResponse(page, headers={"Cache-Control": "no-cache", **_NO_FRAMING})

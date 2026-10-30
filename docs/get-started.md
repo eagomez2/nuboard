@@ -17,12 +17,20 @@ in the [Python API](api/index.md).
 
 ## Setup
 
-```bash
-pip install nuboard
-```
+=== "pip"
 
-The `viewer` extra adds the server and NumPy. Logging itself needs only the
-standard library, so on a training machine `pip install nuboard` is enough.
+    ```bash
+    pip install nuboard
+    ```
+
+=== "uv"
+
+    ```bash
+    uv pip install nuboard   # or: uv add nuboard, in a uv project
+    ```
+
+It includes the viewer. Logging itself uses only the standard library, so a
+training script that logs never imports NumPy, PyArrow or the server.
 
 ## The data and the model
 

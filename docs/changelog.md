@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.20.0
+
+The first release on PyPI: `pip install nuboard` (or `uv pip install nuboard`).
 
 - **`nuboard rm`** deletes runs chosen by a query (`-q 'status = crashed'`)
   or by id or name (`--run`, repeatable). It lists the runs with their sizes
@@ -18,7 +20,9 @@
   and uvicorn are now regular dependencies, so `nuboard up` works without
   `[viewer]`; `nuboard[viewer]` still installs. Logging still uses only the
   standard library and imports none of them.
-- Package metadata for PyPI: project links and classifiers.
+- Package metadata for PyPI: project links and classifiers. The docs are
+  published at <https://eagomez2.github.io/nuboard/>, and GitHub workflows run
+  the tests, publish the docs and release to PyPI.
 
 ## 0.19.2
 

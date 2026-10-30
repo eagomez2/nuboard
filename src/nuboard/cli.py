@@ -55,7 +55,8 @@ def _need_viewer() -> None:
         import uvicorn  # noqa: F401
     except ImportError as exc:
         raise SystemExit(
-            f"{exc.name} is missing. Reinstall with: pip install --force-reinstall {NAME}"
+            f"{exc.name} is missing. Reinstall with: pip install --force-reinstall {NAME} "
+            f"(or uv pip install --reinstall {NAME})"
         ) from None
 
 

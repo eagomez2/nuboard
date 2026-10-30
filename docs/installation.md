@@ -10,43 +10,80 @@ gives the logging API, the viewer (`nuboard up`) and the analysis API, with
 NumPy, PyArrow, Starlette and uvicorn. Logging from a training script uses only
 the standard library, so it never imports them.
 
-## From the wheel
+## From PyPI
 
-The `nuboard` package is not on PyPI yet. Each release ships a wheel with the viewer already
-built inside it, so installing it needs no Node.js:
-
-=== "uv"
-
-    ```bash
-    uv tool install nuboard-0.19.2-py3-none-any.whl   # the nuboard command
-    uv pip install nuboard-0.19.2-py3-none-any.whl    # into the current environment
-    ```
+The package comes with the viewer already built inside it, so installing it
+needs no Node.js:
 
 === "pip"
 
     ```bash
-    pip install nuboard-0.19.2-py3-none-any.whl
+    pip install nuboard
     ```
 
-To try it without installing anything, run the demo straight from the wheel:
+=== "uv"
 
-```bash
-uv run --with nuboard-0.19.2-py3-none-any.whl nuboard demo demo-runs --up --open
-```
+    ```bash
+    uv pip install nuboard     # into the current environment
+    uv add nuboard             # or as a dependency of a uv project
+    uv tool install nuboard    # or only the nuboard command, in its own environment
+    ```
+
+Install it in the environment your training scripts run in, so they can
+`import nuboard`.
+
+To try the demo without installing anything into an environment of yours:
+
+=== "pip"
+
+    ```bash
+    pipx run nuboard demo demo-runs --up --open
+    ```
+
+=== "uv"
+
+    ```bash
+    uvx nuboard demo demo-runs --up --open
+    ```
+
+To upgrade later:
+
+=== "pip"
+
+    ```bash
+    pip install -U nuboard
+    ```
+
+=== "uv"
+
+    ```bash
+    uv pip install -U nuboard   # uv add nuboard --upgrade-package nuboard, or uv tool upgrade nuboard
+    ```
 
 ## From source
 
 Building from the repository also builds the viewer, which needs
 **Node.js 20 or newer** and **pnpm**.
 
-```bash
-uv sync                                          # Python, its dependencies and dev tools
-(cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
-uv run nuboard demo demo-runs --up --open
-```
+=== "pip"
 
-`uv build` produces a wheel and runs the frontend build for you when
-`src/nuboard/static/` is missing.
+    ```bash
+    python -m venv .venv && . .venv/bin/activate
+    pip install -e . --group dev                     # pip 25.1 or newer; else: pip install -e .
+    (cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
+    nuboard demo demo-runs --up --open
+    ```
+
+=== "uv"
+
+    ```bash
+    uv sync                                          # Python, its dependencies and dev tools
+    (cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
+    uv run nuboard demo demo-runs --up --open
+    ```
+
+`uv build` (or `python -m build`) produces a wheel and runs the frontend build
+for you when `src/nuboard/static/` is missing.
 
 ??? question "`pnpm: command not found`"
 
@@ -71,9 +108,9 @@ uv run nuboard demo demo-runs --up --open
 
 ```console
 $ nuboard version
-nuboard 0.19.2
+nuboard 0.20.0
 $ python -c "import nuboard; print(nuboard.__version__)"
-0.19.2
+0.20.0
 ```
 
 Next, the [Quickstart](quickstart.md) runs the demo and logs a first run.

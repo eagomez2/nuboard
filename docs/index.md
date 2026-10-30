@@ -20,6 +20,18 @@ and no database to back up.
 
 </div>
 
+=== "pip"
+
+    ```bash
+    pip install nuboard
+    ```
+
+=== "uv"
+
+    ```bash
+    uv pip install nuboard   # or: uv add nuboard, in a uv project
+    ```
+
 ```python
 import nuboard as nb
 
@@ -108,8 +120,8 @@ NuBoard is free software under the [MIT License](license.md).
 
 ## Guides
 
-- [Installation](installation.md) covers the wheel, building from source and
-  the optional viewer dependencies.
+- [Installation](installation.md) covers `pip install nuboard` and building
+  from source.
 - [Quickstart](quickstart.md) runs the demo and logs a first run.
 - [Logging from Python](guide/logging.md), [Using the viewer](guide/viewer.md),
   [Sweeps](guide/sweeps.md), [Health alerts](guide/alerts.md) and

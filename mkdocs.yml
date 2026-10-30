@@ -1,5 +1,9 @@
 site_name: NuBoard
 site_description: Experiment tracking that lives in a folder. A fast, local tracker and viewer for ML training.
+site_url: https://eagomez2.github.io/nuboard/
+repo_url: https://github.com/eagomez2/nuboard
+repo_name: eagomez2/nuboard
+edit_uri: edit/main/docs/
 docs_dir: docs
 copyright: Copyright &copy; 2026 Esteban Gómez · <a href="license/">MIT License</a>
 nav:

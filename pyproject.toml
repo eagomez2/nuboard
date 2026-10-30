@@ -1,6 +1,6 @@
 [project]
 name = "nuboard"
-version = "0.19.2"
+version = "0.20.0"
 description = "A fast, local, folder-based experiment tracker and viewer for ML training."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,10 +27,11 @@ classifiers = [
 dependencies = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
 
 [project.urls]
-Homepage = "https://github.com/eagomez2/nuboard"
+Homepage = "https://eagomez2.github.io/nuboard/"
+Documentation = "https://eagomez2.github.io/nuboard/"
 Source = "https://github.com/eagomez2/nuboard"
 Issues = "https://github.com/eagomez2/nuboard/issues"
-Changelog = "https://github.com/eagomez2/nuboard/blob/main/docs/changelog.md"
+Changelog = "https://eagomez2.github.io/nuboard/changelog/"
 
 [project.optional-dependencies]
 viewer = []  # kept so `nuboard[viewer]` from older instructions still installs
