@@ -13,7 +13,14 @@
     and `git.untracked` (how many untracked files, never their names),
     shown and highlighted in **All settings**;
   - keeps the commit of packages installed from git in `requirements.txt`,
-    without credentials or local paths;
+    without credentials;
+  - records the folder and git state of packages installed from a local
+    folder (`pip install -e ../lib`): a clean, pushed checkout becomes an
+    installable `git+URL@commit` line, uncommitted changes are saved as
+    `files/git-<package>.patch` (#13);
+  - never lets a repository's config run a program during capture
+    (`core.fsmonitor` off, diffs with `--no-textconv`), and skips patches over
+    10 MB, recording `git.patch_bytes` instead (#13);
   - records what it can in a repository with no commits, on a detached
     `HEAD`, from a deleted working directory or with broken package
     metadata, and never fails the run over it (#11).

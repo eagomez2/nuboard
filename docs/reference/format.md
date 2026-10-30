@@ -26,7 +26,8 @@ path.
         data.parquet                      compacted scalars (written at finish, optional)
         files/
           requirements.txt                installed packages (pip freeze format)
-          git.patch                       `git diff HEAD` at start (only if dirty)
+          git.patch                       `git diff HEAD` at start (only if dirty, at most 10 MB)
+          git-<package>.patch             uncommitted changes of a package installed from a local folder
           command.txt                     the command line that started the run
           output.log                      what rank 0 printed (capture_console)
           ...                             files and folders added with run.add_file
@@ -55,11 +56,36 @@ path.
 | `pushed` | bool/null | Whether a remote-tracking branch contains `commit` (read locally, as of the last fetch or push); null when there are none or it could not be read. |
 | `untracked` | int/null | Untracked, not ignored files: their number only. |
 | `source` | str | Where the repository was found: `code_dir`, `script` or `cwd`. |
+| `patch_bytes` | int | Only when the diff is over 10 MB: its size. `git.patch` is then not written. |
 
-`pushed`, `untracked` and `source` are absent from runs recorded by older versions.
-`files/requirements.txt` lists packages as `name==version`; one installed from
-git is `name @ git+URL@commit` (URL without credentials), and one installed
-from a local folder or in editable mode is `name==version  # editable/local install`.
+`pushed`, `untracked`, `source` and `patch_bytes` are absent from runs recorded by older versions.
+
+Every git command runs with `core.fsmonitor` off, and diffs with
+`--no-ext-diff --no-textconv`, so a repository's config or `.gitattributes`
+cannot make capture run a program.
+
+### requirements.txt
+
+`files/requirements.txt` is in `pip install -r` format, one package per line:
+
+| Installed from | Line |
+| --- | --- |
+| an index (PyPI) | `name==version` |
+| a VCS URL | `name @ git+URL@commit` (URL without credentials) |
+| an archive URL | `name @ URL` (without query or fragment) |
+| a local folder, clean git checkout whose commit is on a remote | `name @ git+URL@commit[#subdirectory=dir]  # local: <path>` |
+| a local folder with uncommitted changes | `name==version  # local: <path>, git <commit> (dirty), patch: git-<package>.patch` |
+| a local folder, commit not pushed | `name==version  # local: <path>, git <commit> (not pushed)` |
+| a local folder inside the run's repository | `name==version  # local: <path>, the run's repository (see run.json git)` |
+| a local folder not under git | `name==version  # local: <path>, not under git` |
+| a local folder that no longer exists | `name==version  # local: <path> (missing)` |
+| a local file, or a 21st or later local folder | `name==version  # local: <path>` |
+
+Packages from one repository share one patch, named after the first of them.
+A patch over 10 MB is not written and the line says `patch too large (N bytes)`.
+The remote of a local folder is written with an `ssh://` URL when it is in
+scp form (`git@host:org/repo`), and kept as a comment (`remote <path>`) when it
+is a folder on the same machine.
 
 ### Run ids and names
 

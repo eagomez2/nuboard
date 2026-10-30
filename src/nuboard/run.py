@@ -615,7 +615,15 @@ class Run:
         if diff:
             attempt("git.patch", lambda: write("git.patch", diff))
 
-        attempt("requirements.txt", lambda: write("requirements.txt", _env.pip_freeze()))
+        def packages() -> None:
+            root = git.get("root") if git else None
+            text, patches = _env.freeze(str(root) if root else None)
+            write("requirements.txt", text)
+
+            for name, patch in patches.items():
+                attempt(name, lambda name=name, patch=patch: write(name, patch))
+
+        attempt("requirements.txt", packages)
         attempt("command.txt", lambda: write("command.txt", _env.command_line()))
 
     def _write_job_meta(self, capture_env: bool) -> None:

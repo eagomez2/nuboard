@@ -15,11 +15,12 @@ is left out, with a warning when it is unexpected, and the run starts anyway.
 | What | Where | Notes |
 | --- | --- | --- |
 | Commit, branch, remote | `run.json` → `git` | The remote URL is stored without any user name, password or token. |
-| Uncommitted changes | `files/git.patch` | `git diff HEAD` of tracked files; written only when there are changes. |
+| Uncommitted changes | `files/git.patch` | `git diff HEAD` of tracked files; written only when there are changes, up to 10 MB. |
 | Whether the commit is pushed | `run.json` → `git.pushed` | `false` means no remote-tracking branch contains it. |
 | Untracked files | `run.json` → `git.untracked` | How many, never their names or contents. |
 | Where the repository was found | `run.json` → `git.source` | `code_dir`, `script` or `cwd`; see below. |
 | Installed packages | `files/requirements.txt` | `pip freeze` format; packages installed from git keep their commit. |
+| Local packages | `files/requirements.txt`, `files/git-<package>.patch` | The folder and git state of packages installed from a local folder; see below. |
 | Command line | `files/command.txt` | The Python executable and `sys.argv`, shell-quoted. |
 | Machine | `run.json` → `env` | Host, platform, Python version and executable, working directory, GPUs (model, memory, driver), `CUDA_VISIBLE_DEVICES`. |
 | Config | `run.json` → `config` | Whatever you passed to `init(config=...)`. |
@@ -48,6 +49,26 @@ replace it with `python` from the new environment.
 Use the same Python version as `env.python`, and check `env.gpus` and
 `env.platform` if the numbers must match exactly. Pin the data with the
 artifact versions listed in `inputs`.
+
+## Packages installed from a local folder
+
+A package you work on next to your code is often installed from its folder
+(`pip install -e ../mylib`). PyPI does not have that code, so `requirements.txt`
+records the folder and, when it is a git checkout, its state:
+
+| The folder is | `requirements.txt` line | To install it again |
+| --- | --- | --- |
+| a clean git checkout whose commit is on a remote | `mylib @ git+https://github.com/org/mylib.git@<commit>  # local: /home/me/mylib` | Nothing: `pip install -r` does it. |
+| a git checkout with uncommitted changes | `mylib==0.3  # local: /home/me/mylib, git <commit> (dirty), patch: git-mylib.patch` | Clone, check out the commit, `git apply` the patch from `files/`, `pip install -e .` |
+| a git checkout whose commit is not pushed | `mylib==0.3  # local: /home/me/mylib, git <commit> (not pushed)` | Only on that machine, or after pushing the commit. |
+| inside the run's own repository | `mylib==0.3  # local: /home/me/proj, the run's repository (see run.json git)` | It comes with the run's code; its changes are in `git.patch`. |
+| not under git | `mylib==0.3  # local: /home/me/mylib, not under git` | Not possible from the run alone. |
+
+`pip install -r` reads everything after `#` as a comment, so the file stays
+installable; edit the lines that are not installable as the table says. A
+package in a subfolder of its repository gets `#subdirectory=<dir>`, and
+packages of one repository share one patch. Only the first 20 local packages
+are inspected; later ones keep just their path.
 
 ## Which repository is recorded
 
@@ -95,11 +116,21 @@ be very large, and others cannot be:
   your script reads is unknown to the run.
 - **System libraries.** The CUDA toolkit, cuDNN, conda packages and OS packages
   are not listed; only Python packages are. The GPU driver version is.
-- **Local installs.** A package installed from a local folder or with
-  `pip install -e` is listed as `name==version` with an
-  `# editable/local install` comment; its path and state are not recorded.
-  Install it from git (`pip install git+https://...`) to keep its commit.
+- **Large patches.** A diff over 10 MB is not written; its size is recorded
+  in `git.patch_bytes` (or as `patch too large` for a local package).
 
-Pass `capture_env=False` to record none of the above, for example when the
-runs are shared and the machine details should stay private. The config and
-metrics are still recorded.
+## Privacy and safety
+
+Capture only reads git: it triggers no hooks, runs every git command with
+`core.fsmonitor` off and takes diffs with `--no-ext-diff --no-textconv`, so a
+repository's fsmonitor, external diff or textconv program never starts. The
+one exception is a clean filter the repository sets up (Git LFS is the common
+one), which runs as it does for any `git diff`, because turning it off would
+make every filtered file look changed. git still refuses repositories owned by
+another user (`safe.directory`); nothing is recorded for those.
+
+Credentials are removed from every remote URL. What is kept can still be
+private: folder paths (the working directory, Python executable and local
+packages), the host name, and your uncommitted code in the patches. Pass
+`capture_env=False` to record none of it, for example when the runs are
+shared. The config and metrics are still recorded.
