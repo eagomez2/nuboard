@@ -258,6 +258,49 @@ test('sweeps hide rules are saved for the project', async ({ page }) => {
   await expect(picker.getByRole('button', { name: /hidden/ })).toHaveCount(0);
 });
 
+test('sweeps compares runs by the dataset version they used', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('inputs.');
+  const row = picker.locator('label.row', { hasText: 'fineweb-edu' });
+  await expect(row).toContainText('category · 3 values'); // v1, v2, and none for the prep and eval runs
+  await page.keyboard.press('Escape');
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=inputs.fineweb-edu');
+  const axis = page.locator('.pc .axis').first();
+  await expect(axis.locator('text.tick')).toHaveText([/—$/, /v1$/, /v2$/]); // each tick holds its <title> first
+});
+
+test('sweeps shows list values by what differs, with the full value on click', async ({ page }) => {
+  await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale,transforms');
+  const ticks = page.locator('.pc .axis').first().locator('text.tick');
+  await expect(ticks).toHaveText([/\]\[0\]=0\.08$/, /\]\[0\]=0\.2$/, /\]\[0\]=0\.35$/, /\]\[0\]=1$/]);
+  await expect(page.locator('.pc .axis').nth(1).locator('text.tick', { hasText: 'resize, center_crop' })).toHaveCount(
+    1,
+  );
+  await page.getByRole('button', { name: 'Show the full value of [0]=0.08' }).click();
+  const panel = page.getByRole('dialog', { name: 'Full value' });
+  await expect(panel.locator('pre')).toHaveText(/0\.08,\s+1/);
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('.best td .cell', { hasText: '[0]=' }).first()).toBeVisible();
+});
+
+test('sweeps splits a list into element axes and joins it back', async ({ page }) => {
+  await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('crop');
+  await picker.getByRole('button', { name: 'Split' }).click();
+  await expect(page).toHaveURL(/split=crop_scale/);
+  await expect(page.locator('.chip.param[title^="crop_scale[0] "]')).toBeVisible();
+  await expect(page.locator('.chip.param[title^="crop_scale "]')).toHaveCount(0);
+  await expect(page.locator('.pc .axis').first().locator('.sub')).toHaveText('linear');
+  await picker.getByRole('button', { name: 'Join' }).click();
+  await expect(page).not.toHaveURL(/split=/);
+  await expect(page.locator('.chip.param[title^="crop_scale "]')).toBeVisible();
+});
+
 test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {
   await page.goto('/#/timeline?project=llm-pretrain');
   await expect(page.locator('g.bar').first()).toBeVisible();
@@ -265,7 +308,7 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await expect(page.locator('text.name tspan.rid').first()).toHaveText(/^ [0-9a-z]{6,12}$/);
   await page.goto('/#/artifacts?project=llm-pretrain');
   await expect(page.getByRole('heading', { name: 'fineweb-edu:v2' })).toBeVisible();
-  await expect(page.locator('g.node.run')).toHaveCount(14);
+  await expect(page.locator('g.node.run')).toHaveCount(8); // prep, the six sweep runs on v2, and eval
   await page.locator('g.node.artifact', { hasText: 'model:v1' }).click();
   await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });

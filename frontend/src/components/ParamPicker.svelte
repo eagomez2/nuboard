@@ -14,6 +14,8 @@
     hidden,
     onpick,
     onhide,
+    splits = [],
+    onsplit,
   }: {
     infos: ParamInfo[];
     chosen: string[];
@@ -26,6 +28,9 @@
     /** A new choice of keys in order, `[]` for none, or null for the defaults. */
     onpick: (keys: string[] | null) => void;
     onhide: (text: string) => void;
+    /** List keys split into element axes. */
+    splits?: string[];
+    onsplit?: (key: string) => void;
   } = $props();
 
   let open = $state(false);
@@ -101,7 +106,7 @@
     return splitMarked(key.slice(from), ranges);
   }
   const short = (key: string) => key.split('.').slice(-2).join('.');
-  const typeOf = (p: ParamInfo) => (p.numeric ? 'number' : 'category');
+  const typeOf = (p: ParamInfo) => (p.numeric ? 'number' : p.complex ? 'list' : 'category');
 </script>
 
 <svelte:window
@@ -171,6 +176,19 @@
                           title="More than {MANY_VALUES} values: the axis shows the most common">many values</span
                         >{:else if p.unique}<span class="flag" title="A different value in every run">id-like</span
                         >{:else if p.long}<span class="flag">long text</span>{/if}
+                      {#if p.split && onsplit}
+                        <button
+                          class="tog sm"
+                          aria-pressed={splits.includes(p.key)}
+                          title={splits.includes(p.key)
+                            ? 'Join the elements back into one list'
+                            : `Split into ${p.split} element axes`}
+                          onclick={(e) => {
+                            e.preventDefault();
+                            onsplit(p.key);
+                          }}>{splits.includes(p.key) ? 'Join' : 'Split'}</button
+                        >
+                      {/if}
                       <span class="faint">{typeOf(p)} · {p.distinct} {p.distinct === 1 ? 'value' : 'values'}</span>
                       <span class="imp" title="Rank correlation with {metric}: {p.score?.toFixed(2) ?? 'n/a'}"
                         ><span style="width:{(p.score ?? 0) * 100}%"></span></span

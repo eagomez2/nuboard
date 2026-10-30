@@ -10,7 +10,20 @@
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { keyFilter } from '../lib/keyfilter';
-  import { axisTicks, defaultParams, makeAxis, norm, paramInfo, type Axis, type Value } from '../lib/sweep';
+  import {
+    axisTicks,
+    defaultParams,
+    elementOf,
+    elementValue,
+    makeAxis,
+    norm,
+    paramInfo,
+    parseComplex,
+    shownLabel,
+    splitLength,
+    type Axis,
+    type Value,
+  } from '../lib/sweep';
 
   const fs = new FullScreen();
   onMount(() => fs.listen());
@@ -85,6 +98,8 @@
   });
   const full = $derived(sweep?.runs === runKeys ? sweep : null);
 
+  // List keys split into element axes, in the URL as `split=layers,crop`.
+  const splits = $derived(router.list('split'));
   // Parameters: config keys whose values differ between runs, plus properties.
   const candidates = $derived.by(() => {
     const seen = new Map<string, Set<string>>();
@@ -97,12 +112,48 @@
       for (const [k, v] of Object.entries(r.fields ?? {})) add(`fields.${k}`, v);
     }
     const local = [...seen.entries()].filter(([, s]) => s.size > 1).map(([k]) => k);
-    return full ? [...full.keys, ...local] : local;
+    const keys = full ? [...full.keys, ...local] : local;
+    // a split list is followed by its elements, `layers[0]`, `layers[1]`, ...
+    return keys.flatMap((k) => [k, ...(splits.includes(k) ? elements(k) : [])]);
   });
-  const get = (r: RunBrief, key: string): Value =>
+  // the element keys of a list that differ between runs
+  function elements(key: string): string[] {
+    const lists = runs.map((r) => raw(r, key)).filter((v) => v != null);
+    return Array.from({ length: splitLength(lists) }, (_, i) => i)
+      .filter((i) => new Set(lists.map((v) => JSON.stringify(elementValue(v, i)))).size > 1)
+      .map((i) => `${key}[${i}]`);
+  }
+  const raw = (r: RunBrief, key: string): Value =>
     key.startsWith('fields.')
       ? (r.fields?.[key.slice(7)] as Value)
       : ((full ? full.values[key]?.[r.key] : r.config[key]) as Value);
+  const get = (r: RunBrief, key: string): Value => {
+    const el = elementOf(key);
+    return el && splits.includes(el.base) ? elementValue(raw(r, el.base), el.index) : raw(r, key);
+  };
+  function toggleSplit(key: string) {
+    const on = !splits.includes(key);
+    const next = on ? [...splits, key] : splits.filter((k) => k !== key);
+    // a chosen list is replaced by its elements, and back
+    const parts = elements(key);
+    const chosen = on
+      ? params.flatMap((k) => (k === key ? parts : [k]))
+      : [...new Set(params.map((k) => (elementOf(k)?.base === key ? key : k)))];
+    router.set({ split: next.length ? next.join(',') : null });
+    pick(chosen);
+  }
+
+  // The full value of a list or dict category, opened by clicking its label.
+  let opened = $state<{ key: string; value: string } | null>(null);
+  const pretty = (v: string) => {
+    const parsed = parseComplex(v);
+    return parsed === undefined ? v : JSON.stringify(parsed, null, 2);
+  };
+  // A table cell: the short label of a list or dict, the value itself otherwise.
+  const cellText = (p: string, v: Value) => {
+    const a = axes[params.indexOf(p)];
+    return a && !a.numeric && typeof v === 'string' ? shownLabel(a, v) : fmtValue(v);
+  };
 
   const values = $derived(runs.map(value));
 
@@ -313,7 +364,23 @@
       {hidden}
       onpick={pick}
       onhide={saveHide}
+      {splits}
+      onsplit={toggleSplit}
     />
+
+    {#if opened}
+      <div class="card fullvalue" role="dialog" aria-label="Full value">
+        <div class="fvhead">
+          <span class="mono trunc">{label(opened.key)}</span>
+          <span class="grow"></span>
+          <button class="btn btn-ghost sm" onclick={() => navigator.clipboard?.writeText(pretty(opened!.value))}
+            >Copy</button
+          >
+          <button class="btn btn-ghost sm" aria-label="Close" onclick={() => (opened = null)}>×</button>
+        </div>
+        <pre class="mono">{pretty(opened.value)}</pre>
+      </div>
+    {/if}
 
     <div class="pc" bind:clientWidth={width}>
       <svg {width} height={H} role="img" aria-label="Parallel coordinates of {runs.length} runs" bind:this={pcSvg}>
@@ -352,12 +419,24 @@
                     : 'linear'
                   : `${a.categories.length} values`}</text
             >
-            {#each axisTicks(a, fmt) as [n, text] (text + n)}
+            {#each axisTicks(a, fmt) as [n, text, full] (text + n)}
               {@const yy = yOf(isMetric && lower ? 1 - n : n)}
               {@const side = isMetric ? 1 : -1}
+              {@const more = full !== undefined && full !== text}
               <line class="tickmark" x1={x + side * 4} x2={x} y1={yy} y2={yy} />
-              <text class="tick mono" x={x + side * 7} y={yy + 4} text-anchor={isMetric ? 'start' : 'end'}
-                ><title>{text}</title>{fitTick(text, a, k)}</text
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex (a button only when it has a full value) -->
+              <text
+                class="tick mono"
+                class:more
+                x={x + side * 7}
+                y={yy + 4}
+                text-anchor={isMetric ? 'start' : 'end'}
+                role={more ? 'button' : undefined}
+                tabindex={more ? 0 : undefined}
+                aria-label={more ? `Show the full value of ${text}` : undefined}
+                onclick={() => more && (opened = { key: a.key, value: full! })}
+                onkeydown={(e) => more && e.key === 'Enter' && (opened = { key: a.key, value: full! })}
+                ><title>{full ?? text}</title>{fitTick(text, a, k)}</text
               >
             {/each}
             {#if brushes[a.key]}
@@ -477,9 +556,10 @@
         <svg width={sw} height="190" viewBox="0 0 {sw} 190" role="img" aria-label="{metric} against {p}">
           <line class="frame" x1="40" x2={sw - 10} y1="160" y2="160" />
           <line class="frame" x1="40" x2="40" y1="10" y2="160" />
-          {#each axisTicks(a, fmt) as [n, text] (text + n)}
+          {#each axisTicks(a, fmt) as [n, text, full] (text + n)}
             {@const t = scatterTick(a, n, text)}
-            <text class="tick mono" x={46 + n * span} y="176" text-anchor={t.anchor}><title>{text}</title>{t.text}</text
+            <text class="tick mono" x={46 + n * span} y="176" text-anchor={t.anchor}
+              ><title>{full ?? text}</title>{t.text}</text
             >
           {/each}
           {#each axisTicks(metricAxis, fmt).filter((_, i, all) => i === 0 || i === all.length - 1 || all.length <= 3) as [n, text] (text + n)}
@@ -543,7 +623,7 @@
               ></td
             >
             {#each params as p (p)}<td class="mono"
-                ><span class="trunc cell" title={fmtValue(get(l.run, p))}>{fmtValue(get(l.run, p))}</span></td
+                ><span class="trunc cell" title={fmtValue(get(l.run, p))}>{cellText(p, get(l.run, p))}</span></td
               >{/each}
             <td class="right mono nowrap">{fmtNum(value(l.run))}</td>
           </tr>
@@ -675,6 +755,29 @@
   }
   .faint {
     color: var(--faint);
+  }
+  .fullvalue {
+    margin: 8px 14px 0;
+    padding: 8px 10px;
+  }
+  .fvhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+  }
+  .fvhead .grow {
+    flex: 1;
+  }
+  .fullvalue pre {
+    margin: 6px 0 0;
+    max-height: 260px;
+    overflow: auto;
+    font-size: 12px;
+  }
+  .tick.more {
+    cursor: pointer;
+    text-decoration: underline dotted;
   }
   .pc {
     width: 100%;

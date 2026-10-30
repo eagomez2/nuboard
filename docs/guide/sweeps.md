@@ -94,6 +94,31 @@ are saved in the project's `sweeps.json`.
 Numeric parameters that span more than a factor of 20 use a log axis.
 Text and boolean parameters become ordered categories.
 
+### Datasets and other artifacts
+
+The artifact versions a run used (`run.use_artifact("datasets/fineweb-edu:v2")`)
+are parameters too, named `inputs.<artifact>` with the version as the value
+(`v2`; `v1+v2` for a run that used two). Runs that used none show `—`. So runs
+can be compared by data version without copying it into the config: in the
+demo, open Sweeps on `llm-pretrain` and pick `inputs.fineweb-edu`.
+
+### Lists and dicts
+
+A list, or a dict inside a list, is one category per distinct value. Its axis
+label shows only what differs from the other values: the elements that differ
+for lists of one length (`[0]=0.08`), the items not in every list for lists of
+different lengths (`flip, mixup`), and the paths that differ for nested values
+(`[1].dim=512`). Labels are cut to 40 characters. Hover a label for the full
+value, or click it to open it pretty-printed with a **Copy** button. The Best
+runs table uses the same labels.
+
+A list of plain values with the same length in every run has a **Split** button
+in the picker. It replaces the list with one parameter per element that
+differs (`crop_scale[0]`), each a numeric axis when its values are numbers.
+**Join** puts the list back. Splits are kept in the URL (`split=crop_scale`), so
+saved views and report links keep them. In the demo, try `crop_scale` and
+`transforms` on `vit-ablations`.
+
 ## Parallel coordinates
 
 Each run is one line through every parameter axis to the objective axis.

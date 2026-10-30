@@ -10,6 +10,8 @@ export interface Axis {
   max: number;
   /** Category labels in display order (categorical axes only). */
   categories: string[];
+  /** Short labels for list and dict categories (see `diffLabels`); absent ones show as is. */
+  labels: Record<string, string>;
 }
 
 export function isNum(v: Value): v is number {
@@ -35,7 +37,7 @@ export function makeAxis(key: string, values: Value[], maxCategories = MANY_VALU
     const min = Math.min(...nums);
     const max = Math.max(...nums);
     const log = min > 0 && max / min >= 20;
-    return { key, numeric, log, min, max, categories: [] };
+    return { key, numeric, log, min, max, categories: [], labels: {} };
   }
   const counts = new Map<string, number>();
   for (const v of values) counts.set(catLabel(v), (counts.get(catLabel(v)) ?? 0) + 1);
@@ -48,7 +50,8 @@ export function makeAxis(key: string, values: Value[], maxCategories = MANY_VALU
     return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.localeCompare(b);
   });
   if (capped) cats.push(OTHER);
-  return { key, numeric: false, log: false, min: 0, max: Math.max(cats.length - 1, 1), categories: cats };
+  const labels = diffLabels(cats);
+  return { key, numeric: false, log: false, min: 0, max: Math.max(cats.length - 1, 1), categories: cats, labels };
 }
 
 /** Position of a value on an axis in [0, 1] (0 = bottom), or null if it has none. */
@@ -65,9 +68,16 @@ export function norm(axis: Axis, v: Value): number | null {
   return axis.categories.length === 1 ? 0.5 : i / (axis.categories.length - 1);
 }
 
-/** A few labelled ticks for an axis: [position 0..1, label]. */
-export function axisTicks(axis: Axis, fmt: (v: number) => string): [number, string][] {
-  if (!axis.numeric) return axis.categories.map((c, i, all) => [all.length === 1 ? 0.5 : i / (all.length - 1), c]);
+/** The text shown for a category: its short label, or the value itself. */
+export const shownLabel = (axis: Axis, category: string) => axis.labels[category] ?? category;
+
+/**
+ * A few labelled ticks for an axis: [position 0..1, label, full value]. The full value differs
+ * from the label for list and dict categories.
+ */
+export function axisTicks(axis: Axis, fmt: (v: number) => string): [number, string, string?][] {
+  if (!axis.numeric)
+    return axis.categories.map((c, i, all) => [all.length === 1 ? 0.5 : i / (all.length - 1), shownLabel(axis, c), c]);
   if (axis.max === axis.min) return [[0.5, fmt(axis.min)]];
   if (axis.log) {
     const out: [number, string][] = [];
@@ -154,6 +164,10 @@ export interface ParamInfo {
   long: boolean;
   /** Association with the objective in [0, 1] (see `importance`); null with too few runs. */
   score: number | null;
+  /** Some value is a list or dict. */
+  complex: boolean;
+  /** The length of the list when it can be split into elements (see `splitLength`), else 0. */
+  split: number;
 }
 
 export function paramInfo(key: string, values: Value[], metric: (number | null)[]): ParamInfo {
@@ -166,8 +180,10 @@ export function paramInfo(key: string, values: Value[], metric: (number | null)[
     distinct,
     unique: !numeric && values.length >= 3 && distinct === values.length,
     many: !numeric && distinct > MANY_VALUES,
-    long: present.some((v) => typeof v === 'string' && v.length > 40),
+    long: present.some((v) => typeof v === 'string' && v.length > 40 && !parseComplex(v)),
     score: importance(values, metric),
+    complex: present.some((v) => parseComplex(v) !== undefined),
+    split: splitLength(present),
   };
 }
 
@@ -199,4 +215,81 @@ export function groupByPrefix<T extends { key: string }>(items: T[]): { prefix: 
   }
   const out = [...groups.entries()].map(([prefix, items]) => ({ prefix, items }));
   return [...out.filter((g) => !g.prefix), ...out.filter((g) => g.prefix)];
+}
+
+/** A list or dict sent as JSON text (`[64, 128]`, `{"lr": 0.1}`), parsed; else undefined. */
+export function parseComplex(v: Value | unknown): unknown[] | Record<string, unknown> | undefined {
+  if (typeof v !== 'string' || !/^\s*[[{]/.test(v)) return undefined;
+  try {
+    const out = JSON.parse(v);
+    return out !== null && typeof out === 'object' ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const scalar = (v: unknown) => v === null || typeof v !== 'object';
+const show = (v: unknown) => (v === undefined ? '—' : typeof v === 'string' ? v : JSON.stringify(v));
+
+// The leaves of a parsed value by path: `[0]`, `.lr`, `[1].dim`.
+function leaves(v: unknown, path = '', out = new Map<string, unknown>()): Map<string, unknown> {
+  if (Array.isArray(v)) v.forEach((x, i) => leaves(x, `${path}[${i}]`, out));
+  else if (v !== null && typeof v === 'object')
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) leaves(x, `${path}.${k}`, out);
+  else out.set(path, v);
+  return out;
+}
+
+/** The most characters a diff label keeps. */
+export const LABEL_MAX = 40;
+
+/**
+ * Short labels for categories that are lists or dicts: only what differs between them.
+ * Lists of plain values with different lengths are labelled by the items not in every list
+ * (`flip, mixup`); anything else by the differing paths (`[0]=0.08`, `.wd=0.1`). Labels are
+ * cut to LABEL_MAX characters; a category that is not a list or dict keeps no label.
+ */
+export function diffLabels(categories: string[]): Record<string, string> {
+  const parsed = categories.map((c) => [c, parseComplex(c)] as const).filter(([, v]) => v !== undefined);
+  if (parsed.length < 2) return {};
+  const cut = (t: string) => (t.length > LABEL_MAX ? t.slice(0, LABEL_MAX - 1) + '…' : t);
+  const out: Record<string, string> = {};
+  const lists = parsed.map(([, v]) => v).filter((v): v is unknown[] => Array.isArray(v) && v.every(scalar));
+  if (lists.length === parsed.length && new Set(lists.map((l) => l.length)).size > 1) {
+    const key = (x: unknown) => JSON.stringify(x);
+    const common = new Set(lists[0].map(key).filter((k) => lists.every((l) => l.map(key).includes(k))));
+    for (const [c, v] of parsed) {
+      const rest = (v as unknown[]).filter((x) => !common.has(key(x))).map(show);
+      out[c] = cut(rest.length ? rest.join(', ') : common.size ? 'common items only' : '[]');
+    }
+    return out;
+  }
+  const maps = parsed.map(([c, v]) => [c, leaves(v)] as const);
+  const paths = [...new Set(maps.flatMap(([, m]) => [...m.keys()]))];
+  const differing = paths.filter((p) => new Set(maps.map(([, m]) => show(m.get(p)))).size > 1);
+  for (const [c, m] of maps) {
+    const parts = differing.filter((p) => m.has(p)).map((p) => `${p.replace(/^\./, '')}=${show(m.get(p))}`);
+    out[c] = cut(parts.length ? parts.join(', ') : differing.length ? '(fewer items)' : c);
+  }
+  return out;
+}
+
+/** The length of a list key that can be split into elements: every run holds a list of plain values of the same length (2 to 32); else 0. */
+export function splitLength(values: Value[]): number {
+  const lists = values.map(parseComplex);
+  if (!lists.length || lists.some((l) => !Array.isArray(l) || !l.every(scalar))) return 0;
+  const n = (lists[0] as unknown[]).length;
+  return n >= 2 && n <= 32 && lists.every((l) => (l as unknown[]).length === n) ? n : 0;
+}
+
+/** For an element key `layers[2]`, its list key and index; else null. */
+export function elementOf(key: string): { base: string; index: number } | null {
+  const m = /^(.*)\[(\d+)\]$/.exec(key);
+  return m ? { base: m[1], index: Number(m[2]) } : null;
+}
+
+/** Element `index` of a list sent as JSON text, or undefined. */
+export function elementValue(v: Value, index: number): Value {
+  const list = parseComplex(v);
+  return Array.isArray(list) ? (list[index] as Value) : undefined;
 }

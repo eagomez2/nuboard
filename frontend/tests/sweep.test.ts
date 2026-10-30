@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultParams,
+  axisTicks,
+  diffLabels,
+  elementOf,
+  elementValue,
   groupByPrefix,
   importance,
   makeAxis,
+  splitLength,
   norm,
   OTHER,
   paramInfo,
@@ -96,5 +101,51 @@ describe('the parameter picker', () => {
       ['optim', ['optim.lr', 'optim.wd']],
       ['a.b', ['a.b.c']],
     ]);
+  });
+});
+
+describe('complex values', () => {
+  it('labels lists of the same length by the elements that differ', () => {
+    expect(diffLabels(['[0.08, 1.0]', '[0.35, 1.0]', '[1.0, 1.0]'])).toEqual({
+      '[0.08, 1.0]': '[0]=0.08',
+      '[0.35, 1.0]': '[0]=0.35',
+      '[1.0, 1.0]': '[0]=1',
+    });
+  });
+  it('labels lists of different lengths by the items not in every list', () => {
+    const labels = diffLabels(['["resize", "normalize"]', '["crop", "flip", "normalize"]']);
+    expect(labels['["resize", "normalize"]']).toBe('resize');
+    expect(labels['["crop", "flip", "normalize"]']).toBe('crop, flip');
+  });
+  it('labels dicts by the paths that differ, and cuts long labels', () => {
+    const a = JSON.stringify([{ dim: 256, act: 'gelu', name: 'x'.repeat(60) }]);
+    const b = JSON.stringify([{ dim: 512, act: 'gelu', name: 'y'.repeat(60) }]);
+    const labels = diffLabels([a, b]);
+    expect(labels[a].startsWith('[0].dim=256, [0].name=xxx')).toBe(true);
+    expect(labels[a].length).toBe(40);
+    expect(labels[a].endsWith('…')).toBe(true);
+  });
+  it('leaves plain categories alone', () => {
+    expect(diffLabels(['adam', 'sgd'])).toEqual({});
+    const axis = makeAxis('x', ['[1, 2]', '[1, 3]']);
+    expect(axis.labels).toEqual({ '[1, 2]': '[1]=2', '[1, 3]': '[1]=3' });
+    expect(axisTicks(axis, String).map(([, t, full]) => [t, full])).toEqual([
+      ['[1]=2', '[1, 2]'],
+      ['[1]=3', '[1, 3]'],
+    ]);
+  });
+  it('splits lists of plain values of one length into elements', () => {
+    expect(splitLength(['[1, 2]', '[3, 4]'])).toBe(2);
+    expect(splitLength(['[1, 2]', '[3]'])).toBe(0);
+    expect(splitLength(['[{"a": 1}, 2]', '[3, 4]'])).toBe(0);
+    expect(splitLength(['adam', 'sgd'])).toBe(0);
+    expect(elementOf('layers[2]')).toEqual({ base: 'layers', index: 2 });
+    expect(elementOf('layers')).toBeNull();
+    expect(elementValue('[64, 128]', 1)).toBe(128);
+    expect(paramInfo('l', ['[1, 2]', '[3, 4]', '[5, 6]'], [1, 2, 3])).toMatchObject({
+      complex: true,
+      split: 2,
+      long: false,
+    });
   });
 });

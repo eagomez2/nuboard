@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Datasets as Sweeps parameters.** The artifact versions each run used are
+  parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared
+  by data version without copying it into the config (#14).
+- **Readable list and dict values in Sweeps.** Axis labels, scatter labels and
+  the Best runs table show only what differs between values (`[0]=0.08`,
+  `flip, mixup`, `[1].dim=512`), with the full value on hover and, on click,
+  pretty-printed with a **Copy** button (#14).
+- **Split a list into element axes.** A list of plain values with one length
+  in every run can be split in the picker into `key[0]`, `key[1]`, ..., kept
+  in the URL as `split=` (#14).
+- **The demo shows them.** Half of the `llm-pretrain` sweep trains on the
+  older `fineweb-edu:v1` (a little worse), and `vit-ablations` runs have
+  list-valued `transforms` and `crop_scale` settings. Delete an existing demo
+  folder to get the new data.
+
 ## 0.19.1
 
 - **Sweeps parameter picker.** **Parameters** opens a searchable list of every
