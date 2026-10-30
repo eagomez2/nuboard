@@ -189,7 +189,7 @@ export function defaultParams(infos: ParamInfo[], hidden: (key: string) => boole
     .map(({ p }) => p.key);
 }
 
-/** Keys grouped under their prefix (everything before the last dot), in first-seen order. */
+/** Keys grouped under their prefix (everything before the last dot): top-level keys first, then groups in first-seen order. */
 export function groupByPrefix<T extends { key: string }>(items: T[]): { prefix: string; items: T[] }[] {
   const groups = new Map<string, T[]>();
   for (const it of items) {
@@ -197,5 +197,6 @@ export function groupByPrefix<T extends { key: string }>(items: T[]): { prefix: 
     const prefix = at < 0 ? '' : it.key.slice(0, at);
     groups.set(prefix, [...(groups.get(prefix) ?? []), it]);
   }
-  return [...groups.entries()].map(([prefix, items]) => ({ prefix, items }));
+  const out = [...groups.entries()].map(([prefix, items]) => ({ prefix, items }));
+  return [...out.filter((g) => !g.prefix), ...out.filter((g) => g.prefix)];
 }

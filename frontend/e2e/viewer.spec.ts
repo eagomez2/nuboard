@@ -224,6 +224,14 @@ test('sweeps parameter picker: defaults, search, clear, reset and remove', async
   await expect(chips).toHaveCount(n - 1);
 });
 
+test('sweeps parameter picker fits a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 920, height: 500 });
+  await page.goto('/#/sweeps?metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await expect(picker.getByRole('button', { name: 'Reset to defaults' })).toBeInViewport({ ratio: 1 });
+});
+
 test('sweeps parameter chips reorder by dragging', async ({ page }) => {
   await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=optim.lr,seed');
   const chips = page.locator('.chip.param');

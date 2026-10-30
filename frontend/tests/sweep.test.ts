@@ -92,8 +92,8 @@ describe('the parameter picker', () => {
   it('groups keys under their prefix', () => {
     const groups = groupByPrefix([{ key: 'optim.lr' }, { key: 'seed' }, { key: 'optim.wd' }, { key: 'a.b.c' }]);
     expect(groups.map((g) => [g.prefix, g.items.map((i) => i.key)])).toEqual([
-      ['optim', ['optim.lr', 'optim.wd']],
       ['', ['seed']],
+      ['optim', ['optim.lr', 'optim.wd']],
       ['a.b', ['a.b.c']],
     ]);
   });

@@ -37,6 +37,19 @@
   let folded = $state<Set<string>>(new Set());
   let hideDraft = $state('');
   let dragKey = $state<string | null>(null);
+  // the list is fixed to the window, so a panel that clips its content cannot cut it off
+  let place = $state('');
+  function position() {
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 568));
+    const below = window.innerHeight - r.bottom - 18;
+    // open upwards when there is clearly more room above the button
+    place =
+      below < 260 && r.top - 18 > below
+        ? `bottom:${window.innerHeight - r.top + 6}px;left:${left}px;max-height:${r.top - 18}px`
+        : `top:${r.bottom + 6}px;left:${left}px;max-height:${Math.max(120, below)}px`;
+  }
 
   const finder = $derived(keyFilter(query, { regex }));
   const hiddenCount = $derived(infos.filter((p) => hidden(p.key)).length);
@@ -44,10 +57,17 @@
   const groups = $derived(groupByPrefix(listed));
   const byKey = $derived(new Map(infos.map((p) => [p.key, p])));
 
+  $effect(() => {
+    if (!open) return;
+    // any scrolling container may move the button; follow it
+    document.addEventListener('scroll', position, true);
+    return () => document.removeEventListener('scroll', position, true);
+  });
   function toggleOpen() {
     open = !open;
     if (open) {
       hideDraft = hide;
+      position();
       queueMicrotask(() => search?.focus());
     }
   }
@@ -85,6 +105,7 @@
 </script>
 
 <svelte:window
+  onresize={() => open && position()}
   onpointerdown={(e) => open && anchor && !anchor.contains(e.target as Node) && (open = false)}
   onkeydown={(e) => {
     if (e.key === 'Escape' && open) {
@@ -101,7 +122,7 @@
       <span class="faint">{chosen.length} of {infos.length - hiddenCount}</span>
     </button>
     {#if open}
-      <div class="card picker" role="dialog" aria-label="Parameters">
+      <div class="card picker" role="dialog" aria-label="Parameters" style={place}>
         <div class="find" class:bad={!!finder.error}>
           <Icon name="search" size={14} />
           <input
@@ -150,7 +171,7 @@
                           title="More than {MANY_VALUES} values: the axis shows the most common">many values</span
                         >{:else if p.unique}<span class="flag" title="A different value in every run">id-like</span
                         >{:else if p.long}<span class="flag">long text</span>{/if}
-                      <span class="faint">{typeOf(p)} · {p.distinct}</span>
+                      <span class="faint">{typeOf(p)} · {p.distinct} {p.distinct === 1 ? 'value' : 'values'}</span>
                       <span class="imp" title="Rank correlation with {metric}: {p.score?.toFixed(2) ?? 'n/a'}"
                         ><span style="width:{(p.score ?? 0) * 100}%"></span></span
                       >
@@ -235,16 +256,19 @@
     position: relative;
   }
   .picker {
-    position: absolute;
+    position: fixed;
     z-index: 30;
-    top: calc(100% + 6px);
-    left: 0;
     width: min(560px, calc(100vw - 48px));
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     box-shadow: 0 16px 36px -10px rgba(16, 24, 40, 0.35);
+  }
+  .find,
+  .foot,
+  .hide {
+    flex: none;
   }
   .find {
     display: flex;
@@ -283,7 +307,9 @@
     color: var(--accent);
   }
   .list {
-    max-height: 340px;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 420px;
     overflow: auto;
     display: flex;
     flex-direction: column;
