@@ -632,9 +632,19 @@ def test_token_guards_everything_but_assets(tmp_path):
 
     with TestClient(app, follow_redirects=False) as c:
         assert c.get("/api/info", headers={"authorization": "token s3cret"}).status_code == 200
-        res = c.post("/login", data={"token": "s3cret", "next": "//evil.example"})
-        assert res.status_code == 303 and res.headers["location"] == "/"
+
+        for target in ("//evil.example", "/\\evil.example"):
+            res = c.post("/login", data={"token": "s3cret", "next": target})
+            assert res.status_code == 303 and res.headers["location"] == "/"
+
         assert c.get("/api/info").status_code == 200
+
+
+def test_viewer_pages_cannot_be_framed_by_another_site(client):
+    for path in ("/", "/charts", "/figure.html"):
+        res = client.get(path)
+        assert res.headers["x-frame-options"] == "SAMEORIGIN"
+        assert res.headers["content-security-policy"] == "frame-ancestors 'self'"
 
 
 def test_writes_from_another_site_are_refused(client):

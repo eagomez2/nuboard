@@ -11,6 +11,10 @@
 - **Command line reference.** A new [page](reference/cli.md) lists every
   command with its options and defaults (#18).
 - **Known limitations** have their own [page](reference/limitations.md).
+- **Viewer pages can't be framed by another website**, so a page you visit
+  cannot overlay the viewer to trick clicks, and the sign-in form no longer
+  follows a `next` link with a backslash to another site.
+- Package metadata for PyPI: project links and classifiers.
 
 ## 0.19.2
 

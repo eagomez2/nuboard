@@ -9,12 +9,27 @@ license-files = ["LICENSE"]
 authors = [{ name = "Esteban Gómez" }]
 keywords = ["machine-learning", "experiment-tracking", "tensorboard", "visualization"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Visualization",
 ]
 # The logging side is standard library only.
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/eagomez2/nuboard"
+Source = "https://github.com/eagomez2/nuboard"
+Issues = "https://github.com/eagomez2/nuboard/issues"
+Changelog = "https://github.com/eagomez2/nuboard/blob/main/docs/changelog.md"
 
 [project.optional-dependencies]
 viewer = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
