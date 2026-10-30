@@ -163,6 +163,19 @@ export interface Info {
   projects: ProjectInfo[];
   /** Started with `--edit-artifacts`: versions can be added, unlinked and restored. */
   edit_artifacts?: boolean;
+  /** Started with `--read-only-reports`: reports cannot be changed and nothing can be uploaded. */
+  read_only_reports?: boolean;
+  /** Size limits, in bytes, of files uploaded into a report. */
+  upload_limits?: { image: number; text: number };
+}
+
+/** A file uploaded into a report, stored in `<project>/reports/files/`. */
+export interface ReportUpload {
+  /** Report-relative, such as `files/3f2a9c0d1e2b4a5f.png`. */
+  path: string;
+  kind: 'image' | 'text';
+  size: number;
+  name: string;
 }
 
 export interface RunDetail {
@@ -454,6 +467,18 @@ export const api = {
       body: JSON.stringify({ project, report, png }),
     }),
   /** URL of a report-local file such as `files/chart.png`. */
+  /** Upload an image or text file into a report; the server checks its type from the bytes. */
+  uploadReportFile: async (project: string, file: Blob, name: string, kind: 'image' | 'text') => {
+    const res = await fetch(`/api/reports/upload?${qs({ project, name, kind })}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (res.status === 401) location.reload();
+    const body = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
+    if (!res.ok) throw new Error(body.error ?? `upload failed (${res.status})`);
+    return body as ReportUpload;
+  },
   reportFileUrl: (project: string, path: string) =>
     `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${path}`,
   fields: (project: string) => json<{ fields: FieldDef[] }>(`/api/fields?${qs({ project })}`),

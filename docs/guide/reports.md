@@ -79,6 +79,64 @@ side, and the rendered page. Changes are saved a moment after you stop typing
 (or with Ctrl+S / ⌘+S). Headings, lists, tables, links, code blocks and
 images all work; HTML in the Markdown is sanitized.
 
+### Formatting toolbar
+
+The toolbar above the text box writes standard Markdown at the cursor or
+around the selection, so the file stays plain Markdown for git, other Markdown
+viewers and the exports:
+
+| Button | Writes | Shortcut |
+| --- | --- | --- |
+| **B**, *I*, U, S | `**bold**`, `_italic_`, `<u>underline</u>`, `~~strikethrough~~` | Ctrl/⌘+B, I, U, Shift+X |
+| H1, H2, H3, ¶ | `# `, `## `, `### `, or a plain paragraph | |
+| •, 1., ☐, ❝ | `- `, `1. `, `- [ ] ` and `> ` on each selected line | |
+| `` `c` ``, { } | inline code and a fenced code block | |
+| 🔗 | `[text](https://)`, with the URL selected to type over | Ctrl/⌘+K |
+| ―, ▦ | a horizontal rule, and a table of the size you pick | |
+| ↶, ↷ | undo and redo | Ctrl/⌘+Z, Shift+Z |
+
+A button shows as pressed when the cursor is inside its formatting, and
+pressing it again removes it. Underline has no Markdown syntax, so it is
+written as `<u>…</u>`, which the viewer and the HTML export show.
+
+### Inserting images and text files
+
+**Insert** gathers everything a report can hold: **Image**, **Text file**,
+**Table**, and shortcuts to the Charts and Media pages for charts and logged
+items.
+
+- **Image**: drop, paste (a clipboard screenshot) or choose a PNG, JPEG, GIF
+  or WebP file, and add alt text and a caption. It is written as
+  `![alt](files/3f2a9c0d1e2b4a5f.png)`, with the caption as an italic line
+  below. Dropping or pasting an image straight into the text box does the
+  same without the panel.
+- **Text file**: choose or drop a `.txt`, `.md`, `.log`, `.csv`, `.json`,
+  `.yaml` or source file, then pick how it goes in. **Inline** pastes its
+  content into the report: Markdown as it is, a CSV or TSV as a table (or as
+  a code block if you untick **As a table**), anything else as a code block
+  under the file's name, with the language taken from its extension.
+  **Attached** stores the file and writes
+  `[train.log](files/8c1d2e3f4a5b6c7d.log "attachment")`, which the viewer and
+  the HTML export show as a collapsible block with the content and a download
+  link. Other Markdown viewers show a link to the file.
+
+Uploads are stored in `<project>/reports/files/`, named by a hash of their
+content, so the same file uploaded twice is stored once and the project stays
+self-contained when it is copied, zipped or committed. The .zip and HTML
+exports include them.
+
+The viewer checks every upload on the server: images by their first bytes
+(an SVG only if it has no scripts, links or embedded HTML), text by decoding
+it as UTF-8 with no NUL bytes. Nothing is converted. An image can be up to
+20 MB and a text file up to 5 MB; `nuboard up --max-image-mb N --max-text-mb N`
+changes that. Files are served with a fixed type, `nosniff` and a strict
+content security policy, and text files always download, so a renamed HTML
+page never runs. Images on other websites (`![x](https://...)`) are not
+loaded, since that would tell their host who reads the report and break
+offline copies; they show as a link instead. `nuboard up --read-only-reports`
+refuses every change to reports, uploads included, for a viewer shared with
+others.
+
 An embedded item is rendered in place: images as images, audio with the
 waveform player, Plotly, Vega-Lite and Bokeh figures interactively, logged
 HTML in a sandbox and text as a block, each with a caption and a link to its
@@ -87,14 +145,14 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
 ## Sharing
 
 - **.zip** downloads the Markdown with every embedded image and audio
-  clip as a file in `files/`, figures and HTML as linked files, chart
+  clip as a file in `files/`, uploaded images and attached files too, figures and HTML as linked files, chart
   snapshots as images, and logged text inlined, so it reads on GitHub or in any Markdown editor without
   NuBoard. A waveform figure becomes its [data bundle](../api/add_figure.md#downloading-the-audio-and-signals),
   a `.zip` with its audio as a `.wav`, one `.npy` per signal and a
   `metadata.json` (sample rate, range, regions, caption, run, key and step).
 - **.html** downloads the report as one self-contained HTML file that opens
   offline, with no NuBoard and no CDN: images, audio clips and snapshots are
-  inlined, logged text and HTML are included, and Plotly and Vega-Lite
+  inlined, attached files are collapsible blocks with a download link, logged text and HTML are included, and Plotly and Vega-Lite
   figures stay interactive because their libraries are embedded in the file
   (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
   cdn.bokeh.org once, while exporting, for the figure's exact version and

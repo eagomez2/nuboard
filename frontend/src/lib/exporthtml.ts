@@ -623,6 +623,7 @@ figcaption small{color:var(--faint);font-family:ui-monospace,Menlo,monospace;fon
 .nbchart{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .nbchart-head{display:flex;gap:10px;align-items:baseline;font-size:13px}.nbchart-head b{font-family:ui-monospace,Menlo,monospace}.nbchart-head span{color:var(--faint);font-size:12px}
 .nbsvg{overflow-x:auto;border:1px solid var(--border);border-radius:8px}.nbsvg svg{display:block;max-width:100%;height:auto}.nbtip{position:absolute;z-index:5;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;max-width:min(380px,75%);padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:0 4px 16px rgba(0,0,0,.14);font:12px ui-monospace,Menlo,monospace;color:var(--text);pointer-events:none;white-space:nowrap}.nbtip span{overflow:hidden;text-overflow:ellipsis}.nbtip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}.nbtip-head{font-weight:600}.nbtip-faint{color:var(--faint)}.nbtip-pin{border-color:var(--link)}.nbplot .nbtip{transform:none}.nbtip[hidden],.nbdot[hidden]{display:none}.nbdot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;border:2px solid var(--panel);pointer-events:none;z-index:4}.nblegend{display:flex;flex-wrap:wrap;gap:4px 12px;font:12px ui-monospace,Menlo,monospace;color:var(--muted)}.nblegend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.nb-attachment{margin:.8em 0;border:1px solid var(--border);border-radius:9px}.nb-attachment summary{padding:7px 12px;cursor:pointer;font-size:13.5px}.nb-attachment pre{margin:0;border:0;border-top:1px solid var(--border);border-radius:0 0 9px 9px;max-height:420px}
 footer{max-width:900px;margin:0 auto 32px;padding:0 16px;color:var(--faint);font-size:12px;text-align:center}
 .nbtheme{position:fixed;top:14px;right:14px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer}
 .nbtheme:hover{color:var(--text)}.nbtheme svg{width:18px;height:18px}
@@ -718,6 +719,23 @@ export async function reportHtml(
   for (const el of main.querySelectorAll<HTMLElement>('.nb-view')) {
     const { src = '', caption = '' } = el.dataset;
     jobs.push(swap(el, /\.svg$/i.test(src) ? svgFigure(src, caption) : snapshot(src, caption, true)));
+  }
+  // an attached text file: its content in a collapsible block, and the file itself as a download
+  for (const el of main.querySelectorAll<HTMLElement>('.nb-attach')) {
+    const { src = '', name = '' } = el.dataset;
+    jobs.push(
+      swap(
+        el,
+        (async () => {
+          const res = await fetch(src);
+          if (!res.ok) return `<p><em>(missing: ${esc(name)})</em></p>`;
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const text = new TextDecoder().decode(bytes);
+          const href = `data:text/plain;charset=utf-8;base64,${base64(bytes)}`;
+          return `<details class="nb-attachment"><summary><b>${esc(name)}</b> · <a href="${href}" download="${esc(name)}">Download</a></summary><pre>${esc(text)}</pre></details>`;
+        })(),
+      ),
+    );
   }
   for (const img of main.querySelectorAll<HTMLImageElement>('img'))
     if (img.getAttribute('src')?.startsWith(files))

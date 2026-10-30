@@ -68,6 +68,9 @@ def up(
     token: str | None = None,
     no_token: bool = False,
     edit_artifacts: bool = False,
+    read_only_reports: bool = False,
+    max_image_mb: float = 20,
+    max_text_mb: float = 5,
 ) -> None:
     """Serve a folder of runs with the web viewer until interrupted.
 
@@ -85,6 +88,9 @@ def up(
         token: Access token; also used on a loopback address when given.
         no_token: Serve a non-loopback address without a token.
         edit_artifacts: Allow adding, unlinking and restoring artifact versions.
+        read_only_reports: Refuse changes to reports, including uploads.
+        max_image_mb: Size limit, in MB, of an image uploaded into a report.
+        max_text_mb: Size limit, in MB, of a text file uploaded into a report.
 
     Raises:
         SystemExit: If the viewer dependencies are missing, `directory` does not
@@ -114,6 +120,9 @@ def up(
         allowed_hosts=["127.0.0.1", "localhost", "[::1]", "::1"] if loopback else None,
         token=token,
         edit_artifacts=edit_artifacts,
+        read_only_reports=read_only_reports,
+        max_image_bytes=int(max_image_mb * 1024 * 1024),
+        max_text_bytes=int(max_text_mb * 1024 * 1024),
     )
     port = _free_port(host, port)
     shown = "localhost" if loopback else socket.gethostname() if host in ("0.0.0.0", "::") else host
@@ -129,6 +138,9 @@ def up(
 
     if edit_artifacts:
         print("  Artifact versions can be added, unlinked and restored from the viewer.")
+
+    if read_only_reports:
+        print("  Reports are read-only: they cannot be edited and nothing can be uploaded.")
 
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(link)).start()
@@ -225,6 +237,23 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="allow adding artifact versions (references to paths here) and unlinking them",
     )
+    p.add_argument(
+        "--read-only-reports",
+        action="store_true",
+        help="refuse changes to reports, including image and text uploads (for a shared server)",
+    )
+    p.add_argument(
+        "--max-image-mb",
+        type=float,
+        default=20,
+        help="size limit of an image uploaded into a report (default: 20)",
+    )
+    p.add_argument(
+        "--max-text-mb",
+        type=float,
+        default=5,
+        help="size limit of a text file uploaded into a report (default: 5)",
+    )
 
     p = sub.add_parser(
         "demo", help="write a demo workspace (and optionally start the viewer with a live run)"
@@ -285,6 +314,9 @@ def main(argv: list[str] | None = None) -> None:
             token=args.token,
             no_token=args.no_token,
             edit_artifacts=args.edit_artifacts,
+            read_only_reports=args.read_only_reports,
+            max_image_mb=args.max_image_mb,
+            max_text_mb=args.max_text_mb,
         )
     elif args.cmd == "demo":
         from .demo import generate, live

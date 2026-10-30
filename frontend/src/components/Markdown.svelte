@@ -1,5 +1,6 @@
 <script lang="ts">
   import { mount, unmount } from 'svelte';
+  import AttachmentEmbed from './AttachmentEmbed.svelte';
   import ChartEmbed from './ChartEmbed.svelte';
   import MediaEmbed from './MediaEmbed.svelte';
   import OverlayEmbed from './OverlayEmbed.svelte';
@@ -39,6 +40,12 @@
             caption: slot.dataset.caption ?? '',
             src: slot.dataset.src ?? '',
           },
+        }),
+      ),
+      ...[...el.querySelectorAll<HTMLElement>('.nb-attach')].map((slot) =>
+        mount(AttachmentEmbed, {
+          target: slot,
+          props: { src: slot.dataset.src ?? '', name: slot.dataset.name ?? '' },
         }),
       ),
       ...[...el.querySelectorAll<HTMLElement>('.nb-view')].map((slot) =>

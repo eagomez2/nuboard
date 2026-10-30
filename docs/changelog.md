@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Report editor: formatting toolbar and Insert menu.** Buttons for bold,
+  italic, underline (`<u>`), strikethrough, headings, lists, checklists,
+  quotes, code, links, rules and tables write plain Markdown, with Ctrl/⌘+B,
+  I, U, Shift+X and K, undo and redo, and show as pressed when the cursor is
+  inside their formatting (pressing again removes it). **Insert** adds an
+  **Image** (pick, drop or paste, with alt text and a caption), a **Text file**
+  (inline as Markdown, a table or code, or attached as a collapsible block with
+  a download link), a **Table**, or goes to Charts and Media. Dropping or
+  pasting an image into the text box uploads it too (#4).
+- **Uploads are checked and stored in the project.** They go in
+  `reports/files/`, named by content hash, and are part of the .zip and HTML
+  exports. The server checks the bytes (PNG, JPEG, GIF, WebP or a plain SVG;
+  UTF-8 text with no NUL bytes), caps sizes at 20 MB for images and 5 MB for
+  text (`--max-image-mb`, `--max-text-mb`), and serves report files with a
+  fixed type, `nosniff` and a strict CSP; text files always download.
+  `nuboard up --read-only-reports` turns off every change to reports.
+- **Report images from other websites are not loaded**; they show as a link.
 - **Filter the settings of compared runs.** A filter box in **All settings**
   narrows its rows by key: plain text, `/regex/` (or the **.\*** toggle),
   `!exclusions` and several terms at once, optionally matching values too. It

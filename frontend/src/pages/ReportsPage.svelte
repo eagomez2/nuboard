@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '../components/Icon.svelte';
   import Markdown from '../components/Markdown.svelte';
+  import ReportEditor from '../components/ReportEditor.svelte';
   import { api, type ReportInfo } from '../lib/api';
   import { DISPLAY_NAME } from '../lib/brand';
   import { ask, confirmAction } from '../lib/dialog.svelte';
@@ -243,18 +244,7 @@
       </div>
       <div class="panes" class:split={view === 'split'}>
         {#if view !== 'preview'}
-          <textarea
-            class="editor mono"
-            aria-label="Report text"
-            spellcheck="true"
-            bind:value={text}
-            onblur={save}
-            onkeydown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-                e.preventDefault();
-                save();
-              }
-            }}></textarea>
+          <ReportEditor bind:text project={current.project} onsave={save} />
         {/if}
         {#if view !== 'write'}
           <div class="preview printable">
@@ -387,22 +377,6 @@
   .panes.split {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .editor {
-    width: 100%;
-    min-height: 68vh;
-    resize: vertical;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--panel-2);
-    padding: 12px 14px;
-    font-size: 13px;
-    line-height: 1.55;
-    outline: none;
-    box-sizing: border-box;
-  }
-  .editor:focus {
-    border-color: var(--accent);
-  }
   .preview {
     min-width: 0;
     padding: 0 6px;
@@ -410,7 +384,7 @@
   @media print {
     .side,
     .toolbar,
-    .editor {
+    .panes > :global(.editor-box) {
       display: none !important;
     }
     .layout,

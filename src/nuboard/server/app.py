@@ -48,7 +48,10 @@ from ..collection import delete_collection, list_collections, save_collection
 from ..jobs import read_meta
 from ..query import QueryError, parse
 from ..reports import (
+    MAX_IMAGE_BYTES,
+    MAX_TEXT_BYTES,
     MediaRef,
+    UploadError,
     check_field,
     clean_audio_notes,
     export_report,
@@ -59,6 +62,8 @@ from ..reports import (
     save_fields,
     save_report,
     save_snapshot,
+    save_upload,
+    served_type,
 )
 from .auth import Guard
 from .data import Store, path_inside
@@ -115,6 +120,13 @@ class JSON(JSONResponse):
         return json.dumps(
             _safe(content), ensure_ascii=False, separators=(",", ":"), default=str
         ).encode("utf-8")
+
+
+def _read_only() -> JSONResponse:
+    """The response to a change of a report on a server started with `--read-only-reports`."""
+    return JSON(
+        {"error": "reports are read-only on this server (--read-only-reports)"}, status_code=403
+    )
 
 
 def _config_leaves(config: dict[str, Any]) -> Iterator[tuple[str, Any]]:
@@ -269,6 +281,9 @@ def create_app(
     allowed_hosts: list[str] | None = None,
     token: str | None = None,
     edit_artifacts: bool = False,
+    read_only_reports: bool = False,
+    max_image_bytes: int = MAX_IMAGE_BYTES,
+    max_text_bytes: int = MAX_TEXT_BYTES,
 ) -> Starlette:
     """Create the viewer's Starlette app for a folder of runs.
 
@@ -285,6 +300,10 @@ def create_app(
         edit_artifacts: Allow adding artifact versions (as references to paths
             on this machine) and unlinking and restoring them. Without it those
             requests are refused.
+        read_only_reports: Refuse every change to reports: saving, snapshots
+            and uploads, as on a shared server.
+        max_image_bytes: Size limit of an image uploaded into a report.
+        max_text_bytes: Size limit of a text file uploaded into a report.
 
     Returns:
         The app. Its `state.store` holds the `Store` it reads runs through.
@@ -339,6 +358,8 @@ def create_app(
                 "projects": projects,
                 "catalog_version": catalog.version,
                 "edit_artifacts": edit_artifacts,
+                "read_only_reports": read_only_reports,
+                "upload_limits": {"image": max_image_bytes, "text": max_text_bytes},
             }
         )
 
@@ -1522,6 +1543,9 @@ def create_app(
         report to a new name and `delete: true` removes it.
         """
 
+        if read_only_reports:
+            return _read_only()
+
         if not request.headers.get("content-type", "").startswith("application/json"):
             return PlainTextResponse("expected application/json", 415)
 
@@ -1567,12 +1591,72 @@ def create_app(
         if target is None or not target.is_file():
             return JSON({"error": "not found"}, status_code=404)
 
-        # an SVG opened on its own runs nothing, whatever the file holds
-        csp = "default-src 'none'; style-src 'unsafe-inline'"
-        return FileResponse(target, headers={"Content-Security-Policy": csp})
+        # The type comes from a fixed list, never from sniffing; text and unknown files are
+        # downloads, and an SVG opened on its own runs nothing, whatever the file holds
+        media_type, download = served_type(target.name)
+        return FileResponse(
+            target,
+            media_type=media_type,
+            filename=target.name if download else None,
+            content_disposition_type="attachment" if download else "inline",
+            headers={
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    async def report_upload(request: Request) -> Response:
+        """Store an image or text file uploaded into a report (see `save_upload`).
+
+        The body is the file's bytes, sent as `application/octet-stream`; query
+        parameters `project`, `name` (the file's name) and `kind` (`image` or
+        `text`). Returns the stored file's `path`, `kind`, `size` and `name`, or
+        an `error` that says why it was refused.
+        """
+
+        if read_only_reports:
+            return _read_only()
+
+        if not request.headers.get("content-type", "").startswith("application/octet-stream"):
+            return PlainTextResponse("expected application/octet-stream", 415)
+
+        pdir = project_dir(request.query_params.get("project", ""))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        kind = request.query_params.get("kind", "")
+        name = request.query_params.get("name", "file")
+        limit = max_text_bytes if kind == "text" else max_image_bytes
+        too_large = JSON(
+            {"error": f"{name} is too large; {kind} files can be at most {limit / 1e6:.0f} MB"},
+            status_code=413,
+        )
+        declared = request.headers.get("content-length", "")
+
+        if declared.isdigit() and int(declared) > limit:
+            return too_large
+
+        data = bytearray()
+
+        async for chunk in request.stream():
+            data += chunk
+
+            if len(data) > limit:
+                return too_large
+
+        try:
+            saved = await run_in_threadpool(save_upload, pdir, bytes(data), name, kind, limit)
+        except UploadError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        return JSON(saved)
 
     async def report_snapshot(request: Request) -> Response:
         """Store a chart snapshot (JSON body: `project`, `report`, `png` as a data URL)."""
+
+        if read_only_reports:
+            return _read_only()
 
         if not request.headers.get("content-type", "").startswith("application/json"):
             return PlainTextResponse("expected application/json", 415)
@@ -1757,6 +1841,7 @@ def create_app(
         Route("/api/reports", reports),
         Route("/api/reports", report_save, methods=["POST"]),
         Route("/api/reports/snapshot", report_snapshot, methods=["POST"]),
+        Route("/api/reports/upload", report_upload, methods=["POST"]),
         Route("/api/reports/{project:path}/files/{file}", report_asset),
         Route("/api/reports/{project:path}/{name}/export", report_export),
         Route("/api/reports/{project:path}/{name}", report_get),

@@ -38,6 +38,7 @@ path.
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
+    reports/files/<hash>.<ext>            images and text files uploaded into reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -404,6 +405,25 @@ The Media page's "All runs on one chart" has the title
 `overlay:<ref> <ref> ...`, one `<run id>/<key>@<step>` reference per run
 (as after `media:`), separated by spaces. The viewer draws the chart live
 from those items and shows the PNG snapshot when none of them is found.
+
+### Uploaded files
+
+Images and text files uploaded in the report editor are stored in
+`reports/files/` as uploaded, named by the first 16 hex digits of the SHA-256
+of their bytes plus an extension (`files/3f2a9c0d1e2b4a5f.png`), so identical
+uploads share one file.
+
+- **Images**: `.png`, `.jpg`, `.gif` or `.webp`, the extension chosen from
+  the file's first bytes, or `.svg` for an SVG drawing with no scripts, event
+  handlers, links or embedded HTML. Embedded as `![alt](files/<hash>.<ext>)`.
+- **Text files**: UTF-8 with no NUL bytes; the extension is the uploaded
+  file's when it is a known text or source extension (`.txt`, `.md`, `.log`,
+  `.csv`, `.json`, `.yaml`, `.py`, ...), else `.txt`. An attached file is a
+  link titled `attachment`: `[train.log](files/<hash>.log "attachment")`.
+
+The viewer serves images inline with their type, and every other file as a
+download (`text/plain; charset=utf-8` for text), always with
+`X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'`.
 
 ## Property definitions: `fields.json`
 

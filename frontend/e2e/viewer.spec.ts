@@ -1368,3 +1368,155 @@ test('a helper job shows on its run, and storage is measured only on request', a
   await page.locator('.sidehead').getByRole('button', { name: 'Storage' }).click();
   await expect(page.getByRole('tab', { name: 'Artifacts' })).toHaveAttribute('aria-selected', 'true');
 });
+
+// A 2×1 PNG, built by hand so the test needs no image files
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGP4z8DAwMDAAAAOAAH/1i4hAAAAAElFTkSuQmCC',
+  'base64',
+);
+
+async function openReport(page: import('@playwright/test').Page, name: string, text: string) {
+  await page.request.post('/api/reports', { data: { project: 'vit-ablations', name, text } });
+  await page.goto(`/#/reports?rproject=vit-ablations&report=${name}`);
+  const box = page.getByRole('textbox', { name: 'Report text' });
+  await expect(box).toHaveValue(text);
+  return box;
+}
+const select = (box: import('@playwright/test').Locator, from: number, to: number) =>
+  box.evaluate((el: HTMLTextAreaElement, [a, b]) => (el.focus(), el.setSelectionRange(a, b)), [from, to]);
+
+test('the report toolbar writes Markdown, shows what is active, toggles off and undoes', async ({ page }) => {
+  const box = await openReport(page, 'e2e-toolbar', '# Toolbar\n\nhello world');
+  const bold = page.getByRole('button', { name: 'Bold' });
+  await select(box, 17, 22); // "world"
+  await bold.click();
+  await expect(box).toHaveValue('# Toolbar\n\nhello **world**');
+  await expect(bold).toHaveAttribute('aria-pressed', 'true');
+  await bold.click();
+  await expect(box).toHaveValue('# Toolbar\n\nhello world');
+  await expect(bold).toHaveAttribute('aria-pressed', 'false');
+
+  await select(box, 11, 16); // "hello"
+  await box.press('Control+u');
+  await expect(box).toHaveValue('# Toolbar\n\n<u>hello</u> world');
+  await expect(page.locator('.preview u')).toHaveText('hello');
+  await page.getByRole('button', { name: 'Heading 2' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n## <u>hello</u> world');
+  await expect(page.getByRole('button', { name: 'Heading 2' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n<u>hello</u> world');
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n## <u>hello</u> world');
+
+  await select(box, 32, 32);
+  await page.getByRole('button', { name: 'Table' }).click();
+  await page.getByRole('button', { name: '2 rows by 3 columns' }).click();
+  await expect(box).toHaveValue(
+    /\| Column 1 \| Column 2 \| Column 3 \|\n\| --- \| --- \| --- \|\n(\| +\| +\| +\|\n){2}/,
+  );
+  await expect(page.locator('.preview table th')).toHaveCount(3);
+});
+
+test('images are uploaded from the Insert menu, by paste and by drop, and go into the zip and HTML exports', async ({
+  page,
+}) => {
+  const box = await openReport(page, 'e2e-images', '# Images\n');
+  await select(box, 9, 9);
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Image/ }).click();
+  const dlg = page.getByRole('dialog', { name: 'Insert an image' });
+  await dlg.getByLabel('Choose an image').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG });
+  await dlg.getByLabel('Caption').fill('Two pixels');
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/!\[dot\]\(files\/[0-9a-f]{16}\.png\)\n\n\*Two pixels\*/);
+  const path = (await box.inputValue()).match(/files\/[0-9a-f]{16}\.png/)![0];
+  await expect(page.locator(`.preview img[src$="${path}"]`)).toBeVisible();
+
+  // a renamed HTML page is refused with a clear message
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Image/ }).click();
+  await dlg.getByLabel('Choose an image').setInputFiles({
+    name: 'evil.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('<html><script>alert(1)</script></html>'),
+  });
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(dlg.getByRole('alert')).toContainText('not a PNG, JPEG, GIF or WebP image');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+
+  // a pasted screenshot goes straight in
+  await box.evaluate((el: HTMLTextAreaElement, b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, PNG.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`!\\[Pasted image\\]\\(${path.replace('.', '\\.')}\\)`));
+
+  // a text file dropped on the text box opens its panel; an image goes straight in
+  const drop = (name: string, type: string, b64: string) =>
+    box.evaluate(
+      (el: HTMLTextAreaElement, [n, t, b]) => {
+        const data = new DataTransfer();
+        data.items.add(new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], n, { type: t }));
+        el.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+      },
+      [name, type, b64],
+    );
+  await drop('notes.md', 'text/markdown', Buffer.from('**dropped**').toString('base64'));
+  const textPanel = page.getByRole('dialog', { name: 'Insert a text file' });
+  await expect(textPanel).toContainText('notes.md');
+  await textPanel.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/\*\*dropped\*\*/);
+  await drop('dot.png', 'image/png', PNG.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`!\\[dot\\]\\(${path.replace('.', '\\.')}\\)[^]*!\\[dot\\]`));
+
+  await page.waitForTimeout(900); // saved a moment after the last change
+  const zip = await page.request.get('/api/reports/vit-ablations/e2e-images/export');
+  expect((await zip.body()).includes(Buffer.from(path))).toBe(true);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const out = test.info().outputPath('e2e-images.html');
+  await (await exported).saveAs(out);
+  const html = readFileSync(out, 'utf8');
+  expect(html).toContain(`<img src="data:image/png;base64,${PNG.toString('base64')}`);
+  expect(html).not.toContain('/api/reports/');
+});
+
+test('text files go in inline as code or a table, or attached as a collapsible block', async ({ page }) => {
+  const box = await openReport(page, 'e2e-texts', '# Texts\n');
+  const insertText = async (name: string, body: string, attach = false) => {
+    await select(box, (await box.inputValue()).length, (await box.inputValue()).length);
+    await page.getByRole('button', { name: 'Insert', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Text file/ }).click();
+    const dlg = page.getByRole('dialog', { name: 'Insert a text file' });
+    await dlg
+      .getByLabel('Choose a text file')
+      .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(body) });
+    if (attach) await dlg.getByRole('button', { name: 'Attached' }).click();
+    await dlg.getByRole('button', { name: 'Insert' }).click();
+  };
+  await insertText('train.py', 'print("hi")\n');
+  await expect(box).toHaveValue(/\*train\.py\*\n\n```python\nprint\("hi"\)\n```/);
+  await insertText('scores.csv', 'run,acc\na,0.8\n');
+  await expect(box).toHaveValue(/\| run \| acc \|\n\| --- \| --- \|\n\| a \| 0\.8 \|/);
+  await insertText('train.log', 'epoch 1 loss 0.9\n', true);
+  await expect(box).toHaveValue(/\[train\.log\]\(files\/[0-9a-f]{16}\.log "attachment"\)/);
+  const attached = page.locator('.preview .nb-attachment');
+  await attached.locator('summary').click();
+  await expect(attached.locator('pre')).toHaveText('epoch 1 loss 0.9\n');
+  await expect(attached.getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'train.log');
+
+  await page.waitForTimeout(900);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const out = test.info().outputPath('e2e-texts.html');
+  await (await exported).saveAs(out);
+  const html = readFileSync(out, 'utf8');
+  expect(html).toMatch(/<details class="nb-attachment"><summary><b>train\.log<\/b>[^]*<pre>epoch 1 loss 0\.9\n<\/pre>/);
+  expect(html).toContain('download="train.log"');
+});

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 
 import pyarrow as pa
 import pytest
@@ -360,9 +362,6 @@ def test_reports_round_trip(client):
     ] == ("Notes")
     export = client.get("/api/reports/sweep/Notes/export")
     assert export.headers["content-type"] == "application/zip"
-    import io
-    import zipfile
-
     md = zipfile.ZipFile(io.BytesIO(export.content)).read("Notes.md").decode()
     assert "```text\nhi\n```" in md
     moved = client.post(
@@ -816,3 +815,97 @@ def test_sweep_keys_send_lists_as_json(tmp_path):
     with TestClient(app) as c:
         res = c.get("/api/sweep-keys", params={"project": "lists"}).json()
         assert sorted(res["values"]["layers"].values()) == ["[128]", "[64, 64]"]
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def upload(client, data, name, kind, project="sweep"):
+    return client.post(
+        "/api/reports/upload",
+        params={"project": project, "name": name, "kind": kind},
+        content=data,
+        headers={"content-type": "application/octet-stream"},
+    )
+
+
+def test_report_uploads_are_checked_stored_by_hash_and_served_locked_down(client):
+    first = upload(client, PNG, "shot.PNG", "image").json()
+    assert first["path"].startswith("files/") and first["path"].endswith(".png")
+    assert upload(client, PNG, "again.png", "image").json()["path"] == first["path"]  # stored once
+    jpeg = upload(client, b"\xff\xd8\xff\xe0" + b"\x00" * 20, "photo.bin", "image").json()
+    assert jpeg["path"].endswith(".jpg")  # the bytes decide the type, not the name
+
+    img = client.get(f"/api/reports/sweep/files/{first['path'][6:]}")
+    assert img.headers["content-type"] == "image/png"
+    assert img.headers["x-content-type-options"] == "nosniff"
+    assert img.headers["content-security-policy"].startswith("default-src 'none'")
+    assert "attachment" not in img.headers.get("content-disposition", "")
+
+    log = upload(client, "épocas 1\nloss 0.5\n".encode(), "train.log", "text").json()
+    assert log["path"].endswith(".log") and log["name"] == "train.log"
+    served = client.get(f"/api/reports/sweep/files/{log['path'][6:]}")
+    assert served.headers["content-type"] == "text/plain; charset=utf-8"
+    assert served.headers["content-disposition"].startswith("attachment")
+    assert served.text == "épocas 1\nloss 0.5\n"
+
+    # a renamed HTML page is stored as plain text and downloaded, never rendered
+    html = upload(client, b"<script>alert(1)</script>", "page.html", "text").json()
+    assert html["path"].endswith(".txt")
+    page = client.get(f"/api/reports/sweep/files/{html['path'][6:]}")
+    assert page.headers["content-type"].startswith("text/plain")
+
+    refused = {
+        "html as image": upload(client, b"<html><body>hi</body></html>", "x.png", "image"),
+        "script svg": upload(client, b"<svg><script>alert(1)</script></svg>", "x.svg", "image"),
+        "binary as text": upload(client, b"ab\x00cd", "x.txt", "text"),
+        "latin-1 text": upload(client, "caf\xe9".encode("latin-1"), "x.txt", "text"),
+        "empty": upload(client, b"", "x.png", "image"),
+        "unknown project": upload(client, PNG, "x.png", "image", project="zzz"),
+        "unknown kind": upload(client, PNG, "x.png", "audio"),
+    }
+
+    for what, res in refused.items():
+        assert res.status_code == 400, what
+        assert res.json()["error"], what
+
+    assert "not UTF-8" in refused["latin-1 text"].json()["error"]
+    assert "PNG, JPEG, GIF or WebP" in refused["html as image"].json()["error"]
+    wrong_type = client.post(
+        "/api/reports/upload",
+        params={"project": "sweep", "name": "a.png", "kind": "image"},
+        json={"png": "x"},
+    )
+    assert wrong_type.status_code == 415
+
+
+def test_report_upload_limits_and_read_only_reports(tmp_path):
+    with nb.init("p", config={}, capture_env=False) as run:
+        run.add_scalar({"loss": 1.0}, step=0)
+
+    small = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", max_text_bytes=10)
+
+    with TestClient(small) as c:
+        assert c.get("/api/info").json()["upload_limits"]["text"] == 10
+        big = upload(c, b"x" * 11, "a.txt", "text", project="p")
+        assert big.status_code == 413 and "at most" in big.json()["error"]
+        assert upload(c, b"x" * 10, "a.txt", "text", project="p").status_code == 200
+
+    locked = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_reports=True)
+
+    with TestClient(locked) as c:
+        assert c.get("/api/info").json()["read_only_reports"] is True
+        assert upload(c, PNG, "a.png", "image", project="p").status_code == 403
+        save = c.post("/api/reports", json={"project": "p", "name": "r", "text": "# r"})
+        assert save.status_code == 403 and "read-only" in save.json()["error"]
+
+
+def test_report_export_includes_uploaded_images_and_attachments(client):
+    image = upload(client, PNG, "shot.png", "image").json()["path"]
+    log = upload(client, b"step 1\n", "train.log", "text").json()["path"]
+    text = f'# Up\n\n![a shot]({image})\n\n[train.log]({log} "attachment")\n'
+    client.post("/api/reports", json={"project": "sweep", "name": "Up", "text": text})
+    zf = zipfile.ZipFile(io.BytesIO(client.get("/api/reports/sweep/Up/export").content))
+    md = zf.read("Up.md").decode()
+    assert f"![a shot]({image})" in md and f"[train.log]({log})" in md
+    assert zf.read(image) == PNG and zf.read(log) == b"step 1\n"

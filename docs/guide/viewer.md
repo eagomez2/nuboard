@@ -591,4 +591,5 @@ tries to make through your browser.
 
 The token travels in plain HTTP. On an untrusted network, keep the default
 host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
-Artifacts stay read-only unless you add `--edit-artifacts`.
+Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
+edited and take uploads unless you add `--read-only-reports`.
