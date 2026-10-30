@@ -75,14 +75,19 @@ scatter) and on the **Timeline** add a snapshot of the plot as shown:
 The title after `view:` is the page and its settings; in NuBoard the image
 gets an **Open in Sweeps** (or **Open in Timeline**) button that restores
 that view. A Timeline snapshot is an SVG drawing: hovering a bar shows the
-run's name, id, status, start, duration and alerts, in NuBoard and in an
-exported HTML file.
+run's name, id, status, start, duration and alerts in a card like the
+Timeline page's, in NuBoard and in an exported HTML file. In NuBoard, clicking
+a bar opens the run.
 
 ## Writing
 
 The **Reports** page lists the reports of every project. **New** creates one;
 **Write**, **Split** and **Preview** switch between the editor, both side by
-side, and the rendered page. Changes are saved a moment after you stop typing
+side, and the rendered page. A report with text opens in **Preview** and an
+empty one in **Split**; once you pick one, it is remembered in this browser.
+**Preview** keeps a reading width of about 900 px; **Full width** uses the
+whole pane. The button beside **Reports** (or `[`) folds the report list into
+a thin bar, also remembered. Changes are saved a moment after you stop typing
 (or with Ctrl+S / ⌘+S). Headings, lists, tables, links, code blocks and
 images all work; HTML in the Markdown is sanitized.
 
@@ -195,7 +200,7 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   every series' value at that step, and a click pins it; hovering a PR curve
   shows the nearest threshold with its precision, recall and counts, and
   hovering a distribution shows the bin under the pointer for each run.
-  Timeline snapshots keep a hover title on every bar. Sweeps snapshots are
+  Timeline snapshots show a hover card on every bar. Sweeps snapshots are
   images and keep the colors they were taken with.
 - **Print** prints the rendered report, or saves it as a PDF, without the
   viewer's menus.

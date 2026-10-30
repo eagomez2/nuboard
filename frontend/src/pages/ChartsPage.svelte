@@ -22,6 +22,7 @@
   const smoothing = $derived(Number(router.get('smooth', String(prefs.get('smooth', 0.6)))));
   const showRaw = $derived(router.get('raw', '1') === '1');
   const showDots = $derived(router.get('dots', '1') === '1');
+  const showNames = $derived(router.get('names', '1') === '1');
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
   const showBase = $derived(router.get('base', '1') === '1');
@@ -700,6 +701,15 @@
             ></button>Ranges</label
           >
         {/if}
+        <label class="tg" title="The full metric name under each small chart"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={showNames}
+            aria-label="Full names"
+            onclick={() => router.set({ names: showNames ? '0' : null })}
+          ></button>Full names</label
+        >
         <label class="tg" title="A dot on each curve at the logged point under the cursor (or the pinned one)"
           ><button
             class="switch"
@@ -1050,6 +1060,9 @@
                 {colorOf}
                 themeVersion={app.themeVersion}
                 {tick}
+                markers={showDots}
+                pinX={pinned ? cursorX : null}
+                fullName={showNames}
                 onFocus={() => {
                   router.set({ metric: m, zoom: null });
                   window.scrollTo({ top: 0, behavior: 'smooth' });

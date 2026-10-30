@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.2
 
 - **`nuboard merge SRC DEST`** merges a project logged on two machines into
   one folder. It shows the full plan first (runs to copy, identical items,
@@ -11,6 +11,24 @@
   is copied next to DEST's. `--dry-run`, `--yes`, `--json`, `-v`,
   `--project` and `--include-running` (#16). See
   [Working on several machines](guide/machines.md).
+
+- **Small charts show values on hover.** Hovering a chart in the **All
+  scalars** grid shows each run's value at the cursor, best first, up to eight
+  and "+N more" (#3).
+- **A pinned step shows on every chart.** While the main chart is pinned,
+  every small chart draws a dashed line at that step with a dot on each
+  curve, and hovering one shows its values there (#3).
+- **Full scalar names under small charts**, wrapping instead of cut off;
+  **Full names** in the display row turns them off (#3).
+- **Timeline hover cards in reports.** A Timeline snapshot in a report shows
+  the Timeline page's hover card on each bar (name, id, status, project,
+  start, duration, alerts) in the preview and in exported HTML, instead of a
+  slow browser tooltip; in NuBoard, clicking a bar opens the run (#3).
+- **More room for reports.** A report with text opens in **Preview** (the
+  view you pick is remembered), which keeps a reading width of about 900 px
+  with a **Full width** toggle. The report list and the **Workspace** list on
+  the Runs page fold into a thin bar with their button or `[`, remembered per
+  browser (#3).
 
 - **Datasets as Sweeps parameters.** The artifact versions each run used are
   parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared

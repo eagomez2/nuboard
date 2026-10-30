@@ -1278,7 +1278,7 @@ wheels = [
 
 [[package]]
 name = "nuboard"
-version = "0.19.1"
+version = "0.19.2"
 source = { editable = "." }
 
 [package.optional-dependencies]
