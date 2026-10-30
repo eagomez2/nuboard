@@ -1,0 +1,35 @@
+name: Windows
+
+# Run by hand from the Actions tab while Windows support is being checked; it
+# never runs on pushes or pull requests, so it cannot mark them as failing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - run: uv sync --locked
+      # A test that hangs fails after 2 minutes and is named in the log
+      - run: uv run pytest tests -v --timeout=120
