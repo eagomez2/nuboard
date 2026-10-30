@@ -43,8 +43,12 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in **Media**, **Compare** up to eight of them, or
-  **Plot selected**.
+  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in
+  **Charts**, **Sweeps** or **Media**, **Compare**
+  up to eight of them, or **Plot selected**. Charts, Sweeps, Media and
+  Timeline then show a **Showing N selected runs** banner with buttons to the
+  other pages, which keep the selection, and **Show all**, which goes back to
+  the query result; **Clear selection** ends it too.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
@@ -181,19 +185,38 @@ For a single run there are two more tabs:
   `topics has "augmentation"`). Definitions are kept in
   `<project>/fields.json`.
 
+**Charts**, **Sweeps** and **Media** after the tabs open those pages with
+only the run (or the compared runs), as the selection bar does, without
+ticking checkboxes.
+
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
 differs. **Files** and pinned tabs show a line diff between two of the
 runs. With more than two, pick which two from the **Diff … against …** menus. **Only changes** hides
 identical rows and lines.
 
+The filter box above **All settings** narrows its rows by key, together with
+**Only changes**, and shows how many keys are left (`12 of 340 keys`):
+
+- Plain text matches part of a key, ignoring case: `edge.min`, `lr`.
+- Text in slashes is a regular expression: `/^config\.generator\..*\.(min|max)$/`.
+  The **.\*** button makes every term one. An invalid pattern turns the box
+  red and leaves the list as it is.
+- A leading `!` excludes keys, and terms separated by spaces must all match:
+  `generator !debug`.
+- **Values** also matches the values, to find which keys are set to `adamw`.
+
+Matches are highlighted in the keys. `/` focuses the box and `Esc` clears it.
+The filter is kept in the URL (`sfind=`), so it survives a reload and can be
+shared.
+
 ## Charts page
 
 ![Charts page](../assets/charts-light.png#only-light){ .nb-shot }
 ![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
-The Charts page plots the selected runs (from **Plot selected**) or, if none
-are selected, every run matching the query.
+The Charts page plots the selected runs (from **Plot selected** or **Charts**
+in the selection bar) or, if none are selected, every run matching the query.
 
 - **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
@@ -576,4 +599,5 @@ tries to make through your browser.
 
 The token travels in plain HTTP. On an untrusted network, keep the default
 host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
-Artifacts stay read-only unless you add `--edit-artifacts`.
+Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
+edited and take uploads unless you add `--read-only-reports`.

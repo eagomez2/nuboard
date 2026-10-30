@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
 import sys
 from dataclasses import dataclass
 from importlib import metadata
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+from urllib.request import url2pathname
 
 
 @dataclass(frozen=True)
@@ -101,8 +107,29 @@ def broadcast_run_id(run_id: str | None) -> str | None:
         return run_id
 
 
+# git never asks for a password, never takes the index lock (so a `git` command the user
+# runs at the same time is not refused), and speaks plain English
+_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
+
+# a repository's config cannot make capture run a program: no fsmonitor daemon here, and
+# every diff below is taken with --no-ext-diff --no-textconv
+_GIT_SAFE = ["-c", "core.fsmonitor=false"]
+_DIFF_SAFE = ["--no-ext-diff", "--no-textconv", "--no-color"]
+
+MAX_PATCH_BYTES = 10 * 1024 * 1024
+"""A larger patch is not written; only its size is recorded."""
+
+MAX_LOCAL_PACKAGES = 20
+"""Local packages whose git state is read; later ones keep only their path."""
+
+
 def _run(cmd: list[str], cwd: str | None = None, timeout: float = 3.0) -> str | None:
     """Run `cmd` and return its stdout, or None if it fails, is missing or times out."""
+
+    is_git = cmd[:1] == ["git"]
+
+    if is_git:
+        cmd = ["git", *_GIT_SAFE, *cmd[1:]]
 
     try:
         out = subprocess.run(
@@ -112,64 +139,396 @@ def _run(cmd: list[str], cwd: str | None = None, timeout: float = 3.0) -> str | 
             timeout=timeout,
             check=True,
             stdin=subprocess.DEVNULL,
+            env={**os.environ, **_GIT_ENV} if is_git else None,
         )
         return out.stdout.decode("utf-8", errors="replace")
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
-def git_info(cwd: str | None = None) -> tuple[dict[str, object] | None, str | None]:
-    """Describe the git checkout the run was started from.
+def safe_url(url: str) -> str:
+    """Return `url` without anything that could be a credential.
 
-    Args:
-        cwd: Directory to inspect. Defaults to the current working directory.
+    The user and password (`https://user:TOKEN@host/...`), query and fragment of
+    a URL with a scheme are removed. An scp-like remote (`git@host:org/repo`)
+    names a user, never a password, and is kept.
+    """
+    url = url.strip()
+
+    if not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", url):
+        return url
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return ""
+
+    host = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+def _cwd() -> str | None:
+    """The working directory, or None when it no longer exists."""
+
+    try:
+        return os.getcwd()
+    except OSError:
+        return None
+
+
+def _script_dir() -> str | None:
+    """The folder of the script that started this process, or None (notebooks, `-c`, REPL)."""
+    main = sys.modules.get("__main__")
+    candidates = [getattr(main, "__file__", None), sys.argv[0] if sys.argv else None]
+
+    for path in candidates:
+        if not path or not isinstance(path, str):
+            continue
+
+        try:
+            file = Path(path).resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+
+        if file.is_file():
+            return str(file.parent)
+
+    return None
+
+
+def _repo_root(directory: str | None) -> str | None:
+    """The top folder of the git working tree `directory` is in, or None."""
+
+    if not directory or not os.path.isdir(directory):
+        return None
+
+    root = _run(["git", "rev-parse", "--show-toplevel"], directory)
+    return root.strip() or None if root else None
+
+
+def _code_repo(code_dir: str | os.PathLike[str] | None) -> tuple[str | None, str | None]:
+    """Find the repository of the training code: `code_dir`, the script's folder, then the cwd.
 
     Returns:
-        A pair `(info, diff)`. `info` holds `commit`, `branch`, `remote`, `root` and
-        `dirty`; `diff` is the `git diff HEAD` text (empty when clean). Both are None
-        outside a repository or when `git` is not installed.
+        `(root, source)`: the repository's top folder and which place it was
+        found from (`"code_dir"`, `"script"` or `"cwd"`), or `(None, None)`.
+    """
+    import warnings
+
+    places = [
+        ("code_dir", os.fspath(code_dir) if code_dir is not None else None),
+        ("script", _script_dir()),
+        ("cwd", _cwd()),
+    ]
+    found = [(source, _repo_root(d)) for source, d in places if d]
+
+    if code_dir is not None and not found[0][1]:
+        warnings.warn(
+            f"code_dir={os.fspath(code_dir)!r} is not inside a git repository; "
+            "looking for one from the script's folder and the working directory instead",
+            stacklevel=4,
+        )
+
+    roots = [(source, root) for source, root in found if root]
+
+    if not roots:
+        return None, None
+
+    source, root = roots[0]
+    cwd_root = dict(roots).get("cwd")
+
+    if source == "script" and cwd_root and cwd_root != root:
+        warnings.warn(
+            f"recording git info of the script's repository {root}, not of the working "
+            f"directory's {cwd_root}; pass code_dir= to choose",
+            stacklevel=4,
+        )
+
+    return root, source
+
+
+def git_info(
+    cwd: str | None = None, code_dir: str | os.PathLike[str] | None = None
+) -> tuple[dict[str, object] | None, str | None]:
+    """Describe the git checkout of the code the run was started from.
+
+    Every git command is optional: one that fails, is refused (an unsafe
+    repository owner, say) or times out leaves its field None, and this never
+    raises.
+
+    Args:
+        cwd: Directory to inspect, as is. When None, the repository is looked
+            for from `code_dir`, then the running script's folder, then the
+            working directory (see `git.source` in the format reference).
+        code_dir: Folder of the training code, when the script is not (a
+            notebook, `python -m` of an installed package, a CLI entry point).
+
+    Returns:
+        A pair `(info, diff)`. `info` holds `commit` (None in a repository with
+        no commits yet), `branch` (None when detached), `remote` (without any
+        credential), `root`, `dirty`, `pushed`, `untracked` and `source`, plus
+        `patch_bytes` when the diff is over `MAX_PATCH_BYTES`; `diff` is the
+        `git diff HEAD` text (the staged changes before the first commit; empty
+        when clean or too large). Both are None outside a repository or when
+        `git` is not installed.
     """
 
-    if shutil.which("git") is None:
+    try:
+        if shutil.which("git") is None:
+            return None, None
+
+        if cwd is not None:
+            root, source = _repo_root(cwd), "cwd"
+        else:
+            root, source = _code_repo(code_dir)
+
+        if root is None:
+            return None, None
+
+        return _describe(root, source)
+    except Exception:  # never let tracking break training
         return None, None
 
-    commit = _run(["git", "rev-parse", "HEAD"], cwd)
 
-    if not commit:
-        return None, None
+def _describe(root: str, source: str | None) -> tuple[dict[str, object], str]:
+    """`git_info` for the working tree at `root`."""
+    commit = (_run(["git", "rev-parse", "--verify", "-q", "HEAD"], root) or "").strip() or None
+    branch = (_run(["git", "symbolic-ref", "-q", "--short", "HEAD"], root) or "").strip() or None
+    remote = (_run(["git", "config", "--get", "remote.origin.url"], root) or "").strip()
 
-    branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
-    remote = _run(["git", "config", "--get", "remote.origin.url"], cwd)
-    root = _run(["git", "rev-parse", "--show-toplevel"], cwd)
-    diff = _run(["git", "diff", "HEAD"], cwd, timeout=10.0) or ""
-    info = {
-        "commit": commit.strip(),
-        "branch": (branch or "").strip() or None,
-        "remote": (remote or "").strip() or None,
-        "root": (root or "").strip() or None,
-        "dirty": bool(diff.strip()),
+    # before the first commit there is no HEAD to compare with: the staged files are the change
+    diff_cmd = ["git", "diff", "HEAD"] if commit else ["git", "diff", "--cached"]
+    diff = _run([*diff_cmd, *_DIFF_SAFE], root, timeout=10.0)
+
+    untracked_out = _run(["git", "ls-files", "--others", "--exclude-standard", "-z"], root, 10.0)
+    untracked = None if untracked_out is None else len([f for f in untracked_out.split("\0") if f])
+
+    pushed: bool | None = None
+
+    if commit:
+        remotes = _run(["git", "for-each-ref", "--count=1", "refs/remotes"], root)
+        containing = _run(["git", "branch", "-r", "--contains", commit], root)
+
+        if remotes and containing is not None:
+            pushed = bool(containing.strip())
+
+    info: dict[str, object] = {
+        "commit": commit,
+        "branch": branch,
+        "remote": safe_url(remote) or None,
+        "root": root,
+        "dirty": None if diff is None else bool(diff.strip()),
+        "pushed": pushed,
+        "untracked": untracked,
+        "source": source,
     }
-    return info, diff
+    size = len((diff or "").encode("utf-8"))
+
+    if size > MAX_PATCH_BYTES:
+        info["patch_bytes"] = size
+        diff = ""
+
+    return info, diff or ""
+
+
+def _direct_url(dist: metadata.Distribution) -> dict[str, Any] | None:
+    """The PEP 610 `direct_url.json` of `dist`, or None."""
+
+    try:
+        direct = json.loads(dist.read_text("direct_url.json") or "null")
+    except (OSError, ValueError):
+        return None
+
+    return direct if isinstance(direct, dict) else None
+
+
+def _requirement(dist: metadata.Distribution, name: str, version: str) -> str:
+    """One `pip freeze` line, keeping a VCS install's commit (PEP 610) without credentials.
+
+    A package installed from a local path gets `name==version  # local: <path>`;
+    `freeze` adds the state of its folder.
+    """
+    direct = _direct_url(dist)
+
+    if direct is None:
+        return f"{name}=={version}"
+
+    url = str(direct.get("url") or "")
+    vcs = direct.get("vcs_info")
+    vcs = vcs if isinstance(vcs, dict) else None
+    commit = vcs and (vcs.get("commit_id") or vcs.get("requested_revision"))
+
+    if url.startswith("file:"):
+        line = f"{name}=={version}  # local: {_local_path(url)}"
+        return line + (f", git {commit}" if commit else "")
+
+    if vcs and url:
+        kind = vcs.get("vcs") or "git"
+        return f"{name} @ {kind}+{safe_url(url)}" + (f"@{commit}" if commit else "")
+
+    if isinstance(direct.get("archive_info"), dict) and url:
+        return f"{name} @ {safe_url(url)}"
+
+    return f"{name}=={version}"
+
+
+def _local_path(url: str) -> str:
+    """The path of a `file:` URL."""
+    parts = urlsplit(url)
+    path = url2pathname(parts.path)
+    return f"//{parts.netloc}{path}" if parts.netloc not in ("", "localhost") else path
+
+
+def _pip_url(remote: str) -> str | None:
+    """`remote` as a URL pip can clone, or None for a remote on this machine."""
+
+    if re.match(r"^(https?|ssh|git)://", remote):
+        return safe_url(remote)
+
+    scp = re.match(r"^([\w.-]+@)?([\w.-]+):(?!//)(.+)$", remote)  # git@host:org/repo
+
+    if scp and not re.match(r"^[A-Za-z]:[\\/]", remote):  # not a Windows path
+        return f"ssh://{scp.group(1) or ''}{scp.group(2)}/{scp.group(3).lstrip('/')}"
+
+    return None
+
+
+def _same(a: str, b: str) -> bool:
+    """Whether two paths name the same folder."""
+
+    try:
+        return os.path.realpath(a) == os.path.realpath(b)
+    except (OSError, ValueError):
+        return False
+
+
+def _local_line(
+    name: str,
+    version: str,
+    path: str,
+    main_root: str | None,
+    repos: dict[str, tuple[dict[str, object], str, str | None]],
+    patches: dict[str, str],
+) -> str:
+    """The `requirements.txt` line of a package installed from the folder `path`.
+
+    `repos` caches each repository's `_describe` and the name of its patch, so
+    packages of one repository share it; a patch to write lands in `patches`.
+    """
+    plain = f"{name}=={version}  # local: {path}"
+
+    if not os.path.isdir(path):
+        return f"{plain} (missing)"
+
+    root = _repo_root(path)
+
+    if root is None:
+        return f"{plain}, not under git"
+
+    if main_root and _same(root, main_root):
+        return f"{plain}, the run's repository (see run.json git)"
+
+    if root not in repos:
+        info, diff = _describe(root, "package")
+        patch = None
+
+        if diff:
+            patch = f"git-{re.sub(r'[^A-Za-z0-9._-]+', '_', name)}.patch"
+            patches[patch] = diff
+
+        repos[root] = (info, diff, patch)
+
+    info, _diff, patch = repos[root]
+    commit = info.get("commit")
+    where = f"git {commit}" if commit else "git, no commits yet"
+
+    if info.get("patch_bytes"):
+        return f"{plain}, {where} (dirty), patch too large ({info['patch_bytes']} bytes)"
+
+    if patch:
+        return f"{plain}, {where} (dirty), patch: {patch}"
+
+    if info.get("dirty") is None:
+        return f"{plain}, {where}, uncommitted changes unknown"
+
+    if not commit or not info.get("pushed"):
+        return f"{plain}, {where} (not pushed)"
+
+    url = _pip_url(str(info.get("remote") or ""))
+
+    if url is None:
+        return f"{plain}, {where}, remote {info.get('remote')}"
+
+    try:
+        sub = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
+    except (OSError, ValueError):
+        sub = "."
+
+    sub = "" if sub == "." else f"#subdirectory={Path(sub).as_posix()}"
+    return f"{name} @ git+{url}@{commit}{sub}  # local: {path}"
+
+
+def freeze(main_root: str | None = None) -> tuple[str, dict[str, str]]:
+    """List installed packages in `pip freeze` style, with the git state of local ones.
+
+    No `pip` is started. Each distribution appears once, sorted
+    case-insensitively: `name==version`, or `name @ git+URL@commit` for one
+    installed from a VCS URL (without credentials). A package installed from a
+    local folder (`pip install -e ../lib`) keeps its path in a comment and the
+    state of its folder: a clean, pushed git checkout becomes an installable
+    `git+URL@commit` line; uncommitted changes are written as a patch.
+    Broken metadata is skipped, and git is read for at most
+    `MAX_LOCAL_PACKAGES` folders.
+
+    Args:
+        main_root: The run's own repository, whose changes are already in
+            `git.patch`: a package inside it gets no second patch.
+
+    Returns:
+        `(text, patches)`: the list, one package per line ending with a
+        newline, and the patches to write next to it, by file name.
+    """
+    seen: dict[str, str] = {}
+    patches: dict[str, str] = {}
+    repos: dict[str, tuple[dict[str, object], str, str | None]] = {}
+    inspected = 0
+
+    try:
+        dists = list(metadata.distributions())
+    except Exception:
+        dists = []
+
+    for dist in dists:  # in sys.path order: the first of a name is the one imported
+        try:
+            name = dist.metadata["Name"]
+            version = dist.version
+        except Exception:
+            continue
+
+        if not name or not version or name.lower() in seen:
+            continue
+
+        line = _requirement(dist, name, version)
+        direct = _direct_url(dist) or {}
+        url = str(direct.get("url") or "")
+
+        if url.startswith("file:") and isinstance(direct.get("dir_info"), dict):
+            if inspected < MAX_LOCAL_PACKAGES:
+                inspected += 1
+
+                try:
+                    line = _local_line(name, version, _local_path(url), main_root, repos, patches)
+                except Exception:  # keep the plain line
+                    pass
+
+        seen[name.lower()] = line
+
+    return "\n".join(sorted(seen.values(), key=str.lower)) + "\n", patches
 
 
 def pip_freeze() -> str:
-    """List installed packages in `pip freeze` style, from distribution metadata.
-
-    No subprocess is started. Each distribution appears once, as `name==version`,
-    sorted case-insensitively.
-
-    Returns:
-        The list, one package per line, ending with a newline.
-    """
-    seen: dict[str, str] = {}
-
-    for dist in metadata.distributions():
-        name = dist.metadata["Name"]
-
-        if name and name.lower() not in seen:
-            seen[name.lower()] = f"{name}=={dist.version}"
-
-    return "\n".join(sorted(seen.values(), key=str.lower)) + "\n"
+    """The text of `freeze()`, without its patches."""
+    return freeze()[0]
 
 
 def cuda_order(gpus: list[tuple[int, str]], visible: str | None) -> list[tuple[int, str]]:
@@ -267,7 +626,7 @@ def environment() -> dict[str, object]:
         "python": sys.version.split()[0],
         "executable": sys.executable,
         "argv": list(sys.argv),
-        "cwd": os.getcwd(),
+        "cwd": _cwd(),
         "pid": os.getpid(),
         "gpus": gpus(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),

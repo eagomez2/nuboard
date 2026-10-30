@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import itertools
 import json
 import math
 import os
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,11 @@ from ..collection import delete_collection, list_collections, save_collection
 from ..jobs import read_meta
 from ..query import QueryError, parse
 from ..reports import (
+    MAX_AUDIO_BYTES,
+    MAX_IMAGE_BYTES,
+    MAX_TEXT_BYTES,
     MediaRef,
+    UploadError,
     check_field,
     clean_audio_notes,
     export_report,
@@ -58,6 +63,8 @@ from ..reports import (
     save_fields,
     save_report,
     save_snapshot,
+    save_upload,
+    served_type,
 )
 from .auth import Guard
 from .data import Store, path_inside
@@ -116,6 +123,28 @@ class JSON(JSONResponse):
         ).encode("utf-8")
 
 
+def _read_only() -> JSONResponse:
+    """The response to a change of a report on a server started with `--read-only-reports`."""
+    return JSON(
+        {"error": "reports are read-only on this server (--read-only-reports)"}, status_code=403
+    )
+
+
+def _config_leaves(config: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+    """Yield the leaves of a nested config as `(dotted key, value)`, in config order."""
+
+    def walk(obj: Any, prefix: str) -> Iterator[tuple[str, Any]]:
+        """Yield the leaves of `obj` under keys starting with `prefix`."""
+
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield from walk(v, f"{prefix}{k}.")
+        else:
+            yield prefix[:-1], obj
+
+    return walk(config, "")
+
+
 def _flat_config(config: dict[str, Any], limit: int = 64) -> dict[str, Any]:
     """Flatten a nested config to at most `limit` dotted keys, shortening long values.
 
@@ -124,27 +153,43 @@ def _flat_config(config: dict[str, Any], limit: int = 64) -> dict[str, Any]:
     """
     out: dict[str, Any] = {}
 
-    def walk(obj: Any, prefix: str) -> None:
-        """Add the leaves of `obj` to `out` under keys starting with `prefix`."""
+    for key, value in itertools.islice(_config_leaves(config), limit):
+        if isinstance(value, str) and len(value) > 80:
+            value = value[:77] + "..."
+        elif isinstance(value, list):
+            value = json.dumps(value, default=str)[:80]
 
-        if len(out) >= limit:
-            return
+        out[key] = value
 
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                walk(v, f"{prefix}{k}.")
-        else:
-            value = obj
-
-            if isinstance(value, str) and len(value) > 80:
-                value = value[:77] + "..."
-            elif isinstance(value, list):
-                value = json.dumps(value, default=str)[:80]
-
-            out[prefix[:-1]] = value
-
-    walk(config, "")
     return out
+
+
+def _sweep_keys(configs: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return the flattened config keys whose value differs between runs, with no cap.
+
+    Args:
+        configs: Each run's nested config, by run key.
+
+    Returns:
+        For each differing key, in config order, its value per run key. Runs
+        without the key are left out, and a key counts as differing when the
+        runs that have it hold at least two distinct values. Lists and dicts
+        are sent as JSON text.
+    """
+    values: dict[str, dict[str, Any]] = {}
+
+    for run_key, config in configs.items():
+        for key, value in _config_leaves(config):
+            if isinstance(value, (list, tuple, dict)):
+                value = json.dumps(value, default=str)
+
+            values.setdefault(key, {})[run_key] = value
+
+    return {
+        key: per_run
+        for key, per_run in values.items()
+        if len({json.dumps(v, default=str) for v in per_run.values()}) > 1
+    }
 
 
 def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
@@ -237,6 +282,10 @@ def create_app(
     allowed_hosts: list[str] | None = None,
     token: str | None = None,
     edit_artifacts: bool = False,
+    read_only_reports: bool = False,
+    max_image_bytes: int = MAX_IMAGE_BYTES,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+    max_audio_bytes: int = MAX_AUDIO_BYTES,
 ) -> Starlette:
     """Create the viewer's Starlette app for a folder of runs.
 
@@ -253,6 +302,11 @@ def create_app(
         edit_artifacts: Allow adding artifact versions (as references to paths
             on this machine) and unlinking and restoring them. Without it those
             requests are refused.
+        read_only_reports: Refuse every change to reports: saving, snapshots
+            and uploads, as on a shared server.
+        max_image_bytes: Size limit of an image uploaded into a report.
+        max_text_bytes: Size limit of a text file uploaded into a report.
+        max_audio_bytes: Size limit of an audio file uploaded into a report.
 
     Returns:
         The app. Its `state.store` holds the `Store` it reads runs through.
@@ -307,6 +361,12 @@ def create_app(
                 "projects": projects,
                 "catalog_version": catalog.version,
                 "edit_artifacts": edit_artifacts,
+                "read_only_reports": read_only_reports,
+                "upload_limits": {
+                    "image": max_image_bytes,
+                    "text": max_text_bytes,
+                    "audio": max_audio_bytes,
+                },
             }
         )
 
@@ -615,6 +675,32 @@ def create_app(
                 counts[m] = counts.get(m, 0) + 1
 
         return JSON({"metrics": [{"name": m, "runs": n} for m, n in sorted(counts.items())]})
+
+    def sweep_keys(request: Request) -> Response:
+        """Return the config keys whose value differs between runs, with each run's value.
+
+        Query parameters: `runs` (comma-separated keys) or, without it,
+        `project` (its runs and its subprojects' runs). Unlike the run list,
+        whose configs are cut to 64 values, every key is considered (see
+        `_sweep_keys`). The response holds `keys` (in config order) and
+        `values` (key to run key to value).
+        """
+        keys = [k for k in request.query_params.get("runs", "").split(",") if k]
+        project = request.query_params.get("project")
+
+        if keys:
+            records = [r for r in (catalog.get(k) for k in keys) if r is not None]
+        elif project:
+            records = [
+                r
+                for r in catalog.runs()
+                if r["project"] == project or r["project"].startswith(project + "/")
+            ]
+        else:
+            records = []
+
+        values = _sweep_keys({r["key"]: r.get("config") or {} for r in records})
+        return JSON({"keys": list(values), "values": values})
 
     def scalars(request: Request) -> Response:
         """Return chart data for one metric as an Arrow IPC stream (see `Store.chart`).
@@ -1464,6 +1550,9 @@ def create_app(
         report to a new name and `delete: true` removes it.
         """
 
+        if read_only_reports:
+            return _read_only()
+
         if not request.headers.get("content-type", "").startswith("application/json"):
             return PlainTextResponse("expected application/json", 415)
 
@@ -1509,12 +1598,72 @@ def create_app(
         if target is None or not target.is_file():
             return JSON({"error": "not found"}, status_code=404)
 
-        # an SVG opened on its own runs nothing, whatever the file holds
-        csp = "default-src 'none'; style-src 'unsafe-inline'"
-        return FileResponse(target, headers={"Content-Security-Policy": csp})
+        # The type comes from a fixed list, never from sniffing; text and unknown files are
+        # downloads, and an SVG opened on its own runs nothing, whatever the file holds
+        media_type, download = served_type(target.name)
+        return FileResponse(
+            target,
+            media_type=media_type,
+            filename=target.name if download else None,
+            content_disposition_type="attachment" if download else "inline",
+            headers={
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    async def report_upload(request: Request) -> Response:
+        """Store an image, audio or text file uploaded into a report (see `save_upload`).
+
+        The body is the file's bytes, sent as `application/octet-stream`; query
+        parameters `project`, `name` (the file's name) and `kind` (`image`,
+        `audio` or `text`). Returns the stored file's `path`, `kind`, `size` and `name`, or
+        an `error` that says why it was refused.
+        """
+
+        if read_only_reports:
+            return _read_only()
+
+        if not request.headers.get("content-type", "").startswith("application/octet-stream"):
+            return PlainTextResponse("expected application/octet-stream", 415)
+
+        pdir = project_dir(request.query_params.get("project", ""))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        kind = request.query_params.get("kind", "")
+        name = request.query_params.get("name", "file")
+        limit = {"text": max_text_bytes, "audio": max_audio_bytes}.get(kind, max_image_bytes)
+        too_large = JSON(
+            {"error": f"{name} is too large; {kind} files can be at most {limit / 1e6:.0f} MB"},
+            status_code=413,
+        )
+        declared = request.headers.get("content-length", "")
+
+        if declared.isdigit() and int(declared) > limit:
+            return too_large
+
+        data = bytearray()
+
+        async for chunk in request.stream():
+            data += chunk
+
+            if len(data) > limit:
+                return too_large
+
+        try:
+            saved = await run_in_threadpool(save_upload, pdir, bytes(data), name, kind, limit)
+        except UploadError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        return JSON(saved)
 
     async def report_snapshot(request: Request) -> Response:
         """Store a chart snapshot (JSON body: `project`, `report`, `png` as a data URL)."""
+
+        if read_only_reports:
+            return _read_only()
 
         if not request.headers.get("content-type", "").startswith("application/json"):
             return PlainTextResponse("expected application/json", 415)
@@ -1683,6 +1832,7 @@ def create_app(
         Route("/api/runs/{key}/media/{index:int}", media_blob),
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
+        Route("/api/sweep-keys", sweep_keys),
         Route("/api/artifacts", artifacts),
         Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),
@@ -1698,6 +1848,7 @@ def create_app(
         Route("/api/reports", reports),
         Route("/api/reports", report_save, methods=["POST"]),
         Route("/api/reports/snapshot", report_snapshot, methods=["POST"]),
+        Route("/api/reports/upload", report_upload, methods=["POST"]),
         Route("/api/reports/{project:path}/files/{file}", report_asset),
         Route("/api/reports/{project:path}/{name}/export", report_export),
         Route("/api/reports/{project:path}/{name}", report_get),

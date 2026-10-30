@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ComboBox from './ComboBox.svelte';
   import { tagStyle } from '../lib/colors';
   import { dialog } from '../lib/dialog.svelte';
 
@@ -34,7 +35,8 @@
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    dialog.close([...values]);
+    // a combo box left empty takes its preselected option
+    dialog.close(values.map((v, i) => (!v.trim() && req?.fields[i]?.combo ? (req.fields[i].preselect ?? v) : v)));
   }
 </script>
 
@@ -114,6 +116,20 @@
             <span>{f.label}</span>
             {#if f.hint}<span class="hint">{f.hint}</span>{/if}
           </label>
+        {:else if f.combo}
+          <div class="field">
+            <label class="label" for="nb-dialog-in-{i}">{f.label}</label>
+            <ComboBox
+              id="nb-dialog-in-{i}"
+              bind:value={values[i]}
+              options={f.combo}
+              preselect={f.preselect}
+              placeholder={f.placeholder}
+              newLabel={f.newLabel}
+              describedby={f.hint ? `nb-dialog-hint-${i}` : undefined}
+            />
+            {#if f.hint}<span class="hint" id="nb-dialog-hint-{i}">{f.hint}</span>{/if}
+          </div>
         {:else}
           <div class="field">
             <label class="label" for="nb-dialog-in-{i}">{f.label}</label>

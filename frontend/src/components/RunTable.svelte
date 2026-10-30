@@ -442,6 +442,8 @@
   function plotSelected() {
     router.go('charts', { sel: [...app.selected].join(',') });
   }
+  /** Open a page limited to the selected runs. */
+  const openSelected = (page: 'charts' | 'sweeps' | 'media') => router.go(page, { sel: selected.join(',') });
   const selected = $derived([...app.selected]);
   const selectedArchived = $derived(selected.length > 0 && selected.every((k) => app.runByKey(k)?.archived));
   const arrow = (col: string) => (router.get('sort') === col ? (router.get('desc') ? ' ↓' : ' ↑') : '');
@@ -577,8 +579,22 @@
       <button class="btn" onclick={addToCollection}>
         <Icon name="collection" size={15} /> Add to collection…
       </button>
-      <button class="btn" onclick={() => router.go('media', { sel: selected.join(',') })}>Media</button>
-      <button class="btn btn-ghost" onclick={() => app.selected.clear()}>Clear selection</button>
+      <button class="btn" title="Charts of the selected runs" onclick={() => openSelected('charts')}>
+        <Icon name="charts" size={15} /> Charts
+      </button>
+      <button class="btn" title="Sweeps of the selected runs" onclick={() => openSelected('sweeps')}>
+        <Icon name="sweep" size={15} /> Sweeps
+      </button>
+      <button class="btn" title="Media of the selected runs" onclick={() => openSelected('media')}>
+        <Icon name="media" size={15} /> Media
+      </button>
+      <button
+        class="btn btn-ghost"
+        onclick={() => {
+          app.selected.clear();
+          router.set({ sel: null });
+        }}>Clear selection</button
+      >
     </div>
   {/if}
 

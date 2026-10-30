@@ -32,6 +32,7 @@ nb.init(
     job=None,               # join run_id as a second job, such as "eval"
     fork_from=None,         # (run_id, step)
     capture_env=True,       # git, pip freeze, GPUs, command line
+    code_dir=None,          # folder of the training code, if the script is not
     compact=True,           # write data.parquet at finish if PyArrow is installed
     flush_interval=1.0,     # seconds between background writes
     heartbeat_interval=10.0,
@@ -43,15 +44,18 @@ nb.init(
 records:
 
 - the config (in `run.json`),
-- git commit, branch, remote and dirty flag, plus `git diff HEAD` as
-  `files/git.patch` (skipped outside a repository),
+- git commit, branch, remote (without credentials), dirty flag, whether the
+  commit is pushed and how many untracked files there are, plus
+  `git diff HEAD` as `files/git.patch` (skipped outside a repository),
 - installed packages as `files/requirements.txt` (read from package metadata,
   no subprocess),
 - the command line (`files/command.txt`), host, Python, platform and GPUs
   (via `nvidia-smi` if present),
 - rank and world size (see [Distributed training](distributed.md)).
 
-Pass `capture_env=False` to skip git, packages and GPUs.
+Pass `capture_env=False` to skip git, packages and GPUs. See
+[Reproducibility](reproducibility.md) for how to replay a run from these, which
+repository is recorded, and what is not covered.
 
 ### Config files
 

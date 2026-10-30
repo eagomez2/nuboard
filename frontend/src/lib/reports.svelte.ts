@@ -17,14 +17,19 @@ export async function askReport(
   caption: string | null,
   message: string,
 ): Promise<{ name: string; caption: string } | null> {
-  const names = (await api.reports(project)).reports.map((r) => r.name);
+  const reports = (await api.reports(project)).reports; // newest first
+  const last = prefs.get('lastReport', '');
+  const preselect = reports.some((r) => r.name === last) ? last : (reports[0]?.name ?? '');
   const res = await ask(
     'Add to a report',
     [
       {
         label: 'Report',
-        value: prefs.get('lastReport', names[0] ?? 'notes'),
-        suggestions: names,
+        value: '',
+        combo: reports.map((r) => ({ value: r.name, label: r.title, detail: `${r.name}.md` })),
+        preselect: preselect || 'notes',
+        placeholder: preselect ? `${preselect} (type to search or name a new one)` : 'notes',
+        newLabel: 'New report',
         hint: `In ${project}/reports/. A new name starts a new report.`,
       },
       ...(caption === null ? [] : [{ label: 'Caption', value: caption }]),

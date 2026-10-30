@@ -44,7 +44,7 @@ export interface WaveformDownload {
   run: { id: string; name: string; project: string | null };
   key: string;
   step: number;
-  /** Such as `nuboard 0.18.0`. */
+  /** Such as `nuboard 0.19.0`. */
   exportedWith: string;
 }
 

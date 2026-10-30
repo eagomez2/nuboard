@@ -37,6 +37,40 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
 
+test('compare filters settings by text, regex and exclusions, kept in the URL', async ({ page }) => {
+  await page.goto('/#/runs?project=speech-denoise');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check(); // convtasnet
+  await boxes.nth(2).check(); // unet-l1
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.getByRole('switch', { name: 'Only changes' }).click();
+  const rows = page.locator('.settings .srow:not(.head) .k');
+  const find = page.getByRole('textbox', { name: 'Filter settings' });
+
+  await find.fill('/^config\\.generator\\..*\\.(min|max)$/');
+  await expect(rows).toHaveText(['config.generator.config.weighted_sir_db.edge.min']);
+  await expect(rows.first().locator('mark')).toHaveText('config.generator.config.weighted_sir_db.edge.min');
+  await expect(page.locator('.tabs .count')).toHaveText(/^1 of \d+ keys$/);
+
+  await find.fill('config !generator');
+  await expect(rows).toHaveText(['config.model', 'config.loss']);
+
+  await find.fill('/(broken/');
+  await expect(find).toHaveAttribute('aria-invalid', 'true');
+  expect(await rows.count()).toBeGreaterThan(2); // the list stays as Only changes leaves it
+
+  await find.fill('edge.min');
+  await expect(page).toHaveURL(/sfind=edge\.min/);
+  await page.reload();
+  await expect(rows).toHaveText(['config.generator.config.weighted_sir_db.edge.min']);
+
+  await find.press('Escape');
+  await expect(find).toHaveValue('');
+  await page.locator('.settings').click();
+  await page.keyboard.press('/');
+  await expect(find).toBeFocused();
+});
+
 test('charts render grouped bands, a legend and small multiples', async ({ page }) => {
   await page.goto('/#/charts?q=where%20tags%20has%20sweep%20group%20by%20config.optim.lr');
   await expect(page.locator('.legend-chip')).toHaveCount(4);
@@ -153,6 +187,15 @@ test('sweeps page draws parallel coordinates and filters by brushing', async ({ 
   await page.mouse.up();
   await expect(page.locator('.pc path.line.dim').first()).toBeAttached();
   expect(await page.locator('.pc path.line:not(.dim)').count()).toBeLessThan(before);
+});
+
+test('sweeps finds a config key past the first 64 values', async ({ page }) => {
+  // speech-denoise runs differ only in a generator setting deep in a long config (issue #5)
+  const key = 'generator.config.weighted_sir_db.edge.min';
+  await page.goto('/#/sweeps?project=speech-denoise');
+  await expect(page.locator(`.chip.param[title="${key}"]`)).toBeVisible();
+  await page.goto(`/#/sweeps?project=speech-denoise&params=${key}`);
+  await expect(page.locator('.pc .axis')).toHaveCount(2);
 });
 
 test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {
@@ -1324,4 +1367,345 @@ test('a helper job shows on its run, and storage is measured only on request', a
   await page.goto('/#/artifacts');
   await page.locator('.sidehead').getByRole('button', { name: 'Storage' }).click();
   await expect(page.getByRole('tab', { name: 'Artifacts' })).toHaveAttribute('aria-selected', 'true');
+});
+
+// A 2×1 PNG, built by hand so the test needs no image files
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGP4z8DAwMDAAAAOAAH/1i4hAAAAAElFTkSuQmCC',
+  'base64',
+);
+
+async function openReport(page: import('@playwright/test').Page, name: string, text: string) {
+  await page.request.post('/api/reports', { data: { project: 'vit-ablations', name, text } });
+  await page.goto(`/#/reports?rproject=vit-ablations&report=${name}`);
+  const box = page.getByRole('textbox', { name: 'Report text' });
+  await expect(box).toHaveValue(text);
+  return box;
+}
+const select = (box: import('@playwright/test').Locator, from: number, to: number) =>
+  box.evaluate((el: HTMLTextAreaElement, [a, b]) => (el.focus(), el.setSelectionRange(a, b)), [from, to]);
+
+test('the report toolbar writes Markdown, shows what is active, toggles off and undoes', async ({ page }) => {
+  const box = await openReport(page, 'e2e-toolbar', '# Toolbar\n\nhello world');
+  const bold = page.getByRole('button', { name: 'Bold' });
+  await select(box, 17, 22); // "world"
+  await bold.click();
+  await expect(box).toHaveValue('# Toolbar\n\nhello **world**');
+  await expect(bold).toHaveAttribute('aria-pressed', 'true');
+  await bold.click();
+  await expect(box).toHaveValue('# Toolbar\n\nhello world');
+  await expect(bold).toHaveAttribute('aria-pressed', 'false');
+
+  await select(box, 11, 16); // "hello"
+  await box.press('Control+u');
+  await expect(box).toHaveValue('# Toolbar\n\n<u>hello</u> world');
+  await expect(page.locator('.preview u')).toHaveText('hello');
+  await page.getByRole('button', { name: 'Heading 2' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n## <u>hello</u> world');
+  await expect(page.getByRole('button', { name: 'Heading 2' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n<u>hello</u> world');
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect(box).toHaveValue('# Toolbar\n\n## <u>hello</u> world');
+
+  await select(box, 32, 32);
+  await page.getByRole('button', { name: 'Table' }).click();
+  await page.getByRole('button', { name: '2 rows by 3 columns' }).click();
+  await expect(box).toHaveValue(
+    /\| Column 1 \| Column 2 \| Column 3 \|\n\| --- \| --- \| --- \|\n(\| +\| +\| +\|\n){2}/,
+  );
+  await expect(page.locator('.preview table th')).toHaveCount(3);
+});
+
+test('images are uploaded from the Insert menu, by paste and by drop, and go into the zip and HTML exports', async ({
+  page,
+}) => {
+  const box = await openReport(page, 'e2e-images', '# Images\n');
+  await select(box, 9, 9);
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Image/ }).click();
+  const dlg = page.getByRole('dialog', { name: 'Insert an image' });
+  await dlg.getByLabel('Choose an image').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG });
+  await dlg.getByLabel('Caption').fill('Two pixels');
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/!\[dot\]\(files\/[0-9a-f]{16}\.png\)\n\n\*Two pixels\*/);
+  const path = (await box.inputValue()).match(/files\/[0-9a-f]{16}\.png/)![0];
+  await expect(page.locator(`.preview img[src$="${path}"]`)).toBeVisible();
+
+  // a renamed HTML page is refused with a clear message
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Image/ }).click();
+  await dlg.getByLabel('Choose an image').setInputFiles({
+    name: 'evil.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('<html><script>alert(1)</script></html>'),
+  });
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(dlg.getByRole('alert')).toContainText('not a PNG, JPEG, GIF or WebP image');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+
+  // a pasted screenshot goes straight in
+  await box.evaluate((el: HTMLTextAreaElement, b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, PNG.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`!\\[Pasted image\\]\\(${path.replace('.', '\\.')}\\)`));
+
+  // a text file dropped on the text box opens its panel; an image goes straight in
+  const drop = (name: string, type: string, b64: string) =>
+    box.evaluate(
+      (el: HTMLTextAreaElement, [n, t, b]) => {
+        const data = new DataTransfer();
+        data.items.add(new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], n, { type: t }));
+        el.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+      },
+      [name, type, b64],
+    );
+  await drop('notes.md', 'text/markdown', Buffer.from('**dropped**').toString('base64'));
+  const textPanel = page.getByRole('dialog', { name: 'Insert a text file' });
+  await expect(textPanel).toContainText('notes.md');
+  await textPanel.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/\*\*dropped\*\*/);
+  await drop('dot.png', 'image/png', PNG.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`!\\[dot\\]\\(${path.replace('.', '\\.')}\\)[^]*!\\[dot\\]`));
+
+  await page.waitForTimeout(900); // saved a moment after the last change
+  const zip = await page.request.get('/api/reports/vit-ablations/e2e-images/export');
+  expect((await zip.body()).includes(Buffer.from(path))).toBe(true);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const out = test.info().outputPath('e2e-images.html');
+  await (await exported).saveAs(out);
+  const html = readFileSync(out, 'utf8');
+  expect(html).toContain(`<img src="data:image/png;base64,${PNG.toString('base64')}`);
+  expect(html).not.toContain('/api/reports/');
+});
+
+test('text files go in inline as code or a table, or attached as a collapsible block', async ({ page }) => {
+  const box = await openReport(page, 'e2e-texts', '# Texts\n');
+  const insertText = async (name: string, body: string, attach = false) => {
+    await select(box, (await box.inputValue()).length, (await box.inputValue()).length);
+    await page.getByRole('button', { name: 'Insert', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Text file/ }).click();
+    const dlg = page.getByRole('dialog', { name: 'Insert a text file' });
+    await dlg
+      .getByLabel('Choose a text file')
+      .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(body) });
+    if (attach) await dlg.getByRole('button', { name: 'Attached' }).click();
+    await dlg.getByRole('button', { name: 'Insert' }).click();
+  };
+  await insertText('train.py', 'print("hi")\n');
+  await expect(box).toHaveValue(/\*train\.py\*\n\n```python\nprint\("hi"\)\n```/);
+  await insertText('scores.csv', 'run,acc\na,0.8\n');
+  await expect(box).toHaveValue(/\| run \| acc \|\n\| --- \| --- \|\n\| a \| 0\.8 \|/);
+  await insertText('train.log', 'epoch 1 loss 0.9\n', true);
+  await expect(box).toHaveValue(/\[train\.log\]\(files\/[0-9a-f]{16}\.log "attachment"\)/);
+  const attached = page.locator('.preview .nb-attachment');
+  await attached.locator('summary').click();
+  await expect(attached.locator('pre')).toHaveText('epoch 1 loss 0.9\n');
+  await expect(attached.getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'train.log');
+
+  await page.waitForTimeout(900);
+  const exported = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export as HTML' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Export', exact: true }).click();
+  const out = test.info().outputPath('e2e-texts.html');
+  await (await exported).saveAs(out);
+  const html = readFileSync(out, 'utf8');
+  expect(html).toMatch(/<details class="nb-attachment"><summary><b>train\.log<\/b>[^]*<pre>epoch 1 loss 0\.9\n<\/pre>/);
+  expect(html).toContain('download="train.log"');
+});
+
+/** A short mono 16-bit WAV: a 440 Hz tone. */
+function wav(seconds = 0.2, rate = 8000): Buffer {
+  const n = Math.round(seconds * rate);
+  const out = Buffer.alloc(44 + 2 * n);
+  out.write('RIFF', 0);
+  out.writeUInt32LE(36 + 2 * n, 4);
+  out.write('WAVEfmt ', 8);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20); // PCM
+  out.writeUInt16LE(1, 22); // mono
+  out.writeUInt32LE(rate, 24);
+  out.writeUInt32LE(2 * rate, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write('data', 36);
+  out.writeUInt32LE(2 * n, 40);
+  for (let i = 0; i < n; i++) out.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / rate)), 44 + 2 * i);
+  return out;
+}
+
+test('audio is uploaded from the Insert menu and by drop, plays in the preview and exports', async ({ page }) => {
+  const box = await openReport(page, 'e2e-audio', '# Audio\n');
+  const sound = wav();
+  await select(box, 8, 8);
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Audio/ }).click();
+  const dlg = page.getByRole('dialog', { name: 'Insert audio' });
+  await dlg
+    .getByLabel('Choose an audio file')
+    .setInputFiles({ name: 'take-1.wav', mimeType: 'audio/wav', buffer: sound });
+  await expect(dlg.getByLabel('Caption')).toHaveValue('take 1');
+  await dlg.getByLabel('Caption').fill('First take');
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(box).toHaveValue(/\[First take\]\(files\/[0-9a-f]{16}\.wav\)/);
+  const path = (await box.inputValue()).match(/files\/[0-9a-f]{16}\.wav/)![0];
+  const player = page.locator('.preview .nb-audio');
+  await expect(player.locator('iframe')).toBeVisible();
+  await expect(player.locator('figcaption')).toContainText('First take');
+  const served = await page.request.get(`/api/reports/vit-ablations/${path}`);
+  expect(served.headers()['content-type']).toBe('audio/wav');
+
+  // text renamed to .wav is refused
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  await page.getByRole('menuitem', { name: /Audio/ }).click();
+  await dlg.getByLabel('Choose an audio file').setInputFiles({
+    name: 'fake.wav',
+    mimeType: 'audio/wav',
+    buffer: Buffer.from('not audio'),
+  });
+  await dlg.getByRole('button', { name: 'Insert' }).click();
+  await expect(dlg.getByRole('alert')).toContainText('not a WAV, FLAC, MP3');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+
+  // dropped on the text box, it goes straight in
+  await box.evaluate((el: HTMLTextAreaElement, b64) => {
+    const data = new DataTransfer();
+    data.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'room_tone.wav', { type: '' }));
+    el.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  }, sound.toString('base64'));
+  await expect(box).toHaveValue(new RegExp(`\\[room tone\\]\\(${path.replace('.', '\\.')}\\)`));
+
+  await page.waitForTimeout(900);
+  const zip = await page.request.get('/api/reports/vit-ablations/e2e-audio/export');
+  expect((await zip.body()).includes(Buffer.from(path))).toBe(true);
+  for (const player of ['Simple', 'Waveform']) {
+    const exported = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export as HTML' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: player, exact: true }).click();
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+    const out = test.info().outputPath(`e2e-audio-${player}.html`);
+    await (await exported).saveAs(out);
+    const html = readFileSync(out, 'utf8');
+    if (player === 'Simple')
+      expect(html).toMatch(
+        new RegExp(`<audio controls(="")? src="data:audio/wav;base64,${sound.toString('base64').slice(0, 40)}`),
+      );
+    else expect(html).toContain('class="nbwave"');
+    expect(html).toContain('First take');
+    expect(html).not.toContain('/api/reports/');
+  }
+});
+
+test('the report picker lists reports by title, narrows as you type and makes new ones', async ({ page }) => {
+  for (let i = 0; i < 60; i++) {
+    const n = String(i).padStart(2, '0');
+    await page.request.post('/api/reports', {
+      data: { project: 'vit-ablations', name: `e2e-pick-${n}`, text: `# Pick ${n}\n` },
+    });
+  }
+  const openPicker = async () => {
+    await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples');
+    await page.getByRole('button', { name: 'Add to a report' }).first().click();
+    return page.getByRole('dialog');
+  };
+  let dlg = await openPicker();
+  const field = dlg.getByRole('combobox', { name: 'Report' });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('');
+  const options = dlg.getByRole('option');
+  await expect(options).toHaveCount(50); // the newest 50; typing reaches the rest
+  await expect(dlg.locator('.more')).toHaveText(/^and \d+ more, type to narrow$/);
+  await expect(dlg.getByRole('option', { name: /Pick 59/ })).toContainText('e2e-pick-59.md');
+  await field.fill('pick 03');
+  await expect(options.first()).toContainText('e2e-pick-03.md'); // beyond the first 50
+
+  await field.fill('pick 1');
+  await expect(options).toHaveCount(11); // Pick 10 to Pick 19, then New report
+  await expect(options.first().locator('mark').first()).toHaveText(/pick 1/i);
+  await field.press('ArrowDown');
+  await field.press('Enter'); // the second match
+  await expect(field).toHaveValue(/^e2e-pick-1\d$/);
+  const picked = await field.inputValue();
+  await expect(options).toHaveCount(0);
+  await field.press('Enter'); // the list is closed: Enter submits
+  await expect(dlg).toBeHidden();
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/reports/vit-ablations/${picked}`)).json()).text)
+    .toMatch(/media:.*samples\//);
+
+  // a name that does not exist is offered as a new report
+  dlg = await openPicker();
+  await expect(dlg.getByRole('option', { name: new RegExp(picked) })).toContainText('last used');
+  await field.fill('e2e-pick-fresh');
+  await expect(dlg.getByRole('option', { name: 'New report “e2e-pick-fresh”' })).toBeVisible();
+  await field.press('Enter');
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect
+    .poll(async () => (await page.request.get('/api/reports/vit-ablations/e2e-pick-fresh')).status())
+    .toBe(200);
+});
+
+test('toolbar buttons use theme icons, and Media item is on when the project has media', async ({ page }) => {
+  await openReport(page, 'e2e-icons', '# Icons\n');
+  for (const name of ['Link', 'Bulleted list', 'Quote', 'Code block', 'Horizontal rule', 'Table', 'Undo'])
+    await expect(page.getByRole('button', { name, exact: true }).locator('svg')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Link', exact: true })).not.toContainText('🔗');
+  await page.getByRole('button', { name: 'Insert', exact: true }).click();
+  const media = page.getByRole('menuitem', { name: /Media item/ });
+  await expect(media).toBeEnabled();
+  await expect(media).toContainText('Opens Media');
+});
+
+test('selected runs open in Charts, Sweeps and Media, with a banner that shows all again', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  await page.locator('.selbar').getByRole('button', { name: 'Charts' }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*sel=/);
+  const banner = page.getByRole('status').filter({ hasText: 'selected run' });
+  await expect(banner).toContainText('Showing 2 selected runs');
+  await expect(page.locator('.legend-chip')).toHaveCount(2);
+
+  // switching page keeps the selection
+  await banner.getByRole('button', { name: 'Media' }).click();
+  await expect(page).toHaveURL(/#\/media\?.*sel=/);
+  await expect(banner).toContainText('Showing 2 selected runs');
+  await banner.getByRole('button', { name: 'Sweeps' }).click();
+  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await banner.getByRole('button', { name: 'Charts' }).click();
+  await expect(page.locator('.legend-chip')).toHaveCount(2);
+
+  await banner.getByRole('button', { name: 'Show all' }).click();
+  await expect(page).not.toHaveURL(/sel=/);
+  await expect(banner).toHaveCount(0);
+  await expect.poll(() => page.locator('.legend-chip').count()).toBeGreaterThan(2);
+});
+
+test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.locator('.body .row input[type=checkbox]').nth(0).check();
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click();
+  const jump = page.getByRole('group', { name: 'Open this run in' });
+  await jump.getByRole('button', { name: 'Charts' }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*sel=/);
+  await expect(page).not.toHaveURL(/cmp=/);
+  await expect(page.getByRole('status').filter({ hasText: 'selected run' })).toContainText('Showing 1 selected run');
+  await expect(page.locator('.legend-chip')).toHaveCount(1);
+
+  await page.goBack();
+  await jump.getByRole('button', { name: 'Media' }).click();
+  await expect(page).toHaveURL(/#\/media\?.*sel=/);
+  await page.goBack();
+  await jump.getByRole('button', { name: 'Sweeps' }).click();
+  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
 });

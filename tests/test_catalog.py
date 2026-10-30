@@ -98,3 +98,50 @@ def test_stray_files_such_as_ds_store_are_skipped(tmp_path):
     again = nb.init("a", capture_env=False)
     assert again.use_artifact("ds").version == 1
     again.finish()
+
+
+def test_media_count_is_recorded_and_read_without_opening_packs(tmp_path):
+    import numpy as np
+
+    scalars = nb.init("a", run_name="scalars", capture_env=False, system_metrics=False)
+    scalars.add_scalar({"x": 1}, step=0)
+    scalars.finish()
+    assert json.loads((scalars.path / "run.json").read_text())["media_count"] == 0
+
+    media = nb.init("a", run_name="media", capture_env=False, system_metrics=False)
+    media.add_text("notes", "hello", step=0)
+    media.add_image("img", np.zeros((2, 2, 3), np.uint8), step=0)
+    media.finish()
+    assert json.loads((media.path / "run.json").read_text())["media_count"] == 2
+
+    again = nb.init("a", run_id=media.id, resume="must", capture_env=False, system_metrics=False)
+    again.add_text("notes", "more", step=1)
+    again.finish()  # a resumed run adds to the count
+    assert json.loads((media.path / "run.json").read_text())["media_count"] == 3
+
+    ev = nb.init("a", run_id=scalars.id, job="eval", capture_env=False, system_metrics=False)
+    ev.add_text("eval/sample", "x", step=0)
+    ev.finish()
+
+    cat = Catalog(tmp_path / "exp", cache=tmp_path / "cache")
+    cat.refresh()
+    assert cat.get(media.id)["media_count"] == 3
+    assert cat.get(scalars.id)["media_count"] == 1  # the helper job's media count
+
+    # a run.json written by an older version: any media pack counts as media
+    for run in (scalars, media):
+        meta = json.loads((run.path / "run.json").read_text())
+        del meta["media_count"]
+        (run.path / "run.json").write_text(json.dumps(meta))
+
+    for job in (scalars.path / "jobs").glob("*.json"):
+        meta = json.loads(job.read_text())
+        del meta["media_count"]
+        job.write_text(json.dumps(meta))
+
+    time.sleep(0.01)
+    old = Catalog(tmp_path / "exp", cache=tmp_path / "cache2")
+    old.refresh()
+    assert old.get(media.id)["media_count"] == 1
+    packs = list(scalars.path.glob("media.r*.pack"))
+    assert old.get(scalars.id)["media_count"] == int(bool(packs))

@@ -2,6 +2,97 @@
 
 ## Unreleased
 
+- **`nuboard demo` no longer piles up runs.** Run again on a folder that
+  already holds the demo, it opens it instead of adding 31 more runs each
+  time, so it starts in about the same time on every run. Delete the folder
+  for a fresh demo.
+
+- **Open selected runs in Charts and Sweeps.** The Runs selection bar has
+  **Charts** and **Sweeps** next to **Media**. Charts,
+  Sweeps, Media and Timeline show a **Showing N selected runs** banner while
+  limited to a selection, with buttons to the other pages (which keep it) and
+  **Show all**; **Clear selection** also drops it from the URL (#7). A run
+  opened for inspection (or the runs being compared) has the same **Charts**,
+  **Sweeps** and **Media** buttons after its tabs.
+
+- **Report picker.** The **Report** field of **Add to a report** (every
+  bookmark button, and **Add N to report** on Media) lists the project's
+  reports as soon as it is focused, newest first, with their titles and file
+  names. Typing narrows it by title or name with the matches highlighted, ↑/↓
+  and Enter pick, the last used report is highlighted (and taken when nothing
+  is typed), and a new name is offered as **New report "name"**. It lists the
+  newest 50 and counts the rest, which typing reaches (#12).
+- **Audio in reports.** **Insert → Audio** (or dropping an audio file on the
+  text box) uploads a WAV, FLAC, MP3, Ogg, M4A or WebM file, checked from its
+  bytes and capped at 50 MB (`--max-audio-mb`), and writes
+  `[caption](files/<hash>.wav)`. It plays with the waveform player in the
+  preview, is copied by the .zip export and embedded in the HTML export with
+  the player chosen there (#12).
+- **Report toolbar icons.** Link, lists, checklist, quote, code block, rule,
+  table, undo and redo are drawn as theme icons instead of emoji and symbols,
+  so they follow the light and dark themes and the pressed color (#12).
+- **Media item is grayed out** in **Insert** when no run of the report's
+  project logged media, saying so. Runs now record `media_count` in
+  `run.json` with each write they already make; runs from older versions are
+  checked once for a media pack when indexed (#12).
+
+- **Reproducibility.** A new [guide](guide/reproducibility.md) explains what a
+  run records, how to replay it, and what is not covered. `init` now:
+  - removes any user, password or token from the recorded git remote URL;
+  - records the repository of your code: `code_dir=` if given, else the
+    running script's folder, else the working directory (`git.source`), with
+    a warning when the script and the working directory are in different
+    repositories;
+  - records `git.pushed` (whether a remote-tracking branch has the commit)
+    and `git.untracked` (how many untracked files, never their names),
+    shown and highlighted in **All settings**;
+  - keeps the commit of packages installed from git in `requirements.txt`,
+    without credentials;
+  - records the folder and git state of packages installed from a local
+    folder (`pip install -e ../lib`): a clean, pushed checkout becomes an
+    installable `git+URL@commit` line, uncommitted changes are saved as
+    `files/git-<package>.patch` (#13);
+  - never lets a repository's config run a program during capture
+    (`core.fsmonitor` off, diffs with `--no-textconv`), and skips patches over
+    10 MB, recording `git.patch_bytes` instead (#13);
+  - records what it can in a repository with no commits, on a detached
+    `HEAD`, from a deleted working directory or with broken package
+    metadata, and never fails the run over it (#11).
+- **Report editor: formatting toolbar and Insert menu.** Buttons for bold,
+  italic, underline (`<u>`), strikethrough, headings, lists, checklists,
+  quotes, code, links, rules and tables write plain Markdown, with Ctrl/⌘+B,
+  I, U, Shift+X and K, undo and redo, and show as pressed when the cursor is
+  inside their formatting (pressing again removes it). **Insert** adds an
+  **Image** (pick, drop or paste, with alt text and a caption), a **Text file**
+  (inline as Markdown, a table or code, or attached as a collapsible block with
+  a download link), a **Table**, or goes to Charts and Media. Dropping or
+  pasting an image into the text box uploads it too (#4).
+- **Uploads are checked and stored in the project.** They go in
+  `reports/files/`, named by content hash, and are part of the .zip and HTML
+  exports. The server checks the bytes (PNG, JPEG, GIF, WebP or a plain SVG;
+  UTF-8 text with no NUL bytes), caps sizes at 20 MB for images and 5 MB for
+  text (`--max-image-mb`, `--max-text-mb`), and serves report files with a
+  fixed type, `nosniff` and a strict CSP; text files always download.
+  `nuboard up --read-only-reports` turns off every change to reports.
+- **Report images from other websites are not loaded**; they show as a link.
+- **Filter the settings of compared runs.** A filter box in **All settings**
+  narrows its rows by key: plain text, `/regex/` (or the **.\*** toggle),
+  `!exclusions` and several terms at once, optionally matching values too. It
+  works with **Only changes**, shows "12 of 340 keys", highlights the matches
+  and is kept in the URL. `/` focuses it and `Esc` clears it (#9).
+- **Sweeps sees every config key.** A key that differs between runs gets a
+  parameter chip however deep it sits in a large config. Sweeps read its
+  parameters from the run list, which keeps only the first 64 config values of
+  each run, so later keys (such as
+  `generator.config.weighted_sir_db.edge.min`) were missed. It now asks the new
+  `GET /api/sweep-keys?runs=...` endpoint, which returns every differing key
+  with each run's value; the run list stays small.
+- **The demo shows it.** `speech-denoise` runs now carry a long training-mix
+  generator config, and differ in `generator.config.weighted_sir_db.edge.min`,
+  its 73rd value: open Sweeps on that project to see the chip.
+
+## 0.19.0
+
 - **Download a waveform figure's audio and signals.** Waveform figures
   (`nb.WaveformFigure`) have a Download menu next to **Fit**, on the Media
   page, in the large view, in report embeds and in exported HTML:

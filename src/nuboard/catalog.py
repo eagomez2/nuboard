@@ -7,6 +7,7 @@ it is missing or its schema version differs, it is rebuilt. No migrations.
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -22,7 +23,7 @@ from ._meta import ENV_PREFIX, NAME
 from .collection import attach
 from .jobs import JOBS, merge_jobs, read_jobs
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
 _SKIP_DIRS = {
     "artifacts",
@@ -235,6 +236,7 @@ def make_record(
         "fields": ann.get("fields") or {},
         "alerts": meta.get("alerts") or [],
         "compacted": bool(meta.get("compacted")),
+        "media_count": meta.get("media_count") or 0,
         "jobs": [{**j, "status": effective_status(j)} for j in meta.get("jobs") or []],
     }
 
@@ -385,6 +387,12 @@ class Catalog:
             return False
 
         merge_jobs(meta, read_jobs(path))
+
+        if "media_count" not in meta:  # written by older versions: any media pack counts
+            meta["media_count"] = int(
+                bool(glob.glob(os.path.join(glob.escape(path), "media.r*.pack")))
+            )
+
         ann = _fs.read_json(ann_json, {}) or {}
         self._state[key] = (rel, rm, am)
         self._rows[key] = make_record(key, project, rel, meta, ann)

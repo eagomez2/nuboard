@@ -669,7 +669,7 @@
               {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{@const b =
                     best[c.run.key]}{@const shown = shownItem(c.items, b.step, true)}{i ? ' · ' : ''}{c.run.name}
                   {fmtNum(b.value)} at step {b.step.toLocaleString()}{#if shown && shown.step !== b.step}
-                    {' '}(item from step {shown.step.toLocaleString()}){/if}{/if}{/each}
+                    {` (item from step ${shown.step.toLocaleString()})`}{/if}{/if}{/each}
             </p>
           {/if}
         {/if}

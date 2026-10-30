@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import dataclasses
 import datetime as _dt
 import glob
@@ -270,6 +271,10 @@ class Run:
             `step + 1`.
         capture_env: Record the git commit and diff, installed packages, GPUs,
             host and command line.
+        code_dir: Folder of the training code, whose git repository is
+            recorded. Defaults to the running script's folder, then the working
+            directory; pass it when the script is not your code (a notebook,
+            `python -m` of an installed package, a CLI entry point).
         compact: On `finish`, compact a single-process run's logs into Parquet
             (only when PyArrow and NumPy are installed).
         flush_interval: Seconds between writes by the background thread.
@@ -329,6 +334,7 @@ class Run:
         job: str | None = None,
         fork_from: tuple[str, int] | None = None,
         capture_env: bool = True,
+        code_dir: str | os.PathLike[str] | None = None,
         compact: bool = True,
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
@@ -343,6 +349,7 @@ class Run:
         self._root = data_root(dir)
         self.dist = _env.detect_dist()
         self._compact = compact
+        self._code_dir = code_dir
         self._flush_interval = flush_interval
         self._heartbeat_interval = heartbeat_interval
         self._writer: Writer | None = None
@@ -351,6 +358,7 @@ class Run:
         self._next_step = 0
         self._last_step = 0
         self._finished = False
+        self._media_new = 0  # media and text items logged since run.json was last written
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
@@ -574,18 +582,50 @@ class Run:
         meta["sessions"].append({"session": self.session, "started": self.started, "ended": None})
 
         if capture_env:
-            git, diff = _env.git_info()
-            meta["git"] = git
-            meta["env"] = _env.environment()
-
-            if diff:
-                _fs.atomic_write_bytes(files / "git.patch", diff.encode("utf-8"))
-
-            _fs.atomic_write_bytes(files / "requirements.txt", _env.pip_freeze().encode("utf-8"))
-            _fs.atomic_write_bytes(files / "command.txt", _env.command_line().encode("utf-8"))
+            self._capture_env(meta, files)
 
         self._meta = meta
         self._save_meta()
+
+    def _capture_env(self, meta: dict[str, Any], files: Path) -> None:
+        """Record git, the environment, the packages and the command line, best effort.
+
+        Each part is captured on its own: one that fails (no git, a deleted
+        working directory, broken package metadata, a full disk) is left out
+        with a warning, and the run starts anyway.
+        """
+        git, diff = _env.git_info(code_dir=self._code_dir)
+        meta["git"] = git
+
+        # a resumed run in a clean tree must not keep the patch of an earlier session
+        if not diff:
+            with contextlib.suppress(OSError):
+                (files / "git.patch").unlink(missing_ok=True)
+
+        def attempt(what: str, capture: Any) -> None:
+            try:
+                capture()
+            except Exception as exc:  # never let tracking break training
+                warnings.warn(f"{NAME}: could not record {what}: {exc}", stacklevel=5)
+
+        def write(name: str, text: str) -> None:
+            _fs.atomic_write_bytes(files / name, text.encode("utf-8"))
+
+        attempt("the environment", lambda: meta.__setitem__("env", _env.environment()))
+
+        if diff:
+            attempt("git.patch", lambda: write("git.patch", diff))
+
+        def packages() -> None:
+            root = git.get("root") if git else None
+            text, patches = _env.freeze(str(root) if root else None)
+            write("requirements.txt", text)
+
+            for name, patch in patches.items():
+                attempt(name, lambda name=name, patch=patch: write(name, patch))
+
+        attempt("requirements.txt", packages)
+        attempt("command.txt", lambda: write("command.txt", _env.command_line()))
 
     def _write_job_meta(self, capture_env: bool) -> None:
         """Create or update this helper job's `jobs/<job>.json`.
@@ -731,6 +771,8 @@ class Run:
             if self._writer is not None:
                 self._meta["summary"] = self._writer.summary()
 
+            new, self._media_new = self._media_new, 0
+            self._meta["media_count"] = int(self._meta.get("media_count") or 0) + new
             _fs.atomic_write_json(self._meta_path, self._meta)
 
     def _log_system(self, values: dict[str, float]) -> None:
@@ -939,6 +981,7 @@ class Run:
 
         if writer is not None:
             writer.put_text(key, self._step(step), _now() if time is None else time, str(text))
+            self._media_new += 1
 
     def add_image(
         self,
@@ -1398,6 +1441,7 @@ class Run:
             writer.put_media(
                 key, self._step(step), _now() if time is None else time, producer, meta
             )
+            self._media_new += 1
 
     def _step(self, step: int | None) -> int:
         """Return `step`, or the step of the latest `add_scalar` call when it is None."""
@@ -1680,6 +1724,7 @@ def init(
     job: str | None = None,
     fork_from: tuple[str, int] | None = None,
     capture_env: bool = True,
+    code_dir: str | os.PathLike[str] | None = None,
     compact: bool = True,
     flush_interval: float = 1.0,
     heartbeat_interval: float = 10.0,
@@ -1727,6 +1772,10 @@ def init(
             `step + 1`.
         capture_env: Record the git commit and diff, installed packages, GPUs,
             host and command line.
+        code_dir: Folder of the training code, whose git repository is
+            recorded. Defaults to the running script's folder, then the working
+            directory; pass it when the script is not your code (a notebook,
+            `python -m` of an installed package, a CLI entry point).
         compact: On `finish`, compact a single-process run's logs into Parquet
             (only when PyArrow and NumPy are installed).
         flush_interval: Seconds between writes by the background thread.
@@ -1780,6 +1829,7 @@ def init(
         job=job,
         fork_from=fork_from,
         capture_env=capture_env,
+        code_dir=code_dir,
         compact=compact,
         flush_interval=flush_interval,
         heartbeat_interval=heartbeat_interval,

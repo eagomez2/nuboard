@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 
 import pyarrow as pa
 import pytest
@@ -360,9 +362,6 @@ def test_reports_round_trip(client):
     ] == ("Notes")
     export = client.get("/api/reports/sweep/Notes/export")
     assert export.headers["content-type"] == "application/zip"
-    import io
-    import zipfile
-
     md = zipfile.ZipFile(io.BytesIO(export.content)).read("Notes.md").decode()
     assert "```text\nhi\n```" in md
     moved = client.post(
@@ -773,3 +772,186 @@ def _wait(c, ok, timeout=10.0):
         time.sleep(0.02)
 
     raise AssertionError(f"timed out: {st}")
+
+
+def test_sweep_keys_find_a_late_nested_key_the_run_list_cuts(tmp_path):
+    def config(edge_min):
+        cfg = {f"k{i:03d}": i for i in range(80)}  # 80 values shared by every run
+        cfg["generator"] = {
+            "config": {"weighted_sir_db": {"edge": {"min": edge_min, "max": 30}}},
+            "layers": [64, 64],
+        }
+        return cfg
+
+    for edge_min in (-5, 0, 5):
+        with nb.init(
+            "deep", run_name=f"e{edge_min}", config=config(edge_min), capture_env=False
+        ) as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    key = "generator.config.weighted_sir_db.edge.min"
+
+    with TestClient(app) as c:
+        runs = c.get("/api/runs").json()["runs"]
+        assert all(key not in r["config"] for r in runs)  # the run list stays capped
+
+        by_runs = c.get("/api/sweep-keys", params={"runs": ",".join(r["key"] for r in runs)})
+        assert by_runs.json()["keys"] == [key]
+        assert by_runs.json()["values"][key] == {r["key"]: int(r["name"][1:]) for r in runs}
+
+        by_project = c.get("/api/sweep-keys", params={"project": "deep"}).json()
+        assert by_project["keys"] == [key]
+        assert c.get("/api/sweep-keys", params={"runs": runs[0]["key"]}).json()["keys"] == []
+
+
+def test_sweep_keys_send_lists_as_json(tmp_path):
+    for layers in ([64, 64], [128]):
+        with nb.init("lists", config={"layers": layers}, capture_env=False) as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        res = c.get("/api/sweep-keys", params={"project": "lists"}).json()
+        assert sorted(res["values"]["layers"].values()) == ["[128]", "[64, 64]"]
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def upload(client, data, name, kind, project="sweep"):
+    return client.post(
+        "/api/reports/upload",
+        params={"project": project, "name": name, "kind": kind},
+        content=data,
+        headers={"content-type": "application/octet-stream"},
+    )
+
+
+def test_report_uploads_are_checked_stored_by_hash_and_served_locked_down(client):
+    first = upload(client, PNG, "shot.PNG", "image").json()
+    assert first["path"].startswith("files/") and first["path"].endswith(".png")
+    assert upload(client, PNG, "again.png", "image").json()["path"] == first["path"]  # stored once
+    jpeg = upload(client, b"\xff\xd8\xff\xe0" + b"\x00" * 20, "photo.bin", "image").json()
+    assert jpeg["path"].endswith(".jpg")  # the bytes decide the type, not the name
+
+    img = client.get(f"/api/reports/sweep/files/{first['path'][6:]}")
+    assert img.headers["content-type"] == "image/png"
+    assert img.headers["x-content-type-options"] == "nosniff"
+    assert img.headers["content-security-policy"].startswith("default-src 'none'")
+    assert "attachment" not in img.headers.get("content-disposition", "")
+
+    log = upload(client, "épocas 1\nloss 0.5\n".encode(), "train.log", "text").json()
+    assert log["path"].endswith(".log") and log["name"] == "train.log"
+    served = client.get(f"/api/reports/sweep/files/{log['path'][6:]}")
+    assert served.headers["content-type"] == "text/plain; charset=utf-8"
+    assert served.headers["content-disposition"].startswith("attachment")
+    assert served.text == "épocas 1\nloss 0.5\n"
+
+    # a renamed HTML page is stored as plain text and downloaded, never rendered
+    html = upload(client, b"<script>alert(1)</script>", "page.html", "text").json()
+    assert html["path"].endswith(".txt")
+    page = client.get(f"/api/reports/sweep/files/{html['path'][6:]}")
+    assert page.headers["content-type"].startswith("text/plain")
+
+    refused = {
+        "html as image": upload(client, b"<html><body>hi</body></html>", "x.png", "image"),
+        "script svg": upload(client, b"<svg><script>alert(1)</script></svg>", "x.svg", "image"),
+        "binary as text": upload(client, b"ab\x00cd", "x.txt", "text"),
+        "latin-1 text": upload(client, "caf\xe9".encode("latin-1"), "x.txt", "text"),
+        "empty": upload(client, b"", "x.png", "image"),
+        "unknown project": upload(client, PNG, "x.png", "image", project="zzz"),
+        "png as audio": upload(client, PNG, "x.wav", "audio"),
+        "unknown kind": upload(client, PNG, "x.png", "video"),
+    }
+
+    for what, res in refused.items():
+        assert res.status_code == 400, what
+        assert res.json()["error"], what
+
+    assert "not UTF-8" in refused["latin-1 text"].json()["error"]
+    assert "PNG, JPEG, GIF or WebP" in refused["html as image"].json()["error"]
+    wrong_type = client.post(
+        "/api/reports/upload",
+        params={"project": "sweep", "name": "a.png", "kind": "image"},
+        json={"png": "x"},
+    )
+    assert wrong_type.status_code == 415
+
+
+WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 28
+AUDIO = {
+    "a.wav": (WAV, ".wav", "audio/wav"),
+    "a.flac": (b"fLaC\x00\x00\x00\x22" + b"\x00" * 20, ".flac", "audio/flac"),
+    "tagged.mp3": (b"ID3\x04\x00" + b"\x00" * 20, ".mp3", "audio/mpeg"),
+    "frame.mp3": (b"\xff\xfb\x90\x64" + b"\x00" * 20, ".mp3", "audio/mpeg"),
+    "a.ogg": (b"OggS\x00\x02" + b"\x00" * 20, ".ogg", "audio/ogg"),
+    "a.m4a": (b"\x00\x00\x00\x20ftypM4A " + b"\x00" * 20, ".m4a", "audio/mp4"),
+    "a.webm": (b"\x1a\x45\xdf\xa3" + b"\x00" * 20, ".webm", "audio/webm"),
+}
+
+
+def test_report_audio_uploads_are_typed_from_their_bytes(client):
+    for name, (data, ext, mime) in AUDIO.items():
+        saved = upload(client, data, f"renamed-{name}.bin", "audio").json()
+        assert saved["kind"] == "audio" and saved["path"].endswith(ext), name
+        served = client.get(f"/api/reports/sweep/files/{saved['path'][6:]}")
+        assert served.headers["content-type"] == mime, name
+        assert served.headers["x-content-type-options"] == "nosniff"
+        assert served.headers["content-security-policy"].startswith("default-src 'none'")
+        assert "attachment" not in served.headers.get("content-disposition", "")
+
+    refused = {
+        "aac frame": b"\xff\xf1\x50\x80" + b"\x00" * 20,  # ADTS AAC: layer 0, not MPEG audio
+        "riff avi": b"RIFF\x00\x00\x00\x00AVI " + b"\x00" * 20,
+        "html": b"<html><audio></audio></html>",
+        "text": b"not audio at all",
+    }
+
+    for what, data in refused.items():
+        res = upload(client, data, "x.wav", "audio")
+        assert res.status_code == 400, what
+        assert "WAV, FLAC, MP3" in res.json()["error"], what
+
+
+def test_report_upload_limits_and_read_only_reports(tmp_path):
+    with nb.init("p", config={}, capture_env=False) as run:
+        run.add_scalar({"loss": 1.0}, step=0)
+
+    small = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", max_text_bytes=10)
+
+    with TestClient(small) as c:
+        assert c.get("/api/info").json()["upload_limits"]["text"] == 10
+        big = upload(c, b"x" * 11, "a.txt", "text", project="p")
+        assert big.status_code == 413 and "at most" in big.json()["error"]
+        assert upload(c, b"x" * 10, "a.txt", "text", project="p").status_code == 200
+
+    tiny_audio = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", max_audio_bytes=44)
+
+    with TestClient(tiny_audio) as c:
+        assert c.get("/api/info").json()["upload_limits"]["audio"] == 44
+        assert upload(c, WAV + b"\x00" * 10, "a.wav", "audio", project="p").status_code == 413
+        assert upload(c, WAV, "a.wav", "audio", project="p").status_code == 200
+
+    locked = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_reports=True)
+
+    with TestClient(locked) as c:
+        assert c.get("/api/info").json()["read_only_reports"] is True
+        assert upload(c, PNG, "a.png", "image", project="p").status_code == 403
+        assert upload(c, WAV, "a.wav", "audio", project="p").status_code == 403
+        save = c.post("/api/reports", json={"project": "p", "name": "r", "text": "# r"})
+        assert save.status_code == 403 and "read-only" in save.json()["error"]
+
+
+def test_report_export_includes_uploaded_images_and_attachments(client):
+    image = upload(client, PNG, "shot.png", "image").json()["path"]
+    log = upload(client, b"step 1\n", "train.log", "text").json()["path"]
+    sound = upload(client, WAV, "take.wav", "audio").json()["path"]
+    text = f'# Up\n\n![a shot]({image})\n\n[train.log]({log} "attachment")\n\n[a take]({sound})\n'
+    client.post("/api/reports", json={"project": "sweep", "name": "Up", "text": text})
+    zf = zipfile.ZipFile(io.BytesIO(client.get("/api/reports/sweep/Up/export").content))
+    md = zf.read("Up.md").decode()
+    assert f"![a shot]({image})" in md and f"[train.log]({log})" in md
+    assert zf.read(image) == PNG and zf.read(log) == b"step 1\n"
+    assert f"[a take]({sound})" in md and zf.read(sound) == WAV

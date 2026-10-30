@@ -53,7 +53,12 @@ marks it crashed.
   exists. See [Resume and fork](init.md#resume-and-fork).
 - **fork_from** (*(run_id, step)*, optional): start from a copy of another
   run's history up to `step`.
-- **capture_env** (*bool*): record git, installed packages and GPUs.
+- **capture_env** (*bool*): record git, installed packages and GPUs. Best
+  effort: a part that cannot be read is left out and the run starts anyway.
+- **code_dir** (*str | PathLike | None*): folder of the training code, whose
+  git repository is recorded. By default the running script's folder, then the
+  working directory. Pass it from a notebook, or when the entry point is an
+  installed package. See [Reproducibility](../guide/reproducibility.md).
 - **compact** (*bool*): write `data.parquet` at finish, when PyArrow is
   installed, so the viewer opens the run faster.
 - **flush_interval** (*float*): seconds between background writes.

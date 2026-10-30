@@ -26,7 +26,8 @@ path.
         data.parquet                      compacted scalars (written at finish, optional)
         files/
           requirements.txt                installed packages (pip freeze format)
-          git.patch                       `git diff HEAD` at start (only if dirty)
+          git.patch                       `git diff HEAD` at start (only if dirty, at most 10 MB)
+          git-<package>.patch             uncommitted changes of a package installed from a local folder
           command.txt                     the command line that started the run
           output.log                      what rank 0 printed (capture_console)
           ...                             files and folders added with run.add_file
@@ -38,9 +39,53 @@ path.
     views/*.json                          saved viewer state; safe to commit to git
     reports/<name>.md                     Markdown reports written in the viewer
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
+    reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
+
+### Git info
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `commit` | str/null | `HEAD`'s full hash; null in a repository with no commits yet. |
+| `branch` | str/null | The checked-out branch; null when `HEAD` is detached. |
+| `remote` | str/null | `remote.origin.url`, with any user, password, query and fragment removed from a URL with a scheme. |
+| `root` | str | The working tree's top folder. |
+| `dirty` | bool/null | Whether `files/git.patch` has changes; null when the diff could not be read. |
+| `pushed` | bool/null | Whether a remote-tracking branch contains `commit` (read locally, as of the last fetch or push); null when there are none or it could not be read. |
+| `untracked` | int/null | Untracked, not ignored files: their number only. |
+| `source` | str | Where the repository was found: `code_dir`, `script` or `cwd`. |
+| `patch_bytes` | int | Only when the diff is over 10 MB: its size. `git.patch` is then not written. |
+
+`pushed`, `untracked`, `source` and `patch_bytes` are absent from runs recorded by older versions.
+
+Every git command runs with `core.fsmonitor` off, and diffs with
+`--no-ext-diff --no-textconv`, so a repository's config or `.gitattributes`
+cannot make capture run a program.
+
+### requirements.txt
+
+`files/requirements.txt` is in `pip install -r` format, one package per line:
+
+| Installed from | Line |
+| --- | --- |
+| an index (PyPI) | `name==version` |
+| a VCS URL | `name @ git+URL@commit` (URL without credentials) |
+| an archive URL | `name @ URL` (without query or fragment) |
+| a local folder, clean git checkout whose commit is on a remote | `name @ git+URL@commit[#subdirectory=dir]  # local: <path>` |
+| a local folder with uncommitted changes | `name==version  # local: <path>, git <commit> (dirty), patch: git-<package>.patch` |
+| a local folder, commit not pushed | `name==version  # local: <path>, git <commit> (not pushed)` |
+| a local folder inside the run's repository | `name==version  # local: <path>, the run's repository (see run.json git)` |
+| a local folder not under git | `name==version  # local: <path>, not under git` |
+| a local folder that no longer exists | `name==version  # local: <path> (missing)` |
+| a local file, or a 21st or later local folder | `name==version  # local: <path>` |
+
+Packages from one repository share one patch, named after the first of them.
+A patch over 10 MB is not written and the line says `patch too large (N bytes)`.
+The remote of a local folder is written with an `ssh://` URL when it is in
+scp form (`git@host:org/repo`), and kept as a comment (`remote <path>`) when it
+is a folder on the same machine.
 
 ### Run ids and names
 
@@ -78,12 +123,13 @@ ignore keys they do not know.
 | `sessions` | list | One `{session, started, ended}` per start or resume. |
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
-| `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`. |
+| `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`, `pushed`, `untracked`, `source`; see below. Null outside a git repository or without git. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. `gpus` lists the NVIDIA GPUs the process can use (after `CUDA_VISIBLE_DEVICES`), each with `device` (`cuda:i`), `index` (on the machine), `uuid`, `name`, `memory` and `driver`; older runs have only the last three, for every GPU of the machine. |
 | `distributed` | object | `world_size`, `shared_id`. |
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
 | `exit` | object/null | `{code, error}`; `error` holds the last 4,000 characters of the traceback. |
+| `media_count` | int | Media and text items logged, across sessions; a helper job keeps its own in `jobs/<job>.json`. Absent from runs recorded by older versions; the viewer then checks for a `media.r*.pack` file. |
 | `compacted` | object | Written after compaction: `{bytes: {log file: size}, time}`. |
 | `alerts` | list | Written after compaction: the run's [health alerts](../guide/alerts.md), see below. |
 
@@ -404,6 +450,29 @@ The Media page's "All runs on one chart" has the title
 `overlay:<ref> <ref> ...`, one `<run id>/<key>@<step>` reference per run
 (as after `media:`), separated by spaces. The viewer draws the chart live
 from those items and shows the PNG snapshot when none of them is found.
+
+### Uploaded files
+
+Images, audio and text files uploaded in the report editor are stored in
+`reports/files/` as uploaded, named by the first 16 hex digits of the SHA-256
+of their bytes plus an extension (`files/3f2a9c0d1e2b4a5f.png`), so identical
+uploads share one file.
+
+- **Images**: `.png`, `.jpg`, `.gif` or `.webp`, the extension chosen from
+  the file's first bytes, or `.svg` for an SVG drawing with no scripts, event
+  handlers, links or embedded HTML. Embedded as `![alt](files/<hash>.<ext>)`.
+- **Audio**: `.wav`, `.flac`, `.mp3`, `.ogg`, `.m4a` or `.webm`, chosen from
+  the file's first bytes (RIFF/WAVE, `fLaC`, an ID3 tag or MPEG frame sync,
+  `OggS`, `ftyp`, EBML). Embedded as `[caption](files/<hash>.<ext>)`, which the
+  viewer plays with the waveform player.
+- **Text files**: UTF-8 with no NUL bytes; the extension is the uploaded
+  file's when it is a known text or source extension (`.txt`, `.md`, `.log`,
+  `.csv`, `.json`, `.yaml`, `.py`, ...), else `.txt`. An attached file is a
+  link titled `attachment`: `[train.log](files/<hash>.log "attachment")`.
+
+The viewer serves images inline with their type, and every other file as a
+download (`text/plain; charset=utf-8` for text), always with
+`X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'`.
 
 ## Property definitions: `fields.json`
 

@@ -13,6 +13,12 @@ A chart saved from the viewer is a PNG snapshot in `reports/files/` whose image
 title describes the chart (`![loss](files/x.png "chart:metric=loss&runs=...")`);
 the viewer draws it live, other Markdown viewers show the snapshot.
 
+Images and text files uploaded in the editor are stored in `reports/files/` too,
+named by a hash of their content (see `save_upload`). An image is a plain image
+line; an attached text file is a link titled `attachment`
+(`[train.log](files/3f2a....log "attachment")`), which the viewer shows as a
+collapsible block.
+
 Properties are typed custom fields. Their definitions live in
 `<project>/fields.json`; the values stay in each run's `annotations.json`.
 
@@ -38,6 +44,8 @@ from ._waveform import waveform_bundle
 REF = re.compile(r"!\[(?P<alt>[^\]]*)\]\(media:(?P<ref>[^)\s]+)\)")
 # a report-local image such as a chart snapshot: `![caption](files/x.png "chart:...")`
 LOCAL = re.compile(r'!\[(?P<alt>[^\]]*)\]\((?P<path>files/[^)\s"]+)(?:\s+"[^"]*")?\)')
+# a link to a report-local file, such as an attachment: `[a.log](files/x.log "attachment")`
+LOCAL_LINK = re.compile(r'(?<!!)\[(?P<label>[^\]]*)\]\((?P<path>files/[^)\s"]+)(?:\s+"[^"]*")?\)')
 FIELD_TYPES = ("text", "number", "choice", "tags", "bool", "date", "link")
 _EXT = {
     "image/png": ".png",
@@ -246,7 +254,21 @@ def export_report(
 
             return f"![{match.group('alt')}]({path})"
 
-        body = REF.sub(replace, LOCAL.sub(copy_local, text))  # local files first
+        def copy_linked(match: re.Match[str]) -> str:
+            """Copy one linked report-local file (an attachment) into the zip."""
+            path = match.group("path")
+            data = local(path) if local else None
+
+            if data is None:
+                return f"*(missing: {path})*"
+
+            if path not in zf.namelist():
+                zf.writestr(path, data)
+
+            return f"[{match.group('label')}]({path})"
+
+        # local files first
+        body = REF.sub(replace, LOCAL_LINK.sub(copy_linked, LOCAL.sub(copy_local, text)))
         zf.writestr(f"{_fs.sanitize(title, 'report')}.md", body)
 
     return buf.getvalue()
@@ -281,6 +303,190 @@ def save_snapshot(project_dir: Path, report: str, png: bytes) -> str:
     folder.mkdir(parents=True, exist_ok=True)
     _fs.atomic_write_bytes(folder / name, png)
     return f"files/{name}"
+
+
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_TEXT_BYTES = 5 * 1024 * 1024
+MAX_AUDIO_BYTES = 50 * 1024 * 1024
+# Report files are served with a type chosen from their extension here, never guessed
+IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+}
+AUDIO_TYPES = {
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".webm": "audio/webm",
+}
+TEXT_EXTENSIONS = frozenset(
+    ".txt .md .markdown .log .csv .tsv .json .jsonl .yaml .yml .toml .ini .cfg .conf .xml "
+    ".py .ipynb .sh .bash .zsh .ps1 .bat .js .mjs .ts .tsx .jsx .c .h .cc .cpp .hpp .cu .cuh "
+    ".rs .go .java .kt .scala .swift .rb .php .pl .lua .r .jl .m .sql .tex .bib .rst "
+    ".diff .patch .proto .gradle .cmake .mk .dockerfile .env".split()
+)
+
+
+class UploadError(ValueError):
+    """An upload that was refused: too large, of the wrong type, or not UTF-8 text."""
+
+
+def image_type(data: bytes) -> str | None:
+    """Return the extension of a PNG, JPEG, GIF or WebP image from its first bytes, or None."""
+
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+
+    return None
+
+
+def audio_type(data: bytes) -> str | None:
+    """Return the extension of a WAV, FLAC, MP3, Ogg, M4A or WebM file from its first bytes.
+
+    None when the bytes are none of these.
+    """
+
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return ".wav"
+
+    if data.startswith(b"fLaC"):
+        return ".flac"
+
+    # an ID3 tag, or an MPEG audio frame: 11 sync bits, then a layer that is not 0 (that is AAC)
+    if data.startswith(b"ID3") or (
+        len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0 and data[1] & 0x06
+    ):
+        return ".mp3"
+
+    if data.startswith(b"OggS"):
+        return ".ogg"
+
+    if data[4:8] == b"ftyp":
+        return ".m4a"
+
+    if data.startswith(b"\x1a\x45\xdf\xa3"):  # EBML, the container of WebM
+        return ".webm"
+
+    return None
+
+
+def save_upload(
+    project_dir: Path,
+    data: bytes,
+    filename: str,
+    kind: str,
+    max_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Check an image, audio or text file uploaded into a report and store it in `reports/files/`.
+
+    The type is decided from the bytes, never from the file name or the
+    browser: an image must be a PNG, JPEG, GIF or WebP (or an SVG drawing that
+    passes the same check as chart snapshots), audio a WAV, FLAC, MP3, Ogg,
+    M4A or WebM file, and a text file must decode as UTF-8 with no NUL bytes.
+    Nothing is decoded or converted: the file is stored as uploaded, named by
+    the first 16 hex digits of its SHA-256, so identical uploads are stored
+    once.
+
+    Args:
+        project_dir: The project's folder.
+        data: The file's bytes.
+        filename: The name it was uploaded with; only its extension is used, for
+            a text file (`.txt` when it is not a known text extension).
+        kind: `image`, `audio` or `text`.
+        max_bytes: The size limit, or None for `MAX_IMAGE_BYTES`,
+            `MAX_AUDIO_BYTES` or `MAX_TEXT_BYTES`.
+
+    Returns:
+        `path` (to write in the report, such as `files/3f2a9c0d1e2b4a5f.png`),
+        `kind`, `size` and `name` (the uploaded file name, without folders).
+
+    Raises:
+        UploadError: If the file is empty, too large or not of an accepted type.
+    """
+    name = re.split(r"[\\/]", filename)[-1] or "file"
+
+    limits = {"image": MAX_IMAGE_BYTES, "audio": MAX_AUDIO_BYTES, "text": MAX_TEXT_BYTES}
+
+    if kind not in limits:
+        raise UploadError(f"unknown upload kind {kind!r}; expected image, audio or text")
+
+    limit = max_bytes if max_bytes is not None else limits[kind]
+
+    if not data:
+        raise UploadError(f"{name} is empty")
+
+    if len(data) > limit:
+        raise UploadError(
+            f"{name} is {len(data) / 1e6:.1f} MB; {kind} files can be at most {limit / 1e6:.0f} MB"
+        )
+
+    if kind == "image":
+        ext = image_type(data) or (".svg" if _safe_svg(data) else None)
+
+        if ext is None:
+            raise UploadError(
+                f"{name} is not a PNG, JPEG, GIF or WebP image (or a plain SVG drawing)"
+            )
+    elif kind == "audio":
+        ext = audio_type(data)
+
+        if ext is None:
+            raise UploadError(f"{name} is not a WAV, FLAC, MP3, Ogg, M4A or WebM audio file")
+    else:
+        if b"\x00" in data:
+            raise UploadError(f"{name} is not a text file: it has NUL bytes")
+
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            raise UploadError(f"{name} is not UTF-8 text") from None
+
+        suffix = Path(name).suffix.lower()
+        ext = suffix if suffix in TEXT_EXTENSIONS else ".txt"
+
+    stored = f"{hashlib.sha256(data).hexdigest()[:16]}{ext}"
+    folder = project_dir / "reports" / "files"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    if not (folder / stored).exists():
+        _fs.atomic_write_bytes(folder / stored, data)
+
+    return {"path": f"files/{stored}", "kind": kind, "size": len(data), "name": name}
+
+
+def served_type(name: str) -> tuple[str, bool]:
+    """Return the `Content-Type` a report file is served with, and whether it is a download.
+
+    Images and audio are shown inline with their type, text files are sent as UTF-8
+    `text/plain` attachments, and anything else as an `application/octet-stream`
+    attachment, so a file renamed to `.html` never renders.
+    """
+    ext = Path(name).suffix.lower()
+
+    if ext in IMAGE_TYPES:
+        return IMAGE_TYPES[ext], False
+
+    if ext in AUDIO_TYPES:
+        return AUDIO_TYPES[ext], False
+
+    if ext in TEXT_EXTENSIONS:
+        return "text/plain; charset=utf-8", True
+
+    return "application/octet-stream", True
 
 
 _UNSAFE_SVG = re.compile(

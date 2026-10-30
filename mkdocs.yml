@@ -33,6 +33,7 @@ nav:
       - Sweeps: guide/sweeps.md
       - Health alerts: guide/alerts.md
       - Artifacts and lineage: guide/artifacts.md
+      - Reproducibility: guide/reproducibility.md
       - Analysis API: guide/analysis.md
       - Distributed training: guide/distributed.md
       - Evaluating while training: guide/jobs.md
