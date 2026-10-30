@@ -2,16 +2,22 @@ name: Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
+# A new push to a branch or PR cancels its run still going
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     # Windows is supported by design but not tested as much yet
     continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
@@ -38,7 +44,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
       - run: uv sync --locked
-      - run: uv run pytest tests -q
+      # A test that hangs fails after 2 minutes and is named in the log
+      - run: uv run pytest tests -q --timeout=120
       - run: uv run ruff check src tests
         if: matrix.os == 'ubuntu-latest'
       - run: uv run pyright src
@@ -46,6 +53,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend

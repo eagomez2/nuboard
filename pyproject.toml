@@ -42,7 +42,7 @@ nuboard = "nuboard.cli:main"
 [dependency-groups]
 dev = [
     "numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29",
-    "httpx", "pytest", "ruff", "pyright", "pillow", "matplotlib",
+    "httpx", "pytest", "pytest-timeout", "ruff", "pyright", "pillow", "matplotlib",
     "mkdocs>=1.6,<2", "mkdocs-material>=9.5",
 ]
 
