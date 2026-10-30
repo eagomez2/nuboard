@@ -146,7 +146,7 @@ class Guard:
         form = dict(parse_qsl(body.decode("utf-8", "replace")))
         target = form.get("next") or "/"
 
-        if not target.startswith("/") or target.startswith("//"):
+        if not target.startswith("/") or target.startswith("//") or "\\" in target:
             target = "/"
 
         if _eq(form.get("token", "").strip(), self.token or ""):

@@ -4,7 +4,7 @@ Runs a small learning-rate sweep with two seeds each, so the viewer has
 something to group: open it with `nuboard up experiments` and type
 `where project = numpy-sweep group by config.lr` in the query bar.
 
-    pip install "nuboard[viewer]"   # NumPy comes with the viewer extra
+    pip install nuboard   # or: uv pip install nuboard (NumPy comes with it)
     python examples/train_numpy.py
 """
 

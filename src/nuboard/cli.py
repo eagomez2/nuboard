@@ -46,7 +46,7 @@ def _free_port(host: str, port: int) -> int:
 
 
 def _need_viewer() -> None:
-    """Exit with an install hint if the optional viewer dependencies are missing."""
+    """Exit with an install hint if the viewer's dependencies are missing."""
 
     try:
         import numpy  # noqa: F401
@@ -55,7 +55,8 @@ def _need_viewer() -> None:
         import uvicorn  # noqa: F401
     except ImportError as exc:
         raise SystemExit(
-            f"{exc.name} is missing. Install the viewer with: pip install '{NAME}[viewer]'"
+            f"{exc.name} is missing. Reinstall with: pip install --force-reinstall {NAME} "
+            f"(or uv pip install --reinstall {NAME})"
         ) from None
 
 

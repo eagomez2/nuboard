@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.20.0
+
+The first release on PyPI: `pip install nuboard` (or `uv pip install nuboard`).
 
 - **`nuboard rm`** deletes runs chosen by a query (`-q 'status = crashed'`)
   or by id or name (`--run`, repeatable). It lists the runs with their sizes
@@ -11,6 +13,16 @@
 - **Command line reference.** A new [page](reference/cli.md) lists every
   command with its options and defaults (#18).
 - **Known limitations** have their own [page](reference/limitations.md).
+- **Viewer pages can't be framed by another website**, so a page you visit
+  cannot overlay the viewer to trick clicks, and the sign-in form no longer
+  follows a `next` link with a backslash to another site.
+- **`pip install nuboard` includes the viewer.** NumPy, PyArrow, Starlette
+  and uvicorn are now regular dependencies, so `nuboard up` works without
+  `[viewer]`; `nuboard[viewer]` still installs. Logging still uses only the
+  standard library and imports none of them.
+- Package metadata for PyPI: project links and classifiers. The docs are
+  published at <https://eagomez2.github.io/nuboard/>, and GitHub workflows run
+  the tests, publish the docs and release to PyPI.
 
 ## 0.19.2
 

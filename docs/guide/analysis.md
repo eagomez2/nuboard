@@ -1,7 +1,7 @@
 # Analysis API
 
 The analysis API returns Apache Arrow tables, which convert to pandas or
-Polars in one call. It needs the viewer extra (`pip install "nuboard[viewer]"`).
+Polars in one call.
 
 ```python
 import nuboard as nb

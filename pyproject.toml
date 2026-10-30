@@ -1,6 +1,6 @@
 [project]
 name = "nuboard"
-version = "0.19.2"
+version = "0.20.0"
 description = "A fast, local, folder-based experiment tracker and viewer for ML training."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -9,15 +9,32 @@ license-files = ["LICENSE"]
 authors = [{ name = "Esteban Gómez" }]
 keywords = ["machine-learning", "experiment-tracking", "tensorboard", "visualization"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Visualization",
 ]
-# The logging side is standard library only.
-dependencies = []
+# `pip install nuboard` gives the logging API and the viewer. Logging itself uses only the
+# standard library, so training scripts never import these.
+dependencies = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
+
+[project.urls]
+Homepage = "https://eagomez2.github.io/nuboard/"
+Documentation = "https://eagomez2.github.io/nuboard/"
+Source = "https://github.com/eagomez2/nuboard"
+Issues = "https://github.com/eagomez2/nuboard/issues"
+Changelog = "https://eagomez2.github.io/nuboard/changelog/"
 
 [project.optional-dependencies]
-viewer = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
+viewer = []  # kept so `nuboard[viewer]` from older instructions still installs
 
 [project.scripts]
 nuboard = "nuboard.cli:main"
@@ -25,7 +42,7 @@ nuboard = "nuboard.cli:main"
 [dependency-groups]
 dev = [
     "numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29",
-    "httpx", "pytest", "ruff", "pyright", "pillow", "matplotlib",
+    "httpx", "pytest", "pytest-timeout", "ruff", "pyright", "pillow", "matplotlib",
     "mkdocs>=1.6,<2", "mkdocs-material>=9.5",
 ]
 

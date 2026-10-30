@@ -31,8 +31,10 @@ hatch_build.py          wheel build hook that builds and bundles the frontend
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/), and for the frontend Node 20+ with
-[pnpm](https://pnpm.io/).
+You need [uv](https://docs.astral.sh/uv/) or pip, and for the frontend Node
+20+ with [pnpm](https://pnpm.io/). The commands below use uv; with pip, run
+`pip install -e . --group dev` (pip 25.1 or newer) in a virtual environment
+instead of `uv sync`, and drop `uv run` from the other commands.
 
 ```bash
 uv sync                        # Python deps + dev tools into .venv
@@ -98,12 +100,33 @@ The wheel contains the built frontend, so users never need Node. Set
 `SKIP_FRONTEND_BUILD=1` to build without it (the viewer then shows a "frontend
 not built" page).
 
+## Releasing
+
+1. Set the version in `pyproject.toml` and `frontend/package.json`, the
+   `nuboard X.Y.Z` lines of `docs/installation.md` and a `## X.Y.Z` section
+   in `docs/changelog.md`; `tests/test_release.py` checks that they agree.
+   Then run `uv lock`.
+2. Merge into `main` and publish a GitHub release tagged `vX.Y.Z`. The
+   **Release** workflow checks the version, builds the wheel and sdist and
+   uploads them to PyPI with
+   [Trusted Publishing](https://docs.pypi.org/trusted-publishers/), so no
+   token is stored. It needs a trusted publisher set up once on PyPI: owner
+   `eagomez2`, repository `nuboard`, workflow `release.yml`, environment
+   `pypi`.
+
+To publish by hand instead: `uv build`, then `uv publish` with a PyPI token
+(try `uv publish --publish-url https://test.pypi.org/legacy/` first).
+
 ## Docs
 
 ```bash
 uv run mkdocs serve             # http://localhost:8000
 uv run mkdocs build             # static site in site/
 ```
+
+The **Docs** workflow builds the site on every push to `main` and publishes it
+to <https://eagomez2.github.io/nuboard/>. It needs **Settings → Pages →
+Source: GitHub Actions** set once in the repository.
 
 Keep [`docs/format.md`](format.md) in sync with every change to what is
 written to disk.

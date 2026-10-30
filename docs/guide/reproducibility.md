@@ -38,8 +38,8 @@ From the run's folder (`<project>/runs/<run id>/`):
 git clone <git.remote> code && cd code
 git checkout <git.commit>
 git apply ../files/git.patch                      # only if the file exists
-python -m venv .venv && . .venv/bin/activate
-pip install -r ../files/requirements.txt
+python -m venv .venv && . .venv/bin/activate      # or: uv venv && . .venv/bin/activate
+pip install -r ../files/requirements.txt          # or: uv pip install -r ../files/requirements.txt
 cat ../files/command.txt                          # then run it with this venv's python
 ```
 
@@ -58,8 +58,8 @@ records the folder and, when it is a git checkout, its state:
 
 | The folder is | `requirements.txt` line | To install it again |
 | --- | --- | --- |
-| a clean git checkout whose commit is on a remote | `mylib @ git+https://github.com/org/mylib.git@<commit>  # local: /home/me/mylib` | Nothing: `pip install -r` does it. |
-| a git checkout with uncommitted changes | `mylib==0.3  # local: /home/me/mylib, git <commit> (dirty), patch: git-mylib.patch` | Clone, check out the commit, `git apply` the patch from `files/`, `pip install -e .` |
+| a clean git checkout whose commit is on a remote | `mylib @ git+https://github.com/org/mylib.git@<commit>  # local: /home/me/mylib` | Nothing: `pip install -r` (or `uv pip install -r`) does it. |
+| a git checkout with uncommitted changes | `mylib==0.3  # local: /home/me/mylib, git <commit> (dirty), patch: git-mylib.patch` | Clone, check out the commit, `git apply` the patch from `files/`, `pip install -e .` (or `uv pip install -e .`) |
 | a git checkout whose commit is not pushed | `mylib==0.3  # local: /home/me/mylib, git <commit> (not pushed)` | Only on that machine, or after pushing the commit. |
 | inside the run's own repository | `mylib==0.3  # local: /home/me/proj, the run's repository (see run.json git)` | It comes with the run's code; its changes are in `git.patch`. |
 | not under git | `mylib==0.3  # local: /home/me/mylib, not under git` | Not possible from the run alone. |

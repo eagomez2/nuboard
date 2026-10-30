@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Serves a freshly generated demo workspace (with a live run) on port 6071.
-// Needs the Python package installed: `uv sync` (or `pip install -e '.[viewer]'`) in the repo root.
+// Needs the Python package installed: `uv sync` (or `pip install -e .`) in the repo root.
 const python = process.env.PYTHON ?? '../.venv/bin/python';
 const dir = join(tmpdir(), `nb-e2e-${process.pid}`);
 

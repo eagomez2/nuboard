@@ -163,7 +163,7 @@ What each machine gives:
 - **CPU only** gives the `cpu` and `memory` groups. The `gpu` group is skipped
   quietly.
 - **Apple silicon (MPS)** gives the `cpu` and `memory` groups when `psutil` is
-  installed (`pip install psutil`; NuBoard does not require it), and the MPS
+  installed (`pip install psutil` or `uv pip install psutil`; NuBoard does not require it), and the MPS
   allocator's memory when the script has imported torch. macOS has no
   per-GPU utilization or temperature to read without administrator rights,
   so there are none.

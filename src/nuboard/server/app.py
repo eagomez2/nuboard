@@ -1865,16 +1865,18 @@ def create_app(
                 f"<h1>{NAME}</h1><p>The frontend is not built. Run <code>pnpm install</code> and"
                 " <code>pnpm build</code> in <code>frontend/</code>, or install a wheel.</p>",
                 503,
+                headers=_NO_FRAMING,
             )
 
-        return FileResponse(page, headers={"Cache-Control": "no-cache"})
+        return FileResponse(page, headers={"Cache-Control": "no-cache", **_NO_FRAMING})
 
     async def static_file(request: Request) -> Response:
         """Return a built frontend file, or `index.html` for any other path (client routing)."""
         target = path_inside(STATIC, request.path_params["path"])
 
         if target is not None and target.is_file():
-            return FileResponse(target)
+            framing = _NO_FRAMING if target.suffix == ".html" else {}
+            return FileResponse(target, headers=framing)
 
         return await index(request)
 
@@ -1957,6 +1959,10 @@ def create_app(
     app.state.store = store
     app.state.stopping = lambda: False  # `up` replaces it with the server's shutdown flag
     return app
+
+
+# Pages of the viewer can only be framed by the viewer, so another site cannot overlay them
+_NO_FRAMING = {"X-Frame-Options": "SAMEORIGIN", "Content-Security-Policy": "frame-ancestors 'self'"}
 
 
 def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:

@@ -5,52 +5,85 @@ hide:
 
 # Installation
 
-NuBoard needs **Python 3.10 or newer** on Linux, macOS or Windows. It comes in
-two parts, so a training environment only gets what it needs:
+NuBoard needs **Python 3.10 or newer** on Linux, macOS or Windows. One install
+gives the logging API, the viewer (`nuboard up`) and the analysis API, with
+NumPy, PyArrow, Starlette and uvicorn. Logging from a training script uses only
+the standard library, so it never imports them.
 
-| Install | Adds | Use it for |
-| --- | --- | --- |
-| `nuboard` | nothing (standard library only) | logging from training scripts |
-| `nuboard[viewer]` | NumPy, PyArrow, Starlette, uvicorn | `nuboard up`, compaction, the analysis API |
+## From PyPI
 
-## From the wheel
-
-The `nuboard` package is not on PyPI yet. Each release ships a wheel with the viewer already
-built inside it, so installing it needs no Node.js:
-
-=== "uv"
-
-    ```bash
-    uv tool install "nuboard-0.19.2-py3-none-any.whl[viewer]"  # the nuboard command
-    uv pip install nuboard-0.19.2-py3-none-any.whl             # logging only
-    ```
+The package comes with the viewer already built inside it, so installing it
+needs no Node.js:
 
 === "pip"
 
     ```bash
-    pip install "nuboard-0.19.2-py3-none-any.whl[viewer]"
-    pip install nuboard-0.19.2-py3-none-any.whl                 # logging only
+    pip install nuboard
     ```
 
-To try it without installing anything, run the demo straight from the wheel:
+=== "uv"
 
-```bash
-uv run --with "nuboard-0.19.2-py3-none-any.whl[viewer]" nuboard demo demo-runs --up --open
-```
+    ```bash
+    uv pip install nuboard     # into the current environment
+    uv add nuboard             # or as a dependency of a uv project
+    uv tool install nuboard    # or only the nuboard command, in its own environment
+    ```
+
+Install it in the environment your training scripts run in, so they can
+`import nuboard`.
+
+To try the demo without installing anything into an environment of yours:
+
+=== "pip"
+
+    ```bash
+    pipx run nuboard demo demo-runs --up --open
+    ```
+
+=== "uv"
+
+    ```bash
+    uvx nuboard demo demo-runs --up --open
+    ```
+
+To upgrade later:
+
+=== "pip"
+
+    ```bash
+    pip install -U nuboard
+    ```
+
+=== "uv"
+
+    ```bash
+    uv pip install -U nuboard   # uv add nuboard --upgrade-package nuboard, or uv tool upgrade nuboard
+    ```
 
 ## From source
 
 Building from the repository also builds the viewer, which needs
 **Node.js 20 or newer** and **pnpm**.
 
-```bash
-uv sync                                          # Python, the viewer extra and dev tools
-(cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
-uv run nuboard demo demo-runs --up --open
-```
+=== "pip"
 
-`uv build` produces a wheel and runs the frontend build for you when
-`src/nuboard/static/` is missing.
+    ```bash
+    python -m venv .venv && . .venv/bin/activate
+    pip install -e . --group dev                     # pip 25.1 or newer; else: pip install -e .
+    (cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
+    nuboard demo demo-runs --up --open
+    ```
+
+=== "uv"
+
+    ```bash
+    uv sync                                          # Python, its dependencies and dev tools
+    (cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
+    uv run nuboard demo demo-runs --up --open
+    ```
+
+`uv build` (or `python -m build`) produces a wheel and runs the frontend build
+for you when `src/nuboard/static/` is missing.
 
 ??? question "`pnpm: command not found`"
 
@@ -75,9 +108,9 @@ uv run nuboard demo demo-runs --up --open
 
 ```console
 $ nuboard version
-nuboard 0.19.2
+nuboard 0.20.0
 $ python -c "import nuboard; print(nuboard.__version__)"
-0.19.2
+0.20.0
 ```
 
 Next, the [Quickstart](quickstart.md) runs the demo and logs a first run.
