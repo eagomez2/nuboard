@@ -1467,6 +1467,10 @@ def live(root: str | Path, stop: threading.Event | None = None, speed: float = 1
             capture_console=False,
             heartbeat_interval=3.0,
         )
+        _add_config_file(run, _llm_config(lr, seed))
+        # A text file the run keeps writing to, as a training script's own log would
+        progress = run.path / "files" / "progress.log"
+        progress.write_text(f"progress of lr1e-3-live-s{seed}\n", "utf-8")
         step = 0
 
         while step <= LLM_STEPS and not stop.is_set():
@@ -1475,6 +1479,10 @@ def live(root: str | Path, stop: threading.Event | None = None, speed: float = 1
 
             if step % 500 == 0:
                 run.add_scalar({"eval/loss": point["train/loss"] + 0.03}, step=step)
+
+            if step % 50 == 0:
+                with progress.open("a", encoding="utf-8") as f:
+                    f.write(f"step {step:6d}  loss {point['train/loss']:.4f}\n")
 
             step += LLM_EVERY
             time.sleep(0.05 / speed)
