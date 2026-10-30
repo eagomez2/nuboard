@@ -955,3 +955,14 @@ def test_report_export_includes_uploaded_images_and_attachments(client):
     assert f"![a shot]({image})" in md and f"[train.log]({log})" in md
     assert zf.read(image) == PNG and zf.read(log) == b"step 1\n"
     assert f"[a take]({sound})" in md and zf.read(sound) == WAV
+
+
+def test_sweep_hide_rules_are_stored_in_the_project(client, tmp_path):
+    url = "/api/sweep-settings"
+    assert client.get(url, params={"project": "sweep"}).json() == {"hide": ""}
+    saved = client.post(url, json={"project": "sweep", "hide": " !seed   !.path "})
+    assert saved.json() == {"hide": "!seed !.path"}
+    assert client.get(url, params={"project": "sweep"}).json()["hide"] == "!seed !.path"
+    assert client.post(url, json={"project": "zzz", "hide": "x"}).status_code == 400
+    assert client.post(url, json={"project": "sweep", "hide": "x" * 1001}).status_code == 400
+    assert client.get(url, params={"project": "zzz"}).json() == {"hide": ""}

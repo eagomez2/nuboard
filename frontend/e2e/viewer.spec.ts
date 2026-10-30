@@ -193,9 +193,61 @@ test('sweeps finds a config key past the first 64 values', async ({ page }) => {
   // speech-denoise runs differ only in a generator setting deep in a long config (issue #5)
   const key = 'generator.config.weighted_sir_db.edge.min';
   await page.goto('/#/sweeps?project=speech-denoise');
-  await expect(page.locator(`.chip.param[title="${key}"]`)).toBeVisible();
+  await expect(page.locator(`.chip.param[title^="${key} "]`)).toBeVisible();
   await page.goto(`/#/sweeps?project=speech-denoise&params=${key}`);
   await expect(page.locator('.pc .axis')).toHaveCount(2);
+});
+
+test('sweeps parameter picker: defaults, search, clear, reset and remove', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  const chips = page.locator('.chip.param');
+  await expect(chips.first()).toBeVisible();
+  await expect(page.locator('.chip.param[title^="seed "]')).toHaveCount(0); // seeds are not a default
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('seed');
+  await expect(picker.locator('label.row')).toHaveCount(1);
+  await picker.locator('label.row').getByRole('checkbox').check();
+  await expect(page.locator('.chip.param[title^="seed "]')).toBeVisible();
+  await expect(page).toHaveURL(/params=[^&]*seed/);
+  await picker.getByRole('button', { name: 'Clear all' }).click();
+  await expect(chips).toHaveCount(0);
+  await expect(page).toHaveURL(/params=none/);
+  await expect(page.locator('.pc .axis')).toHaveCount(1); // only the metric
+  await picker.getByRole('button', { name: 'Reset to defaults' }).click();
+  await expect(chips.first()).toBeVisible();
+  await expect(page).not.toHaveURL(/params=/);
+  await page.keyboard.press('Escape');
+  await expect(picker).toHaveCount(0);
+  const n = await chips.count();
+  await page.getByRole('button', { name: 'Remove optim.lr' }).click();
+  await expect(chips).toHaveCount(n - 1);
+});
+
+test('sweeps parameter chips reorder by dragging', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=optim.lr,seed');
+  const chips = page.locator('.chip.param');
+  await expect(chips).toHaveCount(2);
+  await chips.nth(1).dragTo(chips.nth(0));
+  await expect(page).toHaveURL(/params=seed(%2C|,)optim.lr/);
+});
+
+test('sweeps hide rules are saved for the project', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  const hide = picker.getByLabel('Hide matching keys');
+  await hide.fill('!optim.');
+  await hide.press('Enter');
+  await expect(picker.locator('label.row', { hasText: 'lr' })).toHaveCount(0);
+  await picker.getByRole('button', { name: /Show \d+ hidden/ }).click();
+  await expect(picker.locator('label.row.hid').first()).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  await expect(picker.getByLabel('Hide matching keys')).toHaveValue('!optim.');
+  await picker.getByLabel('Hide matching keys').fill('');
+  await picker.getByLabel('Hide matching keys').press('Enter');
+  await expect(picker.getByRole('button', { name: /hidden/ })).toHaveCount(0);
 });
 
 test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {

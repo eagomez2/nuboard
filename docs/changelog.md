@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.19.1
+
+- **Sweeps parameter picker.** **Parameters** opens a searchable list of every
+  differing key, grouped by prefix, with its type, number of values and
+  correlation with the objective. Chosen keys are chips you can drag to
+  reorder and remove with **×**. **Clear all** and **Reset to defaults** are
+  in the list.
+- **Better default parameters.** With nothing picked, Sweeps shows up to six
+  keys, the most correlated with the objective first, leaving out seeds,
+  paths, id-like keys, long text and keys with many values. The last choice is
+  remembered per project.
+- **Hide rules for Sweeps.** A project can hide keys from the picker with a
+  filter such as `!seed !.path`, saved in `<project>/sweeps.json`.
+- **Categories with many values** keep their 11 most common values on the axis
+  and gather the rest in **(other)**.
 
 - **`nuboard demo` no longer piles up runs.** Run again on a folder that
   already holds the demo, it opens it instead of adding 31 more runs each

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
+  import ParamPicker from '../components/ParamPicker.svelte';
   import { api, num, type RunBrief } from '../lib/api';
   import { FullScreen } from '../lib/fullscreen.svelte';
   import { addSnapshotToReport } from '../lib/reports.svelte';
@@ -8,7 +9,8 @@
   import { defaultMetric, fmtAxis, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
-  import { axisTicks, importance, makeAxis, norm, type Axis, type Value } from '../lib/sweep';
+  import { keyFilter } from '../lib/keyfilter';
+  import { axisTicks, defaultParams, makeAxis, norm, paramInfo, type Axis, type Value } from '../lib/sweep';
 
   const fs = new FullScreen();
   onMount(() => fs.listen());
@@ -97,17 +99,65 @@
     const local = [...seen.entries()].filter(([, s]) => s.size > 1).map(([k]) => k);
     return full ? [...full.keys, ...local] : local;
   });
-  const params = $derived.by(() => {
-    const chosen = router.list('params').filter((p) => candidates.includes(p));
-    if (chosen.length) return chosen;
-    return candidates.filter((k) => !/seed/i.test(k)).slice(0, 6);
-  });
   const get = (r: RunBrief, key: string): Value =>
     key.startsWith('fields.')
       ? (r.fields?.[key.slice(7)] as Value)
       : ((full ? full.values[key]?.[r.key] : r.config[key]) as Value);
 
   const values = $derived(runs.map(value));
+
+  // Hide rules of the project, when every run shown is from one: keys the filter excludes are hidden.
+  const project = $derived.by(() => {
+    const ps = new Set(runs.map((r) => r.project));
+    return ps.size === 1 ? [...ps][0] : null;
+  });
+  let hideRules = $state<{ project: string; hide: string } | null>(null);
+  $effect(() => {
+    const p = project;
+    if (!p) return;
+    let live = true;
+    api
+      .sweepSettings(p)
+      .then((res) => live && (hideRules = { project: p, hide: res.hide }))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  });
+  const hideText = $derived(hideRules && hideRules.project === project ? hideRules.hide : '');
+  const hideFilter = $derived(keyFilter(hideText));
+  const hidden = (key: string) => !hideFilter.empty && !hideFilter.error && !hideFilter.test(key);
+  async function saveHide(text: string) {
+    if (!project) return;
+    hideRules = { project, hide: await api.saveSweepSettings(project, text) };
+  }
+
+  // What the picker shows about each key, and the keys shown when none are picked.
+  const infos = $derived(
+    candidates.map((k) =>
+      paramInfo(
+        k,
+        runs.map((r) => get(r, k)),
+        values,
+      ),
+    ),
+  );
+  const defaults = $derived(defaultParams(infos, hidden));
+  // `params` in the URL: keys in axis order, `none` for none; else the project's last choice
+  const remembered = $derived(project ? prefs.get<string[] | null>(`sweepParams:${project}`, null) : null);
+  const params = $derived.by(() => {
+    const listed = router.list('params');
+    if (listed[0] === 'none') return [];
+    if (listed.length) return listed.filter((p) => candidates.includes(p));
+    if (remembered && !remembered.length) return [];
+    // a remembered choice whose keys no longer differ falls back to the defaults
+    const kept = (remembered ?? []).filter((p) => candidates.includes(p));
+    return kept.length ? kept : defaults;
+  });
+  function pick(keys: string[] | null) {
+    if (project) prefs.set(`sweepParams:${project}`, keys);
+    router.set({ params: keys === null ? null : keys.length ? keys.join(',') : 'none' });
+  }
   const axes = $derived.by((): Axis[] => {
     const list = params.map((p) =>
       makeAxis(
@@ -118,17 +168,7 @@
     const m = makeAxis(metric, values);
     return [...list, { ...m, key: `metric:${metric}` }];
   });
-  const scores = $derived(
-    new Map(
-      params.map((p) => [
-        p,
-        importance(
-          runs.map((r) => get(r, p)),
-          values,
-        ),
-      ]),
-    ),
-  );
+  const scores = $derived(new Map(infos.map((p) => [p.key, p.score])));
 
   const plotW = $derived(Math.max(320, width - 2 * PAD));
   const xOf = (i: number) => PAD + (axes.length <= 1 ? plotW / 2 : (i / (axes.length - 1)) * plotW);
@@ -186,10 +226,6 @@
     if (Math.abs(y1 - y0) < 0.02) delete next[key];
     else next[key] = [Math.min(y0, y1), Math.max(y0, y1)];
     brushes = next;
-  }
-  function toggleParam(p: string) {
-    const next = params.includes(p) ? params.filter((x) => x !== p) : [...params, p];
-    router.set({ params: next.join(',') || null });
   }
   const label = (key: string) => (key.startsWith('metric:') ? key.slice(7) : key);
   const short = (key: string) => label(key).split('.').slice(-2).join('.');
@@ -268,20 +304,16 @@
   {#if !runs.length || !metric}
     <div class="empty">No runs with scalars to compare. Pick a project or loosen the query.</div>
   {:else}
-    <div class="params">
-      <span class="label">Parameters</span>
-      {#each candidates as p (p)}
-        {@const score = scores.get(p)}
-        <button class="chip param" aria-pressed={params.includes(p)} onclick={() => toggleParam(p)} title={p}>
-          <span class="mono trunc">{short(p)}</span>
-          {#if params.includes(p) && score !== null && score !== undefined}
-            <span class="imp" title="Rank correlation with {metric}"><span style="width:{score * 100}%"></span></span>
-          {/if}
-        </button>
-      {:else}
-        <span class="faint">All runs share the same config; there is nothing to sweep over.</span>
-      {/each}
-    </div>
+    <ParamPicker
+      {infos}
+      chosen={params}
+      {metric}
+      hide={hideText}
+      canHide={!!project}
+      {hidden}
+      onpick={pick}
+      onhide={saveHide}
+    />
 
     <div class="pc" bind:clientWidth={width}>
       <svg {width} height={H} role="img" aria-label="Parallel coordinates of {runs.length} runs" bind:this={pcSvg}>
@@ -643,45 +675,6 @@
   }
   .faint {
     color: var(--faint);
-  }
-  .params {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-    padding: 12px 14px 4px;
-  }
-  .params .label {
-    margin-right: 6px;
-  }
-  .param {
-    border: 1px solid var(--border);
-    background: var(--panel);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    max-width: 280px;
-    min-width: 0;
-  }
-  .param[aria-pressed='true'] {
-    background: var(--accent-soft);
-    border-color: transparent;
-    color: var(--accent);
-  }
-  .imp {
-    width: 34px;
-    height: 5px;
-    border-radius: 3px;
-    background: var(--border);
-    overflow: hidden;
-    display: inline-block;
-  }
-  .imp span {
-    display: block;
-    height: 100%;
-    background: var(--accent);
   }
   .pc {
     width: 100%;

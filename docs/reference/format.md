@@ -37,6 +37,7 @@ path.
     artifacts/.unlinked/<name>/v<N>/      versions unlinked in the viewer, kept as they were
     collections/<name>.json               hand-picked sets of run ids; safe to commit to git
     views/*.json                          saved viewer state; safe to commit to git
+    sweeps.json                           Sweeps settings: keys hidden from the picker
     reports/<name>.md                     Markdown reports written in the viewer
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
@@ -409,6 +410,12 @@ deleting the file deletes the collection.
 
 `{"page": "charts", "params": {"q": "...", "metric": "...", ...}}`, where
 `params` are the viewer's URL parameters. Safe to commit.
+
+## Sweeps settings: `sweeps.json`
+
+`{"hide": "!seed !.path"}`: keys the filter excludes are hidden from the Sweeps
+parameter picker and its defaults. The filter uses the run settings filter
+syntax and is at most 1000 characters. Written by the viewer; safe to commit.
 
 ## Reports: `reports/<name>.md`
 

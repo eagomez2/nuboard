@@ -1741,6 +1741,43 @@ def create_app(
 
         return JSON({"pins": pins})
 
+    def sweep_settings_get(request: Request) -> Response:
+        """Return the Sweeps settings of the `project` query parameter (`<project>/sweeps.json`).
+
+        `hide` is a filter in the syntax of the settings filter (`!seed !.path`):
+        parameters it lets through are offered, the others are hidden.
+        """
+        pdir = project_dir(request.query_params.get("project", ""))
+        data = _fs.read_json(pdir / "sweeps.json", {}) if pdir else {}
+        hide = data.get("hide") if isinstance(data, dict) else None
+        return JSON({"hide": hide if isinstance(hide, str) else ""})
+
+    async def sweep_settings_save(request: Request) -> Response:
+        """Save the Sweeps hide rules of a project (JSON body: `project`, `hide`)."""
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        hide = " ".join(str(body.get("hide") or "").split())
+
+        if len(hide) > 1000:
+            return JSON({"error": "hide rules are at most 1000 characters"}, status_code=400)
+
+        try:
+            data = _fs.read_json(pdir / "sweeps.json", {}) or {}
+            data = {**(data if isinstance(data, dict) else {}), "hide": hide}
+            _fs.atomic_write_json(pdir / "sweeps.json", data)
+        except OSError as exc:
+            return JSON({"error": f"sweeps.json could not be saved: {exc}"}, status_code=409)
+
+        return JSON({"hide": hide})
+
     async def stream(request: Request) -> Response:
         """Return a server-sent event stream: `hello`, then `runs` and `data` change events.
 
@@ -1833,6 +1870,8 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/sweep-keys", sweep_keys),
+        Route("/api/sweep-settings", sweep_settings_get),
+        Route("/api/sweep-settings", sweep_settings_save, methods=["POST"]),
         Route("/api/artifacts", artifacts),
         Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),

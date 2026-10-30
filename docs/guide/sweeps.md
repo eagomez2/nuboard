@@ -58,10 +58,38 @@ objective. Some notes:
   minimum for losses and errors, the maximum otherwise) or its **Last** value.
   Lower-is-better scalars are flipped so the best runs are always on top.
 - **Parameters**: every config key whose value differs between the runs, plus
-  properties. Keys with `seed` in the name start unselected. Click a chip to
-  add or remove an axis. The bar inside a chip is the parameter's rank
-  correlation with the objective: Spearman's ρ for numbers, the correlation
-  ratio on ranks for categories. It is a quick hint, not a causal estimate.
+  properties. The chosen ones are chips in axis order: drag a chip to move its
+  axis, and click its **×** to remove it. The bar inside a chip is the
+  parameter's rank correlation with the objective: Spearman's ρ for numbers,
+  the correlation ratio on ranks for categories. It is a quick hint, not a
+  causal estimate.
+
+### Picking parameters
+
+**Parameters** opens a searchable list of every differing key, grouped by
+prefix (`optim.lr` and `optim.wd` under `optim`). The search takes the same
+syntax as the run settings filter: plain text, `/regex/` and `!exclude`. Each
+row shows whether the key is a number or a category, how many distinct values
+it has, and its correlation bar. Rows are marked **many values** (more than 12
+distinct categories), **id-like** (a different value in every run) or **long
+text**. **Clear all** removes every axis, and **Reset to defaults** goes back
+to the automatic choice.
+
+When nothing is picked, Sweeps shows up to six keys, the most correlated with
+the objective first. It leaves out seeds, paths, folders and files, id-like
+keys, long text and keys with many values. Your last choice is remembered for
+each project in this browser.
+
+A category with more than 12 values keeps its 11 most common on the axis and
+gathers the rest in **(other)**.
+
+### Hiding keys for a project
+
+When every run shown is from one project, **Hide matching keys** at the bottom
+of the list takes a filter such as `!seed !.path !logging.`. Keys the filter
+excludes leave the list and the defaults for everyone who opens the project.
+**Show N hidden** lists them again, faded, so you can still pick one. The rules
+are saved in the project's `sweeps.json`.
 
 Numeric parameters that span more than a factor of 20 use a log axis.
 Text and boolean parameters become ordered categories.
