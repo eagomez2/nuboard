@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`nuboard merge SRC DEST`** merges a project logged on two machines into
+  one folder. It shows the full plan first (runs to copy, identical items,
+  conflicts, renamed or renumbered items) and writes nothing until you
+  confirm. It copies what DEST lacks and never overwrites or deletes:
+  clashing artifact versions are renumbered and copied runs repointed,
+  collections and hide rules are combined, and a report or view that differs
+  is copied next to DEST's. `--dry-run`, `--yes`, `--json`, `-v`,
+  `--project` and `--include-running` (#16). See
+  [Working on several machines](guide/machines.md).
+
 - **Datasets as Sweeps parameters.** The artifact versions each run used are
   parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared
   by data version without copying it into the config (#14).

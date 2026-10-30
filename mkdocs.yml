@@ -38,6 +38,7 @@ nav:
       - Distributed training: guide/distributed.md
       - Evaluating while training: guide/jobs.md
       - Importing from TensorBoard: guide/tensorboard.md
+      - Working on several machines: guide/machines.md
   - Reference:
       - Query language: reference/query.md
       - File format: reference/format.md
