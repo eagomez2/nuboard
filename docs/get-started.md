@@ -18,7 +18,7 @@ in the [Python API](api/index.md).
 ## Setup
 
 ```bash
-pip install "nuboard[viewer]"
+pip install nuboard
 ```
 
 The `viewer` extra adds the server and NumPy. Logging itself needs only the

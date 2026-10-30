@@ -22,8 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
-# The logging side is standard library only.
-dependencies = []
+# `pip install nuboard` gives the logging API and the viewer. Logging itself uses only the
+# standard library, so training scripts never import these.
+dependencies = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
 
 [project.urls]
 Homepage = "https://github.com/eagomez2/nuboard"
@@ -32,7 +33,7 @@ Issues = "https://github.com/eagomez2/nuboard/issues"
 Changelog = "https://github.com/eagomez2/nuboard/blob/main/docs/changelog.md"
 
 [project.optional-dependencies]
-viewer = ["numpy>=1.23", "pyarrow>=14", "starlette>=0.37", "uvicorn>=0.29"]
+viewer = []  # kept so `nuboard[viewer]` from older instructions still installs
 
 [project.scripts]
 nuboard = "nuboard.cli:main"

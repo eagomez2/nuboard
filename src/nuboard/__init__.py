@@ -29,8 +29,6 @@ if TYPE_CHECKING:
 def load(project: str, *, dir: str | None = None) -> Project:
     """Open a project (or any folder of runs) for analysis.
 
-    Needs the `viewer` extra (`NAME[viewer]`), which provides PyArrow and NumPy.
-
     Args:
         project: A project name, resolved the same way as in `init`, or the path of an
             existing folder of runs (a project, or a tree of projects).

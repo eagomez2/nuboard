@@ -5,13 +5,10 @@ hide:
 
 # Installation
 
-NuBoard needs **Python 3.10 or newer** on Linux, macOS or Windows. It comes in
-two parts, so a training environment only gets what it needs:
-
-| Install | Adds | Use it for |
-| --- | --- | --- |
-| `nuboard` | nothing (standard library only) | logging from training scripts |
-| `nuboard[viewer]` | NumPy, PyArrow, Starlette, uvicorn | `nuboard up`, compaction, the analysis API |
+NuBoard needs **Python 3.10 or newer** on Linux, macOS or Windows. One install
+gives the logging API, the viewer (`nuboard up`) and the analysis API, with
+NumPy, PyArrow, Starlette and uvicorn. Logging from a training script uses only
+the standard library, so it never imports them.
 
 ## From the wheel
 
@@ -21,21 +18,20 @@ built inside it, so installing it needs no Node.js:
 === "uv"
 
     ```bash
-    uv tool install "nuboard-0.19.2-py3-none-any.whl[viewer]"  # the nuboard command
-    uv pip install nuboard-0.19.2-py3-none-any.whl             # logging only
+    uv tool install nuboard-0.19.2-py3-none-any.whl   # the nuboard command
+    uv pip install nuboard-0.19.2-py3-none-any.whl    # into the current environment
     ```
 
 === "pip"
 
     ```bash
-    pip install "nuboard-0.19.2-py3-none-any.whl[viewer]"
-    pip install nuboard-0.19.2-py3-none-any.whl                 # logging only
+    pip install nuboard-0.19.2-py3-none-any.whl
     ```
 
 To try it without installing anything, run the demo straight from the wheel:
 
 ```bash
-uv run --with "nuboard-0.19.2-py3-none-any.whl[viewer]" nuboard demo demo-runs --up --open
+uv run --with nuboard-0.19.2-py3-none-any.whl nuboard demo demo-runs --up --open
 ```
 
 ## From source
@@ -44,7 +40,7 @@ Building from the repository also builds the viewer, which needs
 **Node.js 20 or newer** and **pnpm**.
 
 ```bash
-uv sync                                          # Python, the viewer extra and dev tools
+uv sync                                          # Python, its dependencies and dev tools
 (cd frontend && pnpm install && pnpm build)      # writes src/nuboard/static/
 uv run nuboard demo demo-runs --up --open
 ```

@@ -14,6 +14,10 @@
 - **Viewer pages can't be framed by another website**, so a page you visit
   cannot overlay the viewer to trick clicks, and the sign-in form no longer
   follows a `next` link with a backslash to another site.
+- **`pip install nuboard` includes the viewer.** NumPy, PyArrow, Starlette
+  and uvicorn are now regular dependencies, so `nuboard up` works without
+  `[viewer]`; `nuboard[viewer]` still installs. Logging still uses only the
+  standard library and imports none of them.
 - Package metadata for PyPI: project links and classifiers.
 
 ## 0.19.2

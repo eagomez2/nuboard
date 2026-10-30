@@ -22,8 +22,9 @@ nuboard up experiments        # http://localhost:6070
 
 ## Why
 
-- **No setup.** No account, no server, no database. `pip install nuboard` adds
-  no dependencies to your training environment (standard library only).
+- **No setup.** No account, no server, no database. `pip install nuboard` gives
+  you logging and the viewer; logging uses only the standard library, so it
+  adds nothing to the import time of a training script.
 - **Folder-contained.** Each run is one folder (`run.json`, an append-only
   binary log, a media pack, a Parquet file at the end). Copy it, rsync it, zip
   it, delete it.
@@ -40,7 +41,7 @@ nuboard up experiments        # http://localhost:6070
 
 ```bash
 # nuboard is not on PyPI yet: install the wheel that ships next to this repository
-uv tool install "nuboard-0.19.2-py3-none-any.whl[viewer]"
+uv tool install nuboard-0.19.2-py3-none-any.whl
 nuboard demo demo-runs --up --open    # 4 projects, 31 runs, one live run
 ```
 
@@ -105,7 +106,7 @@ NuBoard is released under the [MIT License](LICENSE).
 
 ## Requirements
 
-Python 3.10+ on Linux, macOS or Windows. The viewer extra adds NumPy, PyArrow,
-Starlette and uvicorn; the 0.2 features add no dependencies. Building the
+Python 3.10+ on Linux, macOS or Windows. It installs NumPy, PyArrow, Starlette and
+uvicorn for the viewer; logging uses only the standard library. Building the
 frontend from source needs Node 20+ and pnpm (`brew install pnpm` on macOS);
 installing a wheel does not.

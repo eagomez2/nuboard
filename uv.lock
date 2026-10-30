@@ -1280,9 +1280,7 @@ wheels = [
 name = "nuboard"
 version = "0.19.2"
 source = { editable = "." }
-
-[package.optional-dependencies]
-viewer = [
+dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1316,10 +1314,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", marker = "extra == 'viewer'", specifier = ">=1.23" },
-    { name = "pyarrow", marker = "extra == 'viewer'", specifier = ">=14" },
-    { name = "starlette", marker = "extra == 'viewer'", specifier = ">=0.37" },
-    { name = "uvicorn", marker = "extra == 'viewer'", specifier = ">=0.29" },
+    { name = "numpy", specifier = ">=1.23" },
+    { name = "pyarrow", specifier = ">=14" },
+    { name = "starlette", specifier = ">=0.37" },
+    { name = "uvicorn", specifier = ">=0.29" },
 ]
 provides-extras = ["viewer"]
 

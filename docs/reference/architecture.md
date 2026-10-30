@@ -48,8 +48,8 @@ flowchart TB
 
 ## Logging side (`run.py`, `_writer.py`, `_format.py`, `_env.py`, `_media.py`, `artifacts.py`)
 
-Standard library only, so `pip install nuboard` adds nothing to a training
-environment.
+Standard library only: a training script that logs never imports NumPy,
+PyArrow or the server.
 
 - `add_scalar()` resolves the step, then appends `(kind, step, time, dict(data))` to a
   `collections.deque`. That is the whole cost on the training thread: no
