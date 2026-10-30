@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`nuboard demo` no longer piles up runs.** Run again on a folder that
+  already holds the demo, it opens it instead of adding 31 more runs each
+  time, so it starts in about the same time on every run. Delete the folder
+  for a fresh demo.
+
 - **Open selected runs in Charts and Sweeps.** The Runs selection bar has
   **Charts** and **Sweeps** next to **Media**. Charts,
   Sweeps, Media and Timeline show a **Showing N selected runs** banner while

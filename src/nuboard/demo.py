@@ -1379,10 +1379,20 @@ def _ppo_runs(root: Path, base: float) -> None:
         run.finish(_ended=t)
 
 
+MARKER = ".nuboard-demo"  # written in a demo workspace once all of it is written
+
+
+def is_demo(root: str | Path) -> bool:
+    """Whether `root` holds a demo workspace written by `generate`."""
+    return (Path(root) / MARKER).is_file()
+
+
 def generate(root: str | Path, *, quiet: bool = False) -> Path:
     """Write the demo workspace under `root`.
 
-    Safe to run again: each call adds new runs next to the existing ones.
+    Each call adds new runs next to any existing ones; `nuboard demo` calls it
+    only for a folder that has no demo yet (see `is_demo`), so starting the
+    demo again opens the same runs instead of piling up more.
 
     Args:
         root: Folder to write the projects into; created if missing.
@@ -1407,6 +1417,7 @@ def generate(root: str | Path, *, quiet: bool = False) -> Path:
         if not quiet:
             print(f"  {label:<14} written in {time.perf_counter() - t0:.1f}s")
 
+    (root / MARKER).write_text("written by `nuboard demo`; delete this folder for a fresh demo\n")
     return root
 
 

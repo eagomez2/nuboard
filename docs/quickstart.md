@@ -22,6 +22,8 @@ nuboard demo demo-runs --up --open
 
 Open <http://localhost:6070> if no browser tab appears. Without `--up` the
 demo only writes the folder; view it later with `nuboard up demo-runs`.
+Running `nuboard demo` again on the same folder opens the demo already there
+instead of writing another 31 runs; delete the folder for a fresh one.
 
 ## Take the tour
 

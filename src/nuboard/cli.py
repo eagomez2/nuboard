@@ -329,12 +329,17 @@ def main(argv: list[str] | None = None) -> None:
             max_audio_mb=args.max_audio_mb,
         )
     elif args.cmd == "demo":
-        from .demo import generate, live
+        from .demo import generate, is_demo, live
 
-        print(f"Writing demo runs to {Path(args.dir).resolve()}")
-        t0 = time.perf_counter()
-        generate(args.dir)
-        print(f"Done in {time.perf_counter() - t0:.1f}s.")
+        where = Path(args.dir).resolve()
+
+        if is_demo(where):  # written before: open it rather than add 31 more runs
+            print(f"Opening the demo in {where} (delete the folder for a fresh one)")
+        else:
+            print(f"Writing demo runs to {where}")
+            t0 = time.perf_counter()
+            generate(args.dir)
+            print(f"Done in {time.perf_counter() - t0:.1f}s.")
 
         if args.up:
             stop = threading.Event()
