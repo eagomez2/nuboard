@@ -185,6 +185,10 @@ For a single run there are two more tabs:
   `topics has "augmentation"`). Definitions are kept in
   `<project>/fields.json`.
 
+**Charts**, **Sweeps** and **Media** after the tabs open those pages with
+only the run (or the compared runs), as the selection bar does, without
+ticking checkboxes.
+
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
 differs. **Files** and pinned tabs show a line diff between two of the

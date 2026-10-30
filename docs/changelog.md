@@ -6,7 +6,9 @@
   **Charts** and **Sweeps** next to **Media** (shortcuts `c`, `s`, `m`). Charts,
   Sweeps, Media and Timeline show a **Showing N selected runs** banner while
   limited to a selection, with buttons to the other pages (which keep it) and
-  **Show all**; **Clear selection** also drops it from the URL (#7).
+  **Show all**; **Clear selection** also drops it from the URL (#7). A run
+  opened for inspection (or the runs being compared) has the same **Charts**,
+  **Sweeps** and **Media** buttons after its tabs.
 
 - **Report picker.** The **Report** field of **Add to a report** (every
   bookmark button, and **Add N to report** on Media) lists the project's

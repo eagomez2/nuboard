@@ -1701,3 +1701,23 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
   await expect(banner).toContainText('Showing 2 selected runs');
 });
+
+test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.locator('.body .row input[type=checkbox]').nth(0).check();
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click();
+  const jump = page.getByRole('group', { name: 'Open this run in' });
+  await jump.getByRole('button', { name: 'Charts' }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*sel=/);
+  await expect(page).not.toHaveURL(/cmp=/);
+  await expect(page.getByRole('status').filter({ hasText: 'selected run' })).toContainText('Showing 1 selected run');
+  await expect(page.locator('.legend-chip')).toHaveCount(1);
+
+  await page.goBack();
+  await jump.getByRole('button', { name: 'Media' }).click();
+  await expect(page).toHaveURL(/#\/media\?.*sel=/);
+  await page.goBack();
+  await jump.getByRole('button', { name: 'Sweeps' }).click();
+  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+});

@@ -19,6 +19,13 @@
   import { app } from '../lib/state.svelte';
 
   let { keys }: { keys: string[] } = $props();
+
+  // Charts, Sweeps and Media limited to the runs shown here, as the Runs selection bar opens them
+  const JUMPS = [
+    { page: 'charts', label: 'Charts', icon: 'charts' },
+    { page: 'sweeps', label: 'Sweeps', icon: 'sweep' },
+    { page: 'media', label: 'Media', icon: 'media' },
+  ] as const;
   let details = $state<RunDetail[]>([]);
   let texts = $state<(string | null)[]>([]);
   let loadingFile = $state(false);
@@ -304,6 +311,16 @@
         onclick={() => router.set({ tab: `pin:${p}` })}><Icon name="pin" size={12} /> {pinLabel(p)}</button
       >
     {/each}
+    <span class="jump" role="group" aria-label="Open {keys.length === 1 ? 'this run' : 'these runs'} in">
+      {#each JUMPS as j (j.page)}
+        <button
+          class="tab"
+          title="{j.label} with only {keys.length === 1 ? 'this run' : 'these runs'}"
+          onclick={() => router.go(j.page, { sel: keys.join(','), cmp: null, pair: null, tab: null })}
+          ><Icon name={j.icon} size={13} /> {j.label}</button
+        >
+      {/each}
+    </span>
     {#if tab === 'settings'}
       <div class="find" class:bad={!!finder.error}>
         <Icon name="search" size={14} />
@@ -487,6 +504,12 @@
     gap: 6px;
     flex-wrap: wrap;
     align-items: center;
+  }
+  .jump {
+    display: inline-flex;
+    gap: 6px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
   }
   .tab {
     display: inline-flex;
