@@ -981,6 +981,64 @@ def _speech_presence(clean: Any, out: Any, epoch: int, rng: Any) -> tuple[Any, A
     return per_sample, target, (prob > 0.5).astype(int)
 
 
+SPEECH_NOISES = (
+    "cafe",
+    "street",
+    "office",
+    "babble",
+    "music",
+    "fan",
+    "traffic",
+    "kitchen",
+    "rain",
+    "train",
+)
+
+
+def _speech_config(model: str, edge_min: float) -> dict[str, Any]:
+    """Return the config of a `speech-denoise` run: the model, then its training-mix generator.
+
+    The generator block is long (about 70 values before `weighted_sir_db`), as in
+    real enhancement recipes, so the one generator setting the runs differ in,
+    `generator.config.weighted_sir_db.edge.min`, comes after the first 64 values
+    of the flattened config (issue #5).
+    """
+    return {
+        "model": model.split("-")[0],
+        "loss": model.split("-")[1] if "-" in model else "si-sdr",
+        "sample_rate": SPEECH_RATE,
+        "lr": 3e-4,
+        "epochs": 30,
+        "generator": {
+            "config": {
+                "clip_seconds": 4.0,
+                "speech": {"corpus": "vctk:v1", "min_level_db": -35, "max_level_db": -15},
+                "noise": {
+                    name: {
+                        "weight": 1.0,
+                        "gain_db": {"min": -10, "max": 5},
+                        "loop": True,
+                        "highpass_hz": 40,
+                    }
+                    for name in SPEECH_NOISES
+                },
+                "reverb": {
+                    "prob": 0.5,
+                    "rt60": {"min": 0.2, "max": 1.2},
+                    "room": {"min_m": 3.0, "max_m": 12.0},
+                    "drr_db": {"min": -6, "max": 12},
+                },
+                "codec": {"prob": 0.1, "names": ["opus", "amr-wb"], "bitrate_kbps": [8, 32]},
+                "weighted_sir_db": {
+                    "center": {"min": 5, "max": 20, "weight": 0.7},
+                    "edge": {"min": edge_min, "max": 30, "weight": 0.3},
+                },
+            },
+            "seed": 0,
+        },
+    }
+
+
 def _speech_runs(root: Path, base: float) -> None:
     """Write the `speech-denoise` project: three models with audio samples (needs numpy)."""
 
@@ -1007,13 +1065,8 @@ def _speech_runs(root: Path, base: float) -> None:
             capture_env=False,
             system_metrics=False,
             capture_console=False,
-            config={
-                "model": model.split("-")[0],
-                "loss": model.split("-")[1] if "-" in model else "si-sdr",
-                "sample_rate": SPEECH_RATE,
-                "lr": 3e-4,
-                "epochs": 30,
-            },
+            # convtasnet trained on harder mixtures, down to -5 dB SIR at the edge
+            config=_speech_config(model, -5 if model == "convtasnet" else 0),
             tags=["audio", "enhancement"],
             _started=started,
         )

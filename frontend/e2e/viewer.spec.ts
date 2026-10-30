@@ -155,6 +155,15 @@ test('sweeps page draws parallel coordinates and filters by brushing', async ({ 
   expect(await page.locator('.pc path.line:not(.dim)').count()).toBeLessThan(before);
 });
 
+test('sweeps finds a config key past the first 64 values', async ({ page }) => {
+  // speech-denoise runs differ only in a generator setting deep in a long config (issue #5)
+  const key = 'generator.config.weighted_sir_db.edge.min';
+  await page.goto('/#/sweeps?project=speech-denoise');
+  await expect(page.locator(`.chip.param[title="${key}"]`)).toBeVisible();
+  await page.goto(`/#/sweeps?project=speech-denoise&params=${key}`);
+  await expect(page.locator('.pc .axis')).toHaveCount(2);
+});
+
 test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {
   await page.goto('/#/timeline?project=llm-pretrain');
   await expect(page.locator('g.bar').first()).toBeVisible();

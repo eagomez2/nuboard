@@ -9,6 +9,9 @@
   `generator.config.weighted_sir_db.edge.min`) were missed. It now asks the new
   `GET /api/sweep-keys?runs=...` endpoint, which returns every differing key
   with each run's value; the run list stays small.
+- **The demo shows it.** `speech-denoise` runs now carry a long training-mix
+  generator config, and differ in `generator.config.weighted_sir_db.edge.min`,
+  its 73rd value: open Sweeps on that project to see the chip.
 
 ## 0.19.0
 
