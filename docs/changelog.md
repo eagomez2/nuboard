@@ -12,6 +12,9 @@
   `--project` and `--include-running` (#16). See
   [Working on several machines](guide/machines.md).
 
+- **TensorBoard import: videos and meshes.** `import-tensorboard` now imports
+  `add_video` clips (animated GIFs) as videos and `add_mesh` summaries as
+  point clouds with their colors, instead of an image and a skipped plugin.
 - **Small charts show values on hover.** Hovering a chart in the **All
   scalars** grid shows each run's value at the cursor, best first, up to eight
   and "+N more" (#3).

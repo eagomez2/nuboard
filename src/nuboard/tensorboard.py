@@ -6,9 +6,10 @@ Logs written by TensorFlow 1 and 2, PyTorch's `SummaryWriter` and tensorboardX
 are understood.
 
 Each folder holding event files becomes one run, named after its path relative to
-the log folder. Scalars, images, audio, text, PR curves, histograms and
-hyperparameters (the HParams plugin) are imported; graphs, embeddings and other plugins are
-counted and skipped. A folder that holds only `add_hparams` output (PyTorch writes
+the log folder. Scalars, images, videos (GIFs from `add_video`), audio, text,
+PR curves, histograms, meshes (as point clouds) and hyperparameters (the HParams
+plugin) are imported; graphs, embeddings and other plugins are counted and
+skipped. A folder that holds only `add_hparams` output (PyTorch writes
 it to a timestamped sub-folder) is merged into its parent run.
 
 Example:
@@ -481,6 +482,12 @@ def _strings(values: list[Any]) -> list[bytes]:
     return [v for v in values if isinstance(v, bytes)]
 
 
+def _rows(shape: list[int], values: list[Any]) -> list[list[Any]]:
+    """Return the rows of three of a mesh tensor (`[batch, n, 3]`), from its first batch item."""
+    n = shape[-2] if len(shape) >= 2 else len(values) // 3
+    return [list(values[i * 3 : i * 3 + 3]) for i in range(n)]
+
+
 def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") -> None:
     """Log the contents of event files into `run`, counting what was imported."""
 
@@ -489,6 +496,7 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
 
         for event in read_events(path):
             scalars: dict[str, float] = {}
+            meshes: dict[str, dict[str, tuple[list[int], list[Any]]]] = {}
             step, t = event.step, event.wall_time or None
 
             for v in event.values:
@@ -501,6 +509,9 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
 
                 if v.kind == "scalar" and v.scalar is not None:
                     scalars[tag] = v.scalar
+                elif v.kind == "image" and v.image and v.image[:6] in (b"GIF87a", b"GIF89a"):
+                    run.add_video(tag, v.image, step, time=t)  # add_video writes an animated GIF
+                    result.media += 1
                 elif v.kind == "image" and v.image:
                     run.add_image(tag, v.image, step, time=t)
                     result.media += 1
@@ -535,6 +546,11 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                     dtype, shape, values = v.tensor
 
                     if plugin == "hparams":
+                        continue
+
+                    if plugin == "mesh":  # `<name>_VERTEX`, `_FACE` and `_COLOR` in one summary
+                        name, _, part = tag.rpartition("_")
+                        meshes.setdefault(name or tag, {})[part] = (shape, values)
                         continue
 
                     if plugin == "images":  # [width, height, image, image, ...]
@@ -597,6 +613,22 @@ def _write(run: Run, files: list[Path], result: ImportResult, prefix: str = "") 
                     continue
                 else:
                     result.ignored[plugin or v.kind] += 1
+
+            for name, parts in meshes.items():
+                if "VERTEX" not in parts:
+                    result.ignored["mesh"] += 1
+                    continue
+
+                points = _rows(*parts["VERTEX"])
+                colors = _rows(*parts["COLOR"]) if "COLOR" in parts else None
+                run.add_point_cloud(
+                    name,
+                    points,
+                    step,
+                    colors=colors if colors and len(colors) == len(points) else None,
+                    time=t,
+                )
+                result.media += 1
 
             if scalars:
                 run.add_scalar(scalars, step=step, time=t)
