@@ -37,6 +37,8 @@
     pinned = false,
     baselines = false,
     zoom = null,
+    pinX = null,
+    onPinValues,
   }: {
     data: ChartData | null;
     smoothing?: number;
@@ -65,6 +67,10 @@
     baselines?: boolean;
     /** The x range the data was fetched for, or null for the whole run. */
     zoom?: [number, number] | null;
+    /** An x pinned on another chart: a vertical line there, and the dots on the nearest points. */
+    pinX?: number | null;
+    /** The values at `pinX`, reported whenever they change. */
+    onPinValues?: (x: number | null, values: CursorValue[]) => void;
   } = $props();
   let dots: HTMLElement[] = [];
   // the data point each dot marks, per series label; kept in data units so a pinned dot
@@ -278,7 +284,7 @@
           (u) => {
             if (!onCursor && !markers) return;
             const idx = u.cursor.idx;
-            const moveDots = markers && !pinned;
+            const moveDots = markers && !pinned && pinX == null;
             if (idx === null || idx === undefined) {
               if (moveDots) {
                 dotAt.clear();
@@ -287,39 +293,29 @@
               return onCursor?.(null, []);
             }
             if (moveDots) dotAt.clear();
-            const x = u.data[0][idx];
-            const values: CursorValue[] = [];
-            for (const m of mains) {
-              const col = u.data[m.idx] as (number | null)[];
-              let k = idx;
-              let found: number | null = col[k] ?? null;
-              for (let d = 1; found === null && d < 400; d++) {
-                if (col[idx - d] != null) {
-                  k = idx - d;
-                  found = col[k] as number;
-                } else if (col[idx + d] != null) {
-                  k = idx + d;
-                  found = col[k] as number;
-                }
-              }
-              if (moveDots && found !== null) dotAt.set(m.label, [u.data[0][k], found]);
-              if (found !== null) {
-                values.push({
-                  series: m.series,
-                  label: m.label,
-                  value: found,
-                  lo: m.lo !== null ? ((u.data[m.lo] as (number | null)[])[k] ?? null) : null,
-                  hi: m.hi !== null ? ((u.data[m.hi] as (number | null)[])[k] ?? null) : null,
-                });
-              }
-            }
+            const values = valuesAt(u, idx, moveDots);
             if (moveDots) placeDots(u);
-            onCursor?.(x, values);
+            onCursor?.(u.data[0][idx], values);
           },
         ],
         draw: [
           // a redraw follows every zoom, pan and resize: put the dots back on their points
           (u) => placeDots(u),
+          (u) => {
+            if (pinX == null) return;
+            const px = u.valToPos(pinX, 'x', true);
+            if (px < u.bbox.left || px > u.bbox.left + u.bbox.width) return;
+            const ctx = u.ctx;
+            ctx.save();
+            ctx.strokeStyle = cssVar('--accent') || '#2563eb';
+            ctx.lineWidth = devicePixelRatio;
+            ctx.setLineDash([4 * devicePixelRatio, 3 * devicePixelRatio]);
+            ctx.beginPath();
+            ctx.moveTo(px, u.bbox.top);
+            ctx.lineTo(px, u.bbox.top + u.bbox.height);
+            ctx.stroke();
+            ctx.restore();
+          },
           (u) => {
             if (!lines.length) return;
             const ctx = u.ctx;
@@ -440,6 +436,67 @@
         })
       : [];
     placeDots(plot);
+    if (pinX != null) showPin(plot);
+  }
+
+  /** The value of each curve at data index `idx` (or the nearest logged point), optionally
+   * moving the dots there. */
+  function valuesAt(u: uPlot, idx: number, setDots: boolean): CursorValue[] {
+    const values: CursorValue[] = [];
+    for (const m of mains) {
+      const col = u.data[m.idx] as (number | null)[];
+      let k = idx;
+      let found: number | null = col[k] ?? null;
+      for (let d = 1; found === null && d < 400; d++) {
+        if (col[idx - d] != null) {
+          k = idx - d;
+          found = col[k] as number;
+        } else if (col[idx + d] != null) {
+          k = idx + d;
+          found = col[k] as number;
+        }
+      }
+      if (setDots && found !== null) dotAt.set(m.label, [u.data[0][k], found]);
+      if (found !== null) {
+        values.push({
+          series: m.series,
+          label: m.label,
+          value: found,
+          lo: m.lo !== null ? ((u.data[m.lo] as (number | null)[])[k] ?? null) : null,
+          hi: m.hi !== null ? ((u.data[m.hi] as (number | null)[])[k] ?? null) : null,
+        });
+      }
+    }
+    return values;
+  }
+
+  /** Index of the x closest to `x` in the chart's sorted x values. */
+  function nearest(xs: ArrayLike<number>, x: number): number {
+    let lo = 0;
+    let hi = xs.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (xs[mid] < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && Math.abs(xs[lo - 1] - x) <= Math.abs(xs[lo] - x) ? lo - 1 : lo;
+  }
+
+  /** Show `pinX`: dots on the nearest points and the values there; clear them when unpinned. */
+  function showPin(u: uPlot) {
+    if (pinX == null) {
+      if (markers) dotAt.clear();
+      placeDots(u);
+      onPinValues?.(null, []);
+      return;
+    }
+    const xs = u.data[0];
+    if (!xs.length) return onPinValues?.(pinX, []);
+    dotAt.clear();
+    const values = valuesAt(u, nearest(xs, pinX), true);
+    placeDots(u);
+    u.redraw(false, false);
+    onPinValues?.(pinX, values);
   }
 
   /** Put each dot on the point it marks at the current scales; hide it when out of view. */
@@ -602,6 +659,14 @@
       baselines,
     ];
     schedule();
+  });
+
+  $effect(() => {
+    void pinX; // read first, as above
+    if (plot) {
+      showPin(plot);
+      plot.redraw(false, false);
+    }
   });
 
   $effect(() => {

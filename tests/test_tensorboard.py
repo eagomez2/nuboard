@@ -207,3 +207,52 @@ def test_imports_pr_curves(tmp_path):
     data = json.loads(reader.read_media(item))
     assert data["tp"] == [3, 2, 0] and data["thresholds"] == [0, 0.5, 1]
     assert data["precision"][1] == pytest.approx(0.667, abs=1e-6)
+
+
+def _event(step: int, *values: bytes) -> bytes:
+    """A TFRecord holding one event with these `Summary.Value`s."""
+    summary = b"".join(_field(1, v) for v in values)
+    event = b"\x09" + struct.pack("<d", 1700000000.0) + b"\x10" + _varint(step) + _field(5, summary)
+    return struct.pack("<Q", len(event)) + b"\0" * 4 + event + b"\0" * 4
+
+
+def _tensor_value(tag: str, plugin: str, dtype: int, shape: list[int], content: bytes) -> bytes:
+    dims = b"".join(_field(2, b"\x08" + _varint(d)) for d in shape)
+    tensor = b"\x08" + _varint(dtype) + _field(2, dims) + _field(4, content)
+    return (
+        _field(1, tag.encode())
+        + _field(9, _field(1, _field(1, plugin.encode())))
+        + _field(8, tensor)
+    )
+
+
+def test_imports_meshes_as_point_clouds_and_gifs_as_videos(tmp_path):
+    vertices = struct.pack("<6f", 0, 0, 0, 1, 2, 3)
+    colors = bytes([255, 0, 0, 0, 255, 0])
+    faces = struct.pack("<3i", 0, 1, 1)
+    gif = b"GIF89a" + b"\0" * 20
+    image = _field(1, b"rollout") + _field(4, _field(4, gif))  # a TF1 Summary.Image
+    folder = tmp_path / "logs" / "mesh"
+    folder.mkdir(parents=True)
+    (folder / "events.out.tfevents.1.host").write_bytes(
+        _event(
+            3,
+            _tensor_value("cube_VERTEX", "mesh", 1, [1, 2, 3], vertices),
+            _tensor_value("cube_FACE", "mesh", 3, [1, 1, 3], faces),
+            _tensor_value("cube_COLOR", "mesh", 4, [1, 2, 3], colors),
+            image,
+        )
+    )
+
+    (result,) = import_logdir(folder, "tb", dir=tmp_path / "out")
+
+    assert result.media == 2 and not result.ignored
+    reader = next(iter(_runs(tmp_path / "out").values())).reader()
+    items = {m.key: m for m in reader.media()}
+    assert set(items) == {"cube", "rollout"}
+    assert items["cube"].meta["points"] == 2 and items["cube"].meta["colors"] is True
+    assert items["cube"].step == 3
+    data = reader.read_media(items["cube"])
+    assert struct.unpack("<6f", data[:24]) == (0, 0, 0, 1, 2, 3) and data[24:] == colors
+    assert items["rollout"].meta["kind"] == "video"
+    assert reader.read_media(items["rollout"]) == gif

@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 
 import nuboard as nb
 from nuboard.server import create_app
+from nuboard.server.app import _input_versions
 
 
 @pytest.fixture
@@ -817,6 +818,39 @@ def test_sweep_keys_send_lists_as_json(tmp_path):
         assert sorted(res["values"]["layers"].values()) == ["[128]", "[64, 64]"]
 
 
+def test_sweep_keys_add_the_artifact_versions_runs_used(tmp_path):
+    data = tmp_path / "data.txt"
+    data.write_text("a")
+
+    with nb.init("arts", capture_env=False) as prep:
+        prep.add_artifact("corpus", data, type="dataset")
+        data.write_text("ab")
+        prep.add_artifact("corpus", data, type="dataset")
+
+    for version in (1, 2):
+        with nb.init("arts", config={"lr": 0.1}, capture_env=False) as run:
+            run.use_artifact(f"corpus:v{version}")
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        res = c.get("/api/sweep-keys", params={"project": "arts"}).json()
+        assert res["keys"] == ["inputs.corpus"]
+        assert sorted(res["values"]["inputs.corpus"].values()) == ["v1", "v2"]
+
+
+def test_input_versions_join_several_versions_of_one_artifact():
+    refs = [
+        {"artifact": "corpus", "version": 1},
+        {"artifact": "corpus", "version": 3},
+        {"artifact": "corpus", "version": 1},
+        {"artifact": "model", "version": 2},
+        "junk",
+    ]
+    assert _input_versions(refs) == {"inputs.corpus": "v1+v3", "inputs.model": "v2"}
+
+
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
@@ -955,3 +989,14 @@ def test_report_export_includes_uploaded_images_and_attachments(client):
     assert f"![a shot]({image})" in md and f"[train.log]({log})" in md
     assert zf.read(image) == PNG and zf.read(log) == b"step 1\n"
     assert f"[a take]({sound})" in md and zf.read(sound) == WAV
+
+
+def test_sweep_hide_rules_are_stored_in_the_project(client, tmp_path):
+    url = "/api/sweep-settings"
+    assert client.get(url, params={"project": "sweep"}).json() == {"hide": ""}
+    saved = client.post(url, json={"project": "sweep", "hide": " !seed   !.path "})
+    assert saved.json() == {"hide": "!seed !.path"}
+    assert client.get(url, params={"project": "sweep"}).json()["hide"] == "!seed !.path"
+    assert client.post(url, json={"project": "zzz", "hide": "x"}).status_code == 400
+    assert client.post(url, json={"project": "sweep", "hide": "x" * 1001}).status_code == 400
+    assert client.get(url, params={"project": "zzz"}).json() == {"hide": ""}

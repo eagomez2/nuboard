@@ -78,7 +78,7 @@ export async function svgToSvg(svg: SVGSVGElement, title = ''): Promise<string> 
     const tip = el.getAttribute('data-tip');
     for (const a of [...el.attributes])
       if (
-        !/^(style|xmlns|width|height|viewBox|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|d|points|transform|text-anchor|fill|stroke)$/.test(
+        !/^(style|xmlns|width|height|viewBox|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|d|points|transform|text-anchor|fill|stroke|data-run)$/.test(
           a.name,
         )
       )

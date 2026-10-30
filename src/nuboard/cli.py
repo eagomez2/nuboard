@@ -1,4 +1,4 @@
-"""Command line: `NAME up`, `NAME demo`, `NAME compact`, `NAME ls`, `NAME artifact`."""
+"""Command line: `NAME up`, `demo`, `compact`, `ls`, `artifact`, `merge` and friends."""
 
 from __future__ import annotations
 
@@ -204,8 +204,9 @@ def main(argv: list[str] | None = None) -> None:
     Subcommands: `up` (start the viewer), `demo` (write a demo workspace and
     optionally serve it with a live run), `compact` (write `data.parquet` for
     finished runs), `ls` (list runs, optionally filtered by a query),
-    `artifact` (add, list and show artifact versions), `import-tensorboard`
-    (import TensorBoard logs) and `version`.
+    `artifact` (add, list and show artifact versions), `merge` (merge one
+    folder of projects into another), `import-tensorboard` (import
+    TensorBoard logs) and `version`.
 
     Args:
         argv: Command line arguments without the program name. Defaults to
@@ -302,12 +303,47 @@ def main(argv: list[str] | None = None) -> None:
         help="tag for the imported runs; repeat for several (default: tensorboard)",
     )
 
+    p = sub.add_parser(
+        "merge",
+        help="merge the projects of one folder into another (shows the plan and asks first)",
+        description="Copy into DEST the runs, artifact versions, reports, views, collections and "
+        "project settings of SRC that DEST lacks. Projects are matched by their path, so give two "
+        "roots or two project folders. The full plan is shown and nothing is written until you "
+        "confirm. Nothing is overwritten or deleted.",
+    )
+    p.add_argument("src", help="folder to merge from")
+    p.add_argument("dest", help="folder to merge into")
+    p.add_argument("--project", help="only this project (its path inside SRC)")
+    p.add_argument("--dry-run", action="store_true", help="show the plan and exit (1 if conflicts)")
+    p.add_argument("-y", "--yes", action="store_true", help="apply without asking")
+    p.add_argument("-v", "--verbose", action="store_true", help="list every item")
+    p.add_argument("--json", action="store_true", help="print the plan as JSON")
+    p.add_argument(
+        "--include-running", action="store_true", help="also copy runs still logging in SRC"
+    )
+
     from . import _artifact_cli
 
     _artifact_cli.add_parser(sub, ENV_PREFIX, DEFAULT_ROOT)
     sub.add_parser("version", help="print the version")
 
     args = parser.parse_args(argv)
+
+    if args.cmd == "merge":
+        from . import merge
+
+        raise SystemExit(
+            merge.main(
+                args.src,
+                args.dest,
+                project=args.project,
+                include_running=args.include_running,
+                dry_run=args.dry_run,
+                yes=args.yes,
+                verbose=args.verbose,
+                as_json=args.json,
+            )
+        )
 
     if args.cmd == "artifact":
         from . import _artifact_cli

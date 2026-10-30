@@ -1,6 +1,67 @@
 # Changelog
 
-## Unreleased
+## 0.19.2
+
+- **`nuboard merge SRC DEST`** merges a project logged on two machines into
+  one folder. It shows the full plan first (runs to copy, identical items,
+  conflicts, renamed or renumbered items) and writes nothing until you
+  confirm. It copies what DEST lacks and never overwrites or deletes:
+  clashing artifact versions are renumbered and copied runs repointed,
+  collections and hide rules are combined, and a report or view that differs
+  is copied next to DEST's. `--dry-run`, `--yes`, `--json`, `-v`,
+  `--project` and `--include-running` (#16). See
+  [Working on several machines](guide/machines.md).
+
+- **TensorBoard import: videos and meshes.** `import-tensorboard` now imports
+  `add_video` clips (animated GIFs) as videos and `add_mesh` summaries as
+  point clouds with their colors, instead of an image and a skipped plugin.
+- **Small charts show values on hover.** Hovering a chart in the **All
+  scalars** grid shows each run's value at the cursor, best first, up to eight
+  and "+N more" (#3).
+- **A pinned step shows on every chart.** While the main chart is pinned,
+  every small chart draws a dashed line at that step with a dot on each
+  curve, and hovering one shows its values there (#3).
+- **Full scalar names under small charts**, wrapping instead of cut off;
+  **Full names** in the display row turns them off (#3).
+- **Timeline hover cards in reports.** A Timeline snapshot in a report shows
+  the Timeline page's hover card on each bar (name, id, status, project,
+  start, duration, alerts) in the preview and in exported HTML, instead of a
+  slow browser tooltip; in NuBoard, clicking a bar opens the run (#3).
+- **More room for reports.** A report with text opens in **Preview** (the
+  view you pick is remembered). The report list and the **Workspace** list on
+  the Runs page fold into a thin bar with their button or `[`, remembered per
+  browser (#3).
+
+- **Datasets as Sweeps parameters.** The artifact versions each run used are
+  parameters named `inputs.<artifact>` (`v1`, `v2`), so runs can be compared
+  by data version without copying it into the config (#14).
+- **Readable list and dict values in Sweeps.** Axis labels, scatter labels and
+  the Best runs table show only what differs between values (`[0]=0.08`,
+  `flip, mixup`, `[1].dim=512`), with the full value on hover and, on click,
+  pretty-printed with a **Copy** button (#14).
+- **Split a list into element axes.** A list of plain values with one length
+  in every run can be split in the picker into `key[0]`, `key[1]`, ..., kept
+  in the URL as `split=` (#14).
+- **The demo shows them.** Half of the `llm-pretrain` sweep trains on the
+  older `fineweb-edu:v1` (a little worse), and `vit-ablations` runs have
+  list-valued `transforms` and `crop_scale` settings. Delete an existing demo
+  folder to get the new data.
+
+## 0.19.1
+
+- **Sweeps parameter picker.** **Parameters** opens a searchable list of every
+  differing key, grouped by prefix, with its type, number of values and
+  correlation with the objective. Chosen keys are chips you can drag to
+  reorder and remove with **×**. **Clear all** and **Reset to defaults** are
+  in the list.
+- **Better default parameters.** With nothing picked, Sweeps shows up to six
+  keys, the most correlated with the objective first, leaving out seeds,
+  paths, id-like keys, long text and keys with many values. The last choice is
+  remembered per project.
+- **Hide rules for Sweeps.** A project can hide keys from the picker with a
+  filter such as `!seed !.path`, saved in `<project>/sweeps.json`.
+- **Categories with many values** keep their 11 most common values on the axis
+  and gather the rest in **(other)**.
 
 - **`nuboard demo` no longer piles up runs.** Run again on a folder that
   already holds the demo, it opens it instead of adding 31 more runs each

@@ -25,6 +25,19 @@
     });
   }
 
+  // The hover card as text, one line each, for the SVG saved into reports (see `svgcards.ts`).
+  function tipText(r: RunBrief): string {
+    return [
+      r.name,
+      r.id,
+      `${cap(r.status)} · ${r.project}`,
+      `Started ${fmtDate(r.started)}`,
+      `Duration ${fmtDuration(endOf(r) - (r.started ?? 0))}`,
+      ...(r.group ? [`Group ${r.group}`] : []),
+      ...(r.alerts ?? []).map((a) => `⚠ ${a.message}`),
+    ].join('\n');
+  }
+
   const ROW = 24;
   const AXIS = 30;
   const MAX_ROWS = 1500;
@@ -410,11 +423,8 @@
           {#if x1 >= LABEL && x0 <= LABEL + plotW}
             <g
               class="bar"
-              data-tip="{r.name} · {r.id}\n{cap(r.status)} · {r.project}\nStarted {fmtDate(
-                r.started,
-              )}\nDuration {fmtDuration(endOf(r) - (r.started ?? 0))}{r.alerts?.length
-                ? `\n${r.alerts.map((a) => a.message).join('\n')}`
-                : ''}"
+              data-tip={tipText(r)}
+              data-run={r.key}
               role="button"
               tabindex="-1"
               onpointerenter={(e) => (hover = { run: r, x: e.clientX, y: e.clientY })}

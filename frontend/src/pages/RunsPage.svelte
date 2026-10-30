@@ -6,6 +6,9 @@
   import { ask, confirmAction } from '../lib/dialog.svelte';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { Fold } from '../lib/fold.svelte';
+
+  const side = new Fold('workspaceFolded');
 
   const project = $derived(router.get('project'));
   const total = $derived(app.info?.projects.reduce((n, p) => n + p.runs, 0) ?? 0);
@@ -67,59 +70,81 @@
   }
 </script>
 
-<div class="layout">
-  <aside class="card side">
-    <div class="label">Workspace</div>
-    <button class="item root" class:on={!project} onclick={() => router.set({ project: null, sel: null })}>
-      <Icon name="folder" size={16} />
-      <span class="mono grow">{app.info?.root_display ?? '…'}</span>
-      <span class="count">{total}</span>
-    </button>
-    {#each app.info?.projects ?? [] as p (p.name)}
+<svelte:window onkeydown={side.onkeydown} />
+
+<div class="layout" class:folded={side.folded}>
+  {#if side.folded}
+    <aside class="card side bar">
       <button
-        class="item proj"
-        class:on={project === p.name}
-        onclick={() => router.set({ project: p.name, sel: null })}
+        class="btn btn-ghost icon"
+        aria-label="Show the workspace"
+        title="Show the workspace ( [ )"
+        onclick={side.toggle}><Icon name="sidebar" size={16} /></button
       >
+    </aside>
+  {:else}
+    <aside class="card side">
+      <div class="head">
+        <span class="label">Workspace</span>
+        <button
+          class="btn btn-ghost icon"
+          aria-label="Hide the workspace"
+          title="Hide the workspace ( [ )"
+          onclick={side.toggle}><Icon name="sidebar" size={16} /></button
+        >
+      </div>
+      <button class="item root" class:on={!project} onclick={() => router.set({ project: null, sel: null })}>
         <Icon name="folder" size={16} />
-        <span class="grow">{p.name}</span>
-        <span class="count">{p.runs}</span>
+        <span class="mono grow">{app.info?.root_display ?? '…'}</span>
+        <span class="count">{total}</span>
       </button>
-      {#each app.collections.filter((c) => c.project === p.name) as c (c.name)}
-        <div class="item coll" class:on={project === p.name && query === collectionQuery(c.name)}>
-          <button
-            class="collbtn"
-            title={c.description || `Collection: ${c.runs.length} runs (collections/${c.name}.json)`}
-            onclick={() => router.set({ project: p.name, q: collectionQuery(c.name), sel: null })}
-          >
-            <Icon name="collection" size={15} />
-            <span class="grow">{c.name}</span>
-            <span class="count">{c.runs.length}</span>
-          </button>
-          <button class="del" aria-label="Delete collection {c.name}" onclick={() => removeCollection(p.name, c.name)}
-            >×</button
-          >
-        </div>
+      {#each app.info?.projects ?? [] as p (p.name)}
+        <button
+          class="item proj"
+          class:on={project === p.name}
+          onclick={() => router.set({ project: p.name, sel: null })}
+        >
+          <Icon name="folder" size={16} />
+          <span class="grow">{p.name}</span>
+          <span class="count">{p.runs}</span>
+        </button>
+        {#each app.collections.filter((c) => c.project === p.name) as c (c.name)}
+          <div class="item coll" class:on={project === p.name && query === collectionQuery(c.name)}>
+            <button
+              class="collbtn"
+              title={c.description || `Collection: ${c.runs.length} runs (collections/${c.name}.json)`}
+              onclick={() => router.set({ project: p.name, q: collectionQuery(c.name), sel: null })}
+            >
+              <Icon name="collection" size={15} />
+              <span class="grow">{c.name}</span>
+              <span class="count">{c.runs.length}</span>
+            </button>
+            <button class="del" aria-label="Delete collection {c.name}" onclick={() => removeCollection(p.name, c.name)}
+              >×</button
+            >
+          </div>
+        {/each}
+        {#each p.views as v (v)}
+          <div class="item coll view">
+            <button class="collbtn" onclick={() => openView(p.name, v)} title="Saved view (views/{v})">
+              <Icon name="file" size={15} />
+              <span class="grow">views/{v}</span>
+            </button>
+            <button class="del" aria-label="Delete view {v}" onclick={() => removeView(p.name, v)}>×</button>
+          </div>
+        {/each}
       {/each}
-      {#each p.views as v (v)}
-        <div class="item coll view">
-          <button class="collbtn" onclick={() => openView(p.name, v)} title="Saved view (views/{v})">
-            <Icon name="file" size={15} />
-            <span class="grow">views/{v}</span>
-          </button>
-          <button class="del" aria-label="Delete view {v}" onclick={() => removeView(p.name, v)}>×</button>
-        </div>
-      {/each}
-    {/each}
-    <button class="btn save" onclick={saveView}>Save current view…</button>
-    <p class="hint">
-      Each run is its own folder. Stars, notes, review marks, tags and properties are written to the run's <code
-        >annotations.json</code
-      >, so they travel with the folder. Collections and saved views go to <code>&lt;project&gt;/collections/</code> and
-      <code>&lt;project&gt;/views/</code>
-      and can be committed to git.
-    </p>
-  </aside>
+      <button class="btn save" onclick={saveView}>Save current view…</button>
+      <p class="hint">
+        Each run is its own folder. Stars, notes, review marks, tags and properties are written to the run's <code
+          >annotations.json</code
+        >, so they travel with the folder. Collections and saved views go to <code>&lt;project&gt;/collections/</code>
+        and
+        <code>&lt;project&gt;/views/</code>
+        and can be committed to git.
+      </p>
+    </aside>
+  {/if}
 
   <section class="main">
     {#if compare.length}
@@ -135,6 +160,25 @@
     grid-template-columns: 280px minmax(0, 1fr);
     gap: 16px;
     align-items: start;
+  }
+  .layout.folded {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .side.bar {
+    padding: 6px;
+    align-items: center;
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
   }
   .side {
     padding: 16px 12px;

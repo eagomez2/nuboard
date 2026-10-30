@@ -27,6 +27,14 @@ from .run import add_artifact, init
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
 LLM_STEPS = 25_000
+# vit-ablations: list-valued settings per augmentation
+AUG_TRANSFORMS = {
+    "none": ["resize", "center_crop", "normalize"],
+    "randaug": ["random_resized_crop", "flip", "randaugment", "normalize"],
+    "mixup": ["random_resized_crop", "flip", "normalize", "mixup"],
+    "cutmix": ["random_resized_crop", "flip", "normalize", "cutmix"],
+}
+AUG_CROP = {"none": [1.0, 1.0], "randaug": [0.08, 1.0], "mixup": [0.2, 1.0], "cutmix": [0.35, 1.0]}
 LLM_EVERY = 10
 
 
@@ -41,7 +49,7 @@ def _llm_config(lr: float, seed: int) -> dict[str, Any]:
             "warmup_steps": 1000,
             "betas": [0.9, 0.95],
         },
-        "data": {"dataset": "fineweb-edu:v2", "batch_size": 512, "seq_len": 2048},
+        "data": {"batch_size": 512, "seq_len": 2048},
         "train": {"steps": LLM_STEPS, "precision": "bf16", "grad_clip": 1.0},
         "seed": seed,
     }
@@ -121,6 +129,7 @@ def llm_point(
     diverge_at: int | None = None,
     dip_at: int | None = None,
     spike_at: int | None = None,
+    data_penalty: float = 0.0,
 ) -> dict[str, float]:
     """Return synthetic LLM training metrics for one step.
 
@@ -136,12 +145,13 @@ def llm_point(
             over the 400 steps before it and are NaN from it on.
         dip_at: Step at which a 900-step throughput dip starts.
         spike_at: Step of one bad batch that briefly spikes the loss and gradient norm.
+        data_penalty: Added to the final loss (older, noisier training data).
 
     Returns:
         A dict with `train/loss`, `train/grad_norm`, `train/lr`, `train/tokens`,
         and `perf/tokens_per_sec`.
     """
-    final = LLM_LRS.get(lr, 2.5) + 0.004 * (seed - 2)
+    final = LLM_LRS.get(lr, 2.5) + 0.004 * (seed - 2) + data_penalty
     tau = 2600 * (1e-3 / lr) ** 0.45
     loss = (
         final
@@ -245,7 +255,7 @@ def _llm_runs(root: Path, base: float) -> None:
     ) as prep:
         prep.add_scalar({"data/tokens_b": 10.2}, step=0, time=base - 4.8 * 3600 + 30)
         # the data stays in shared-data/; the datasets project only records it
-        prep.add_artifact(
+        fineweb_v1 = prep.add_artifact(
             "datasets/fineweb-edu",
             folders[0],
             type="dataset",
@@ -296,7 +306,9 @@ def _llm_runs(root: Path, base: float) -> None:
             _started=started,
         )
         _add_config_file(run, _llm_config(lr, seed))
-        run.use_artifact(f"datasets/{fineweb.ref}")
+        # half the sweep still trained on the September snapshot, which is a bit worse
+        old_data = i % 2 == 1
+        run.use_artifact(f"datasets/{(fineweb_v1 if old_data else fineweb).ref}")
         sec_per_step = 0.22
         t = started
         last = LLM_STEPS
@@ -312,6 +324,7 @@ def _llm_runs(root: Path, base: float) -> None:
                 diverge_at=18_400 if crashed else None,
                 dip_at=18_000 if (lr == 1e-3 and seed == 1) else None,
                 spike_at=9_000 if (lr == 3e-4 and seed == 3) else None,
+                data_penalty=0.03 if old_data else 0.0,
             )
             run.add_scalar(point, step=step, time=t)
 
@@ -598,6 +611,9 @@ def _vit_runs(root: Path, base: float) -> None:
             "batch_size": 256,
             "seed": seed,
             "mixup_alpha": 0.2 if aug == "mixup" else None,
+            # lists: the transforms applied, and the random-resized-crop scale range
+            "transforms": AUG_TRANSFORMS[aug],
+            "crop_scale": AUG_CROP[aug],
         }
         run = init(
             "vit-ablations",

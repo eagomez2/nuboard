@@ -33,7 +33,9 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   its collections and its saved views. **Save current view…** writes the
   current URL state to `<project>/views/<name>.json`, which you can commit.
   Click a view to open it. The **×** that appears on hover deletes a view or
-  a collection, after asking; the runs themselves are not touched.
+  a collection, after asking; the runs themselves are not touched. The button
+  beside **Workspace** (or `[`) folds the list into a thin bar, which is
+  remembered in this browser.
 - **Table**: status, star, name and folder (with the run's collections and its
   tags as colored pills; a tag keeps its color everywhere), the config keys
   that differ between the listed runs, a result column, start time, duration, reviewed mark and
@@ -289,7 +291,12 @@ in the selection bar) or, if none are selected, every run matching the query.
   exports.
 - **All scalars**: a small chart per scalar, grouped by prefix (`train/`,
   `eval/`, `perf/`…). Small charts load as you scroll. Click a title to bring
-  the scalar into focus. **Grid** sets the charts per row (fit to width, or 1
+  the scalar into focus. Hovering a small chart shows each run's value at the
+  cursor, best first (up to eight, then "+N more"). While the main chart is
+  pinned, every small chart draws a dashed line at that step with a dot on
+  each curve, and hovering one shows its values there. The full scalar name
+  is written under each chart; **Full names** in the display row turns that
+  off (`names=0`). **Grid** sets the charts per row (fit to width, or 1
   to 6) and the rows per section (1 to 6, or all); a section with more charts
   gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
   **Filter scalars** takes a regular expression (as in TensorBoard, case

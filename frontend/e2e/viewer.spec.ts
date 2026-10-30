@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test('runs table lists the demo projects and filters with the query bar', async ({ page }) => {
   await page.goto('/#/runs');
@@ -81,6 +81,70 @@ test('charts render grouped bands, a legend and small multiples', async ({ page 
   await expect(page).toHaveURL(/x=time/);
 });
 
+test('small charts show values on hover, the pinned step and their full names', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  const small = page.locator('.small').first();
+  await small.scrollIntoViewIfNeeded();
+  const over = small.locator('.u-over');
+  await expect(over).toBeVisible();
+  await expect(small.locator('.fullname')).toHaveText(/\S/);
+  // hovering a small chart: a read-out with each run's value, at most 8 and best first
+  const box = (await over.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  const tip = small.getByRole('status');
+  await expect(tip).toBeVisible();
+  await expect(tip.locator('.tx')).toHaveText(/^Step [\d,]+$/);
+  expect(await tip.locator('.trow').count()).toBeLessThanOrEqual(8);
+  await page.mouse.move(0, 0);
+  await expect(tip).toHaveCount(0);
+  // pinning the main chart: the small charts show that step
+  const main = page.locator('.main .chart').first().locator('.u-over');
+  await main.scrollIntoViewIfNeeded();
+  const mb = (await main.boundingBox())!;
+  await page.mouse.move(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
+  await page.mouse.click(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
+  await expect(page.getByText('Pinned · click chart to release')).toBeVisible();
+  await small.scrollIntoViewIfNeeded();
+  const sb = (await over.boundingBox())!;
+  await page.mouse.move(sb.x + 10, sb.y + 10);
+  await expect(tip).toContainText('pinned');
+  // the names under the charts can be turned off
+  await page.getByRole('switch', { name: 'Full names' }).click();
+  await expect(page).toHaveURL(/names=0/);
+  await expect(small.locator('.fullname')).toHaveCount(0);
+});
+
+test('reports open in Preview and fold their list', async ({ page }) => {
+  await page.goto('/#/reports');
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Name').fill('e2e-reading');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+  // a report with text opens in Preview
+  await expect(page.getByRole('heading', { name: 'e2e-reading' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Preview', pressed: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveCount(0);
+  // the list folds with its button or [, and stays folded
+  await page.getByRole('button', { name: 'Hide the report list' }).click();
+  await expect(page.locator('.side.bar')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.side.bar')).toBeVisible();
+  await page.keyboard.press('[');
+  await expect(page.getByRole('button', { name: 'Hide the report list' })).toBeVisible();
+  // a view picked by hand is kept
+  await page.getByRole('button', { name: 'Split' }).click();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Split', pressed: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview' }).click();
+});
+
+test('the Runs workspace folds into a thin bar', async ({ page }) => {
+  await page.goto('/#/runs');
+  await page.getByRole('button', { name: 'Hide the workspace' }).click();
+  await expect(page.getByRole('button', { name: 'Show the workspace' })).toBeVisible();
+  await page.keyboard.press('[');
+  await expect(page.getByRole('button', { name: 'Hide the workspace' })).toBeVisible();
+});
+
 test('media page shows logged images', async ({ page }) => {
   await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples%2Faugmented%24');
   await expect(page.locator('figure img').first()).toBeVisible();
@@ -115,6 +179,7 @@ test('the all-runs PR chart downloads as a PNG and goes to a report', async ({ p
   await dlg.getByLabel('Report').fill('e2e-pr-all');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"overlay:\S+@\d+ \S+@\d+/);
   // drawn live in the report, as on the Media page
   await expect(page.locator('.md .pr svg polyline').nth(1)).toBeAttached();
@@ -193,9 +258,112 @@ test('sweeps finds a config key past the first 64 values', async ({ page }) => {
   // speech-denoise runs differ only in a generator setting deep in a long config (issue #5)
   const key = 'generator.config.weighted_sir_db.edge.min';
   await page.goto('/#/sweeps?project=speech-denoise');
-  await expect(page.locator(`.chip.param[title="${key}"]`)).toBeVisible();
+  await expect(page.locator(`.chip.param[title^="${key} "]`)).toBeVisible();
   await page.goto(`/#/sweeps?project=speech-denoise&params=${key}`);
   await expect(page.locator('.pc .axis')).toHaveCount(2);
+});
+
+test('sweeps parameter picker: defaults, search, clear, reset and remove', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  const chips = page.locator('.chip.param');
+  await expect(chips.first()).toBeVisible();
+  await expect(page.locator('.chip.param[title^="seed "]')).toHaveCount(0); // seeds are not a default
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('seed');
+  await expect(picker.locator('label.row')).toHaveCount(1);
+  await picker.locator('label.row').getByRole('checkbox').check();
+  await expect(page.locator('.chip.param[title^="seed "]')).toBeVisible();
+  await expect(page).toHaveURL(/params=[^&]*seed/);
+  await picker.getByRole('button', { name: 'Clear all' }).click();
+  await expect(chips).toHaveCount(0);
+  await expect(page).toHaveURL(/params=none/);
+  await expect(page.locator('.pc .axis')).toHaveCount(1); // only the metric
+  await picker.getByRole('button', { name: 'Reset to defaults' }).click();
+  await expect(chips.first()).toBeVisible();
+  await expect(page).not.toHaveURL(/params=/);
+  await page.keyboard.press('Escape');
+  await expect(picker).toHaveCount(0);
+  const n = await chips.count();
+  await page.getByRole('button', { name: 'Remove optim.lr' }).click();
+  await expect(chips).toHaveCount(n - 1);
+});
+
+test('sweeps parameter picker fits a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 920, height: 500 });
+  await page.goto('/#/sweeps?metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await expect(picker.getByRole('button', { name: 'Reset to defaults' })).toBeInViewport({ ratio: 1 });
+});
+
+test('sweeps parameter chips reorder by dragging', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=optim.lr,seed');
+  const chips = page.locator('.chip.param');
+  await expect(chips).toHaveCount(2);
+  await chips.nth(1).dragTo(chips.nth(0));
+  await expect(page).toHaveURL(/params=seed(%2C|,)optim.lr/);
+});
+
+test('sweeps hide rules are saved for the project', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  const hide = picker.getByLabel('Hide matching keys');
+  await hide.fill('!optim.');
+  await hide.press('Enter');
+  await expect(picker.locator('label.row', { hasText: 'lr' })).toHaveCount(0);
+  await picker.getByRole('button', { name: /Show \d+ hidden/ }).click();
+  await expect(picker.locator('label.row.hid').first()).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  await expect(picker.getByLabel('Hide matching keys')).toHaveValue('!optim.');
+  await picker.getByLabel('Hide matching keys').fill('');
+  await picker.getByLabel('Hide matching keys').press('Enter');
+  await expect(picker.getByRole('button', { name: /hidden/ })).toHaveCount(0);
+});
+
+test('sweeps compares runs by the dataset version they used', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('inputs.');
+  const row = picker.locator('label.row', { hasText: 'fineweb-edu' });
+  await expect(row).toContainText('category · 3 values'); // v1, v2, and none for the prep and eval runs
+  await page.keyboard.press('Escape');
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=inputs.fineweb-edu');
+  const axis = page.locator('.pc .axis').first();
+  await expect(axis.locator('text.tick')).toHaveText([/—$/, /v1$/, /v2$/]); // each tick holds its <title> first
+});
+
+test('sweeps shows list values by what differs, with the full value on click', async ({ page }) => {
+  await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale,transforms');
+  const ticks = page.locator('.pc .axis').first().locator('text.tick');
+  await expect(ticks).toHaveText([/\]\[0\]=0\.08$/, /\]\[0\]=0\.2$/, /\]\[0\]=0\.35$/, /\]\[0\]=1$/]);
+  await expect(page.locator('.pc .axis').nth(1).locator('text.tick', { hasText: 'resize, center_crop' })).toHaveCount(
+    1,
+  );
+  await page.getByRole('button', { name: 'Show the full value of [0]=0.08' }).click();
+  const panel = page.getByRole('dialog', { name: 'Full value' });
+  await expect(panel.locator('pre')).toHaveText(/0\.08,\s+1/);
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('.best td .cell', { hasText: '[0]=' }).first()).toBeVisible();
+});
+
+test('sweeps splits a list into element axes and joins it back', async ({ page }) => {
+  await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale');
+  await page.getByRole('button', { name: /Parameters/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Parameters' });
+  await picker.getByLabel('Search parameters').fill('crop');
+  await picker.getByRole('button', { name: 'Split' }).click();
+  await expect(page).toHaveURL(/split=crop_scale/);
+  await expect(page.locator('.chip.param[title^="crop_scale[0] "]')).toBeVisible();
+  await expect(page.locator('.chip.param[title^="crop_scale "]')).toHaveCount(0);
+  await expect(page.locator('.pc .axis').first().locator('.sub')).toHaveText('linear');
+  await picker.getByRole('button', { name: 'Join' }).click();
+  await expect(page).not.toHaveURL(/split=/);
+  await expect(page.locator('.chip.param[title^="crop_scale "]')).toBeVisible();
 });
 
 test('timeline shows a bar per run and artifacts show lineage', async ({ page }) => {
@@ -205,7 +373,7 @@ test('timeline shows a bar per run and artifacts show lineage', async ({ page })
   await expect(page.locator('text.name tspan.rid').first()).toHaveText(/^ [0-9a-z]{6,12}$/);
   await page.goto('/#/artifacts?project=llm-pretrain');
   await expect(page.getByRole('heading', { name: 'fineweb-edu:v2' })).toBeVisible();
-  await expect(page.locator('g.node.run')).toHaveCount(14);
+  await expect(page.locator('g.node.run')).toHaveCount(8); // prep, the six sweep runs on v2, and eval
   await page.locator('g.node.artifact', { hasText: 'model:v1' }).click();
   await expect(page.getByRole('heading', { name: 'model:v1' })).toBeVisible();
 });
@@ -492,6 +660,7 @@ test('add a media item to a report, then open and export it', async ({ page }) =
   await dlg.getByLabel('Report').fill('e2e-report');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
   await expect(page).toHaveURL(/#\/reports/);
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/media:.*samples\/augmented@/);
   await expect(page.locator('.preview img').first()).toBeVisible();
@@ -589,6 +758,7 @@ test('add the main chart to a report, where it is drawn live', async ({ page }) 
   await dlg.getByLabel('Report').fill('e2e-charts');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/files\/e2e-charts-\w+\.png "chart:/);
   await expect(page.locator('.preview .nb-chart canvas')).toBeVisible();
   await page.getByRole('button', { name: 'Open in Charts' }).click();
@@ -632,12 +802,13 @@ test('sweeps: grid, full screen, and plots added to a report', async ({ page }) 
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.locator('.panel.full')).toHaveCount(0); // left full screen for the dialog
   await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(/"view:sweeps\?/);
   await page.getByRole('button', { name: 'Open in Sweeps' }).click();
   await expect(page).toHaveURL(/#\/sweeps/);
 });
 
-test('timeline goes full screen and into a report, which exports as HTML', async ({ page }) => {
+test('timeline goes full screen and into a report, which exports as HTML', async ({ page, browser }) => {
   await page.goto('/#/timeline');
   await page.getByRole('button', { name: 'Full screen' }).click();
   await expect(page.locator('.panel.full')).toBeVisible();
@@ -647,9 +818,31 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   await dlg.getByLabel('Report').fill('e2e-timeline');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
-  // saved as an SVG, drawn inline with a title on every bar
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
+  // saved as an SVG, drawn inline with the Timeline's hover card on every bar
   await expect(page.locator('.preview .nb-view svg').first()).toBeVisible();
-  await expect(page.locator('.preview .nb-view svg title').first()).toContainText('Started');
+  // the widest bar, so no artifact diamond is on top of it
+  const widest = async (p: Page, sel: string) =>
+    p.evaluate((sel) => {
+      const el = [...document.querySelectorAll(sel)].sort(
+        (a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width,
+      )[0];
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, sel);
+  const bar = await widest(page, '.preview .nb-view [data-card] rect');
+  await page.mouse.move(bar.x, bar.y);
+  const card = page.locator('.preview .nb-view .nb-card');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('Started');
+  await expect(card.locator('.head')).not.toBeEmpty();
+  await page.mouse.move(1, 1);
+  await expect(card).toBeHidden();
+  await page.mouse.click(bar.x, bar.y); // opens the run
+  await expect(page).toHaveURL(/#\/runs\?.*cmp=/);
+  await page.goBack();
+  await page.getByRole('button', { name: 'Split' }).click(); // a report with text opens in Preview
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(
     /files\/e2e-timeline-\w+\.svg "view:timeline/,
   );
@@ -661,6 +854,14 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   const html = await (await file.createReadStream()).toArray();
   const doc = Buffer.concat(html).toString();
   expect(doc).toMatch(/<div class="nbsvg"><svg[^]*<title>[^<]*Started/);
+  // the exported file turns those titles into the same hover cards
+  const exported = await browser.newPage();
+  await exported.setContent(doc);
+  const at = await widest(exported, '.nbsvg [data-card] rect');
+  await exported.mouse.move(at.x, at.y);
+  await expect(exported.locator('.nbsvg .nbcard')).toBeVisible();
+  await expect(exported.locator('.nbsvg .nbcard')).toContainText('Duration');
+  await exported.close();
   expect(doc).toContain('class="nbtheme"'); // switchable by default
   expect(doc).toMatch(/<footer>Exported with NuBoard \d+\.\d+\.\d+ from /);
   expect(doc).toContain('rel="icon"');
@@ -678,6 +879,7 @@ test('several media items go to a report together and export without a network',
   await dlg.getByLabel('Report').fill('e2e-figures');
   await dlg.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click(); // reports with text open in Preview
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveValue(
     /eval\/confusion@.*\n\n.*eval\/per_class@/s,
   );
@@ -1377,7 +1579,7 @@ const PNG = Buffer.from(
 
 async function openReport(page: import('@playwright/test').Page, name: string, text: string) {
   await page.request.post('/api/reports', { data: { project: 'vit-ablations', name, text } });
-  await page.goto(`/#/reports?rproject=vit-ablations&report=${name}`);
+  await page.goto(`/#/reports?rproject=vit-ablations&report=${name}&rview=split`);
   const box = page.getByRole('textbox', { name: 'Report text' });
   await expect(box).toHaveValue(text);
   return box;

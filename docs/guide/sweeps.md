@@ -58,13 +58,66 @@ objective. Some notes:
   minimum for losses and errors, the maximum otherwise) or its **Last** value.
   Lower-is-better scalars are flipped so the best runs are always on top.
 - **Parameters**: every config key whose value differs between the runs, plus
-  properties. Keys with `seed` in the name start unselected. Click a chip to
-  add or remove an axis. The bar inside a chip is the parameter's rank
-  correlation with the objective: Spearman's ρ for numbers, the correlation
-  ratio on ranks for categories. It is a quick hint, not a causal estimate.
+  properties. The chosen ones are chips in axis order: drag a chip to move its
+  axis, and click its **×** to remove it. The bar inside a chip is the
+  parameter's rank correlation with the objective: Spearman's ρ for numbers,
+  the correlation ratio on ranks for categories. It is a quick hint, not a
+  causal estimate.
+
+### Picking parameters
+
+**Parameters** opens a searchable list of every differing key, grouped by
+prefix (`optim.lr` and `optim.wd` under `optim`). The search takes the same
+syntax as the run settings filter: plain text, `/regex/` and `!exclude`. Each
+row shows whether the key is a number or a category, how many distinct values
+it has, and its correlation bar. Rows are marked **many values** (more than 12
+distinct categories), **id-like** (a different value in every run) or **long
+text**. **Clear all** removes every axis, and **Reset to defaults** goes back
+to the automatic choice.
+
+When nothing is picked, Sweeps shows up to six keys, the most correlated with
+the objective first. It leaves out seeds, paths, folders and files, id-like
+keys, long text and keys with many values. Your last choice is remembered for
+each project in this browser.
+
+A category with more than 12 values keeps its 11 most common on the axis and
+gathers the rest in **(other)**.
+
+### Hiding keys for a project
+
+When every run shown is from one project, **Hide matching keys** at the bottom
+of the list takes a filter such as `!seed !.path !logging.`. Keys the filter
+excludes leave the list and the defaults for everyone who opens the project.
+**Show N hidden** lists them again, faded, so you can still pick one. The rules
+are saved in the project's `sweeps.json`.
 
 Numeric parameters that span more than a factor of 20 use a log axis.
 Text and boolean parameters become ordered categories.
+
+### Datasets and other artifacts
+
+The artifact versions a run used (`run.use_artifact("datasets/fineweb-edu:v2")`)
+are parameters too, named `inputs.<artifact>` with the version as the value
+(`v2`; `v1+v2` for a run that used two). Runs that used none show `—`. So runs
+can be compared by data version without copying it into the config: in the
+demo, open Sweeps on `llm-pretrain` and pick `inputs.fineweb-edu`.
+
+### Lists and dicts
+
+A list, or a dict inside a list, is one category per distinct value. Its axis
+label shows only what differs from the other values: the elements that differ
+for lists of one length (`[0]=0.08`), the items not in every list for lists of
+different lengths (`flip, mixup`), and the paths that differ for nested values
+(`[1].dim=512`). Labels are cut to 40 characters. Hover a label for the full
+value, or click it to open it pretty-printed with a **Copy** button. The Best
+runs table uses the same labels.
+
+A list of plain values with the same length in every run has a **Split** button
+in the picker. It replaces the list with one parameter per element that
+differs (`crop_scale[0]`), each a numeric axis when its values are numbers.
+**Join** puts the list back. Splits are kept in the URL (`split=crop_scale`), so
+saved views and report links keep them. In the demo, try `crop_scale` and
+`transforms` on `vit-ablations`.
 
 ## Parallel coordinates
 

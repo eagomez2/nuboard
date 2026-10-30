@@ -385,6 +385,18 @@ export const api = {
       body: JSON.stringify({ keys, patch }),
     }),
   /** Config keys whose value differs between the runs, with each run's value; unlike `RunBrief.config`, not cut to 64 values. */
+  /** A project's Sweeps settings, shared by everyone in `<project>/sweeps.json`. */
+  sweepSettings: (project: string) => json<{ hide: string }>(`/api/sweep-settings?${qs({ project })}`),
+  saveSweepSettings: async (project: string, hide: string) => {
+    const res = await fetch('/api/sweep-settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ project, hide }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { hide?: string; error?: string };
+    if (!res.ok || body.hide === undefined) throw new Error(body.error ?? `${res.status}`);
+    return body.hide;
+  },
   sweepKeys: (keys: string[]) =>
     json<{ keys: string[]; values: Record<string, Record<string, unknown>> }>(
       `/api/sweep-keys?runs=${keys.map(encodeURIComponent).join(',')}`,

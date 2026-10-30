@@ -35,10 +35,12 @@ the standard library, so the command works with a plain `pip install nuboard`.
 | the folder's parent path (`baseline` in `baseline/train`) | the run's group, so `group by group` puts train and validation together |
 | scalars (`add_scalar`, `tf.summary.scalar`) | scalars, with the original steps and wall times |
 | images | PNG or JPEG images; several images in one summary become `tag/0`, `tag/1`, ... |
+| videos (`add_video`, written as animated GIFs) | videos |
 | audio | audio clips, playable in the waveform player |
 | text | text entries |
 | PR curves (`add_pr_curve`, `pr_curve`) | PR curves, with the original counts per threshold |
 | histograms (`add_histogram`, `tf.summary.histogram`) | distributions, re-binned into 50 even bins; TF1 and PyTorch histograms also keep their mean and standard deviation |
+| meshes (`add_mesh`) | point clouds of the vertices, with their colors; faces are left out |
 | hyperparameters (`add_hparams`, `hp.hparams`) | the run's config, so they appear in the table, sweeps and queries |
 | graphs, embeddings, other plugins | skipped, and counted in the output |
 

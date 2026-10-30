@@ -164,11 +164,40 @@ def _flat_config(config: dict[str, Any], limit: int = 64) -> dict[str, Any]:
     return out
 
 
-def _sweep_keys(configs: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _input_versions(inputs: list[Any]) -> dict[str, str]:
+    """Return `inputs.<artifact>` keys with the version a run used (`v3`; `v1+v3` for several).
+
+    Args:
+        inputs: The run's `inputs` entries (`{"artifact": ..., "version": ...}`).
+
+    Returns:
+        One key per artifact name, in first-use order.
+    """
+    versions: dict[str, list[str]] = {}
+
+    for ref in inputs:
+        if not isinstance(ref, dict) or not isinstance(ref.get("artifact"), str):
+            continue
+
+        label = f"v{ref.get('version')}"
+        seen = versions.setdefault(f"inputs.{ref['artifact']}", [])
+
+        if label not in seen:
+            seen.append(label)
+
+    return {key: "+".join(labels) for key, labels in versions.items()}
+
+
+def _sweep_keys(
+    configs: dict[str, dict[str, Any]], inputs: dict[str, list[Any]] | None = None
+) -> dict[str, dict[str, Any]]:
     """Return the flattened config keys whose value differs between runs, with no cap.
 
     Args:
         configs: Each run's nested config, by run key.
+        inputs: Each run's `inputs` (artifact versions it used), by run key.
+            Their versions become `inputs.<artifact>` keys after the config
+            keys, unless the config has a key of that name.
 
     Returns:
         For each differing key, in config order, its value per run key. Runs
@@ -184,6 +213,13 @@ def _sweep_keys(configs: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]
                 value = json.dumps(value, default=str)
 
             values.setdefault(key, {})[run_key] = value
+
+    from_config = set(values)
+
+    for run_key, refs in (inputs or {}).items():
+        for key, version in _input_versions(refs).items():
+            if key not in from_config:
+                values.setdefault(key, {})[run_key] = version
 
     return {
         key: per_run
@@ -682,8 +718,9 @@ def create_app(
         Query parameters: `runs` (comma-separated keys) or, without it,
         `project` (its runs and its subprojects' runs). Unlike the run list,
         whose configs are cut to 64 values, every key is considered (see
-        `_sweep_keys`). The response holds `keys` (in config order) and
-        `values` (key to run key to value).
+        `_sweep_keys`), and the artifact versions each run used are added as
+        `inputs.<artifact>` keys. The response holds `keys` (in config order,
+        then inputs) and `values` (key to run key to value).
         """
         keys = [k for k in request.query_params.get("runs", "").split(",") if k]
         project = request.query_params.get("project")
@@ -699,7 +736,10 @@ def create_app(
         else:
             records = []
 
-        values = _sweep_keys({r["key"]: r.get("config") or {} for r in records})
+        values = _sweep_keys(
+            {r["key"]: r.get("config") or {} for r in records},
+            {r["key"]: r.get("inputs") or [] for r in records},
+        )
         return JSON({"keys": list(values), "values": values})
 
     def scalars(request: Request) -> Response:
@@ -1741,6 +1781,43 @@ def create_app(
 
         return JSON({"pins": pins})
 
+    def sweep_settings_get(request: Request) -> Response:
+        """Return the Sweeps settings of the `project` query parameter (`<project>/sweeps.json`).
+
+        `hide` is a filter in the syntax of the settings filter (`!seed !.path`):
+        parameters it lets through are offered, the others are hidden.
+        """
+        pdir = project_dir(request.query_params.get("project", ""))
+        data = _fs.read_json(pdir / "sweeps.json", {}) if pdir else {}
+        hide = data.get("hide") if isinstance(data, dict) else None
+        return JSON({"hide": hide if isinstance(hide, str) else ""})
+
+    async def sweep_settings_save(request: Request) -> Response:
+        """Save the Sweeps hide rules of a project (JSON body: `project`, `hide`)."""
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        hide = " ".join(str(body.get("hide") or "").split())
+
+        if len(hide) > 1000:
+            return JSON({"error": "hide rules are at most 1000 characters"}, status_code=400)
+
+        try:
+            data = _fs.read_json(pdir / "sweeps.json", {}) or {}
+            data = {**(data if isinstance(data, dict) else {}), "hide": hide}
+            _fs.atomic_write_json(pdir / "sweeps.json", data)
+        except OSError as exc:
+            return JSON({"error": f"sweeps.json could not be saved: {exc}"}, status_code=409)
+
+        return JSON({"hide": hide})
+
     async def stream(request: Request) -> Response:
         """Return a server-sent event stream: `hello`, then `runs` and `data` change events.
 
@@ -1833,6 +1910,8 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/sweep-keys", sweep_keys),
+        Route("/api/sweep-settings", sweep_settings_get),
+        Route("/api/sweep-settings", sweep_settings_save, methods=["POST"]),
         Route("/api/artifacts", artifacts),
         Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),

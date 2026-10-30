@@ -16,6 +16,7 @@
     compare: 'M9 3v18M15 3v18M3 8h6M15 16h6',
     reset: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
     chevron: 'M6 9l6 6 6-6',
+    sidebar: 'M3 4h18v16H3zM9 4v16M5.5 8h1M5.5 11h1',
     alert: 'M12 3l10 18H2zM12 10v5M12 18h.01',
     timeline: 'M3 6h8M7 12h10M5 18h14M3 3v18',
     sweep: 'M4 4v16M10 4v16M16 4v16M22 4v16M4 15l6-7 6 9 6-12',

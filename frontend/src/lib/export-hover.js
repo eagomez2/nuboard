@@ -40,6 +40,40 @@
     }
   };
 
+  // SVG snapshots (the Timeline): a title with several lines becomes a hover card, as in the viewer
+  document.querySelectorAll('.nbsvg').forEach(function (box) {
+    box.querySelectorAll('title').forEach(function (t) {
+      var lines = (t.textContent || '').split(/\n|\\n/).filter(function (l) {
+        return l.trim();
+      });
+      if (lines.length < 2 || !t.parentNode) return;
+      t.parentNode.setAttribute('data-card', JSON.stringify(lines));
+      t.parentNode.removeChild(t);
+    });
+    box.style.position = 'relative';
+    var tip = make(box, 'nbtip nbcard');
+    box.addEventListener('pointerleave', function () {
+      tip.hidden = true;
+    });
+    box.addEventListener('pointermove', function (e) {
+      var el = e.target.closest ? e.target.closest('[data-card]') : null;
+      if (!el) {
+        tip.hidden = true;
+        return;
+      }
+      tip.textContent = '';
+      JSON.parse(el.getAttribute('data-card')).forEach(function (text, i) {
+        var cls = i === 0 ? 'nbtip-head' : i === 1 ? 'nbtip-faint' : text.charAt(0) === '\u26a0' ? 'nbtip-warn' : '';
+        line(tip, text, null, cls);
+      });
+      tip.hidden = false;
+      var r = box.getBoundingClientRect();
+      var y = e.clientY - r.top;
+      place(tip, box, e.clientX - r.left + box.scrollLeft, y < r.height * 0.6 ? y + 14 : y - 14);
+      tip.style.transform = y < r.height * 0.6 ? 'none' : 'translateY(-100%)';
+    });
+  });
+
   // PR curves and distributions: an SVG plus its series as JSON
   document.querySelectorAll('.nbpr').forEach(function (box) {
     var json = box.querySelector('script.nbhov');

@@ -15,6 +15,7 @@
   import { fmtAgo } from '../lib/format';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { Fold } from '../lib/fold.svelte';
 
   let list = $state<ReportInfo[]>([]);
   const project = $derived(router.get('project'));
@@ -22,7 +23,6 @@
     list.find((r) => r.project === router.get('rproject') && r.name === router.get('report')) ??
       (router.get('report') ? null : (list[0] ?? null)),
   );
-  const view = $derived(router.get('rview', 'split') as 'write' | 'split' | 'preview');
 
   async function load() {
     const res = await api.reports(project || null);
@@ -39,6 +39,7 @@
   let loadedFor = $state('');
   let textProject = $state(''); // the project `text` belongs to, so embeds never mix reports
   let saving = $state(false);
+  let atOpen = $state<'split' | 'preview'>('preview'); // Split for an empty report, as it was opened
   $effect(() => {
     const r = current;
     const id = r ? `${r.project}/${r.name}` : '';
@@ -50,8 +51,20 @@
         if (loadedFor !== id) return;
         text = savedText = res.text;
         textProject = r.project;
+        atOpen = res.text.trim() ? 'preview' : 'split';
       });
   });
+  // Write, Split or Preview: the URL, else the last one picked, else Preview for a report with text
+  type View = 'write' | 'split' | 'preview';
+  let picked = $state<View | null>(prefs.get<View | null>('reportView', null));
+  const view = $derived(((router.get('rview') || null) as View | null) ?? picked ?? atOpen);
+  function setView(v: View) {
+    picked = v;
+    prefs.set('reportView', v);
+    router.set({ rview: null });
+  }
+  const list_ = new Fold('reportsFolded');
+
   async function save() {
     const r = current;
     if (!r || text === savedText) return;
@@ -173,37 +186,60 @@
   );
 </script>
 
-<div class="layout">
-  <aside class="card side">
-    <div class="head">
-      <span class="label">Reports</span>
-      <button class="btn sm" onclick={create}><Icon name="plus" size={15} /> New</button>
-    </div>
-    {#if !list.length}
-      <p class="faint small">
-        No reports yet. Press <b>New</b>, or add an item from the Media page with its bookmark button.
-      </p>
-    {/if}
-    {#each byProject as g (g.p)}
-      <div class="proj faint small mono" title={g.p}>{g.p}</div>
-      {#each g.reports as r (r.project + r.name)}
+<svelte:window onkeydown={list_.onkeydown} />
+
+<div class="layout" class:folded={list_.folded}>
+  {#if list_.folded}
+    <aside class="card side bar">
+      <button
+        class="btn btn-ghost icon"
+        aria-label="Show the report list"
+        title="Show the report list ( [ )"
+        onclick={list_.toggle}><Icon name="sidebar" size={16} /></button
+      >
+      <button class="btn btn-ghost icon" aria-label="New report" title="New report" onclick={create}
+        ><Icon name="plus" size={16} /></button
+      >
+    </aside>
+  {:else}
+    <aside class="card side">
+      <div class="head">
+        <span class="label">Reports</span>
+        <span class="grow"></span>
+        <button class="btn sm" onclick={create}><Icon name="plus" size={15} /> New</button>
         <button
-          class="item"
-          class:on={current?.project === r.project && current?.name === r.name}
-          onclick={() => router.set({ rproject: r.project, report: r.name })}
-          title="{r.project}/reports/{r.name}.md"
+          class="btn btn-ghost icon"
+          aria-label="Hide the report list"
+          title="Hide the report list ( [ )"
+          onclick={list_.toggle}><Icon name="sidebar" size={16} /></button
         >
-          <Icon name="report" size={15} />
-          <span class="t">{r.title}</span>
-          <span class="faint small when">{fmtAgo(r.updated)}</span>
-        </button>
+      </div>
+      {#if !list.length}
+        <p class="faint small">
+          No reports yet. Press <b>New</b>, or add an item from the Media page with its bookmark button.
+        </p>
+      {/if}
+      {#each byProject as g (g.p)}
+        <div class="proj faint small mono" title={g.p}>{g.p}</div>
+        {#each g.reports as r (r.project + r.name)}
+          <button
+            class="item"
+            class:on={current?.project === r.project && current?.name === r.name}
+            onclick={() => router.set({ rproject: r.project, report: r.name })}
+            title="{r.project}/reports/{r.name}.md"
+          >
+            <Icon name="report" size={15} />
+            <span class="t">{r.title}</span>
+            <span class="faint small when">{fmtAgo(r.updated)}</span>
+          </button>
+        {/each}
       {/each}
-    {/each}
-    <p class="hint faint small">
-      Reports are Markdown files in <code>&lt;project&gt;/reports/</code>. A line
-      <code>![caption](media:run/key@step)</code> shows a logged item; the Media page writes it for you.
-    </p>
-  </aside>
+      <p class="hint faint small">
+        Reports are Markdown files in <code>&lt;project&gt;/reports/</code>. A line
+        <code>![caption](media:run/key@step)</code> shows a logged item; the Media page writes it for you.
+      </p>
+    </aside>
+  {/if}
 
   <section class="card main">
     {#if !current}
@@ -216,9 +252,9 @@
         >
         <span class="faint small state">{saving ? 'Saving…' : text === savedText ? 'Saved' : 'Editing'}</span>
         <div class="seg" role="group" aria-label="View">
-          <button aria-pressed={view === 'write'} onclick={() => router.set({ rview: 'write' })}>Write</button>
-          <button aria-pressed={view === 'split'} onclick={() => router.set({ rview: null })}>Split</button>
-          <button aria-pressed={view === 'preview'} onclick={() => router.set({ rview: 'preview' })}>Preview</button>
+          <button aria-pressed={view === 'write'} onclick={() => setView('write')}>Write</button>
+          <button aria-pressed={view === 'split'} onclick={() => setView('split')}>Split</button>
+          <button aria-pressed={view === 'preview'} onclick={() => setView('preview')}>Preview</button>
         </div>
         <a
           class="btn sm"
@@ -263,6 +299,23 @@
     gap: 16px;
     align-items: start;
   }
+  .layout.folded {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .side.bar {
+    padding: 6px;
+    align-items: center;
+  }
+  .icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+  }
+  .grow {
+    flex: 1;
+  }
   .side {
     padding: 14px;
     display: flex;
@@ -275,7 +328,7 @@
   .head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 6px;
     margin-bottom: 6px;
   }
   .sm {
