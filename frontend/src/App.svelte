@@ -5,6 +5,7 @@
   import { storageView } from './lib/storage.svelte';
   import Dialog from './components/Dialog.svelte';
   import ReportToast from './components/ReportToast.svelte';
+  import SelectionBanner from './components/SelectionBanner.svelte';
   import Icon from './components/Icon.svelte';
   import QueryBar from './components/QueryBar.svelte';
   import RunsPage from './pages/RunsPage.svelte';
@@ -140,6 +141,10 @@
 
     {#if app.error && !app.runs}
       <div class="card errbox">Could not reach the {NAME} server: {app.error}</div>
+    {/if}
+
+    {#if ['charts', 'sweeps', 'media', 'timeline'].includes(router.page) && router.list('sel').length}
+      <SelectionBanner />
     {/if}
 
     {#if router.page === 'runs'}

@@ -43,8 +43,12 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in **Media**, **Compare** up to eight of them, or
-  **Plot selected**.
+  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in
+  **Charts**, **Sweeps** or **Media** (or press `c`, `s` or `m`), **Compare**
+  up to eight of them, or **Plot selected**. Charts, Sweeps, Media and
+  Timeline then show a **Showing N selected runs** banner with buttons to the
+  other pages, which keep the selection, and **Show all**, which goes back to
+  the query result; **Clear selection** ends it too.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
@@ -207,8 +211,8 @@ shared.
 ![Charts page](../assets/charts-light.png#only-light){ .nb-shot }
 ![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
-The Charts page plots the selected runs (from **Plot selected**) or, if none
-are selected, every run matching the query.
+The Charts page plots the selected runs (from **Plot selected** or **Charts**
+in the selection bar) or, if none are selected, every run matching the query.
 
 - **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.

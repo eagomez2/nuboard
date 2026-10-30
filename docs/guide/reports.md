@@ -18,7 +18,8 @@ and a caption, then appends a line such as
 to the end of the report, creating it if needed.
 
 The **Report** field lists the project's reports as soon as it is focused,
-most recently updated first, each with its title and file name; the last one
+most recently updated first, each with its title and file name (the newest
+50, then "and N more, type to narrow"); the last one
 used is highlighted and taken if you type nothing. Typing narrows the list by
 title or file name, ↑/↓ and Enter pick one, and a name that is not in the list
 is offered as **New report "name"**. Every bookmark button (Media, Charts,

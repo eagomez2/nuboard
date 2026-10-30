@@ -2,12 +2,19 @@
 
 ## Unreleased
 
+- **Open selected runs in Charts and Sweeps.** The Runs selection bar has
+  **Charts** and **Sweeps** next to **Media** (shortcuts `c`, `s`, `m`). Charts,
+  Sweeps, Media and Timeline show a **Showing N selected runs** banner while
+  limited to a selection, with buttons to the other pages (which keep it) and
+  **Show all**; **Clear selection** also drops it from the URL (#7).
+
 - **Report picker.** The **Report** field of **Add to a report** (every
   bookmark button, and **Add N to report** on Media) lists the project's
   reports as soon as it is focused, newest first, with their titles and file
   names. Typing narrows it by title or name with the matches highlighted, ↑/↓
   and Enter pick, the last used report is highlighted (and taken when nothing
-  is typed), and a new name is offered as **New report "name"** (#12).
+  is typed), and a new name is offered as **New report "name"**. It lists the
+  newest 50 and counts the rest, which typing reaches (#12).
 - **Audio in reports.** **Insert → Audio** (or dropping an audio file on the
   text box) uploads a WAV, FLAC, MP3, Ogg, M4A or WebM file, checked from its
   bytes and capped at 50 MB (`--max-audio-mb`), and writes

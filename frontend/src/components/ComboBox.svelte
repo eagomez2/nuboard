@@ -12,6 +12,7 @@
     placeholder = '',
     newLabel = 'New',
     describedby,
+    limit = 50,
   }: {
     id: string;
     value?: string; // undefined until the dialog fills its values in
@@ -20,13 +21,22 @@
     placeholder?: string;
     newLabel?: string;
     describedby?: string;
+    /** Options listed at most; the rest are counted, and typing narrows to them. */
+    limit?: number;
   } = $props();
 
   let open = $state(false);
   let active = $state(-1);
   let list = $state<HTMLUListElement>();
 
-  const shown = $derived(comboMatches(options, value ?? ''));
+  const matches = $derived(comboMatches(options, value ?? ''));
+  // the first `limit` matches, plus the preselected option when it is further down
+  const shown = $derived.by(() => {
+    const first = matches.slice(0, limit);
+    const pre = matches.find((o) => o.value === preselect);
+    return pre && !first.includes(pre) ? [...first, pre] : first;
+  });
+  const more = $derived(matches.length - shown.length);
   const typed = $derived((value ?? '').trim());
   const isNew = $derived(!!typed && !options.some((o) => o.value.toLowerCase() === typed.toLowerCase()));
   const count = $derived(shown.length + (isNew ? 1 : 0));
@@ -110,6 +120,9 @@
           {#if o.value === preselect}<span class="tag">last used</span>{/if}
         </li>
       {/each}
+      {#if more > 0}
+        <li class="more" role="presentation">and {more.toLocaleString()} more, type to narrow</li>
+      {/if}
       {#if isNew}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <li
@@ -180,6 +193,11 @@
     color: var(--faint);
     font-size: 11.5px;
     white-space: nowrap;
+  }
+  .more {
+    cursor: default;
+    color: var(--faint);
+    font-size: 12.5px;
   }
   .new {
     color: var(--accent);

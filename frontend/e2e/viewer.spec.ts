@@ -1605,7 +1605,7 @@ test('audio is uploaded from the Insert menu and by drop, plays in the preview a
 });
 
 test('the report picker lists reports by title, narrows as you type and makes new ones', async ({ page }) => {
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < 60; i++) {
     const n = String(i).padStart(2, '0');
     await page.request.post('/api/reports', {
       data: { project: 'vit-ablations', name: `e2e-pick-${n}`, text: `# Pick ${n}\n` },
@@ -1621,8 +1621,11 @@ test('the report picker lists reports by title, narrows as you type and makes ne
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('');
   const options = dlg.getByRole('option');
-  expect(await options.count()).toBeGreaterThanOrEqual(32);
-  await expect(dlg.getByRole('option', { name: /Pick 31/ })).toContainText('e2e-pick-31.md');
+  await expect(options).toHaveCount(50); // the newest 50; typing reaches the rest
+  await expect(dlg.locator('.more')).toHaveText(/^and \d+ more, type to narrow$/);
+  await expect(dlg.getByRole('option', { name: /Pick 59/ })).toContainText('e2e-pick-59.md');
+  await field.fill('pick 03');
+  await expect(options.first()).toContainText('e2e-pick-03.md'); // beyond the first 50
 
   await field.fill('pick 1');
   await expect(options).toHaveCount(11); // Pick 10 to Pick 19, then New report
@@ -1659,4 +1662,42 @@ test('toolbar buttons use theme icons, and Media item is on when the project has
   const media = page.getByRole('menuitem', { name: /Media item/ });
   await expect(media).toBeEnabled();
   await expect(media).toContainText('Opens Media');
+});
+
+test('selected runs open in Charts, Sweeps and Media, with a banner that shows all again', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  await page.locator('.selbar').getByRole('button', { name: 'Charts' }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*sel=/);
+  const banner = page.getByRole('status').filter({ hasText: 'selected run' });
+  await expect(banner).toContainText('Showing 2 selected runs');
+  await expect(page.locator('.legend-chip')).toHaveCount(2);
+
+  // switching page keeps the selection
+  await banner.getByRole('button', { name: 'Media' }).click();
+  await expect(page).toHaveURL(/#\/media\?.*sel=/);
+  await expect(banner).toContainText('Showing 2 selected runs');
+  await banner.getByRole('button', { name: 'Sweeps' }).click();
+  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await banner.getByRole('button', { name: 'Charts' }).click();
+  await expect(page.locator('.legend-chip')).toHaveCount(2);
+
+  await banner.getByRole('button', { name: 'Show all' }).click();
+  await expect(page).not.toHaveURL(/sel=/);
+  await expect(banner).toHaveCount(0);
+  await expect.poll(() => page.locator('.legend-chip').count()).toBeGreaterThan(2);
+
+  // shortcuts on the Runs page, never while typing
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click(); // still the two above
+  await boxes.nth(0).check();
+  await boxes.nth(2).check();
+  await page.getByLabel('Run query').press('s');
+  await expect(page).toHaveURL(/#\/runs/);
+  await page.locator('.selbar .count').click();
+  await page.keyboard.press('s');
+  await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await expect(banner).toContainText('Showing 2 selected runs');
 });
