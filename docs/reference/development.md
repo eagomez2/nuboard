@@ -106,16 +106,30 @@ not built" page).
    `nuboard X.Y.Z` lines of `docs/installation.md` and a `## X.Y.Z` section
    in `docs/changelog.md`; `tests/test_release.py` checks that they agree.
    Then run `uv lock`.
-2. Merge into `main` and publish a GitHub release tagged `vX.Y.Z`. The
-   **Release** workflow checks the version, builds the wheel and sdist and
-   uploads them to PyPI with
-   [Trusted Publishing](https://docs.pypi.org/trusted-publishers/), so no
-   token is stored. It needs a trusted publisher set up once on PyPI: owner
-   `eagomez2`, repository `nuboard`, workflow `release.yml`, environment
-   `pypi`.
+2. Merge into `main`, then build and upload from a clean checkout of it:
 
-To publish by hand instead: `uv build`, then `uv publish` with a PyPI token
-(try `uv publish --publish-url https://test.pypi.org/legacy/` first).
+    === "uv"
+
+        ```bash
+        rm -rf dist src/nuboard/static   # no stale viewer build in the package
+        uv build                         # builds the viewer too (Node 20+ and pnpm)
+        uv publish                       # token from UV_PUBLISH_TOKEN or --token
+        ```
+
+    === "pip"
+
+        ```bash
+        rm -rf dist src/nuboard/static
+        python -m build
+        twine upload dist/*
+        ```
+
+    Use a PyPI API token scoped to the `nuboard` project, and keep it out of
+    the repository. To try a release first, upload to TestPyPI with
+    `uv publish --publish-url https://test.pypi.org/legacy/` (or
+    `twine upload -r testpypi dist/*`).
+3. Optionally, publish a GitHub release tagged `vX.Y.Z` with the changelog
+   section as its notes.
 
 ## Docs
 

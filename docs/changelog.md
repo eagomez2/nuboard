@@ -22,7 +22,7 @@ The first release on PyPI: `pip install nuboard` (or `uv pip install nuboard`).
   standard library and imports none of them.
 - Package metadata for PyPI: project links and classifiers. The docs are
   published at <https://eagomez2.github.io/nuboard/>, and GitHub workflows run
-  the tests, publish the docs and release to PyPI.
+  the tests and publish the docs.
 
 ## 0.19.2
 
