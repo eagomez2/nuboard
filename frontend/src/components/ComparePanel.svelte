@@ -508,8 +508,6 @@
   .jump {
     display: inline-flex;
     gap: 6px;
-    padding-left: 8px;
-    border-left: 1px solid var(--border);
   }
   .tab {
     display: inline-flex;
