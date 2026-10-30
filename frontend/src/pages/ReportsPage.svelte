@@ -64,8 +64,6 @@
     router.set({ rview: null });
   }
   const list_ = new Fold('reportsFolded');
-  // Preview keeps a comfortable reading width unless Full width is on
-  let fullWidth = $state(prefs.get('reportFullWidth', false));
 
   async function save() {
     const r = current;
@@ -258,17 +256,6 @@
           <button aria-pressed={view === 'split'} onclick={() => setView('split')}>Split</button>
           <button aria-pressed={view === 'preview'} onclick={() => setView('preview')}>Preview</button>
         </div>
-        {#if view === 'preview'}
-          <button
-            class="btn sm btn-ghost"
-            aria-pressed={fullWidth}
-            title="Use the whole width instead of a reading width"
-            onclick={() => {
-              fullWidth = !fullWidth;
-              prefs.set('reportFullWidth', fullWidth);
-            }}><Icon name="expand" size={15} /> Full width</button
-          >
-        {/if}
         <a
           class="btn sm"
           href={api.reportExportUrl(current.project, current.name)}
@@ -296,7 +283,7 @@
           <ReportEditor bind:text project={current.project} onsave={save} />
         {/if}
         {#if view !== 'write'}
-          <div class="preview printable" class:reading={view === 'preview' && !fullWidth}>
+          <div class="preview printable">
             <Markdown {text} project={textProject} files />
           </div>
         {/if}
@@ -446,15 +433,6 @@
   .preview {
     min-width: 0;
     padding: 0 6px;
-  }
-  /* about 900 px of text; figures may be wider, up to the pane */
-  .preview.reading {
-    width: 100%;
-    max-width: 900px;
-    margin: 0 auto;
-  }
-  .preview.reading :global(figure) {
-    max-width: none;
   }
   @media print {
     .side,

@@ -85,8 +85,7 @@ The **Reports** page lists the reports of every project. **New** creates one;
 **Write**, **Split** and **Preview** switch between the editor, both side by
 side, and the rendered page. A report with text opens in **Preview** and an
 empty one in **Split**; once you pick one, it is remembered in this browser.
-**Preview** keeps a reading width of about 900 px; **Full width** uses the
-whole pane. The button beside **Reports** (or `[`) folds the report list into
+The button beside **Reports** (or `[`) folds the report list into
 a thin bar, also remembered. Changes are saved a moment after you stop typing
 (or with Ctrl+S / ⌘+S). Headings, lists, tables, links, code blocks and
 images all work; HTML in the Markdown is sanitized.

@@ -25,8 +25,7 @@
   start, duration, alerts) in the preview and in exported HTML, instead of a
   slow browser tooltip; in NuBoard, clicking a bar opens the run (#3).
 - **More room for reports.** A report with text opens in **Preview** (the
-  view you pick is remembered), which keeps a reading width of about 900 px
-  with a **Full width** toggle. The report list and the **Workspace** list on
+  view you pick is remembered). The report list and the **Workspace** list on
   the Runs page fold into a thin bar with their button or `[`, remembered per
   browser (#3).
 

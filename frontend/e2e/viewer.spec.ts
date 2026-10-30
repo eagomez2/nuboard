@@ -114,7 +114,7 @@ test('small charts show values on hover, the pinned step and their full names', 
   await expect(small.locator('.fullname')).toHaveCount(0);
 });
 
-test('reports open in Preview, fold their list and keep a reading width', async ({ page }) => {
+test('reports open in Preview and fold their list', async ({ page }) => {
   await page.goto('/#/reports');
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('dialog').getByLabel('Name').fill('e2e-reading');
@@ -123,10 +123,6 @@ test('reports open in Preview, fold their list and keep a reading width', async 
   await expect(page.getByRole('heading', { name: 'e2e-reading' }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preview', pressed: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Report text' })).toHaveCount(0);
-  await expect(page.locator('.preview.reading')).toBeVisible();
-  await page.getByRole('button', { name: 'Full width' }).click();
-  await expect(page.locator('.preview.reading')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Full width' }).click();
   // the list folds with its button or [, and stays folded
   await page.getByRole('button', { name: 'Hide the report list' }).click();
   await expect(page.locator('.side.bar')).toBeVisible();
