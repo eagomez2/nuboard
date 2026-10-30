@@ -369,6 +369,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys, patch }),
     }),
+  /** Config keys whose value differs between the runs, with each run's value; unlike `RunBrief.config`, not cut to 64 values. */
+  sweepKeys: (keys: string[]) =>
+    json<{ keys: string[]; values: Record<string, Record<string, unknown>> }>(
+      `/api/sweep-keys?runs=${keys.map(encodeURIComponent).join(',')}`,
+    ),
   metrics: (keys: string[]) =>
     json<{ metrics: { name: string; runs: number }[] }>(`/api/metrics?runs=${keys.map(encodeURIComponent).join(',')}`),
   setAudioNotes: (key: string, item: string, notes: AudioNote[]) =>

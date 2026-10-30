@@ -773,3 +773,46 @@ def _wait(c, ok, timeout=10.0):
         time.sleep(0.02)
 
     raise AssertionError(f"timed out: {st}")
+
+
+def test_sweep_keys_find_a_late_nested_key_the_run_list_cuts(tmp_path):
+    def config(edge_min):
+        cfg = {f"k{i:03d}": i for i in range(80)}  # 80 values shared by every run
+        cfg["generator"] = {
+            "config": {"weighted_sir_db": {"edge": {"min": edge_min, "max": 30}}},
+            "layers": [64, 64],
+        }
+        return cfg
+
+    for edge_min in (-5, 0, 5):
+        with nb.init(
+            "deep", run_name=f"e{edge_min}", config=config(edge_min), capture_env=False
+        ) as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    key = "generator.config.weighted_sir_db.edge.min"
+
+    with TestClient(app) as c:
+        runs = c.get("/api/runs").json()["runs"]
+        assert all(key not in r["config"] for r in runs)  # the run list stays capped
+
+        by_runs = c.get("/api/sweep-keys", params={"runs": ",".join(r["key"] for r in runs)})
+        assert by_runs.json()["keys"] == [key]
+        assert by_runs.json()["values"][key] == {r["key"]: int(r["name"][1:]) for r in runs}
+
+        by_project = c.get("/api/sweep-keys", params={"project": "deep"}).json()
+        assert by_project["keys"] == [key]
+        assert c.get("/api/sweep-keys", params={"runs": runs[0]["key"]}).json()["keys"] == []
+
+
+def test_sweep_keys_send_lists_as_json(tmp_path):
+    for layers in ([64, 64], [128]):
+        with nb.init("lists", config={"layers": layers}, capture_env=False) as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        res = c.get("/api/sweep-keys", params={"project": "lists"}).json()
+        assert sorted(res["values"]["layers"].values()) == ["[128]", "[64, 64]"]

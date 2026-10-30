@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
-  import { num, type RunBrief } from '../lib/api';
+  import { api, num, type RunBrief } from '../lib/api';
   import { FullScreen } from '../lib/fullscreen.svelte';
   import { addSnapshotToReport } from '../lib/reports.svelte';
   import { svgToPng } from '../lib/snapshot';
@@ -59,6 +59,30 @@
     return v !== null && Number.isFinite(v) ? v : null;
   }
 
+  // Config keys whose values differ between runs, from the full configs (the run list keeps only
+  // the first 64 values of each). Until they arrive, the run list's configs stand in.
+  let sweep = $state<{ runs: string; keys: string[]; values: Record<string, Record<string, unknown>> } | null>(null);
+  const runKeys = $derived(runs.map((r) => r.key).join(','));
+  $effect(() => {
+    const keys = runKeys;
+    void app.runs?.version; // refetch when the catalog changes
+    if (!keys) {
+      sweep = null;
+      return;
+    }
+    let live = true;
+    api
+      .sweepKeys(keys.split(','))
+      .then((res) => {
+        if (live) sweep = { runs: keys, ...res };
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  });
+  const full = $derived(sweep?.runs === runKeys ? sweep : null);
+
   // Parameters: config keys whose values differ between runs, plus properties.
   const candidates = $derived.by(() => {
     const seen = new Map<string, Set<string>>();
@@ -67,10 +91,11 @@
       seen.get(k)!.add(JSON.stringify(v ?? null));
     };
     for (const r of runs) {
-      for (const [k, v] of Object.entries(r.config)) add(k, v);
+      if (!full) for (const [k, v] of Object.entries(r.config)) add(k, v);
       for (const [k, v] of Object.entries(r.fields ?? {})) add(`fields.${k}`, v);
     }
-    return [...seen.entries()].filter(([, s]) => s.size > 1 && s.size <= Math.max(runs.length, 2)).map(([k]) => k);
+    const local = [...seen.entries()].filter(([, s]) => s.size > 1).map(([k]) => k);
+    return full ? [...full.keys, ...local] : local;
   });
   const params = $derived.by(() => {
     const chosen = router.list('params').filter((p) => candidates.includes(p));
@@ -78,7 +103,9 @@
     return candidates.filter((k) => !/seed/i.test(k)).slice(0, 6);
   });
   const get = (r: RunBrief, key: string): Value =>
-    key.startsWith('fields.') ? (r.fields?.[key.slice(7)] as Value) : (r.config[key] as Value);
+    key.startsWith('fields.')
+      ? (r.fields?.[key.slice(7)] as Value)
+      : ((full ? full.values[key]?.[r.key] : r.config[key]) as Value);
 
   const values = $derived(runs.map(value));
   const axes = $derived.by((): Axis[] => {

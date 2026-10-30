@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import itertools
 import json
 import math
 import os
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +117,21 @@ class JSON(JSONResponse):
         ).encode("utf-8")
 
 
+def _config_leaves(config: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+    """Yield the leaves of a nested config as `(dotted key, value)`, in config order."""
+
+    def walk(obj: Any, prefix: str) -> Iterator[tuple[str, Any]]:
+        """Yield the leaves of `obj` under keys starting with `prefix`."""
+
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield from walk(v, f"{prefix}{k}.")
+        else:
+            yield prefix[:-1], obj
+
+    return walk(config, "")
+
+
 def _flat_config(config: dict[str, Any], limit: int = 64) -> dict[str, Any]:
     """Flatten a nested config to at most `limit` dotted keys, shortening long values.
 
@@ -124,27 +140,43 @@ def _flat_config(config: dict[str, Any], limit: int = 64) -> dict[str, Any]:
     """
     out: dict[str, Any] = {}
 
-    def walk(obj: Any, prefix: str) -> None:
-        """Add the leaves of `obj` to `out` under keys starting with `prefix`."""
+    for key, value in itertools.islice(_config_leaves(config), limit):
+        if isinstance(value, str) and len(value) > 80:
+            value = value[:77] + "..."
+        elif isinstance(value, list):
+            value = json.dumps(value, default=str)[:80]
 
-        if len(out) >= limit:
-            return
+        out[key] = value
 
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                walk(v, f"{prefix}{k}.")
-        else:
-            value = obj
-
-            if isinstance(value, str) and len(value) > 80:
-                value = value[:77] + "..."
-            elif isinstance(value, list):
-                value = json.dumps(value, default=str)[:80]
-
-            out[prefix[:-1]] = value
-
-    walk(config, "")
     return out
+
+
+def _sweep_keys(configs: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return the flattened config keys whose value differs between runs, with no cap.
+
+    Args:
+        configs: Each run's nested config, by run key.
+
+    Returns:
+        For each differing key, in config order, its value per run key. Runs
+        without the key are left out, and a key counts as differing when the
+        runs that have it hold at least two distinct values. Lists and dicts
+        are sent as JSON text.
+    """
+    values: dict[str, dict[str, Any]] = {}
+
+    for run_key, config in configs.items():
+        for key, value in _config_leaves(config):
+            if isinstance(value, (list, tuple, dict)):
+                value = json.dumps(value, default=str)
+
+            values.setdefault(key, {})[run_key] = value
+
+    return {
+        key: per_run
+        for key, per_run in values.items()
+        if len({json.dumps(v, default=str) for v in per_run.values()}) > 1
+    }
 
 
 def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
@@ -615,6 +647,32 @@ def create_app(
                 counts[m] = counts.get(m, 0) + 1
 
         return JSON({"metrics": [{"name": m, "runs": n} for m, n in sorted(counts.items())]})
+
+    def sweep_keys(request: Request) -> Response:
+        """Return the config keys whose value differs between runs, with each run's value.
+
+        Query parameters: `runs` (comma-separated keys) or, without it,
+        `project` (its runs and its subprojects' runs). Unlike the run list,
+        whose configs are cut to 64 values, every key is considered (see
+        `_sweep_keys`). The response holds `keys` (in config order) and
+        `values` (key to run key to value).
+        """
+        keys = [k for k in request.query_params.get("runs", "").split(",") if k]
+        project = request.query_params.get("project")
+
+        if keys:
+            records = [r for r in (catalog.get(k) for k in keys) if r is not None]
+        elif project:
+            records = [
+                r
+                for r in catalog.runs()
+                if r["project"] == project or r["project"].startswith(project + "/")
+            ]
+        else:
+            records = []
+
+        values = _sweep_keys({r["key"]: r.get("config") or {} for r in records})
+        return JSON({"keys": list(values), "values": values})
 
     def scalars(request: Request) -> Response:
         """Return chart data for one metric as an Arrow IPC stream (see `Store.chart`).
@@ -1683,6 +1741,7 @@ def create_app(
         Route("/api/runs/{key}/media/{index:int}", media_blob),
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
+        Route("/api/sweep-keys", sweep_keys),
         Route("/api/artifacts", artifacts),
         Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),

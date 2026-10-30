@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Sweeps sees every config key.** A key that differs between runs gets a
+  parameter chip however deep it sits in a large config. Sweeps read its
+  parameters from the run list, which keeps only the first 64 config values of
+  each run, so later keys (such as
+  `generator.config.weighted_sir_db.edge.min`) were missed. It now asks the new
+  `GET /api/sweep-keys?runs=...` endpoint, which returns every differing key
+  with each run's value; the run list stays small.
+
 ## 0.19.0
 
 - **Download a waveform figure's audio and signals.** Waveform figures
