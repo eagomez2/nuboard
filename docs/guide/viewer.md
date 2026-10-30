@@ -60,7 +60,8 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - Stars, notes, review marks, archive flags, tags edited in the viewer and
   property values are written to
   the run's own `annotations.json`, so they move with the run folder.
-  Archived runs are hidden unless **Show archived** is on.
+  Archived runs are hidden unless **Show archived** is on. To delete runs,
+  use [`nuboard rm`](../reference/cli.md#rm).
 
 ### Tags
 

@@ -81,13 +81,17 @@ script of [Get started](get-started.md).
 | `nuboard up … [--read-only-reports] [--max-image-mb 20] [--max-audio-mb 50] [--max-text-mb 5]` | Refuse changes to reports (uploads included), or change the size limits of images, audio and text files uploaded into reports. |
 | `nuboard demo [DIR] [--up] [--open]` | Write the demo workspace (default `demo-runs/`). |
 | `nuboard ls [DIR] [-q QUERY]` | List runs, filtered with the [query language](reference/query.md). |
+| `nuboard rm [DIR] -q QUERY` (or `--run ID`) | Delete runs; lists them with their sizes and asks first. See [rm](reference/cli.md#rm). |
 | `nuboard compact DIR [--force]` | Write `data.parquet` and health alerts for ended runs that lack them. |
 | `nuboard artifact add [PROJECT/NAME] [PATH] [--ref\|--copy] [-t TYPE] [-d TEXT] [-m KEY=VALUE]…` | Add an artifact version; asks for what is missing. See [From the command line](guide/artifacts.md#from-the-command-line). |
 | `nuboard artifact ls [PROJECT] [--unlinked]` | List artifact versions, and with `--unlinked` the unlinked ones too. |
 | `nuboard artifact show PROJECT/NAME[:vN]` | Show a version and check that its files still match. |
 | `nuboard artifact unlink PROJECT/NAME:vN` (or `PROJECT/NAME --all`) | Hide a version without deleting anything; `nuboard artifact restore PROJECT/NAME:vN` brings it back. |
+| `nuboard merge SRC DEST [--dry-run]` | Merge a project logged on two machines; shows the plan and asks first. See [Working on several machines](guide/machines.md). |
+| `nuboard import-tensorboard LOGDIR [-p PROJECT]` | Import TensorBoard logs as runs. See [Importing from TensorBoard](guide/tensorboard.md). |
 | `nuboard version` | Print the version. |
 
+Every option is listed in the [command line reference](reference/cli.md).
 `python -m nuboard …` works too. The server binds to `127.0.0.1` by default
 and only answers requests addressed to localhost. To view runs on a remote
 machine, forward the port with `ssh -L 6070:localhost:6070 gpu-box` and run

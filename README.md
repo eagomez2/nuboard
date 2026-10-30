@@ -63,9 +63,10 @@ open the Charts page. The [quickstart](docs/quickstart.md) has a tour, and
 | Timeline | runs over wall-clock time, packed concurrency view, crash, alert and artifact markers |
 | Artifacts | versions, files, metadata and a lineage graph |
 | Health alerts | NaN/Inf, loss and gradient spikes, throughput drops, per scalar and rank |
-| CLI | `nuboard up`, `demo`, `ls`, `compact`, `artifact add`/`ls`/`show`, `import-tensorboard` (TensorBoard logs to runs) |
+| CLI | `nuboard up`, `demo`, `ls`, `rm`, `compact`, `merge`, `artifact add`/`ls`/`show`, `import-tensorboard` (TensorBoard logs to runs); see the [command line reference](docs/reference/cli.md) |
 
-See the [roadmap](docs/roadmap.md) and the [changelog](docs/changelog.md).
+See the [changelog](docs/changelog.md) and the
+[known limitations](docs/reference/limitations.md).
 
 ## Documentation
 
