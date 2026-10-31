@@ -20,7 +20,6 @@
   const SHORT = { torch: "torch TB" };  // on narrow screens
   const ROW = 34, TOP = 6, AXIS = 40;
   let data = null;
-  let log = false;
 
   function fmt(v, digits) {
     return v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -61,19 +60,9 @@
     const name = (w) => (narrow && SHORT[w]) || LABELS[w];
     const plotW = W - LEFT - RIGHT;
     const H = TOP + ROW * writers.length + AXIS;
-    let x, ticks;
-
-    if (log) {
-      const lo = Math.pow(10, Math.floor(Math.log10(Math.min(...values.filter((v) => v > 0)))));
-      const hi = Math.pow(10, Math.ceil(Math.log10(max)));
-      x = (v) => (Math.log10(Math.max(v, lo)) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo)) * plotW;
-      ticks = [];
-      for (let t = lo; t <= hi * 1.0001; t *= 10) ticks.push(t);
-    } else {
-      ticks = niceTicks(max);
-      const top = ticks[ticks.length - 1];
-      x = (v) => (v / top) * plotW;
-    }
+    const ticks = niceTicks(max);
+    const top = ticks[ticks.length - 1];
+    const x = (v) => (v / top) * plotW;
 
     box.replaceChildren();
     if (box.dataset.title) {
@@ -92,7 +81,7 @@
     }
 
     el("text", { class: "nb-bench-unit", x: plotW / 2, y: ROW * writers.length + 34, "text-anchor": "middle" }, g,
-      `${spec.unit}, lower is better${log ? " (log scale)" : ""}`);
+      `${spec.unit}, lower is better`);
 
     writers.forEach((w, i) => {
       const v = values[i];
@@ -123,19 +112,6 @@
     document.querySelectorAll(".nb-bench[data-case]").forEach(draw);
   }
 
-  function addToggle() {
-    const first = document.querySelector(".nb-bench[data-case]");
-    if (!first || document.querySelector(".nb-bench-toggle")) return;
-    const label = document.createElement("label");
-    label.className = "nb-bench-toggle";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = log;
-    box.addEventListener("change", () => { log = box.checked; drawAll(); });
-    label.append(box, " Log scale (shows the small bars)");
-    first.parentNode.insertBefore(label, first);
-  }
-
   async function init() {
     const boxes = document.querySelectorAll(".nb-bench[data-case]");
     if (!boxes.length) return;
@@ -146,7 +122,6 @@
       boxes.forEach((b) => (b.textContent = "Could not load the benchmark results."));
       return;
     }
-    addToggle();
     drawAll();
   }
 

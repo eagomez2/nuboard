@@ -4,8 +4,7 @@ How much does logging cost your training, compared with TensorBoard? These
 charts compare nuboard with the two usual ways of writing TensorBoard logs from
 PyTorch: [tensorboardX](https://github.com/lanpa/tensorboardX) and PyTorch's own
 `torch.utils.tensorboard`. Lower is better everywhere. Hover a bar for its
-exact value and how many times nuboard's it is; the log scale makes nuboard's
-bars visible next to the others.
+exact value and how many times nuboard's it is.
 
 ## During training
 

@@ -10,7 +10,7 @@
   they log nothing, which loses only other machines' system metrics (#24).
 - **Benchmarks** page in the docs: nuboard against tensorboardX and
   `torch.utils.tensorboard`, as interactive charts (exact values and ratios on
-  hover, linear or log scale), with the script that reproduces it
+  hover), with the script that reproduces it
   (`benchmarks/vs_tensorboard.py`).
 - **Full screen** replaces **Expand** in **Files**. A text file taller than
   its 520 px box opens full screen, as charts do: it fills the screen and

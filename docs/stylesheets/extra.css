@@ -143,10 +143,3 @@
   font-size: 0.7rem;
   color: var(--md-default-fg-color--light);
 }
-.md-typeset .nb-bench-toggle {
-  display: inline-flex;
-  gap: 0.4em;
-  align-items: center;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
