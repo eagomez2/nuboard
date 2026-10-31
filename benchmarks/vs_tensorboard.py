@@ -1,13 +1,13 @@
 r"""Compare nuboard with TensorBoard writers on the costs that matter during training.
 
-    uv run --with tensorboardX --with tensorboard --with torch --with matplotlib \\
+    uv run --with tensorboardX --with tensorboard --with torch \\
         python benchmarks/vs_tensorboard.py
 
 Writers compared: nuboard, tensorboardX and PyTorch's `torch.utils.tensorboard`
 (each one that is installed). Every case runs in a fresh subprocess, so one
 writer's background threads never slow another down, and each case is repeated
-and its median kept. Results go to `benchmarks/results/vs_tensorboard.json`;
-`benchmarks/plot_vs_tensorboard.py` draws the charts of the docs from them.
+and its median kept. Results go to `docs/assets/benchmarks/vs_tensorboard.json`,
+which the charts of the docs' Benchmarks page read directly.
 
 Cases:
 
@@ -36,7 +36,13 @@ import tempfile
 import time
 from pathlib import Path
 
-OUT = Path(__file__).parent / "results" / "vs_tensorboard.json"
+OUT = (
+    Path(__file__).resolve().parent.parent
+    / "docs"
+    / "assets"
+    / "benchmarks"
+    / "vs_tensorboard.json"
+)
 WRITERS = ("nuboard", "tensorboardX", "torch")
 CASES = ("scalars_us", "slowdown_pct", "image_ms", "write_1m_s", "read_1m_s", "disk_1m_mb")
 REPEAT = {"scalars_us": 3, "slowdown_pct": 3, "image_ms": 3}
@@ -73,6 +79,7 @@ class Adapter:
 
     def scalars(self, data: dict[str, float], step: int) -> None:
         """Log `data` at `step`, one call per scalar for TensorBoard."""
+
         if self.kind == "nuboard":
             self.run.add_scalar(data, step=step)
         else:
@@ -81,6 +88,7 @@ class Adapter:
 
     def image(self, img, step: int) -> None:  # type: ignore[no-untyped-def]
         """Log an HxWxC uint8 image at `step`."""
+
         if self.kind == "nuboard":
             self.run.add_image("img", img, step=step)
         else:
@@ -88,6 +96,7 @@ class Adapter:
 
     def close(self) -> None:
         """Flush and close the writer."""
+
         if self.kind == "nuboard":
             self.run.finish()
         else:
@@ -225,6 +234,7 @@ def _versions() -> dict[str, str]:
 
 def main() -> None:
     """Run every case for every installed writer and save the results."""
+
     if len(sys.argv) == 3:  # a child process
         _one(sys.argv[1], sys.argv[2])
         return

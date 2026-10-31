@@ -92,3 +92,61 @@
   margin: 1.5em 0;
   text-align: center;
 }
+
+/* Benchmark bar charts (docs/javascripts/benchmarks.js) */
+.md-typeset .nb-bench {
+  margin: 0.4rem 0 1.4rem;
+}
+.md-typeset .nb-bench svg {
+  display: block;
+  max-width: 100%;
+  font-size: 13px;
+}
+.nb-bench-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.nb-bench-grid {
+  stroke: var(--md-default-fg-color--lightest);
+  stroke-width: 1;
+}
+.nb-bench-tick,
+.nb-bench-unit {
+  fill: var(--md-default-fg-color--light);
+  font-size: 11px;
+}
+.nb-bench-label,
+.nb-bench-value {
+  fill: var(--md-default-fg-color);
+}
+.nb-bench-us .nb-bench-label,
+.nb-bench-us .nb-bench-value {
+  font-weight: 700;
+}
+.nb-bench-bar {
+  fill: var(--md-default-fg-color--lighter);
+  transition: opacity 0.12s;
+}
+.nb-bench-us .nb-bench-bar {
+  fill: var(--md-primary-fg-color);
+}
+.nb-bench-hit {
+  fill: transparent;
+}
+.nb-bench-row:hover .nb-bench-hit {
+  fill: var(--md-default-fg-color--lightest);
+  opacity: 0.35;
+}
+.nb-bench-note {
+  min-height: 1.3em;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .nb-bench-toggle {
+  display: inline-flex;
+  gap: 0.4em;
+  align-items: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
