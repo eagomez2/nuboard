@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import { FullScreen } from '../lib/fullscreen.svelte';
   import Icon from './Icon.svelte';
   import Terminal from './Terminal.svelte';
   import { isTerminalText, stripAnsi } from '../lib/ansi';
@@ -9,7 +10,7 @@
   import { isPattern, patternRegex, pinMatches } from '../lib/pattern';
   import { onLive } from '../lib/live';
   import { pins } from '../lib/pins.svelte';
-  import { prefs, router } from '../lib/router.svelte';
+  import { router } from '../lib/router.svelte';
 
   // Every file of the shown runs' folders: a tree to browse, with a preview of the
   // picked file below. Text files are diffed between two runs, checkpoints are listed
@@ -238,15 +239,24 @@
     return () => offs.forEach((off) => off());
   });
 
-  // Long files open as tall as the window instead of in a 520 px box; kept for next time
-  let expanded = $state(prefs.get('filesExpanded', false));
-  function toggleExpanded() {
-    expanded = !expanded;
-    prefs.set('filesExpanded', expanded);
+  // Full screen as on Charts, Timeline and Sweeps: the browser's full screen, or a fixed overlay where
+  // it is blocked; the file scrolls inside however long it is, and Esc leaves
+  const fs = new FullScreen();
+  onMount(() => fs.listen());
+  const full = $derived(fs.on);
+  $effect(() => {
+    fs.el = viewBody ?? undefined;
+  });
+  // The runs a full-screen diff compares, as above it in the panel
+  function setPair(side: 0 | 1, e: Event) {
+    const next = [...shownIdx];
+    next[side] = Number((e.currentTarget as HTMLSelectElement).value);
+    if (next[0] === next[1]) next[1 - side] = shownIdx[side];
+    router.set({ pair: next.join(',') });
   }
   let viewBody = $state<HTMLElement | null>(null);
   const scroller = () => viewBody?.querySelector<HTMLElement>('.file, .term, .diff, .csv') ?? null;
-  // Expand only matters for a file taller than the collapsed box
+  // Full screen only matters for a file taller than its box
   const BOX = 520;
   let overflows = $state(false);
   $effect(() => {
@@ -555,7 +565,14 @@
     </div>
   {/if}
 
-  <section class="view" class:expanded bind:this={viewBody}>
+  <section
+    class="view"
+    class:full
+    role={full ? 'dialog' : undefined}
+    aria-modal={full ? 'true' : undefined}
+    aria-label={full ? picked : undefined}
+    bind:this={viewBody}
+  >
     {#if !pickedFiles.some(Boolean)}
       <p class="faint pad">
         {#if pin}
@@ -580,13 +597,35 @@
             ></button>Raw</label
           >
         {/if}
-        {#if pickedKind === 'text' && overflows}
+        {#if full && multi}
+          {#if details.length > 2}
+            <span class="muted small">
+              <select class="input sm mono" aria-label="Left run" value={shownIdx[0]} onchange={(e) => setPair(0, e)}>
+                {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+              </select>
+              against
+              <select class="input sm mono" aria-label="Right run" value={shownIdx[1]} onchange={(e) => setPair(1, e)}>
+                {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
+              </select>
+            </span>
+          {/if}
+          <label class="tg small"
+            ><button
+              class="switch"
+              role="switch"
+              aria-checked={onlyChanges}
+              aria-label="Only changes"
+              onclick={() => router.set({ changes: onlyChanges ? null : '1' })}
+            ></button>Only changes</label
+          >
+        {/if}
+        {#if pickedKind === 'text' && (overflows || full)}
           <button
-            class="btn btn-ghost sm"
-            aria-pressed={expanded}
-            title={expanded ? 'Show the file in a 520 px box' : 'Make the file as tall as the window'}
-            onclick={toggleExpanded}
-            ><Icon name={expanded ? 'fold' : 'unfold'} size={14} /> {expanded ? 'Collapse' : 'Expand'}</button
+            class="btn btn-ghost sm fullbtn"
+            title={full ? 'Exit full screen (Esc)' : 'Show the file full screen'}
+            aria-pressed={full}
+            onclick={() => fs.toggle()}
+            ><Icon name={full ? 'shrink' : 'expand'} size={14} /> {full ? 'Exit full screen' : 'Full screen'}</button
           >
         {/if}
       </div>
@@ -975,11 +1014,24 @@
     margin: 0;
     white-space: pre;
   }
-  .view.expanded .file,
-  .view.expanded .csv,
-  .view.expanded .diff,
-  .view.expanded :global(.term) {
-    max-height: max(520px, calc(100dvh - 120px));
+  /* Full screen: the window, not the page, holds the file */
+  .view.full {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: var(--panel);
+    padding: 14px 18px;
+  }
+  .view.full .file,
+  .view.full .csv,
+  .view.full .diff,
+  .view.full :global(.term) {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+  }
+  .fullbtn {
+    margin-left: auto;
   }
   .csv {
     max-height: 520px;

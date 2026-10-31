@@ -1960,24 +1960,25 @@ test('live updates of a running run keep the open file and its scroll', async ({
   await expect.poll(() => pre.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 4)).toBe(true);
 });
 
-test('Expand makes a long run file as tall as the window, remembered for next time', async ({ page }) => {
+test('Full screen shows a long run file on the whole screen, and Esc brings it back', async ({ page }) => {
   const pre = await openLiveFile(page, 'progress.log');
   await expect
     .poll(() => pre.evaluate((el) => el.scrollHeight > el.clientHeight + 100), { timeout: 20_000 })
     .toBe(true);
-  const collapsed = await pre.evaluate((el) => el.clientHeight);
-  await page.getByRole('button', { name: 'Expand' }).click();
-  // taller than the box, at most the window, still scrolling inside once the file outgrows it
-  await expect.poll(() => pre.evaluate((el) => el.clientHeight)).toBeGreaterThan(collapsed);
+  const boxed = await pre.evaluate((el) => el.clientHeight);
+  await page.getByRole('button', { name: 'Full screen' }).click();
+  // taller than the box, within the screen, still scrolling inside
+  await expect.poll(() => pre.evaluate((el) => el.clientHeight)).toBeGreaterThan(boxed);
   expect(await pre.evaluate((el) => el.clientHeight)).toBeLessThanOrEqual(page.viewportSize()!.height);
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Collapse' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Collapse' }).click();
-  await expect.poll(() => pre.evaluate((el) => el.clientHeight)).toBeLessThanOrEqual(collapsed);
+  expect(await pre.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(page.getByRole('button', { name: 'Exit full screen' })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  await expect.poll(() => pre.evaluate((el) => el.clientHeight)).toBe(boxed);
 });
 
-test('a text file that fits its box has no Expand button', async ({ page }) => {
+test('a text file that fits its box has no Full screen button', async ({ page }) => {
   const pre = await openLiveFile(page, 'config.yaml');
   await expect.poll(() => pre.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
-  await expect(page.getByRole('button', { name: /^(Expand|Collapse)$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /full screen/i })).toHaveCount(0);
 });

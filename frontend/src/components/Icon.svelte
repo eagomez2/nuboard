@@ -33,8 +33,6 @@
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
     shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
-    unfold: 'M7 15l5 5 5-5M7 9l5-5 5 5',
-    fold: 'M7 20l5-5 5 5M7 4l5 5 5-5',
     pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v7',
     disk: 'M3 13h18v7H3zM3 13l3-9h12l3 9M7 16.5h.01M11 16.5h6',
     audio: 'M3 12h1M7 9v6M11 5v14M15 8v8M19 11v2M22 12h-.01',

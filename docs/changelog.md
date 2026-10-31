@@ -2,11 +2,14 @@
 
 ## Unreleased
 
-- **Expand** in **Files** now makes a long text file as tall as the window,
-  scrolling inside, instead of the file's full height, so a long log no
-  longer turns the page into one huge scroll. It shows only when the file is
-  taller than its box, and its icon is a pair of vertical chevrons instead
-  of the fullscreen corners.
+- **Full screen** replaces **Expand** in **Files**. A text file taller than
+  its 520 px box opens full screen, as charts do: it fills the screen and
+  scrolls inside however long it is, and **Exit full screen** or Esc brings
+  it back. The page around it no longer grows with the file, so a huge log
+  can't stretch it. A file that fits its box has no button.
+- **Only changes** and the **Diff … against …** run menus are also in a full
+  screen diff, so a long file compared between runs can be cut down to the
+  lines that differ without leaving it.
 
 ## 0.20.1
 
