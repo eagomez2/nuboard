@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **The Files tab keeps its scroll on live runs.** A running run's
+  heartbeat no longer reloads the open file, so a long file such as a
+  `config.yaml` stays where you scrolled instead of jumping to the top.
+  A text file the run is still writing is read again as it reports in and
+  grows in place, following new lines only when you are at its end (#21).
+- **Expand** next to a text file in **Files** or a pinned tab shows it at full
+  height instead of in a 520 px box; the choice is remembered (#21).
+- The demo's live run saves a `config.yaml` and writes a growing
+  `files/progress.log`.
+
 ## 0.20.0
 
 The first release on PyPI: `pip install nuboard` (or `uv pip install nuboard`).
@@ -22,7 +34,7 @@ The first release on PyPI: `pip install nuboard` (or `uv pip install nuboard`).
   standard library and imports none of them.
 - Package metadata for PyPI: project links and classifiers. The docs are
   published at <https://eagomez2.github.io/nuboard/>, and GitHub workflows run
-  the tests, publish the docs and release to PyPI.
+  the tests and publish the docs.
 
 ## 0.19.2
 

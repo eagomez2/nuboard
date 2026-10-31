@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import Icon from './Icon.svelte';
   import Terminal from './Terminal.svelte';
   import { isTerminalText, stripAnsi } from '../lib/ansi';
@@ -7,8 +7,9 @@
   import { sideBySide } from '../lib/diff';
   import { fmtBytes, fmtDate, fmtNum } from '../lib/format';
   import { isPattern, patternRegex, pinMatches } from '../lib/pattern';
+  import { onLive } from '../lib/live';
   import { pins } from '../lib/pins.svelte';
-  import { router } from '../lib/router.svelte';
+  import { prefs, router } from '../lib/router.svelte';
 
   // Every file of the shown runs' folders: a tree to browse, with a preview of the
   // picked file below. Text files are diffed between two runs, checkpoints are listed
@@ -31,6 +32,8 @@
   } = $props();
 
   const multi = $derived(details.length >= 2);
+  // Only the number of runs, so a live status update of `details` does not rebuild the file map
+  const runCount = $derived(details.length);
   const projects = $derived([...new Set(details.map((d) => d.run.project))]);
   const pinned = $derived(pins.of(projects));
   let showInternal = $state(false);
@@ -46,7 +49,7 @@
         if (!map.has(f.path))
           map.set(
             f.path,
-            details.map(() => null),
+            Array.from({ length: runCount }, () => null),
           );
         map.get(f.path)![i] = f;
       }
@@ -155,27 +158,51 @@
   let loading = $state(false);
   let request = 0;
 
-  $effect(() => {
-    const kind = pickedKind;
-    const ds = shownIdx.map((i) => details[i]);
-    const paths = shownIdx.map((i) => pickedFiles[i]?.path ?? null);
-    const req = ++request;
-    texts = [];
-    infos = [];
-    if (!kind || !paths.some(Boolean) || !ds.every(Boolean)) return;
-    if (kind === 'text') {
-      loading = true;
-      Promise.all(ds.map((d, i) => (paths[i] ? api.text(d.run.key, paths[i]) : null))).then((t) => {
-        if (req !== request) return;
+  // What to show, as a string: a live status update hands over new but equal `details`
+  // every heartbeat, and must neither reload the file nor reset its scroll
+  const shownKeys = $derived(shownIdx.map((i) => details[i]?.run.key ?? ''));
+  const loadKey = $derived(JSON.stringify([pickedKind, shownKeys, shownIdx.map((i) => pickedFiles[i]?.path ?? null)]));
+  const statusKey = $derived(shownIdx.map((i) => details[i]?.run.status ?? '').join(','));
+  const running = $derived(shownIdx.some((i) => details[i]?.run.status === 'running'));
+  // The file now on screen: reading it again keeps it there instead of flashing "Loading…"
+  let onScreen = '';
+
+  function readTexts(key: string, req: number) {
+    const [, keys, paths] = JSON.parse(key) as [string, string[], (string | null)[]];
+    return Promise.all(keys.map((k, i) => (paths[i] ? api.text(k, paths[i]) : null))).then((t) => {
+      if (req !== request) return;
+      const box = scroller();
+      // Scrolled to the end of a growing file: stay at the end as it grows
+      const atEnd = !!box && box.scrollTop > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+      if (onScreen !== key || t.some((x, i) => x?.text !== texts[i]?.text || x?.truncated !== texts[i]?.truncated))
         texts = t;
-        loading = false;
-      });
+      onScreen = key;
+      loading = false;
+      if (atEnd) tick().then(() => box && (box.scrollTop = box.scrollHeight));
+    });
+  }
+
+  $effect(() => {
+    const key = loadKey;
+    void statusKey; // a finished run's file is read once more
+    const [kind, keys, paths] = untrack(() => JSON.parse(key) as [string | null, string[], (string | null)[]]);
+    const req = ++request;
+    const again = untrack(() => onScreen === key);
+    if (!again) {
+      onScreen = '';
+      texts = [];
+      infos = [];
+    }
+    if (!kind || !paths.some(Boolean) || !keys.every(Boolean)) return;
+    if (kind === 'text') {
+      if (!again) loading = true;
+      readTexts(key, req);
     } else if (kind === 'tensors') {
-      loading = true;
+      if (!again) loading = true;
       Promise.all(
-        ds.map((d, i) =>
+        keys.map((k, i) =>
           paths[i]
-            ? api.inspect(d.run.key, paths[i]).catch((e): TensorInfo => ({
+            ? api.inspect(k, paths[i]).catch((e): TensorInfo => ({
                 format: '',
                 entries: [],
                 tensors: 0,
@@ -189,10 +216,36 @@
       ).then((x) => {
         if (req !== request) return;
         infos = x;
+        onScreen = key;
         loading = false;
       });
     }
   });
+
+  // A running run's text file may still be growing (a log, a results table): read it again
+  // as the run reports in, at most once a second, keeping the scroll where the reader left it
+  let lastRead = 0;
+  $effect(() => {
+    if (!running || pickedKind !== 'text') return;
+    const read = (changed: string[]) => {
+      const key = loadKey;
+      if (onScreen !== key || Date.now() - lastRead < 1000) return;
+      if (!changed.some((k) => shownKeys.includes(k))) return;
+      lastRead = Date.now();
+      readTexts(key, ++request);
+    };
+    const offs = [onLive('data', read), onLive('runs', read)];
+    return () => offs.forEach((off) => off());
+  });
+
+  // Long files open at full height instead of in a scrolling box; kept for next time
+  let expanded = $state(prefs.get('filesExpanded', false));
+  function toggleExpanded() {
+    expanded = !expanded;
+    prefs.set('filesExpanded', expanded);
+  }
+  let viewBody = $state<HTMLElement | null>(null);
+  const scroller = () => viewBody?.querySelector<HTMLElement>('.file, .term, .diff, .csv') ?? null;
 
   const ext = $derived(pickedPath.split('.').pop()?.toLowerCase() ?? '');
 
@@ -485,7 +538,7 @@
     </div>
   {/if}
 
-  <section class="view">
+  <section class="view" class:expanded bind:this={viewBody}>
     {#if !pickedFiles.some(Boolean)}
       <p class="faint pad">
         {#if pin}
@@ -508,6 +561,15 @@
           <label class="tg small" title="The text as stored, with its color codes"
             ><button class="switch" role="switch" aria-checked={raw} aria-label="Raw" onclick={() => (raw = !raw)}
             ></button>Raw</label
+          >
+        {/if}
+        {#if pickedKind === 'text'}
+          <button
+            class="btn btn-ghost sm"
+            aria-pressed={expanded}
+            title={expanded ? 'Show the file in a scrolling box' : 'Show the whole file at full height'}
+            onclick={toggleExpanded}
+            ><Icon name={expanded ? 'shrink' : 'expand'} size={14} /> {expanded ? 'Collapse' : 'Expand'}</button
           >
         {/if}
       </div>
@@ -895,6 +957,12 @@
     padding: 10px 12px;
     margin: 0;
     white-space: pre;
+  }
+  .view.expanded .file,
+  .view.expanded .csv,
+  .view.expanded .diff,
+  .view.expanded :global(.term) {
+    max-height: none;
   }
   .csv {
     max-height: 520px;

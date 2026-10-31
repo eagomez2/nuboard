@@ -1911,3 +1911,64 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await jump.getByRole('button', { name: 'Sweeps' }).click();
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
 });
+
+/** Open the demo's live run on the Files tab, showing `file`. */
+async function openLiveFile(page: Page, file: string) {
+  await page.goto('/#/runs?project=llm-pretrain');
+  await page
+    .locator('.body .row')
+    .filter({ hasText: 'running' })
+    .locator('button.name', { hasText: /live-s\d+$/ })
+    .click();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('treeitem', { name: new RegExp(file.replace('.', '\\.')) }).click();
+  const pre = page.locator('.files pre.file');
+  await expect(pre).toBeVisible();
+  return pre;
+}
+
+test('live updates of a running run keep the open file and its scroll', async ({ page }) => {
+  const pre = await openLiveFile(page, 'progress.log');
+  // the demo's live run adds a line about every 0.25 s; wait until the file scrolls
+  await expect
+    .poll(() => pre.evaluate((el) => el.scrollHeight > el.clientHeight + 100), { timeout: 20_000 })
+    .toBe(true);
+  await pre.evaluate((el) => {
+    el.scrollTop = 60;
+    el.dataset.kept = '1';
+    const w = window as unknown as { flashed: boolean };
+    w.flashed = false;
+    new MutationObserver(() => {
+      if (document.querySelector('.files .view')?.textContent?.includes('Loading…')) w.flashed = true;
+    }).observe(document.querySelector('.files .view')!, { childList: true, subtree: true });
+  });
+  const lines = (await pre.textContent())!.split('\n').length;
+  const scrollY = await page.evaluate(() => window.scrollY);
+  // heartbeats and logged data arrive, and the file grows under the reader
+  await expect
+    .poll(async () => (await pre.textContent())!.split('\n').length, { timeout: 20_000 })
+    .toBeGreaterThan(lines + 4);
+  expect(await pre.evaluate((el) => el.dataset.kept)).toBe('1'); // the same element, never rebuilt
+  expect(await pre.evaluate((el) => el.scrollTop)).toBe(60);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+  expect(await page.evaluate(() => (window as unknown as { flashed: boolean }).flashed)).toBe(false);
+
+  // scrolled to the end, the view follows new lines
+  await pre.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  const end = await pre.evaluate((el) => el.scrollHeight);
+  await expect.poll(() => pre.evaluate((el) => el.scrollHeight), { timeout: 20_000 }).toBeGreaterThan(end);
+  await expect.poll(() => pre.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 4)).toBe(true);
+});
+
+test('a run file opens at full height with Expand, remembered for next time', async ({ page }) => {
+  const pre = await openLiveFile(page, 'progress.log');
+  await expect
+    .poll(() => pre.evaluate((el) => el.scrollHeight > el.clientHeight + 100), { timeout: 20_000 })
+    .toBe(true);
+  await page.getByRole('button', { name: 'Expand' }).click();
+  await expect.poll(() => pre.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(2);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Collapse' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Collapse' }).click();
+  await expect.poll(() => pre.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+});

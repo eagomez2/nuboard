@@ -150,6 +150,11 @@ by side between two runs), images are drawn, and every file has a download
 link. A text file with color codes or progress bars, such as a log, is
 drawn like **Console**, with the same **Raw** switch, and diffed by its
 visible text only.
+**Expand** shows a long text file at full height instead of in a
+scrolling box, and is remembered for next time. While a run is running, its
+open text file is read again as the run reports in, so a file it is still
+writing grows in place: the scroll stays where you left it, and follows new
+lines only when you are at the end.
 Checkpoints (`.pt`, `.pth`, `.ckpt`, `.bin`, `.safetensors`, `.npy`,
 `.npz`) list their keys as a tree with each tensor's shape, dtype and size,
 and the total parameter count; with two runs the keys are diffed. Reading a
