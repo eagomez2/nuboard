@@ -133,7 +133,7 @@ def test_gpus_that_cannot_be_tracked_raise(monkeypatch):
         (["cuda:0", "tpu"], "'tpu'"),
         ("cpu", "'cpu'"),
         ("gpu0", "'gpu0'"),
-        ([], "gpus is empty"),
+        ([], "system_devices is empty"),
         ("mps", "only available on macOS"),
     ]:
         with pytest.raises(ValueError, match=message):
@@ -142,10 +142,24 @@ def test_gpus_that_cannot_be_tracked_raise(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
 
     with pytest.raises(ValueError, match="CUDA_VISIBLE_DEVICES='3'"):
-        nb.init("p", capture_env=False, gpus=["cuda:2"])
+        nb.init("p", capture_env=False, system_devices=["cuda:2"])
 
-    # gpus is not checked when the gpu group is off
-    nb.init("p", capture_env=False, system_metrics=["cpu"], gpus="cuda:2").finish()
+    # system_devices is not checked when the gpu group is off
+    nb.init("p", capture_env=False, system_metrics=["cpu"], system_devices="cuda:2").finish()
+
+
+def test_gpus_is_a_deprecated_name_of_system_devices(monkeypatch):
+    _fake_gpus(monkeypatch, 4)
+
+    with pytest.warns(FutureWarning, match="renamed to system_devices"):
+        run = nb.init("p", capture_env=False, gpus="cuda:1")
+
+    assert run._system is not None
+    assert run._system.sampler.gpus.cuda == {"GPU-1": 1}
+    run.finish()
+
+    with pytest.raises(TypeError, match="system_devices only"):
+        nb.init("p", capture_env=False, gpus="cuda:1", system_devices="cuda:1")
 
 
 def test_the_sampler_reads_only_the_chosen_gpus(monkeypatch):

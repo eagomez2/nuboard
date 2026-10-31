@@ -285,8 +285,8 @@ class Run:
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
-        gpus: The devices the `gpu` group samples: a device name such as
-            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+        system_devices: The devices the `gpu` group samples: a device name such
+            as `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
             `str()` is a device name works too, such as a `torch.device`. CUDA
             indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
             name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
@@ -294,6 +294,8 @@ class Run:
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
+        gpus: Deprecated name of `system_devices`, still accepted with a
+            `FutureWarning`.
         _started: Start timestamp override, for tests.
 
     Attributes:
@@ -317,7 +319,8 @@ class Run:
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, if `gpus` names a
+        TypeError: If both `system_devices` and its old name `gpus` are given.
+        ValueError: If `system_metrics` names an unknown group, if `system_devices` names a
             device that cannot be tracked, or if `job` is given with `fork_from`.
     """
 
@@ -341,9 +344,10 @@ class Run:
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
         system_metrics: bool | str | Sequence[str] = True,
-        gpus: Any = None,
+        system_devices: Any = None,
         system_interval: float = 30.0,
         capture_console: bool = True,
+        gpus: Any = None,
         _started: float | None = None,
     ) -> None:
         self.project_dir = project_dir(project, dir)
@@ -364,7 +368,22 @@ class Run:
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
-        gpu_choice = choose_gpus(gpus) if gpus is not None and "gpu" in groups else None
+
+        if gpus is not None:
+            if system_devices is not None:
+                raise TypeError("pass system_devices only; gpus is its old name")
+
+            warnings.warn(
+                f"{NAME}: init(gpus=...) is renamed to system_devices=...; gpus will be "
+                "removed in a future release",
+                FutureWarning,
+                stacklevel=3,
+            )
+            system_devices = gpus
+
+        gpu_choice = (
+            choose_gpus(system_devices) if system_devices is not None and "gpu" in groups else None
+        )
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
         name = (run_name or "").strip() or "run"
@@ -1729,9 +1748,10 @@ def init(
     flush_interval: float = 1.0,
     heartbeat_interval: float = 10.0,
     system_metrics: bool | str | Sequence[str] = True,
-    gpus: Any = None,
+    system_devices: Any = None,
     system_interval: float = 30.0,
     capture_console: bool = True,
+    gpus: Any = None,
     _started: float | None = None,
 ) -> Run:
     """Start (or resume) a run in `<dir>/<project>/runs/<run_id>/`.
@@ -1784,8 +1804,8 @@ def init(
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
-        gpus: The devices the `gpu` group samples: a device name such as
-            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+        system_devices: The devices the `gpu` group samples: a device name such
+            as `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
             `str()` is a device name works too, such as a `torch.device`. CUDA
             indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
             name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
@@ -1793,6 +1813,8 @@ def init(
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
+        gpus: Deprecated name of `system_devices`, still accepted with a
+            `FutureWarning`.
         _started: Start timestamp override, for tests.
 
     Returns:
@@ -1807,8 +1829,9 @@ def init(
         RuntimeError: If `job` is already running on this run in another process.
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
-        TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, or if `gpus` names a
+        TypeError: If `config` is of an unsupported type, or if both `system_devices`
+            and its old name `gpus` are given.
+        ValueError: If `system_metrics` names an unknown group, or if `system_devices` names a
             device that cannot be tracked.
 
     Example:
@@ -1834,8 +1857,9 @@ def init(
         flush_interval=flush_interval,
         heartbeat_interval=heartbeat_interval,
         system_metrics=system_metrics,
-        gpus=gpus,
+        system_devices=system_devices,
         system_interval=system_interval,
+        gpus=gpus,
         capture_console=capture_console,
         _started=_started,
     )
