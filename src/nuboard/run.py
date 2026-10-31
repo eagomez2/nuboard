@@ -234,9 +234,11 @@ class Run:
     from the training loop: they only append to an in-memory queue that a
     background thread writes out.
 
-    On a non-zero rank that cannot find rank 0's run (no initialized
-    `torch.distributed`, `TORCHELASTIC_RUN_ID` or `SLURM_JOB_ID`), a
-    `RuntimeWarning` is issued and every call on the run does nothing.
+    On a non-zero rank that cannot find rank 0's run (no `TORCHELASTIC_RUN_ID`
+    or `SLURM_JOB_ID`), every call on the run does nothing; local rank 0 of
+    another machine also issues a `RuntimeWarning`, as its system metrics are
+    lost. Rank 0 never waits for other ranks, so `init` may be called on rank 0
+    only.
 
     Args:
         project: Project name. Path separators (`/` or a backslash) nest projects in
@@ -401,12 +403,17 @@ class Run:
             new_id = self._new_run_id(runs_dir)
 
             if new_id is None:  # a non-zero rank with no way to find rank 0's folder
-                warnings.warn(
-                    f"{NAME}: rank {self.dist.rank} cannot find rank 0's run (no initialized "
-                    "torch.distributed, TORCHELASTIC_RUN_ID or SLURM_JOB_ID); it will not log",
-                    RuntimeWarning,
-                    stacklevel=3,
-                )
+                # Only local rank 0 of another machine would write anything (its
+                # system metrics); every other non-zero rank logs nothing anyway.
+                if self.dist.local_rank == 0 and system_metrics:
+                    warnings.warn(
+                        f"{NAME}: rank {self.dist.rank} cannot find rank 0's run (no "
+                        "TORCHELASTIC_RUN_ID or SLURM_JOB_ID; pass --rdzv-id to torchrun); "
+                        "it will not log this machine's system metrics",
+                        RuntimeWarning,
+                        stacklevel=3,
+                    )
+
                 self.id, self.path, self.session = "", runs_dir, 0
                 self.config = _config_to_dict(config)
                 self._meta = {}
@@ -465,22 +472,15 @@ class Run:
 
         The id is `<YYYYmmddTHHMM>-<hash>`, with 8 random hex digits (or, when every
         rank shares an id such as `SLURM_JOB_ID`, 8 hex digits derived from it).
+
+        Rank 0 never waits for another rank here, so calling `init` on rank 0
+        only, as is usual with TensorBoard, cannot hang the job (see issue #24).
         """
 
-        if self.dist.world_size > 1:
-            if self.dist.shared_id:
-                return _format_run_id(self.started, _hash_from(self.dist.shared_id))
+        if self.dist.world_size > 1 and self.dist.shared_id:
+            return _format_run_id(self.started, _hash_from(self.dist.shared_id))
 
-            mine = self._fresh_run_id(runs_dir) if self.dist.is_main else None
-            shared = _env.broadcast_run_id(mine)
-
-            if shared:
-                return shared
-
-            if not self.dist.is_main:
-                return None
-
-        return self._fresh_run_id(runs_dir)
+        return self._fresh_run_id(runs_dir) if self.dist.is_main else None
 
     def _fresh_run_id(self, runs_dir: Path) -> str:
         """Return a random run id that no folder in `runs_dir` uses yet."""
