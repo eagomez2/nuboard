@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.20.1
+
+The Files tab no longer jumps back to the top while a run is live.
 
 - **The Files tab keeps its scroll on live runs.** A running run's
   heartbeat no longer reloads the open file, so a long file such as a
