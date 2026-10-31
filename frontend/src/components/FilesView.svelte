@@ -238,7 +238,7 @@
     return () => offs.forEach((off) => off());
   });
 
-  // Long files open at full height instead of in a scrolling box; kept for next time
+  // Long files open as tall as the window instead of in a 520 px box; kept for next time
   let expanded = $state(prefs.get('filesExpanded', false));
   function toggleExpanded() {
     expanded = !expanded;
@@ -246,6 +246,23 @@
   }
   let viewBody = $state<HTMLElement | null>(null);
   const scroller = () => viewBody?.querySelector<HTMLElement>('.file, .term, .diff, .csv') ?? null;
+  // Expand only matters for a file taller than the collapsed box
+  const BOX = 520;
+  let overflows = $state(false);
+  $effect(() => {
+    void texts;
+    void raw;
+    const el = viewBody;
+    if (!el) return;
+    const measure = () => {
+      const boxes = el.querySelectorAll<HTMLElement>('.file, .term, .diff, .csv');
+      overflows = [...boxes].some((b) => b.scrollHeight > BOX + 2);
+    };
+    tick().then(measure);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   const ext = $derived(pickedPath.split('.').pop()?.toLowerCase() ?? '');
 
@@ -563,13 +580,13 @@
             ></button>Raw</label
           >
         {/if}
-        {#if pickedKind === 'text'}
+        {#if pickedKind === 'text' && overflows}
           <button
             class="btn btn-ghost sm"
             aria-pressed={expanded}
-            title={expanded ? 'Show the file in a scrolling box' : 'Show the whole file at full height'}
+            title={expanded ? 'Show the file in a 520 px box' : 'Make the file as tall as the window'}
             onclick={toggleExpanded}
-            ><Icon name={expanded ? 'shrink' : 'expand'} size={14} /> {expanded ? 'Collapse' : 'Expand'}</button
+            ><Icon name={expanded ? 'fold' : 'unfold'} size={14} /> {expanded ? 'Collapse' : 'Expand'}</button
           >
         {/if}
       </div>
@@ -962,7 +979,7 @@
   .view.expanded .csv,
   .view.expanded .diff,
   .view.expanded :global(.term) {
-    max-height: none;
+    max-height: max(520px, calc(100dvh - 120px));
   }
   .csv {
     max-height: 520px;

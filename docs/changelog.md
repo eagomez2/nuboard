@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Expand** in **Files** now makes a long text file as tall as the window,
+  scrolling inside, instead of the file's full height, so a long log no
+  longer turns the page into one huge scroll. It shows only when the file is
+  taller than its box, and its icon is a pair of vertical chevrons instead
+  of the fullscreen corners.
+
 ## 0.20.1
 
 The Files tab no longer jumps back to the top while a run is live.

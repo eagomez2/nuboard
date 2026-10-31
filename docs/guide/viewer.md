@@ -150,8 +150,9 @@ by side between two runs), images are drawn, and every file has a download
 link. A text file with color codes or progress bars, such as a log, is
 drawn like **Console**, with the same **Raw** switch, and diffed by its
 visible text only.
-**Expand** shows a long text file at full height instead of in a
-scrolling box, and is remembered for next time. While a run is running, its
+**Expand** makes a text file taller than its 520 px box as tall as the
+window, still scrolling inside, and is remembered for next time; a file that
+fits has no button. While a run is running, its
 open text file is read again as the run reports in, so a file it is still
 writing grows in place: the scroll stays where you left it, and follows new
 lines only when you are at the end.
