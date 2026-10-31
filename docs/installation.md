@@ -108,9 +108,9 @@ for you when `src/nuboard/static/` is missing.
 
 ```console
 $ nuboard version
-nuboard 0.20.1
+nuboard 0.21.0
 $ python -c "import nuboard; print(nuboard.__version__)"
-0.20.1
+0.21.0
 ```
 
 Next, the [Quickstart](quickstart.md) runs the demo and logs a first run.

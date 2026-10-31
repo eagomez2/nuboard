@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.21.0
+
+`init` no longer hangs a multi-GPU job when only rank 0 calls it, and a new
+Benchmarks page compares nuboard with TensorBoard. One breaking change:
+`init(gpus=...)` is now `system_devices`.
 
 - **Breaking: `init(gpus=...)` is renamed `system_devices`**, next to
   `system_metrics` and `system_interval`, so it reads as the devices system
