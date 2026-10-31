@@ -234,9 +234,11 @@ class Run:
     from the training loop: they only append to an in-memory queue that a
     background thread writes out.
 
-    On a non-zero rank that cannot find rank 0's run (no initialized
-    `torch.distributed`, `TORCHELASTIC_RUN_ID` or `SLURM_JOB_ID`), a
-    `RuntimeWarning` is issued and every call on the run does nothing.
+    On a non-zero rank that cannot find rank 0's run (no `TORCHELASTIC_RUN_ID`
+    or `SLURM_JOB_ID`), every call on the run does nothing; local rank 0 of
+    another machine also issues a `RuntimeWarning`, as its system metrics are
+    lost. Rank 0 never waits for other ranks, so `init` may be called on rank 0
+    only.
 
     Args:
         project: Project name. Path separators (`/` or a backslash) nest projects in
@@ -283,8 +285,8 @@ class Run:
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
-        gpus: The devices the `gpu` group samples: a device name such as
-            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+        system_devices: The devices the `gpu` group samples: a device name such
+            as `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
             `str()` is a device name works too, such as a `torch.device`. CUDA
             indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
             name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
@@ -315,7 +317,7 @@ class Run:
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, if `gpus` names a
+        ValueError: If `system_metrics` names an unknown group, if `system_devices` names a
             device that cannot be tracked, or if `job` is given with `fork_from`.
     """
 
@@ -339,7 +341,7 @@ class Run:
         flush_interval: float = 1.0,
         heartbeat_interval: float = 10.0,
         system_metrics: bool | str | Sequence[str] = True,
-        gpus: Any = None,
+        system_devices: Any = None,
         system_interval: float = 30.0,
         capture_console: bool = True,
         _started: float | None = None,
@@ -362,7 +364,10 @@ class Run:
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
-        gpu_choice = choose_gpus(gpus) if gpus is not None and "gpu" in groups else None
+
+        gpu_choice = (
+            choose_gpus(system_devices) if system_devices is not None and "gpu" in groups else None
+        )
         self.started = _started if _started is not None else time.time()
         runs_dir = self.project_dir / "runs"
         name = (run_name or "").strip() or "run"
@@ -401,12 +406,17 @@ class Run:
             new_id = self._new_run_id(runs_dir)
 
             if new_id is None:  # a non-zero rank with no way to find rank 0's folder
-                warnings.warn(
-                    f"{NAME}: rank {self.dist.rank} cannot find rank 0's run (no initialized "
-                    "torch.distributed, TORCHELASTIC_RUN_ID or SLURM_JOB_ID); it will not log",
-                    RuntimeWarning,
-                    stacklevel=3,
-                )
+                # Only local rank 0 of another machine would write anything (its
+                # system metrics); every other non-zero rank logs nothing anyway.
+                if self.dist.local_rank == 0 and system_metrics:
+                    warnings.warn(
+                        f"{NAME}: rank {self.dist.rank} cannot find rank 0's run (no "
+                        "TORCHELASTIC_RUN_ID or SLURM_JOB_ID; pass --rdzv-id to torchrun); "
+                        "it will not log this machine's system metrics",
+                        RuntimeWarning,
+                        stacklevel=3,
+                    )
+
                 self.id, self.path, self.session = "", runs_dir, 0
                 self.config = _config_to_dict(config)
                 self._meta = {}
@@ -465,22 +475,15 @@ class Run:
 
         The id is `<YYYYmmddTHHMM>-<hash>`, with 8 random hex digits (or, when every
         rank shares an id such as `SLURM_JOB_ID`, 8 hex digits derived from it).
+
+        Rank 0 never waits for another rank here, so calling `init` on rank 0
+        only, as is usual with TensorBoard, cannot hang the job (see issue #24).
         """
 
-        if self.dist.world_size > 1:
-            if self.dist.shared_id:
-                return _format_run_id(self.started, _hash_from(self.dist.shared_id))
+        if self.dist.world_size > 1 and self.dist.shared_id:
+            return _format_run_id(self.started, _hash_from(self.dist.shared_id))
 
-            mine = self._fresh_run_id(runs_dir) if self.dist.is_main else None
-            shared = _env.broadcast_run_id(mine)
-
-            if shared:
-                return shared
-
-            if not self.dist.is_main:
-                return None
-
-        return self._fresh_run_id(runs_dir)
+        return self._fresh_run_id(runs_dir) if self.dist.is_main else None
 
     def _fresh_run_id(self, runs_dir: Path) -> str:
         """Return a random run id that no folder in `runs_dir` uses yet."""
@@ -1729,7 +1732,7 @@ def init(
     flush_interval: float = 1.0,
     heartbeat_interval: float = 10.0,
     system_metrics: bool | str | Sequence[str] = True,
-    gpus: Any = None,
+    system_devices: Any = None,
     system_interval: float = 30.0,
     capture_console: bool = True,
     _started: float | None = None,
@@ -1784,8 +1787,8 @@ def init(
         system_metrics: Log CPU, memory and GPU use as `system/` scalars, from
             local rank 0 of each machine. True for all of them, False for none,
             or a list of groups out of `"cpu"`, `"memory"` and `"gpu"`.
-        gpus: The devices the `gpu` group samples: a device name such as
-            `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
+        system_devices: The devices the `gpu` group samples: a device name such
+            as `"cuda:0"` or `"mps"`, a list of them, or `"all"`. Any object whose
             `str()` is a device name works too, such as a `torch.device`. CUDA
             indices are those the script sees, after `CUDA_VISIBLE_DEVICES`, and
             name the scalars (`cuda:1` logs `system/gpu1/...`). None, the default,
@@ -1808,7 +1811,7 @@ def init(
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, or if `gpus` names a
+        ValueError: If `system_metrics` names an unknown group, or if `system_devices` names a
             device that cannot be tracked.
 
     Example:
@@ -1834,7 +1837,7 @@ def init(
         flush_interval=flush_interval,
         heartbeat_interval=heartbeat_interval,
         system_metrics=system_metrics,
-        gpus=gpus,
+        system_devices=system_devices,
         system_interval=system_interval,
         capture_console=capture_console,
         _started=_started,

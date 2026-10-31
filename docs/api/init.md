@@ -18,7 +18,7 @@ nb.init(
     flush_interval=1.0,
     heartbeat_interval=10.0,
     system_metrics=True,
-    gpus=None,
+    system_devices=None,
     system_interval=30.0,
     capture_console=True,
 ) -> Run
@@ -69,9 +69,9 @@ marks it crashed.
   groups out of `"cpu"`, `"memory"` and `"gpu"`, such as
   `system_metrics=["gpu"]` to skip CPU and RAM. See
   [System scalars](init.md#system-scalars).
-- **gpus** (*str or list*, optional): which devices the `gpu` group tracks,
+- **system_devices** (*str or list*, optional): which devices the `gpu` group tracks,
   by the names your script uses: `"cuda:0"`, `["cuda:0", "cuda:2"]`, `"mps"`,
-  or `"all"`. A `torch.device` works too, so `gpus=device` tracks the device
+  or `"all"`. A `torch.device` works too, so `system_devices=device` tracks the device
   you train on. None, the default, tracks every GPU the process can use. A
   name that cannot be tracked raises `ValueError`. See
   [Choosing GPUs](init.md#choosing-gpus).
@@ -189,14 +189,14 @@ nb.init("llm", system_interval=120)  # one sample every two minutes
 
 By default the `gpu` group tracks the GPUs the process can use, which are all
 of them unless `CUDA_VISIBLE_DEVICES` says otherwise. To track fewer, set
-`CUDA_VISIBLE_DEVICES` or pass `gpus` with the device names of your script:
+`CUDA_VISIBLE_DEVICES` or pass `system_devices` with the device names of your script:
 
 ```python
-nb.init("llm", gpus="cuda:0")  # only the GPU you train on
-nb.init("llm", gpus=["cuda:0", "cuda:1"])
-nb.init("llm", gpus=device)  # a torch.device, such as model.device
-nb.init("llm", gpus="mps")  # Apple silicon: the MPS allocator only
-nb.init("llm", gpus="all")  # the same as the default
+nb.init("llm", system_devices="cuda:0")  # only the GPU you train on
+nb.init("llm", system_devices=["cuda:0", "cuda:1"])
+nb.init("llm", system_devices=device)  # a torch.device, such as model.device
+nb.init("llm", system_devices="mps")  # Apple silicon: the MPS allocator only
+nb.init("llm", system_devices="all")  # the same as the default
 ```
 
 Names mean what they mean in PyTorch: `cuda:0` is the first GPU the process

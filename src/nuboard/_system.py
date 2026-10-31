@@ -17,7 +17,7 @@ Scalars are logged under `system/`:
   `system/gpu{i}/temp_c` and `system/gpu{i}/power_w`; and, from PyTorch,
   `system/torch/cuda_allocated_gb`, `system/torch/cuda_peak_gb`,
   `system/torch/mps_allocated_gb` and `system/torch/mps_driver_gb`. `i` is
-  the index the script sees, after `CUDA_VISIBLE_DEVICES`; `nb.init`'s `gpus`
+  the index the script sees, after `CUDA_VISIBLE_DEVICES`; `nb.init`'s `system_devices`
   picks which devices are sampled.
 """
 
@@ -90,7 +90,7 @@ _CUDA_NAME = re.compile(r"cuda(?::(\d+))?")
 
 
 def choose_gpus(value: Any = None) -> GpuChoice:
-    """Return the devices to sample for `nb.init`'s `gpus` argument.
+    """Return the devices to sample for `nb.init`'s `system_devices` argument.
 
     Args:
         value: None or `"all"` for every GPU the process can use, or a device
@@ -108,7 +108,9 @@ def choose_gpus(value: Any = None) -> GpuChoice:
     items = list(value) if isinstance(value, (list, tuple, set)) else [value]
 
     if not items:
-        raise ValueError("gpus is empty; pass device names such as 'cuda:0' or 'mps', or 'all'")
+        raise ValueError(
+            "system_devices is empty; pass device names such as 'cuda:0' or 'mps', or 'all'"
+        )
 
     names = ["all" if v is None else str(v).strip().lower() for v in items]
     visible = _env.gpus()

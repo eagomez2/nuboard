@@ -6,14 +6,27 @@
 falling back to `SLURM_PROCID` / `SLURM_LOCALID` / `SLURM_NTASKS` and
 `OMPI_COMM_WORLD_RANK` / `OMPI_COMM_WORLD_SIZE`.
 
-Call `init` on every rank with the same arguments. **Only rank 0 logs**; on
-other ranks `add_scalar()`, `add_text()` and the media calls return
-immediately, so the same script runs unchanged on every rank:
+**Only rank 0 logs.** You can call `init` on every rank with the same
+arguments; on other ranks `add_scalar()`, `add_text()` and the media calls
+return immediately, so the same script runs unchanged on every rank:
 
 ```python
 run = nb.init("llm", run_name="ddp", config=cfg)  # every rank
 run.add_scalar({"train/loss": loss}, step=step)  # logged by rank 0 only
 ```
+
+Or, as is usual with TensorBoard, create the run on rank 0 only:
+
+```python
+run = nb.init("llm", run_name="ddp", config=cfg) if rank == 0 else None
+
+if run is not None:
+    run.add_scalar({"train/loss": loss}, step=step)
+```
+
+`init` never waits for other ranks, so both patterns are safe. The only
+difference: with rank 0 only, other machines of a multi-machine job record
+no system metrics.
 
 System metrics are the exception: local rank 0 of each machine samples
 them, so a job on four machines records four sets of `system/` scalars. Each
@@ -25,14 +38,18 @@ lock. Only rank 0 writes `run.json`.
 
 All ranks must agree on the run folder. In order of preference:
 
-1. If `torch.distributed` is initialized when `init` runs, rank 0's run id is
-   broadcast to the other ranks.
-2. Otherwise a shared job id is used: `TORCHELASTIC_RUN_ID` (set by torchrun
-   with `--rdzv-id`) or `SLURM_JOB_ID`. The run id's random suffix is derived
-   from it, and non-zero ranks wait (up to two minutes) for rank 0 to create
-   the folder.
-3. Without either, non-zero ranks cannot find rank 0's folder: they log
-   nothing and emit a warning saying why. Rank 0 logs normally.
+1. With a shared job id, `TORCHELASTIC_RUN_ID` (set by torchrun with
+   `--rdzv-id`) or `SLURM_JOB_ID`, the run id's random suffix is derived from
+   it, and non-zero ranks wait (up to two minutes) for rank 0 to create the
+   folder. Rank 0 never waits.
+2. Without one, rank 0 picks a random id on its own and logs normally, and
+   the other ranks do nothing: `run.id` is empty there. On one machine nothing
+   is lost, since only rank 0 writes. On several machines, local rank 0 of each
+   other machine warns that it cannot record its system metrics; pass
+   `--rdzv-id` to torchrun to keep them.
+
+Earlier versions broadcast rank 0's id through `torch.distributed`, which
+hung the job when only rank 0 called `init` (issue #24).
 
 ## Viewing ranks
 

@@ -1,0 +1,38 @@
+{
+  "machine": {
+    "python": "3.13.18",
+    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+    "nuboard": "0.20.1",
+    "tensorboardX": "2.6.5",
+    "torch": "2.15.0",
+    "tensorboard": "2.21.0",
+    "numpy": "2.5.4",
+    "cpus": 4
+  },
+  "results": {
+    "nuboard": {
+      "scalars_us": 1.8003705499950229,
+      "slowdown_pct": 2.49162267320564,
+      "image_ms": 0.1400092299991229,
+      "write_1m_s": 1.4750735719999284,
+      "read_1m_s": 0.13639787400006753,
+      "disk_1m_mb": 28.002315
+    },
+    "tensorboardX": {
+      "scalars_us": 7016.182605999802,
+      "slowdown_pct": 87.62288245838053,
+      "image_ms": 33.577800189996196,
+      "write_1m_s": 144.9627298180003,
+      "read_1m_s": 18.87192113800029,
+      "disk_1m_mb": 41.8349
+    },
+    "torch": {
+      "scalars_us": 4852.916019999611,
+      "slowdown_pct": 82.98707214872016,
+      "image_ms": 49.32599767999818,
+      "write_1m_s": 90.07425672399995,
+      "read_1m_s": 18.11728331500035,
+      "disk_1m_mb": 41.834948
+    }
+  }
+}

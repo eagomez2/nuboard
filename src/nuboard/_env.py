@@ -77,36 +77,6 @@ def detect_dist() -> DistInfo:
     return DistInfo(rank=rank, local_rank=local, world_size=world, shared_id=shared)
 
 
-def broadcast_run_id(run_id: str | None) -> str | None:
-    """Share rank 0's run id with every rank via `torch.distributed`, if it is up.
-
-    Only takes effect when `torch` is already imported and its process group is
-    initialized. Any error is swallowed so tracking never breaks training.
-
-    Args:
-        run_id: This rank's run id; only rank 0's value matters.
-
-    Returns:
-        Rank 0's run id, or `run_id` unchanged when it cannot be broadcast.
-    """
-    torch = sys.modules.get("torch")
-
-    if torch is None:
-        return run_id
-
-    try:
-        dist = torch.distributed
-
-        if not (dist.is_available() and dist.is_initialized()):
-            return run_id
-
-        box = [run_id]
-        dist.broadcast_object_list(box, src=0)
-        return box[0]
-    except Exception:  # never let tracking break training
-        return run_id
-
-
 # git never asks for a password, never takes the index lock (so a `git` command the user
 # runs at the same time is not refused), and speaks plain English
 _GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
