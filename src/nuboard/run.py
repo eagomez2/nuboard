@@ -294,8 +294,6 @@ class Run:
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
-        gpus: Deprecated name of `system_devices`, still accepted with a
-            `FutureWarning`.
         _started: Start timestamp override, for tests.
 
     Attributes:
@@ -319,7 +317,6 @@ class Run:
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        TypeError: If both `system_devices` and its old name `gpus` are given.
         ValueError: If `system_metrics` names an unknown group, if `system_devices` names a
             device that cannot be tracked, or if `job` is given with `fork_from`.
     """
@@ -347,7 +344,6 @@ class Run:
         system_devices: Any = None,
         system_interval: float = 30.0,
         capture_console: bool = True,
-        gpus: Any = None,
         _started: float | None = None,
     ) -> None:
         self.project_dir = project_dir(project, dir)
@@ -368,18 +364,6 @@ class Run:
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
         groups = parse_groups(system_metrics)
-
-        if gpus is not None:
-            if system_devices is not None:
-                raise TypeError("pass system_devices only; gpus is its old name")
-
-            warnings.warn(
-                f"{NAME}: init(gpus=...) is renamed to system_devices=...; gpus will be "
-                "removed in a future release",
-                FutureWarning,
-                stacklevel=3,
-            )
-            system_devices = gpus
 
         gpu_choice = (
             choose_gpus(system_devices) if system_devices is not None and "gpu" in groups else None
@@ -1751,7 +1735,6 @@ def init(
     system_devices: Any = None,
     system_interval: float = 30.0,
     capture_console: bool = True,
-    gpus: Any = None,
     _started: float | None = None,
 ) -> Run:
     """Start (or resume) a run in `<dir>/<project>/runs/<run_id>/`.
@@ -1813,8 +1796,6 @@ def init(
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
-        gpus: Deprecated name of `system_devices`, still accepted with a
-            `FutureWarning`.
         _started: Start timestamp override, for tests.
 
     Returns:
@@ -1829,8 +1810,7 @@ def init(
         RuntimeError: If `job` is already running on this run in another process.
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
-        TypeError: If `config` is of an unsupported type, or if both `system_devices`
-            and its old name `gpus` are given.
+        TypeError: If `config` is of an unsupported type.
         ValueError: If `system_metrics` names an unknown group, or if `system_devices` names a
             device that cannot be tracked.
 
@@ -1859,7 +1839,6 @@ def init(
         system_metrics=system_metrics,
         system_devices=system_devices,
         system_interval=system_interval,
-        gpus=gpus,
         capture_console=capture_console,
         _started=_started,
     )

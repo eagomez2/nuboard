@@ -148,20 +148,6 @@ def test_gpus_that_cannot_be_tracked_raise(monkeypatch):
     nb.init("p", capture_env=False, system_metrics=["cpu"], system_devices="cuda:2").finish()
 
 
-def test_gpus_is_a_deprecated_name_of_system_devices(monkeypatch):
-    _fake_gpus(monkeypatch, 4)
-
-    with pytest.warns(FutureWarning, match="renamed to system_devices"):
-        run = nb.init("p", capture_env=False, gpus="cuda:1")
-
-    assert run._system is not None
-    assert run._system.sampler.gpus.cuda == {"GPU-1": 1}
-    run.finish()
-
-    with pytest.raises(TypeError, match="system_devices only"):
-        nb.init("p", capture_env=False, gpus="cuda:1", system_devices="cuda:1")
-
-
 def test_the_sampler_reads_only_the_chosen_gpus(monkeypatch):
     seen = []
     monkeypatch.setattr(_system, "nvidia_smi", lambda exe, devices: seen.append(devices) or {})

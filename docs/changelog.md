@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- **`init(gpus=...)` is renamed `system_devices`**, next to `system_metrics`
-  and `system_interval`, so it reads as the devices system metrics track, not
-  the devices you train on. `gpus` still works, with a `FutureWarning`.
+- **Breaking: `init(gpus=...)` is renamed `system_devices`**, next to
+  `system_metrics` and `system_interval`, so it reads as the devices system
+  metrics track, not the devices you train on. Replace `gpus=` with
+  `system_devices=`; the old name is gone.
 - **`init` no longer hangs a multi-GPU job when only rank 0 calls it**, as is
   usual with TensorBoard (`if rank == 0: run = nb.init(...)`). Rank 0 used to
   broadcast its run id through `torch.distributed` and wait for every rank to
