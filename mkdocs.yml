@@ -49,6 +49,7 @@ nav:
       - File format: reference/format.md
       - Architecture: reference/architecture.md
       - Known limitations: reference/limitations.md
+      - Benchmarks: benchmarks.md
       - Development: reference/development.md
   - Changelog:
       - Changelog: changelog.md

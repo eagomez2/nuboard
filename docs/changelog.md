@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`init` no longer hangs a multi-GPU job when only rank 0 calls it**, as is
+  usual with TensorBoard (`if rank == 0: run = nb.init(...)`). Rank 0 used to
+  broadcast its run id through `torch.distributed` and wait for every rank to
+  receive it. It now never waits for other ranks: they find the run through a
+  shared job id (`SLURM_JOB_ID`, or torchrun's `--rdzv-id`), and without one
+  they log nothing, which loses only other machines' system metrics (#24).
+- **Benchmarks** page in the docs: nuboard against tensorboardX and
+  `torch.utils.tensorboard`, with the script that reproduces it
+  (`benchmarks/vs_tensorboard.py`).
 - **Full screen** replaces **Expand** in **Files**. A text file taller than
   its 520 px box opens full screen, as charts do: it fills the screen and
   scrolls inside however long it is, and **Exit full screen** or Esc brings
