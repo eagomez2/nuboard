@@ -5,7 +5,7 @@
   import TagPills from './TagPills.svelte';
   import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
   import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
   import { defineProperty, valueField } from '../lib/properties';
@@ -750,9 +750,7 @@
                 </span>
               {:else}<span class="faint">—</span>{/if}
             </span>
-            <span class="muted" title={r.started ? new Date(r.started * 1000).toLocaleString() : ''}
-              >{fmtAgo(r.started)}</span
-            >
+            <span class="muted" title={r.started ? fmtDateTime(r.started, r) : ''}>{fmtAgo(r.started)}</span>
             <span class="mono right muted">{fmtDuration(r.duration)}</span>
             <span
               >{#if r.reviewed}<span class="yes">✓ yes</span>{:else}<span class="faint">—</span>{/if}</span

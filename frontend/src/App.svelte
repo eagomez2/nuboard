@@ -8,6 +8,7 @@
   import SelectionBanner from './components/SelectionBanner.svelte';
   import Icon from './components/Icon.svelte';
   import QueryBar from './components/QueryBar.svelte';
+  import ZoneChip from './components/ZoneChip.svelte';
   import RunsPage from './pages/RunsPage.svelte';
   import ChartsPage from './pages/ChartsPage.svelte';
   import MediaPage from './pages/MediaPage.svelte';
@@ -129,6 +130,7 @@
         </p>
       </div>
       <QueryBar />
+      <ZoneChip />
       <button
         class="btn theme"
         aria-label="Toggle light/dark theme"

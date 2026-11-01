@@ -23,6 +23,9 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
   [query language](../reference/query.md).
+- **Time zone chip**: **Local time** by default, which shows times as they
+  always have been, in your computer's zone. Optionally, pick another zone to
+  show every date and time in. See [Time zones](#time-zones).
 - **Theme toggle**: light and dark themes; the default follows your system.
 - **About** (the small ⓘ at the bottom of the side bar): the version, the
   copyright, the license and a link to this documentation.
@@ -586,6 +589,84 @@ Measuring only lists folders and reads file sizes; it never opens a file, and
 a symlink counts as the link, not what it points to. On a very large folder it
 pauses after 10 s and asks whether to go on; **Stop here** keeps what was
 measured so far, marked as partial.
+
+## Time zones
+
+Every time a run records is stored as Unix seconds, an exact moment that does
+not depend on any time zone. The viewer writes those moments in one zone.
+You never have to choose one: by default the chip in the header reads
+**Local time**, and times are shown as they always have been, in your
+computer's zone, with nothing converted (hover the chip to see which zone that
+is). To see times in another zone, click the chip and pick:
+
+- **Local time** (the default): your computer's zone, no conversion.
+- **Machine time**: each run on the clock of the machine that recorded it.
+  See [Machine time](#machine-time).
+- **UTC**.
+- **A named zone**, such as `America/Santiago` or `Europe/Berlin`. Type a city
+  to find it. A named zone follows daylight saving at each moment: a run from
+  January and one from July both show the clock time of their own season, no
+  matter when you look at them.
+- **A fixed offset**, such as `UTC-03:00`, which never changes. Type any offset
+  between `UTC-14:00` and `UTC+14:00`.
+
+The choice changes how times are written, and nothing else: data, queries
+(`started > …` still compares Unix seconds), links and saved views stay the
+same. It applies everywhere at once (the run table, run details, chart
+tooltips and wall-time axes, the Timeline, artifact and file dates, and
+exported reports), so the same moment always reads the same. Hover read-outs
+end with the zone's short name, such as `GMT-3`. The choice is kept per
+browser, so two people opening the same link each see their own zone. When a
+picked zone differs from your computer's, the chip shows its short name and
+place (`GMT+1 Berlin`) with a small dot. Pick **Local time** to go back.
+
+Converting needs no network: browsers ship the time zone rules, with each
+zone's history, so past times stay right after a country changes its rules.
+Only a browser that has not been updated since a new rule took effect shows
+times after that change off by the difference; **UTC** and fixed offsets
+avoid zone rules altogether.
+
+### Machine time
+
+With **Machine time**, every time that belongs to one run (the run table's
+start time on hover, run details, the Timeline's hover card) is written on
+the clock of the machine that recorded it, using the offset saved with each
+session. A run resumed on another machine switches clock at the resume, such
+as `UTC−03:00` before it and `UTC+01:00` after it.
+
+A wall-time chart axis or the Timeline puts several runs on one axis, which
+can only have one clock. Where the points sit never changes (they are exact
+moments); only the labels do:
+
+- When every run shown was recorded in the same zone, the axis uses it, and
+  the caption next to it reads `UTC−03:00 · machine time`.
+- When they come from different zones, the axis and its read-out are in UTC,
+  and the caption reads `UTC · runs from different zones`. Each run's own time
+  is still in its run details and hover card.
+- When no run's zone is known, local time is used, captioned
+  `local time, machine zone unknown`.
+
+A run whose machine zone is not known shows local time instead, marked
+`(local)` after the time.
+
+### The machine's zone
+
+**Run details** show a **machine_zone** row: the UTC offset of the machine
+that recorded the run, and its host, such as `UTC−03:00 · lab`. A run
+resumed later gets a row per extra session (`machine_zone.s1`, …), so a run
+started in Santiago and resumed on a cluster in Europe reads `UTC−03:00 ·
+lab` and `UTC+01:00 · cluster`. Each session records its own offset at start
+and at finish, so a clock change during a session shows as
+`UTC−03:00 → UTC−04:00 (clock change)`. Hover a value for what it means.
+
+Runs recorded before this was saved show the first session's offset worked
+out from the run id (whose timestamp is the machine's local time at `init`),
+dimmed, as `≈ UTC−03:00 (from run id)`. It is `unknown` when it cannot be
+worked out: later sessions of those runs, runs given an explicit `run_id`,
+and TensorBoard imports.
+
+The zone setting corrects a machine set to another zone, not a machine whose
+clock is wrong: if a clock was off, the times it recorded are off too.
 
 ## Sharing on a network
 

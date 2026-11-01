@@ -121,6 +121,8 @@ export interface RunBrief {
   alerts: Alert[];
   /** Helper jobs that log into the run, such as an evaluator (`init(..., job="eval")`). */
   jobs?: Job[];
+  /** Each session's start, end and machine zone (`utc_offset`, `utc_offset_end`, `host`); absent from older catalogs. */
+  sessions?: Record<string, any>[];
 }
 
 export interface Job {

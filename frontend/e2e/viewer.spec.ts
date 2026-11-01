@@ -1982,3 +1982,96 @@ test('a text file that fits its box has no Full screen button', async ({ page })
   await expect.poll(() => pre.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
   await expect(page.getByRole('button', { name: /full screen/i })).toHaveCount(0);
 });
+
+test.describe('time zone', () => {
+  // the browser is in Santiago; the viewer is set to Tokyo (UTC+9, no daylight saving)
+  test.use({ timezoneId: 'America/Santiago', locale: 'en-US' });
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('timeZone', JSON.stringify('Asia/Tokyo')));
+  });
+
+  test('every view writes the same moment in the chosen zone', async ({ page }) => {
+    const res = await page.request.get('/api/runs?project=vit-ablations');
+    const run = (await res.json()).runs.find((r: { status: string }) => r.status === 'finished');
+    const fmt = (t: number, zone: string, opts: Intl.DateTimeFormatOptions) =>
+      page.evaluate(
+        ([t, zone, opts]) =>
+          new Intl.DateTimeFormat(undefined, { ...(opts as object), timeZone: zone as string }).format(
+            new Date((t as number) * 1000),
+          ),
+        [t, zone, opts] as const,
+      );
+    const full = await fmt(run.started, 'Asia/Tokyo', { dateStyle: 'medium', timeStyle: 'medium' });
+    const short = await fmt(run.started, 'Asia/Tokyo', { dateStyle: 'medium', timeStyle: 'short' });
+    expect(full).not.toBe(await fmt(run.started, 'America/Santiago', { dateStyle: 'medium', timeStyle: 'medium' }));
+
+    // header chip, with the dot that says it differs from the browser
+    await page.goto('/#/runs?project=vit-ablations');
+    const chip = page.locator('button.zone');
+    await expect(chip).toContainText('GMT+9');
+    await expect(chip.locator('.dot')).toBeVisible();
+
+    // run table hover
+    const row = page.locator('.body .row', { hasText: run.name }).first();
+    await expect(row.locator(`span[title="${full} GMT+9"]`)).toHaveCount(1);
+
+    // run details
+    await page.goto(`/#/runs?project=vit-ablations&cmp=${run.key}`);
+    await expect(page.locator('.srow', { hasText: 'started' }).first()).toContainText(`${short} GMT+9`);
+    await expect(page.locator('.srow', { hasText: 'machine_zone' }).first()).toContainText('UTC');
+
+    // timeline hover card
+    await page.goto('/#/timeline?project=vit-ablations');
+    await page.locator(`.bar[data-tip*="${run.id}"]`).first().hover();
+    await expect(page.locator('.tip')).toContainText(`Started ${short}`);
+
+    // chart read-out on a wall-time x axis
+    await page.goto(`/#/charts?project=vit-ablations&sel=${run.key}&x=time`);
+    const plot = page.locator('.u-over').first();
+    await plot.waitFor();
+    const box = (await plot.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByText(/\d{1,2}:\d{2}:\d{2}\s?[AP]M GMT\+9/).first()).toBeVisible();
+  });
+});
+
+test.describe('time zone picker', () => {
+  test.use({ timezoneId: 'America/Santiago', locale: 'en-US' });
+
+  test("Machine time shows a run's times on its machine's clock, not the browser's", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('timeZone', JSON.stringify('machine')));
+    const res = await page.request.get('/api/runs?project=vit-ablations');
+    const run = (await res.json()).runs.find((r: { status: string }) => r.status === 'finished');
+    const offset = run.sessions[0].utc_offset as number; // the demo is written on this machine
+    const expected = await page.evaluate(
+      ([t, off]) => {
+        const f = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' });
+        return f.format(new Date((t + off) * 1000));
+      },
+      [run.started, offset] as const,
+    );
+    await page.goto('/#/runs?project=vit-ablations');
+    const row = page.locator('.body .row', { hasText: run.name }).first();
+    await expect(
+      row
+        .locator('span[title]')
+        .filter({ hasText: /ago|just now/ })
+        .first(),
+    ).toHaveAttribute('title', new RegExp(`^${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (UTC|GMT)`));
+  });
+
+  test('the zone is picked from the header and kept', async ({ page }) => {
+    await page.goto('/#/runs');
+    // nothing to choose by default: times are shown as before, in the browser's zone
+    await expect(page.locator('button.zone')).toHaveText('Local time');
+    await expect(page.locator('button.zone .dot')).toHaveCount(0);
+    await page.locator('button.zone').click();
+    await page.locator('#nb-dialog-in-0').fill('UTC');
+    await page.getByRole('option', { name: /^UTC$/ }).click();
+    await page.getByRole('button', { name: 'Apply' }).click();
+    await expect(page.locator('button.zone')).toContainText('UTC');
+    await page.reload();
+    await expect(page.locator('button.zone')).toContainText('UTC');
+    expect(await page.evaluate(() => localStorage.getItem('timeZone'))).toBe('"UTC"');
+  });
+});

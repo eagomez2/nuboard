@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import LineChart, { type CursorValue } from './LineChart.svelte';
   import { api, type ChartData } from '../lib/api';
-  import { fmtDuration, fmtNum, lowerIsBetter } from '../lib/format';
+  import { chartZone } from '../lib/chartzone';
+  import { fmtDuration, fmtNum, fmtTimeIn, lowerIsBetter } from '../lib/format';
 
   let {
     metric,
@@ -63,7 +64,7 @@
     );
   });
   function fmtX(v: number) {
-    if (x === 'time') return new Date(v * 1000).toLocaleString();
+    if (x === 'time') return fmtTimeIn(chartZone(data).kit, v);
     if (x === 'relative' || x === 'active') return fmtDuration(v);
     if (x.startsWith('metric:')) return `${x.slice(7)} ${fmtNum(v)}`;
     return `Step ${Math.round(v).toLocaleString()}`;

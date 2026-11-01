@@ -92,6 +92,17 @@ def test_keeps_the_original_wall_times(tmp_path):
     assert min(t) >= min(times) and max(t) <= max(times)
 
 
+def test_imports_do_not_record_the_importing_machines_zone(tmp_path):
+    (result,) = import_logdir(DATA / "tbx" / "exp1", "tb", dir=tmp_path)
+    sessions = json.loads((result.path / "run.json").read_text())["sessions"]
+    assert sessions
+
+    for session in sessions:
+        assert "utc_offset" not in session
+        assert "utc_offset_end" not in session
+        assert "host" not in session
+
+
 def test_importing_twice_skips_existing_runs(tmp_path):
     first = import_logdir(DATA / "torch", "tb", dir=tmp_path)
     again = import_logdir(DATA / "torch", "tb", dir=tmp_path)

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+Times can be shown in a time zone you pick, and each run records the zone
+of the machine(s) it ran on.
+
+- **Time zone chip** in the header, optional: it reads **Local time** by
+  default, showing times as before in your browser's zone. Pick **Machine
+  time** to show each run on the clock of the machine that recorded it (axes
+  shared by runs from different zones switch to UTC and say so), or UTC, a named zone such as `America/Santiago`
+  (daylight saving followed at each moment) or a fixed offset such as
+  `UTC-03:00`. It changes only how times are written: data, queries, links and
+  saved views are unchanged. All views use it at once (run table, run details,
+  chart tooltips and wall-time axes, the Timeline, artifact and file dates,
+  exported reports), and hover read-outs end with the zone's short name. The
+  choice is kept per browser. See [Time zones](guide/viewer.md#time-zones).
+- **Each session records its machine's zone**: `sessions` entries in
+  `run.json` gain `utc_offset`, `utc_offset_end` and `host`, so a run resumed
+  on a machine in another zone shows each session's offset in **Run details**
+  (`machine_zone`, plus `machine_zone.s1`, … for resumed sessions). Not a breaking change: the keys are additive, and older
+  runs show the first session's offset worked out from the run id, or
+  `unknown`.
+
 ## 0.21.0
 
 `init` no longer hangs a multi-GPU job when only rank 0 calls it, and a new

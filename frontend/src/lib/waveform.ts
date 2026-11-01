@@ -220,9 +220,12 @@ export function waveformKit() {
       for (let i = 0; i < data.length; i++) c = table[(c ^ data[i]) & 0xff] ^ (c >>> 8);
       return (c ^ 0xffffffff) >>> 0;
     };
+    // ZIP entries carry a DOS timestamp, which is the writing machine's local time by definition
+    /* eslint-disable no-restricted-syntax */
     const now = new Date();
     const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
     const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    /* eslint-enable no-restricted-syntax */
     const encoder = new TextEncoder();
     const parts: Uint8Array[] = [];
     const central: Uint8Array[] = [];

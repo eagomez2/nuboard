@@ -4,7 +4,8 @@
   import Status from '../components/Status.svelte';
   import { api, type ArtifactVersion, type RunBrief } from '../lib/api';
   import { seriesVar } from '../lib/colors';
-  import { cap, fmtDate, fmtDuration } from '../lib/format';
+  import { cap, fmtDate, fmtDuration, fmtZone } from '../lib/format';
+  import { LOCAL, timeZone } from '../lib/timezone.svelte';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
@@ -31,7 +32,7 @@
       r.name,
       r.id,
       `${cap(r.status)} · ${r.project}`,
-      `Started ${fmtDate(r.started)}`,
+      `Started ${fmtDate(r.started, r)} ${fmtZone(r.started ?? 0, r)}`,
       `Duration ${fmtDuration(endOf(r) - (r.started ?? 0))}`,
       ...(r.group ? [`Group ${r.group}`] : []),
       ...(r.alerts ?? []).map((a) => `⚠ ${a.message}`),
@@ -134,53 +135,9 @@
   const xOf = (t: number) => LABEL + ((t - range[0]) / (range[1] - range[0])) * plotW;
   const tOf = (x: number) => range[0] + ((x - LABEL) / plotW) * (range[1] - range[0]);
 
-  const ticks = $derived.by(() => {
-    const span = range[1] - range[0];
-    const steps = [60, 300, 900, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400];
-    const room = Math.max(3, plotW / 110);
-    const step = steps.find((s) => span / s <= room);
-    if (step === undefined) {
-      // months, quarters or years, on calendar boundaries
-      const months = [1, 3, 6, 12, 24, 60].find((m) => span / (m * 30.44 * 86400) <= room) ?? 120;
-      const d = new Date(range[0] * 1000);
-      let y = d.getFullYear();
-      let m = Math.ceil((d.getMonth() + (d.getDate() > 1 ? 1 : 0)) / months) * months;
-      const out: { t: number; label: string; day: boolean }[] = [];
-      for (;;) {
-        const at = new Date(y, m, 1);
-        const t = at.getTime() / 1000;
-        if (t > range[1]) break;
-        out.push({
-          t,
-          day: at.getMonth() === 0,
-          label:
-            months >= 12 || at.getMonth() === 0
-              ? String(at.getFullYear())
-              : at.toLocaleDateString(undefined, { month: 'short' }),
-        });
-        m += months;
-        y += Math.floor(m / 12);
-        m %= 12;
-      }
-      return out;
-    }
-    const offset = new Date().getTimezoneOffset() * 60;
-    const first = Math.ceil((range[0] - offset) / step) * step + offset;
-    const out: { t: number; label: string; day: boolean }[] = [];
-    for (let t = first; t <= range[1]; t += step) {
-      const d = new Date(t * 1000);
-      const midnight = d.getHours() === 0 && d.getMinutes() === 0;
-      out.push({
-        t,
-        day: midnight,
-        label:
-          step >= 86400 || midnight
-            ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-            : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-      });
-    }
-    return out;
-  });
+  // On the clock of the zone picked in the header, like every other time shown
+  const axisZone = $derived(timeZone.shared(runs));
+  const ticks = $derived(axisZone.kit.ticks(range[0], range[1], Math.max(3, plotW / 110)));
 
   const projects = $derived([...new Set(runs.map((r) => r.project))]);
   const groups = $derived([...new Set(runs.map((r) => r.group ?? ''))]);
@@ -339,6 +296,14 @@
     <span class="muted">
       {runs.length} runs · up to {stats.peak} at once · {fmtDuration(stats.total)} of run time
     </span>
+    {#if timeZone.pref !== LOCAL}<span
+        class="faint small axiszone"
+        class:mixed={axisZone.note === 'runs from different zones'}
+        title={axisZone.note === 'runs from different zones'
+          ? "These runs were recorded in different time zones, and one axis has one clock, so it is in UTC. Each run's own machine time is in its hover card."
+          : 'The times on this axis are written in this zone.'}
+        >Axis: {axisZone.kit.name}{axisZone.note ? ` · ${axisZone.note}` : ''}</span
+      >{/if}
     <span class="grow"></span>
     <span class="label">Color</span>
     <div class="seg" role="group" aria-label="Color by">
@@ -486,7 +451,7 @@
     <div class="tname mono">{hover.run.name}</div>
     <div class="trow mono faint">{hover.run.id}</div>
     <div class="trow"><Status status={hover.run.status} /> <span class="faint">{hover.run.project}</span></div>
-    <div class="trow">Started {fmtDate(hover.run.started)}</div>
+    <div class="trow">Started {fmtDate(hover.run.started, hover.run)} {fmtZone(hover.run.started ?? 0, hover.run)}</div>
     <div class="trow">Duration {fmtDuration(endOf(hover.run) - (hover.run.started ?? 0))}</div>
     {#if hover.run.group}<div class="trow faint">Group {hover.run.group}</div>{/if}
     {#each hover.run.alerts ?? [] as a, i (i)}<div class="trow warn">{a.message}</div>{/each}
@@ -644,5 +609,18 @@
   }
   .warn {
     color: var(--warn);
+  }
+  .axiszone {
+    white-space: nowrap;
+  }
+  .axiszone.mixed::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    vertical-align: middle;
   }
 </style>

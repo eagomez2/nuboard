@@ -121,7 +121,7 @@ ignore keys they do not know.
 | `config` | object | The config passed to `init`. |
 | `status` | str | `running`, `finished`, `crashed` or `killed`. |
 | `created`, `started`, `ended`, `heartbeat` | float | Unix seconds. `heartbeat` is refreshed every 10 s while running. |
-| `sessions` | list | One `{session, started, ended}` per start or resume. |
+| `sessions` | list | One `{session, started, ended}` per start or resume, plus the machine's `utc_offset`, `utc_offset_end` and `host`; see [Session time zones](#session-time-zones). |
 | `summary` | object | Per scalar: `last`, `step`, `min`, `max`, `count`, `nonfinite`. Non-finite `last` values are the strings `"nan"`, `"inf"`, `"-inf"`. |
 | `baselines` | object | Per scalar, set with `add_scalar_baseline`: `{value}`, plus `low` and `high` when given. Absent when none was set. |
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`, `pushed`, `untracked`, `source`; see below. Null outside a git repository or without git. |
@@ -137,6 +137,27 @@ ignore keys they do not know.
 A run whose `status` is `running` but whose `heartbeat` is older than 120 s is
 shown as **lost** (the process died without running its exit handlers, e.g.
 `SIGKILL` or a node failure). Nothing is written to the folder to mark it.
+
+### Session time zones
+
+All times in a run folder (`created`, `started`, `ended`, `heartbeat`, and the
+`time` column of every frame) are Unix seconds, so they do not depend on the
+machine's time zone. Each `sessions` entry also records the zone of the
+machine that ran it, for display only:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `utc_offset` | int | The machine's offset from UTC in seconds when the session started, east positive (`-10800` is UTC−03:00). Worked out by the operating system, daylight saving included. |
+| `utc_offset_end` | int | The same at `finish`; differs from `utc_offset` when the clocks changed during the session. |
+| `host` | str | The host name that ran the session. Left out with `capture_env=False` (helper jobs always record it, as in their `env`). |
+
+A run resumed on another machine gets one entry per machine. The keys are
+additive: `format_version` stays 1 and readers ignore keys they do not know.
+Runs recorded by 0.21 and earlier lack them, and so do TensorBoard imports,
+whose times come from another machine; readers then fall back to the run id,
+whose timestamp is the machine's local time at `init`, to the minute: the
+difference between it and `created`, rounded to 15 minutes, is the first
+session's offset.
 
 ## `annotations.json`
 

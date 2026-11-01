@@ -8,7 +8,9 @@ import { DISPLAY_NAME, NAME } from './brand';
 import { decodeSpec } from './chartspec';
 import { baselineExtent, baselineLines } from './baselines';
 import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
-import { lowerIsBetter } from './format';
+import { fmtDateTime, lowerIsBetter } from './format';
+import { chartZone } from './chartzone';
+import { makeZone } from './tz';
 import { tableHtml, type TableData } from './tables';
 import { HIST_BOX, fmtTick, histScale, histSvg, loadHist, type HistData, type HistSeries } from './hist';
 import { resolveOverlay } from './overlay';
@@ -255,6 +257,8 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
   const json = JSON.stringify({
     lower: lowerIsBetter(spec.metric),
     xKind: data.xKind,
+    // the zone picked when exporting, so the file reads times the same way on any machine
+    zone: data.xKind === 'time' ? chartZone(data).kit.spec : undefined,
     log: spec.log,
     zoom: spec.zoom,
     range,
@@ -282,7 +286,18 @@ async function bokehScripts(version: string): Promise<string[] | null> {
 }
 
 // Draws every figure for the page's theme, and again when a switchable page changes theme.
-const DRAW = `const nbDrawn = new Map();
+const DRAW = `var nbMakeZone=(${makeZone.toString()});
+const nbZones = new Map();
+function nbZone(z) {
+  const k = JSON.stringify(z);
+  if (!nbZones.has(k)) nbZones.set(k, nbMakeZone(z));
+  return nbZones.get(k);
+}
+function nbTime(x, z) {
+  const k = nbZone(z);
+  return k.format(x, { dateStyle: 'medium', timeStyle: 'medium' }) + ' ' + k.abbr(x);
+}
+const nbDrawn = new Map();
 function nbDraw() {
   const dark = document.documentElement.dataset.theme === 'dark';
   for (const el of document.querySelectorAll('.nbfig')) {
@@ -353,6 +368,19 @@ function nbCharts() {
         tables.push([s.x].concat(cols));
       }
       const axis = { stroke: v('--muted'), grid: { stroke: v('--grid'), width: 1 }, ticks: { show: false }, font: '12px ui-monospace,Menlo,monospace' };
+      let xAxis = {};
+      if (d.xKind === 'time' && d.zone) {
+        const kit = nbZone(d.zone);
+        let labels = new Map();
+        xAxis = {
+          splits: (u, i, min, max) => {
+            const t = kit.ticks(min, max, u.bbox.width / devicePixelRatio / 110);
+            labels = new Map(t.map((x) => [x.t, x.label]));
+            return t.map((x) => x.t);
+          },
+          values: (u, splits) => splits.map((x) => labels.get(x) || ''),
+        };
+      }
       const y = { distr: d.log ? 3 : 1 };
       if (d.range) y.range = () => d.range;
       else if (d.extent) y.range = (u, min, max) => {
@@ -397,8 +425,8 @@ function nbCharts() {
       el.innerHTML = '';
       const u = new uPlot({
         width: el.clientWidth || 800, height: 300, series, bands, legend: { show: false }, padding: [12, 12, 0, 4],
-        scales: { x: { time: d.xKind === 'time' }, y },
-        axes: [Object.assign({ size: 40 }, axis), Object.assign({ size: 56 }, axis)],
+        scales: { x: { time: false }, y },
+        axes: [Object.assign({ size: 40 }, axis, xAxis), Object.assign({ size: 56 }, axis)],
         cursor: { drag: { x: true, y: false }, points: { show: false } },
         hooks: { draw: [drawBaselines], setCursor: [(p) => p.nbTip && p.nbTip()] },
       }, tables.length === 1 ? tables[0] : uPlot.join(tables), el);
@@ -664,7 +692,7 @@ export async function reportHasAudio(project: string, text: string): Promise<boo
 /** The footer a report gets unless it is changed when exporting. */
 export function defaultFooter(project: string, version = ''): string {
   const name = version ? `${DISPLAY_NAME} ${version}` : DISPLAY_NAME;
-  return `Exported with ${name} from ${project}/reports on ${new Date().toLocaleString()}`;
+  return `Exported with ${name} from ${project}/reports on ${fmtDateTime(Date.now() / 1000)}`;
 }
 
 /** Build the standalone HTML of a report. */

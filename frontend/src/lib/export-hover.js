@@ -178,7 +178,8 @@
     var tip = make(el, 'nbtip');
     var pinned = false;
     var fmtX = function (x) {
-      if (d.xKind === 'time') return new Date(x * 1000).toLocaleString();
+      // in the zone picked when exporting (nbTime is defined with the charts)
+      if (d.xKind === 'time') return window.nbTime(x, d.zone);
       if (d.xKind === 'relative' || d.xKind === 'active') {
         var s = Math.round(x);
         var h = Math.floor(s / 3600);

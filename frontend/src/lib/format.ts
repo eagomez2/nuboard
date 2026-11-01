@@ -1,3 +1,6 @@
+import { timeZone, type RunZoneInfo } from './timezone.svelte';
+import type { ZoneKit } from './tz';
+
 export function fmtNum(v: number | null | undefined, digits = 4): string {
   if (v === null || v === undefined) return '—';
   if (Number.isNaN(v)) return 'NaN';
@@ -29,19 +32,49 @@ export function fmtDuration(s: number | null | undefined): string {
   return `${Math.floor(s / 86400)}d ${Math.round((s % 86400) / 3600)}h`;
 }
 
-export function fmtAgo(t: number | null | undefined, now = Date.now() / 1000): string {
+export function fmtAgo(t: number | null | undefined, now = Date.now() / 1000, run?: RunZoneInfo | null): string {
   if (!t) return '—';
   const d = now - t;
   if (d < 45) return 'just now';
   if (d < 3600) return `${Math.round(d / 60)} min ago`;
   if (d < 86400) return `${Math.round(d / 3600)} h ago`;
   if (d < 86400 * 30) return `${Math.round(d / 86400)} d ago`;
-  return new Date(t * 1000).toLocaleDateString();
+  return timeZone.kitAt(t, run).kit.format(t, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
-export function fmtDate(t: number | null | undefined): string {
+// Wall-clock times. Every one the viewer shows goes through these, so all views
+// agree; lint forbids formatting a Date anywhere else. A time that belongs to a run
+// passes the run: by default ("machine time") it is written on the clock of the
+// machine that recorded it. Times shared by several runs (an axis, a read-out) use
+// `timeZone.shared(runs)` and `fmtTimeIn`.
+
+/** The zone's short name at `t`, marked when machine time was asked for but is not known. */
+function zoneName(kit: ZoneKit, known: boolean, t: number): string {
+  return known ? kit.abbr(t) : `${kit.abbr(t)} (local)`;
+}
+
+/** A date and time to the minute: `Oct 13, 2026, 07:20`. */
+export function fmtDate(t: number | null | undefined, run?: RunZoneInfo | null): string {
   if (!t) return '—';
-  return new Date(t * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return timeZone.kitAt(t, run).kit.format(t, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** A date and time to the second, with the zone: `Oct 13, 2026, 07:20:05 GMT-3`. For hover read-outs. */
+export function fmtDateTime(t: number | null | undefined, run?: RunZoneInfo | null): string {
+  if (!t) return '—';
+  const { kit, known } = timeZone.kitAt(t, run);
+  return `${kit.format(t, { dateStyle: 'medium', timeStyle: 'medium' })} ${zoneName(kit, known, t)}`;
+}
+
+/** A date and time to the second in a given zone, with its name, such as an axis read-out's. */
+export function fmtTimeIn(kit: ZoneKit, t: number, clockOnly = false): string {
+  return `${kit.format(t, clockOnly ? { timeStyle: 'medium' } : { dateStyle: 'medium', timeStyle: 'medium' })} ${kit.abbr(t)}`;
+}
+
+/** The zone a run's time `t` is written in, such as `UTC−03:00` or `GMT-3 (local)`. */
+export function fmtZone(t: number, run?: RunZoneInfo | null): string {
+  const { kit, known } = timeZone.kitAt(t, run);
+  return zoneName(kit, known, t);
 }
 
 /** A byte count with a binary unit: 512 B, 1.5 KB, 240 MB. */
