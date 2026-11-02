@@ -2,8 +2,8 @@
 
 The **Hypotheses** page keeps the story behind your runs: what you were
 testing, which runs tested it, what you concluded, and which run gave you the
-next idea. It draws that story as a tree you can read left to right, or as a
-timeline.
+next idea. Its **Board** view draws that story as a tree of cards you read
+left to right; its **Timeline** view lists the same runs by date.
 
 ![Hypotheses page](../assets/hypotheses-light.png){ .nb-shot }
 
@@ -15,7 +15,7 @@ then to CutMix, and ends on a planned card that has no runs yet.
 ## Boards, cards and arrows
 
 - A **board** is one tree of hypotheses in a project. A project can have
-  several boards, one per study. The **Boards** list on the left shows every
+  several boards, one per study. The **Hypotheses** list on the left shows every
   project's boards (or only the project picked in the workspace), like the
   Reports list; press **New** to start one. `[` folds the list. Each board can have a title and a
   description, shown above the cards.
@@ -36,8 +36,11 @@ appear on several boards.
 
 ## Working with the board
 
-- **Start**: with nothing selected, the side panel has a **New hypothesis**
-  form. Give the question and, if you like, the first run that tests it.
+- **Start**: press **New hypothesis** at the top right (or click the empty
+  canvas to clear the selection) and fill in the form in the side panel: the
+  question and, if you like, the first run that tests it. A board can have
+  several starting points; a hypothesis with nothing under **Comes from** is
+  one.
 - **Add runs**: open a card and use **Add a run…**. The list offers the
   project's runs that are not on the board yet.
 - **Follow up**: click a run, write the next hypothesis under **Follow up**
@@ -64,7 +67,7 @@ appear on several boards.
   (name, color, icon) and the outcomes (name, color, dead end) of the board.
   Each list holds up to eight.
 
-**Timeline** lists the runs of the board in the order they started, with one
+**Timeline** (next to **Board** in the toolbar) lists the runs of the board in the order they started, with one
 lane per hypothesis and a curve where a hypothesis grew out of an earlier run.
 
 ## Missing runs and reports

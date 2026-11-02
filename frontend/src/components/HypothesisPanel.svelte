@@ -2,6 +2,7 @@
   // The side panel of the Hypotheses page: what is selected (a hypothesis, a run, or several runs
   // picked with Shift), or how to start when nothing is. Every change goes through `onsave` with an
   // edited copy, so the page stays the only writer. Runs and reports that are gone show greyed.
+  import { untrack } from 'svelte';
   import type { SvelteSet } from 'svelte/reactivity';
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
@@ -35,6 +36,7 @@
     ondelete,
     onselect,
     oncategories,
+    askNew = 0,
   }: {
     data: BoardData;
     project: string;
@@ -47,6 +49,8 @@
     ondelete: (h: Hypothesis) => void;
     onselect: (hyp?: string | null, run?: string | null) => void;
     oncategories: () => void;
+    /** Bumped to show and focus the New hypothesis form. */
+    askNew?: number;
   } = $props();
 
   const side = new Fold('hypothesesPanelFolded');
@@ -90,6 +94,13 @@
 
   // -- forms ------------------------------------------------------------------------------------
   let newTitle = $state('');
+  let newInput = $state<HTMLInputElement>();
+  $effect(() => {
+    if (!askNew) return;
+    untrack(() => side.folded && side.toggle());
+    // the form renders once the selection is cleared
+    requestAnimationFrame(() => newInput?.focus());
+  });
   let newRun = $state('');
   let followTitle = $state('');
   let followReason = $state('');
@@ -151,7 +162,7 @@
   <aside class="card side">
     <div class="head">
       <span class="label">
-        {#if picked.size}{picked.size} runs picked{:else if hrun}Run{:else if hyp}Hypothesis{:else}Hypotheses{/if}
+        {#if picked.size}{picked.size} runs picked{:else if hrun}Run{:else if hyp}Hypothesis{:else}Getting started{/if}
       </span>
       <button class="btn btn-ghost icon" aria-label="Hide the panel" title="Hide the panel" onclick={side.toggle}
         ><Icon name="sidebar" size={16} /></button
@@ -607,7 +618,13 @@
       {#if !ro}
         <form class="box" onsubmit={create}>
           <span class="label">New hypothesis</span>
-          <input class="input" bind:value={newTitle} placeholder="What are you testing?" aria-label="Title" />
+          <input
+            class="input"
+            bind:this={newInput}
+            bind:value={newTitle}
+            placeholder="What are you testing?"
+            aria-label="Title"
+          />
           <select class="input" bind:value={newRun} aria-label="First run">
             <option value="">No run yet</option>
             {#each unfiled as r (r.id)}<option value={r.id}>{r.name}</option>{/each}

@@ -12,7 +12,7 @@
     placeholder = '',
     newLabel = 'New',
     describedby,
-    limit = 50,
+    limit = 8,
   }: {
     id: string;
     value?: string; // undefined until the dialog fills its values in
@@ -148,17 +148,11 @@
   .combo .input {
     width: 100%;
   }
+  /* in the flow rather than floating, so a dialog grows to show it instead of cutting it off */
   .list {
-    position: absolute;
-    z-index: 20;
-    left: 0;
-    right: 0;
-    top: calc(100% + 4px);
-    margin: 0;
+    margin: 4px 0 0;
     padding: 4px;
     list-style: none;
-    max-height: 240px;
-    overflow: auto;
     box-shadow: 0 12px 28px -8px rgba(16, 24, 40, 0.35);
   }
   li {

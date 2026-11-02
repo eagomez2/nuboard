@@ -114,6 +114,8 @@
   const showDead = new SvelteSet<string>();
   let hover = $state<{ run?: string; hyp?: string } | null>(null);
   let categories = $state(false);
+  // bumped by "New hypothesis": the panel opens its form
+  let askNew = $state(0);
   let drag = $state<{ h: Hypothesis; x: number; y: number; dx: number; dy: number; moved: boolean } | null>(null);
 
   const opts = $derived<ViewOptions | null>(
@@ -382,7 +384,7 @@
   {:else}
     <aside class="card side">
       <div class="head">
-        <span class="label">Boards</span>
+        <span class="label">Hypotheses</span>
         <span class="grow"></span>
         {#if !data?.read_only}
           <button class="btn sm" onclick={newBoard}><Icon name="plus" size={15} /> New</button>
@@ -398,10 +400,10 @@
         <p class="faint small">No boards yet. Press <b>New</b> to start one.</p>
       {/if}
       {#each byProject as g (g.p)}
-        <div class="proj faint small mono" title={g.p}>{g.p}</div>
+        <div class="item group" title={g.p}><Icon name="folder" size={16} /><span class="bt">{g.p}</span></div>
         {#each g.boards as b (b.project + '/' + b.name)}
           <button
-            class="item"
+            class="item child"
             class:on={b.project === project && b.name === data?.name}
             onclick={() => {
               select(null, null);
@@ -410,12 +412,12 @@
             title="{b.project}/hypotheses/{b.name}/"
           >
             <Icon name="tree" size={15} />
-            <span class="t">{boardLabel(b)}</span>
-            <span class="faint small">{b.count}</span>
+            <span class="bt">{boardLabel(b)}</span>
+            <span class="count">{b.count}</span>
           </button>
         {/each}
       {/each}
-      <p class="hint faint small">
+      <p class="hint">
         A board is one study: a tree of hypotheses and the runs that tested them. Boards are JSON files in
         <code>&lt;project&gt;/hypotheses/</code>.
       </p>
@@ -441,7 +443,7 @@
       <div class="toolbar">
         <div class="seg" role="group" aria-label="View">
           <button aria-pressed={view === 'tree'} onclick={() => router.set({ hview: null })}
-            ><Icon name="tree" size={15} /> Tree</button
+            ><Icon name="tree" size={15} /> Board</button
           >
           <button aria-pressed={view === 'timeline'} onclick={() => router.set({ hview: 'timeline' })}
             ><Icon name="timeline" size={15} /> Timeline</button
@@ -508,7 +510,15 @@
           >
         {/if}
         <span class="grow"></span>
-        {#if ro}<span class="chip">Read-only</span>{/if}
+        {#if ro}<span class="chip">Read-only</span>{:else}
+          <button
+            class="btn sm"
+            onclick={() => {
+              select(null, null);
+              askNew++;
+            }}><Icon name="plus" size={15} /> New hypothesis</button
+          >
+        {/if}
       </div>
 
       <div class="layout">
@@ -563,7 +573,17 @@
             {/if}
           </div>
 
-          <div class="stage" class:dragging={!!drag} onmouseleave={() => (hover = null)} role="presentation">
+          <div
+            class="stage"
+            class:dragging={!!drag}
+            onmouseleave={() => (hover = null)}
+            onclick={(e) => {
+              // a click on the empty canvas clears the selection
+              const t = e.target as Element;
+              if (!justDragged && (t === e.currentTarget || t.classList.contains('canvas'))) select(null, null);
+            }}
+            role="presentation"
+          >
             {#if !data.hypotheses.length}
               <div class="empty faint">
                 <p><b>No hypotheses yet.</b></p>
@@ -856,6 +876,7 @@
           ondelete={remove}
           onselect={select}
           oncategories={() => (categories = true)}
+          {askNew}
         />
       </div>
 
@@ -876,6 +897,58 @@
 </div>
 
 <style>
+  /* the side list, as the Runs workspace draws it: a folder per project, its items indented */
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    background: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    text-align: left;
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .item.group {
+    margin-top: 2px;
+    cursor: default;
+  }
+  .item.child {
+    padding-left: 22px;
+  }
+  .item.child:hover {
+    background: var(--panel-2);
+  }
+  .item.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 550;
+  }
+  .bt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .count {
+    flex: none;
+    color: var(--faint);
+    font: 12px var(--mono);
+  }
+  .hint {
+    color: var(--faint);
+    font-size: 12.5px;
+    margin: 14px 8px 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .hint code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
   .pick {
     padding: 20px;
   }
@@ -932,42 +1005,6 @@
   }
   .small {
     font-size: 12px;
-  }
-  .proj {
-    margin: 8px 2px 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 0;
-    background: none;
-    border-radius: 8px;
-    padding: 7px 8px;
-    text-align: left;
-    min-width: 0;
-    color: var(--text);
-  }
-  .item:hover {
-    background: var(--panel-2);
-  }
-  .item.on {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-  .item .t {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .hint {
-    margin: 12px 2px 0;
-    line-height: 1.5;
   }
   .board-head .danger {
     color: var(--err);
