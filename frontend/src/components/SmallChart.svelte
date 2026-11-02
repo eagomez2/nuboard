@@ -3,7 +3,7 @@
   import LineChart, { type CursorValue } from './LineChart.svelte';
   import { api, type ChartData } from '../lib/api';
   import { chartZone } from '../lib/chartzone';
-  import { fmtDuration, fmtNum, fmtTimeIn, lowerIsBetter } from '../lib/format';
+  import { fmtDuration, fmtNum, fmtSeconds, fmtTimeIn, lowerIsBetter } from '../lib/format';
 
   let {
     metric,
@@ -25,6 +25,7 @@
     markers = true,
     pinX = null,
     fullName = false,
+    timing = false,
   }: {
     metric: string;
     runs: string[];
@@ -48,6 +49,8 @@
     pinX?: number | null;
     /** The full metric name as a caption under the chart. */
     fullName?: boolean;
+    /** A timer: durations on the y axis and in the tooltip, lower being better. */
+    timing?: boolean;
   } = $props();
 
   // A tooltip with each run's value under the cursor (or at the pinned step), best first.
@@ -58,7 +61,7 @@
   let pinValues = $state<CursorValue[]>([]);
   const tipX = $derived(pinX ?? cursorX);
   const rows = $derived.by(() => {
-    const lower = lowerIsBetter(metric);
+    const lower = timing || lowerIsBetter(metric);
     return [...(pinX != null ? pinValues : cursorValues)].sort((a, b) =>
       lower ? a.value - b.value : b.value - a.value,
     );
@@ -139,6 +142,7 @@
         {colorOf}
         {themeVersion}
         height={150}
+        yFormat={timing ? fmtSeconds : undefined}
         compact
         {markers}
         {pinX}
@@ -161,7 +165,7 @@
             <div class="trow">
               <i style="background:{colorOf(v.label, v.series)}"></i>
               <span class="mono trunc tl">{v.label}</span>
-              <span class="mono tv">{fmtNum(v.value)}</span>
+              <span class="mono tv">{timing ? fmtSeconds(v.value) : fmtNum(v.value)}</span>
             </div>
           {/each}
           {#if rows.length > TIP_ROWS}<div class="faint more">+{rows.length - TIP_ROWS} more</div>{/if}

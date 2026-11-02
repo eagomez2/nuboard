@@ -514,6 +514,13 @@ def create_app(
                 info = media_keys.setdefault(text.key, {"kind": "text", "count": 0})
                 info["count"] += 1
 
+        timing = False
+
+        if reader is not None:
+            from ..timings import timer_keys, timing_prefix
+
+            timing = bool(timer_keys(reader, timing_prefix(meta)))
+
         return JSON(
             {
                 "run": record,
@@ -521,9 +528,40 @@ def create_app(
                 "files": files,
                 "ranks": ranks,
                 "media": media_keys,
+                "timing": timing,
                 "annotations": _fs.read_json(path / "annotations.json", {}),
             }
         )
+
+    def run_timing(request: Request) -> Response:
+        """Return the summary of a run's timers for its Timing tab.
+
+        Query parameter `rank`: a rank number (default 0) or `all` for every
+        rank (per step the mean, with min and max across ranks).
+        """
+        key = request.path_params["key"]
+        record_or_404(key)
+        raw = request.query_params.get("rank", "0")
+
+        try:
+            rank = None if raw == "all" else int(raw)
+        except ValueError:
+            return PlainTextResponse("rank must be a number or 'all'", 400)
+
+        return JSON(store.timing(key, rank) or {})
+
+    def run_timing_spans(request: Request) -> Response:
+        """Return the spans of one step of a run (query parameter `step`; default the last)."""
+        key = request.path_params["key"]
+        record_or_404(key)
+        raw = request.query_params.get("step")
+
+        try:
+            step = int(raw) if raw not in (None, "") else None
+        except ValueError:
+            return PlainTextResponse("step must be a number", 400)
+
+        return JSON(store.timing_spans(key, step) or {})
 
     def run_file(request: Request) -> Response:
         """Return a file from the run's `files/` folder as text (2 MB at most).
@@ -2045,6 +2083,8 @@ def create_app(
         Route("/api/runs/{key}", annotate, methods=["PATCH"]),
         Route("/api/runs/{key}/files/{path:path}", run_file),
         Route("/api/runs/{key}/tree", run_tree),
+        Route("/api/runs/{key}/timing", run_timing),
+        Route("/api/runs/{key}/timing/spans", run_timing_spans),
         Route("/api/runs/{key}/text/{path:path}", run_text),
         Route("/api/runs/{key}/raw/{path:path}", run_raw),
         Route("/api/runs/{key}/inspect/{path:path}", run_inspect),

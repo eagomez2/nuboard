@@ -19,12 +19,14 @@ from typing import Any
 from urllib.parse import urlencode
 
 from . import _fs
+from ._writer import Writer
 from .cells import Audio
 from .collection import save_collection
 from .figures import WaveformFigure
 from .hypotheses import save_board, save_hypothesis
 from .reports import save_fields, save_report, save_snapshot
-from .run import add_artifact, init
+from .run import Run, add_artifact, init
+from .timing import COUNT
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
 LLM_STEPS = 25_000
@@ -183,6 +185,16 @@ def llm_point(
         "train/tokens": step * 512 * 2048,
         "perf/tokens_per_sec": tps,
     }
+
+
+def _own(run: Run, step: int, t: float, data: dict[str, float]) -> None:
+    """Log scalars as the run's own (system metrics, timers), as a real run would.
+
+    `add_scalar` would warn that they use a reserved prefix.
+    """
+    run._ensure_writer()
+    assert run._writer is not None
+    run._writer.put_own_scalars(step, t, data)
 
 
 def _llm_system(step: int, rng: random.Random, dip: bool = False) -> dict[str, float]:
@@ -350,7 +362,7 @@ def _llm_runs(root: Path, base: float) -> None:
 
             if step % 500 == 0:
                 dip = lr == 1e-3 and seed == 1 and 18_000 <= step < 18_900
-                run.add_scalar(_llm_system(step, rng, dip), step=step, time=t)
+                _own(run, step, t, _llm_system(step, rng, dip))
 
             if step % 5000 == 0:
                 run.add_text("samples/generation", _sample_text(step, rng), step=step)
@@ -630,9 +642,15 @@ def _vit_runs(root: Path, base: float) -> None:
         _add_config_file(run, config)
         run.use_artifact(f"datasets/{images.ref}")
         t = started
+        # cutmix-s1 ran on 4 GPUs and timed every rank; the others time rank 0 only
+        ranks = [
+            Writer(run.path, r, run.session)
+            for r in (range(1, 4) if (aug, seed) == ("cutmix", 1) else ())
+        ]
 
         for epoch in range(101):
             t = started + epoch * 60
+            _vit_timing(run, ranks, epoch, t, rng, slow_data=aug == "randaug")
             acc = 0.62 + gains[aug] + 0.18 * (1 - math.exp(-epoch / 25)) + rng.gauss(0, 0.004)
             run.add_scalar(
                 {
@@ -683,10 +701,62 @@ def _vit_runs(root: Path, base: float) -> None:
                 run.add_figure("eval/confusion", _plotly_confusion(rng, per_class), step=epoch)
 
         ids[f"{aug}-s{seed}"] = run.id
-        run.finish(_ended=t)
+
+        for w in ranks:
+            w.close("finished")
+
+        run.finish(_ended=t + 60)
 
     _vit_notes(root / "vit-ablations", ids, curves)
     _vit_hypotheses(root / "vit-ablations", ids)
+
+
+def _vit_timing(
+    run: Run, ranks: list[Writer], epoch: int, t0: float, rng: random.Random, slow_data: bool
+) -> None:
+    """Log the timers of one 60-second epoch.
+
+    Rank 0 times training (with data loading inside), validation and callbacks;
+    the extra ranks time training and validation, with rank 2 a little slower.
+    """
+    batches = 490
+    wait = 2.6 + (2.4 * epoch / 100 if slow_data else 0) + rng.gauss(0, 0.2)
+    ckpt = 2.2 + rng.gauss(0, 0.15)
+
+    if epoch % 25 == 24:  # a full checkpoint with the optimizer state
+        ckpt += 4.5
+
+    if epoch == 71 and slow_data:  # the shared filesystem stalled once
+        ckpt = 9.7
+
+    lanes = [(0, None), *((r + 1, w) for r, w in enumerate(ranks))]
+    train = {r: 41.0 + rng.gauss(0, 0.35) + (1.8 if r == 2 else 0) for r, _ in lanes}
+    end = max(train.values()) + 0.05  # the ranks meet before validation
+
+    for r, writer in lanes:
+        val = 9.3 + rng.gauss(0, 0.12)
+        points = {
+            "train/epoch": (t0, train[r], None),
+            "data/wait": (t0 + 0.2, wait * (1.04 if r == 2 else 1), batches),
+            "val/epoch": (t0 + end, val, None),
+        }
+
+        if r == 0:
+            cb = t0 + end + val + 0.05
+            points |= {
+                "callbacks/EMA.on_batch_end": (t0 + 0.3, 0.8 + rng.gauss(0, 0.03), batches),
+                "callbacks/EarlyStopping.on_val_end": (cb, 0.003, None),
+                "callbacks/Checkpoint.on_epoch_end": (cb + 0.01, ckpt, None),
+            }
+
+        for name, (start, seconds, count) in points.items():
+            key = f"timing/{name}"
+            data = {key: seconds, **({key + COUNT: count} if count else {})}
+
+            if writer is None:
+                _own(run, epoch, start, data)
+            else:
+                writer.put_own_scalars(epoch, start, data)
 
 
 def _vit_extra(epoch: int, acc: float, rng: random.Random) -> dict[str, float]:

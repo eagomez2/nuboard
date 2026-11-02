@@ -8,6 +8,7 @@
   import Status from './Status.svelte';
   import TagEditor from './TagEditor.svelte';
   import Terminal from './Terminal.svelte';
+  import TimingView from './TimingView.svelte';
   import { isTerminalText, stripAnsi } from '../lib/ansi';
   import { api, num, type RunDetail, type RunTree } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
@@ -145,7 +146,7 @@
   const artifactRef = (a: { artifact: string; version: number; project?: string; unlinked?: boolean }) =>
     `${a.project ? a.project + '/' : ''}${a.artifact}:v${a.version}${a.unlinked ? ' (unlinked)' : ''}`;
   const isConsole = (f: string) => /^output(\.r\d+)?\.log$/.test(f);
-  const fileTab = $derived(!['settings', 'notes', 'properties', 'filetree'].includes(tab) && !pinOf(tab));
+  const fileTab = $derived(!['settings', 'notes', 'properties', 'filetree', 'timing'].includes(tab) && !pinOf(tab));
   const showsTerminal = $derived(!multi && fileTab && (isConsole(tab) || (!!texts[0] && isTerminalText(texts[0]))));
   // Other files are in the Files tab, or pinned
   const files = $derived([...new Set(details.flatMap((d) => d.files))].filter(isConsole).sort());
@@ -159,7 +160,7 @@
     const t = tab;
     const ks = runKeys;
     void statusKey; // a finished run's console is read once more
-    if (t === 'settings' || t === 'notes' || t === 'properties' || t === 'filetree' || pinOf(t) || !ks) return;
+    if (['settings', 'notes', 'properties', 'filetree', 'timing'].includes(t) || pinOf(t) || !ks) return;
     loadingFile = true;
     const term = isConsole(t);
     Promise.all(ks.split(',').map((k) => api.file(k, t, term))).then((x) => {
@@ -323,6 +324,14 @@
       title="Every file in the run folder: browse, preview, diff, download and pin"
       onclick={() => router.set({ tab: 'filetree' })}>Files</button
     >
+    {#if details.length === 1 && details[0].timing}
+      <button
+        class="tab"
+        aria-pressed={tab === 'timing'}
+        title="Where this run's time went: its timers, per step and per rank"
+        onclick={() => router.set({ tab: 'timing' })}>Timing</button
+      >
+    {/if}
     {#each pinTabs as p (p)}
       <button
         class="tab mono"
@@ -403,6 +412,8 @@
     <NotesEditor run={details[0].run} />
   {:else if tab === 'properties' && details.length === 1}
     <PropertiesEditor run={details[0].run} />
+  {:else if tab === 'timing' && details.length === 1}
+    <TimingView detail={details[0]} />
   {:else if tab === 'filetree' || pinOf(tab)}
     {#if multi && details.length > 2}
       <p class="muted small">

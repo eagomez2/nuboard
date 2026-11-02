@@ -54,11 +54,12 @@ open the Charts page. The [quickstart](https://eagomez2.github.io/nuboard/quicks
 
 | Area | What you get |
 | --- | --- |
-| Python API | `init` (with resume, fork, ranks and extra jobs such as an evaluator), `add_scalar` and `add_*` for text, images, audio, video, figures (Plotly, Vega-Lite, Bokeh, matplotlib, waveforms), histograms, PR curves, tables, point clouds, HTML and files; versioned artifacts with `add_artifact` and `use_artifact`; system metrics and console capture. See the [Python API](https://eagomez2.github.io/nuboard/api/) |
+| Python API | `init` (with resume, fork, ranks and extra jobs such as an evaluator), `add_scalar` and `add_*` for text, images, audio, video, figures (Plotly, Vega-Lite, Bokeh, matplotlib, waveforms), histograms, PR curves, tables, point clouds, HTML and files; versioned artifacts with `add_artifact` and `use_artifact`; timers (`run.timer`) for epochs, validation and callbacks; system metrics and console capture. See the [Python API](https://eagomez2.github.io/nuboard/api/) |
 | Storage | a documented [file format](https://eagomez2.github.io/nuboard/reference/format/), Parquet compaction with zoom levels, versioned artifacts |
 | Analysis | `nb.load("project").scalars("loss", group_by="config.lr")` returns Arrow tables |
 | Runs | a query language, stars, notes, tags, typed properties, collections, saved views, run details and config and file diffs |
 | Charts | grouped lines with bands, smoothing, zoom that loads finer data, a linked crosshair, live updates, any scalar as the x axis |
+| Timing | where a run's time went: each timer's calls, mean, p95, total and share, its duration per step, findings such as spikes and slow ranks, and a timeline of one step with a lane per rank |
 | Media | every logged kind with a step slider, side-by-side comparison across runs and steps, and interactive figures |
 | Hypotheses | boards that track what each run was testing and which result led to the next idea |
 | Reports | Markdown reports with logged items, live charts and snapshots; export as HTML or a zip |

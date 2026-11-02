@@ -9,7 +9,17 @@
   import { api, type Alert, type ChartData } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import {
+    defaultMetric,
+    fmtAgo,
+    fmtDuration,
+    fmtTimeIn,
+    fmtNum,
+    fmtSeconds,
+    fmtValue,
+    lowerIsBetter,
+  } from '../lib/format';
+  import { reservedPrefixes, sectionOf } from '../lib/prefixes';
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -80,8 +90,16 @@
   const focus = $derived.by(() => {
     const m = router.get('metric');
     if (m && metrics.includes(m)) return m;
-    return defaultMetric(metrics);
+    return defaultMetric(metrics.filter((m) => !isReserved(sectionOf(m)))) || defaultMetric(metrics);
   });
+  // Timers and system metrics are the run's own scalars: their sections come last and start
+  // folded, and timer charts show durations (1.2 s, 3m 05s) with lower being better.
+  const reserved = $derived(reservedPrefixes(runs));
+  const isReserved = (prefix: string) => reserved.timing.has(prefix) || reserved.system.has(prefix);
+  const isTiming = (metric: string) => reserved.timing.has(sectionOf(metric));
+  const focusTiming = $derived(isTiming(focus));
+  const fmtV = (v: number | null | undefined, digits?: number) =>
+    focusTiming && v != null ? fmtSeconds(v) : fmtNum(v, digits);
   const tabs = $derived.by(() => {
     const prefix = focus.split('/')[0];
     const same = metrics.filter((m) => m.split('/')[0] === prefix || /loss/.test(m));
@@ -217,7 +235,7 @@
   }
 
   // ---- derived summaries ----
-  const lower = $derived(lowerIsBetter(focus));
+  const lower = $derived(focusTiming || lowerIsBetter(focus));
   const best = $derived.by(() => {
     const finite = (focusData?.series ?? []).filter((s) => s.last !== null && !s.nonfinite);
     if (!finite.length) return null;
@@ -346,6 +364,7 @@
   let folded = $state<Record<string, boolean>>(prefs.get('chartFolds', {}));
   function sectionOpen(prefix: string, i: number): boolean {
     if (metricFind) return true;
+    if (folded[prefix] === undefined && isReserved(prefix)) return false;
     return folded[prefix] === undefined ? sections.length <= 6 || i < 3 : !folded[prefix];
   }
   function setFolded(next: Record<string, boolean>) {
@@ -355,11 +374,12 @@
   const sections = $derived.by(() => {
     const map = new Map<string, string[]>();
     for (const m of shownMetrics) {
-      const p = m.includes('/') ? m.split('/')[0] : 'other';
+      const p = sectionOf(m);
       if (!map.has(p)) map.set(p, []);
       map.get(p)!.push(m);
     }
-    return [...map.entries()];
+    const last = (p: string) => (reserved.timing.has(p) ? 2 : reserved.system.has(p) ? 1 : 0);
+    return [...map.entries()].sort((a, b) => last(a[0]) - last(b[0]));
   });
 
   // Without a hover, the inspector shows each shown series' latest value (in the zoomed range).
@@ -542,7 +562,7 @@
         <span class="trunc" title="Best {focus || 'metric'}">Best {focus || 'metric'}</span>
         <span class="faint keep">({lower ? 'Lowest' : 'Highest'} last)</span>
       </div>
-      <div class="big mono">{best ? fmtNum(best.last) : '—'}</div>
+      <div class="big mono">{best ? fmtV(best.last) : '—'}</div>
       {#if best}
         <div class="sub nowrap">
           <Marker index={colorIndex.get(best.label) ?? 0} color={colorOf(best.label, 0)} />
@@ -628,7 +648,7 @@
           <Marker index={i} color={colorOf(s.label, i)} />
           {@render seriesName(s.label, 'lab')}
           {#if s.n}<span class="faint">n={s.n}</span>{/if}
-          <span class="mono" class:errc={s.nonfinite}>· {s.nonfinite ? 'NaN' : fmtNum(s.last)}</span>
+          <span class="mono" class:errc={s.nonfinite}>· {s.nonfinite ? 'NaN' : fmtV(s.last)}</span>
         </button>
       {/each}
       {#if seriesLabels.length > LEGEND_MAX && !legendFind.trim()}
@@ -889,6 +909,7 @@
       <div class="plotwrap">
         <LineChart
           data={focusData}
+          yFormat={focusTiming ? fmtSeconds : undefined}
           {smoothing}
           {showRaw}
           {showBands}
@@ -960,11 +981,11 @@
           <div class="itop">
             <Marker index={colorIndex.get(v.label) ?? v.series} color={colorOf(v.label, v.series)} />
             {@render seriesName(v.label, 'ilab')}
-            <span class="mono ival keep">{fmtNum(v.value)}</span>
+            <span class="mono ival keep">{fmtV(v.value)}</span>
             {#if groupBy && v.lo !== null && v.hi !== null && agg === 'std'}<span class="mono faint keep"
-                >±{fmtNum((v.hi - v.lo) / 2, 2)}</span
+                >±{fmtV((v.hi - v.lo) / 2, 2)}</span
               >{:else if !groupBy && focusData?.series[v.series]?.band && v.lo !== null && v.hi !== null && Number.isFinite(v.lo) && Number.isFinite(v.hi)}<span
-                class="mono faint keep">{fmtNum(v.lo)} to {fmtNum(v.hi)}</span
+                class="mono faint keep">{fmtV(v.lo)} to {fmtV(v.hi)}</span
               >{/if}
           </div>
           <div class="bar"><span style="width:{v.frac * 100}%; background:{colorOf(v.label, v.series)}"></span></div>
@@ -981,9 +1002,9 @@
           <div class="itop">
             <span class="dash" style="border-color:{color}"></span>
             <span class="ilab">Baseline</span>
-            <span class="mono ival keep">{fmtNum(b.value)}</span>
+            <span class="mono ival keep">{fmtV(b.value)}</span>
             {#if b.low !== undefined && b.high !== undefined}<span class="mono faint keep"
-                >{fmtNum(b.low)} to {fmtNum(b.high)}</span
+                >{fmtV(b.low)} to {fmtV(b.high)}</span
               >{/if}
           </div>
           <div class="mono faint trunc runs" title={b.labels.join(', ')}>{b.labels.join(', ')}</div>
@@ -1099,6 +1120,7 @@
                 markers={showDots}
                 pinX={pinned ? cursorX : null}
                 fullName={showNames}
+                timing={isTiming(m)}
                 onFocus={() => {
                   router.set({ metric: m, zoom: null });
                   window.scrollTo({ top: 0, behavior: 'smooth' });

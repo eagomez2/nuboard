@@ -1998,6 +1998,32 @@ test('a text file that fits its box has no Full screen button', async ({ page })
   await expect(page.getByRole('button', { name: /full screen/i })).toHaveCount(0);
 });
 
+test("the Timing tab shows where a run's time went, per rank", async ({ page }) => {
+  const runs = (await (await page.request.get('/api/runs?project=vit-ablations')).json()).runs;
+  const run = runs.find((r: { name: string }) => r.name === 'cutmix-s1');
+  await page.goto(`/#/runs?project=vit-ablations&cmp=${run.key}`);
+  await page.getByRole('button', { name: 'Timing', exact: true }).click();
+  // findings, then the timers in tree order with a summed child under train/epoch
+  await expect(page.locator('.chip', { hasText: 'rank 2 slowest' })).toBeVisible();
+  const rows = page.locator('tr.row');
+  await expect(rows.first()).toContainText('train/epoch');
+  await expect(rows.nth(1)).toContainText('data/wait');
+  await expect(rows.nth(1)).toContainText('summed');
+  await expect(page.getByText('waiting for other ranks')).toBeVisible();
+  await expect(page.getByText('not under a timer')).toBeVisible();
+  // a lane per rank in the timeline
+  await expect(page.locator('svg text', { hasText: /^rank 3$/ })).toBeVisible();
+  // a row opens its chart, which jumps to Charts on that scalar
+  await rows.first().click();
+  await page.getByRole('button', { name: /Open in Charts/ }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*metric=timing(%2F|\/)train(%2F|\/)epoch/);
+  await expect(page.locator('.stat .big').first()).toContainText(/\d s$/);
+  // on Charts, the timing section comes last and starts folded
+  const last = page.locator('.sect .fold').last();
+  await expect(last).toContainText('timing');
+  await expect(last).toHaveAttribute('aria-expanded', 'false');
+});
+
 test.describe('time zone', () => {
   // the browser is in Santiago; the viewer is set to Tokyo (UTC+9, no daylight saving)
   test.use({ timezoneId: 'America/Santiago', locale: 'en-US' });

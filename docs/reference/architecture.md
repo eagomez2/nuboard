@@ -102,6 +102,12 @@ PyArrow or the server.
   from the requested point count and visible range, and returns chart data as
   an Arrow IPC stream (`series, x, y, lo, hi` columns plus series metadata in
   the schema).
+- `timings.py` turns a run's timer scalars into the Timing tab: per timer
+  the calls, mean, p95, total, share and a per-step series (mean with min–max
+  across ranks), nesting inferred from which spans fall inside which, the
+  time ranks waited for each other, findings, and the spans of one step for
+  the timeline. `server/data.py` caches the summary per run until its logs
+  grow (`/api/runs/{key}/timing?rank=` and `/timing/spans?step=`).
 - `server/app.py` has the routes, gzip, a localhost-only host check, and one
   background task that polls for changes every 1.5 s and fans them out to all
   open browser tabs over Server-Sent Events (`runs` when metadata changed,

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Timers** ([#32](https://github.com/eagomez2/nuboard/issues/32)):
+  `run.timer(name)` times parts of the training code (an epoch, validation, a
+  callback) as a context manager or with `start()` and `stop()`, which can be
+  in different methods: the same name returns the same timer. `accumulate=True`
+  sums spans (such as every batch) into one point per `flush()`; `sync=True`
+  waits for CUDA; only rank 0 logs unless `all_ranks=True`. Misuse warns once
+  and never stops training, and a timer logging many points per second
+  suggests `accumulate`. `nb.Timer.disabled()` measures without logging.
+  Timers are scalars under `timing/`; `init(timing_prefix=..., system_prefix=...)`
+  renames the run's own prefixes (recorded in `run.json`), and a scalar
+  logged by hand under one of them gets a one-time warning.
+- **Timing tab** in the run details: calls, mean, p95, total and share per
+  timer with a per-step line and a full chart, nested timers, time spent
+  waiting for other ranks and not under any timer, findings (spikes, a slow
+  rank), and a timeline of one step with a lane per rank. On the Charts page
+  the timing and system sections come last, folded, and timers are drawn as
+  durations.
 - **Charts alerts follow the legend** ([#33](https://github.com/eagomez2/nuboard/issues/33)):
   the alerts strip under the focused chart lists only the runs switched on in
   the legend (with grouping, the runs of the visible groups). Alerts of runs

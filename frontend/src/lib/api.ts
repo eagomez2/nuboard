@@ -116,6 +116,8 @@ export interface RunBrief {
   dirty: boolean;
   host: string | null;
   world_size: number;
+  /** First segment of the system metric and timer names; absent from older catalogs. */
+  prefixes?: { system: string; timing: string };
   fork: { run_id: string; step: number } | null;
   fields: Record<string, FieldValue>;
   collections: string[];
@@ -189,6 +191,69 @@ export interface RunDetail {
   files: string[];
   ranks: number[];
   media: Record<string, { kind: string; count: number }>;
+  /** The run logged timers (`run.timer`): its details show a Timing tab. */
+  timing?: boolean;
+}
+
+/** A per-step series of the Timing tab, downsampled; `lo`/`hi` span the ranks (or a bucket). */
+export interface TimingSeries {
+  x: number[];
+  y: (number | null)[];
+  lo: (number | null)[];
+  hi: (number | null)[];
+}
+
+export interface TimingStats {
+  calls: number;
+  /** Mean duration per step, in seconds. */
+  mean: number;
+  p95: number;
+  total: number;
+  /** Share of the run's wall time (null when unknown). */
+  share: number | null;
+  steps: number;
+}
+
+export interface TimingRow extends TimingStats {
+  name: string;
+  key: string;
+  parent: string | null;
+  depth: number;
+  /** Logged with `accumulate=True`: one summed point per step. */
+  accumulated: boolean;
+  series: TimingSeries;
+}
+
+export interface TimingSummary {
+  prefix: string;
+  ranks: number[];
+  rank: number | null;
+  wall: number;
+  steps: number;
+  sessions: { session: number; step: number; host?: string | null }[];
+  timers: TimingRow[];
+  untimed: { total: number; share: number | null; mean: number } | null;
+  waiting: (TimingStats & { series: TimingSeries }) | null;
+  findings: { kind: 'spike' | 'slow_rank'; message: string; step?: number; rank?: number; timer?: string }[];
+}
+
+export interface TimingSpan {
+  name: string;
+  /** Seconds from the step's first span start. */
+  start: number;
+  end: number;
+  seconds: number;
+  depth: number;
+  accumulated: boolean;
+  count: number;
+}
+
+export interface TimingSpans {
+  step: number | null;
+  prev: number | null;
+  next: number | null;
+  start: number | null;
+  ranks: { rank: number; spans: TimingSpan[] }[];
 }
 
 export interface RunFile {
@@ -426,6 +491,12 @@ export const api = {
       body: JSON.stringify({ item, notes }),
     }),
   media: (key: string) => json<{ items: MediaItem[] }>(`/api/runs/${encodeURIComponent(key)}/media`),
+  timing: (key: string, rank: number | 'all') =>
+    json<TimingSummary>(`/api/runs/${encodeURIComponent(key)}/timing?${qs({ rank: String(rank) })}`),
+  timingSpans: (key: string, step: number | null) =>
+    json<TimingSpans>(
+      `/api/runs/${encodeURIComponent(key)}/timing/spans?${qs({ step: step === null ? null : String(step) })}`,
+    ),
   alerts: (keys: string[]) =>
     json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),
   artifacts: (project?: string | null) => json<{ artifacts: ArtifactVersion[] }>(`/api/artifacts?${qs({ project })}`),
