@@ -591,10 +591,10 @@
                 aria-label="Summary"
                 onchange={(e) => setOwnCard(hyp, hyp.card!.metric, e.currentTarget.value as CardSetting['stat'])}
               >
-                <option value="best">best</option>
-                <option value="last">last</option>
-                <option value="min">min</option>
-                <option value="max">max</option>
+                <option value="best">Best</option>
+                <option value="last">Last</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
               </select>
             {/if}
           </div>
