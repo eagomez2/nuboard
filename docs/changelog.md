@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.22.0
+
+A new Hypotheses page keeps the story behind your runs, and times can be
+shown in a time zone you pick. No breaking changes.
 
 Times can be shown in a time zone you pick, and each run records the zone
 of the machine(s) it ran on.
