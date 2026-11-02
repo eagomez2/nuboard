@@ -19,8 +19,10 @@ export interface DialogField {
   combo?: ComboOption[];
   /** With `combo`: the option highlighted first, and the value when nothing is typed. */
   preselect?: string;
-  /** With `combo`: the label of the option that takes a typed value that is not listed. */
+  /** With `combo`: the label of the option that takes a typed value that is not listed; '' offers none. */
   newLabel?: string;
+  /** With `combo`: options listed at most before "and N more" (50 by default). */
+  limit?: number;
 }
 
 export interface ComboOption {

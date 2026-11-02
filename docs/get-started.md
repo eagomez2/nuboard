@@ -179,7 +179,7 @@ and command line, recorded by `nb.init`.
 
 ### Charts
 
-Select the three runs and press **Plot selected**. Each key is a chart with a
+Select the three runs and press **Charts** in the selection bar. Each key is a chart with a
 line per run. The highest learning rate learns fastest here; the lowest has
 not converged after 30 epochs. Drag on a chart to zoom, and double-click to
 reset.

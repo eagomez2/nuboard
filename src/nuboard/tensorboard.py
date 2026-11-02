@@ -721,6 +721,7 @@ def import_logdir(
                 system_metrics=False,
                 capture_console=False,
                 _started=started,
+                _record_zone=False,
             )
         except FileExistsError:
             result.skipped = True

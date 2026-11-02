@@ -5,7 +5,7 @@
   import TagPills from './TagPills.svelte';
   import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
   import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
   import { defineProperty, valueField } from '../lib/properties';
@@ -439,9 +439,6 @@
     const parts = k.split('.');
     return parts[parts.length - 1];
   }
-  function plotSelected() {
-    router.go('charts', { sel: [...app.selected].join(',') });
-  }
   /** Open a page limited to the selected runs. */
   const openSelected = (page: 'charts' | 'sweeps' | 'media') => router.go(page, { sel: selected.join(',') });
   const selected = $derived([...app.selected]);
@@ -516,7 +513,7 @@
           <button class="btn sm newprop" onclick={newProperty}><Icon name="plus" size={14} /> New property…</button>
           <p class="fieldhint">
             Click a cell in a ✎ column to edit it (Enter saves, Esc cancels, empty clears), or select runs and use <b
-              >Set property…</b
+              >Properties</b
             >.
           </p>
           {#if !colFind || metrics.some(colMatch)}<div class="label">Scalars (last value)</div>{/if}
@@ -544,15 +541,6 @@
         </div>
       {/if}
     </div>
-    <button
-      class="btn"
-      disabled={selected.length < 1 || selected.length > MAX_COMPARE}
-      title={selected.length > MAX_COMPARE ? `Compare up to ${MAX_COMPARE} runs at a time` : undefined}
-      onclick={() => router.set({ cmp: selected.join(','), pair: null })}
-    >
-      Compare
-    </button>
-    <button class="btn btn-primary" disabled={!selected.length} onclick={plotSelected}>Plot selected</button>
   </div>
 
   {#if selected.length}
@@ -574,10 +562,12 @@
       >
         <Icon name="check" size={15} /> Mark reviewed
       </button>
-      <button class="btn" onclick={tagSelected}><Icon name="tag" size={15} /> Tags…</button>
-      <button class="btn" onclick={setPropertyOnSelected}>Set property…</button>
-      <button class="btn" onclick={addToCollection}>
-        <Icon name="collection" size={15} /> Add to collection…
+      <button class="btn" onclick={tagSelected}><Icon name="tag" size={15} /> Tags</button>
+      <button class="btn" title="Set a property on the selected runs" onclick={setPropertyOnSelected}
+        ><Icon name="list-bullet" size={15} /> Properties</button
+      >
+      <button class="btn" title="Add the selected runs to a collection" onclick={addToCollection}>
+        <Icon name="collection" size={15} /> Collection
       </button>
       <button class="btn" title="Charts of the selected runs" onclick={() => openSelected('charts')}>
         <Icon name="charts" size={15} /> Charts
@@ -587,6 +577,19 @@
       </button>
       <button class="btn" title="Media of the selected runs" onclick={() => openSelected('media')}>
         <Icon name="media" size={15} /> Media
+      </button>
+      <button
+        class="btn"
+        disabled={selected.length > MAX_COMPARE}
+        title={selected.length > MAX_COMPARE
+          ? `Compare up to ${MAX_COMPARE} runs at a time`
+          : selected.length === 1
+            ? 'Show the run details'
+            : 'Show the selected runs side by side'}
+        onclick={() => router.set({ cmp: selected.join(','), pair: null })}
+      >
+        <!-- one run opens its details; two or more open them side by side -->
+        {#if selected.length === 1}<Icon name="info" size={15} /> Details{:else}<Icon name="compare" size={15} /> Compare{/if}
       </button>
       <button
         class="btn btn-ghost"
@@ -750,9 +753,7 @@
                 </span>
               {:else}<span class="faint">—</span>{/if}
             </span>
-            <span class="muted" title={r.started ? new Date(r.started * 1000).toLocaleString() : ''}
-              >{fmtAgo(r.started)}</span
-            >
+            <span class="muted" title={r.started ? fmtDateTime(r.started, r) : ''}>{fmtAgo(r.started)}</span>
             <span class="mono right muted">{fmtDuration(r.duration)}</span>
             <span
               >{#if r.reviewed}<span class="yes">✓ yes</span>{:else}<span class="faint">—</span>{/if}</span

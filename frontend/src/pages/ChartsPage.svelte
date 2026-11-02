@@ -4,10 +4,12 @@
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
+  import { chartZone } from '../lib/chartzone';
+  import { LOCAL, timeZone } from '../lib/timezone.svelte';
   import { api, type Alert, type ChartData } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -380,9 +382,11 @@
   });
 
   // The x readout as a name (may be a long metric, so it truncates) and a value (never truncated).
+  // the zone of the wall-time axis and read-out: see `timeZone.shared`
+  const axisZone = $derived(chartZone(focusData));
   function fmtX(x: number | null): { name: string; value: string } {
     if (x === null) return { name: '', value: '—' };
-    if (xKind === 'time') return { name: '', value: new Date(x * 1000).toLocaleTimeString() };
+    if (xKind === 'time') return { name: '', value: fmtTimeIn(axisZone.kit, x, true) };
     if (xKind === 'relative' || xKind === 'active') return { name: '', value: fmtDuration(x) };
     if (xMetric) return { name: xMetric, value: fmtNum(x) };
     return { name: 'Step', value: Math.round(x).toLocaleString() };
@@ -651,6 +655,16 @@
             >
           {/each}
         </div>
+        {#if xKind === 'time' && timeZone.pref !== LOCAL}
+          <span
+            class="faint small axiszone"
+            class:mixed={axisZone.note === 'runs from different zones'}
+            title={axisZone.note === 'runs from different zones'
+              ? "These runs were recorded in different time zones, and one axis has one clock, so it is in UTC. Each run's own machine time is in its run details."
+              : 'Wall times on this axis are written in this zone.'}
+            >Axis: {axisZone.kit.name}{axisZone.note ? ` · ${axisZone.note}` : ''}</span
+          >
+        {/if}
         <select
           class="input sm mono xmetric"
           class:on={xMetric !== null}
@@ -1658,5 +1672,18 @@
     .focus {
       grid-template-columns: minmax(0, 1fr);
     }
+  }
+  .axiszone {
+    white-space: nowrap;
+  }
+  .axiszone.mixed::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    vertical-align: middle;
   }
 </style>

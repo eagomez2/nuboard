@@ -38,7 +38,8 @@
   });
   const more = $derived(matches.length - shown.length);
   const typed = $derived((value ?? '').trim());
-  const isNew = $derived(!!typed && !options.some((o) => o.value.toLowerCase() === typed.toLowerCase()));
+  // an empty `newLabel` allows listed options only
+  const isNew = $derived(!!newLabel && !!typed && !options.some((o) => o.value.toLowerCase() === typed.toLowerCase()));
   const count = $derived(shown.length + (isNew ? 1 : 0));
 
   function openList() {
@@ -148,6 +149,7 @@
   .combo .input {
     width: 100%;
   }
+  /* floats over what follows, so the dialog keeps its size while you type */
   .list {
     position: absolute;
     z-index: 20;
@@ -157,7 +159,7 @@
     margin: 0;
     padding: 4px;
     list-style: none;
-    max-height: 240px;
+    max-height: 340px;
     overflow: auto;
     box-shadow: 0 12px 28px -8px rgba(16, 24, 40, 0.35);
   }

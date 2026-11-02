@@ -11,7 +11,8 @@
   import { isTerminalText, stripAnsi } from '../lib/ansi';
   import { api, num, type RunDetail, type RunTree } from '../lib/api';
   import { flatten, sideBySide } from '../lib/diff';
-  import { fmtDate, fmtDuration, fmtNum, fmtValue } from '../lib/format';
+  import { fmtDate, fmtDuration, fmtNum, fmtValue, fmtZone } from '../lib/format';
+  import { describeZones, machineZones } from '../lib/tz';
   import { keyFilter, splitMarked } from '../lib/keyfilter';
   import { pinMatches } from '../lib/pattern';
   import { pins } from '../lib/pins.svelte';
@@ -169,11 +170,24 @@
 
   function settings(d: RunDetail): Record<string, unknown> {
     const m = d.meta;
+    // The zone of the machine each session was recorded on: `machine_zone` for the first,
+    // `machine_zone.s1`, … for resumed sessions, so runs line up when compared. The times
+    // shown are in the zone picked in the header.
+    const imported = typeof m.notes === 'string' && m.notes.startsWith('Imported from TensorBoard');
+    const zoneRows: Record<string, string> = Object.fromEntries(
+      machineZones(m, d.run.id).map((z, i) => [
+        i === 0 ? 'machine_zone' : `machine_zone.s${z.session}`,
+        describeZones([z], imported),
+      ]),
+    );
+    // run.json has every session, even where the catalog's copy is from an older version
+    const runZone = { ...d.run, sessions: m.sessions ?? d.run.sessions };
     const out: Record<string, unknown> = {
       status: d.run.status,
       project: d.run.project,
       id: d.run.id,
-      started: fmtDate(d.run.started),
+      started: d.run.started ? `${fmtDate(d.run.started, runZone)} ${fmtZone(d.run.started, runZone)}` : null,
+      ...zoneRows,
       duration: fmtDuration(d.run.duration),
       tags: (app.runByKey(d.run.key)?.tags ?? d.run.tags).join(', ') || null, // edited tags show at once
       group: d.run.group,
@@ -217,6 +231,12 @@
   };
   // rows that say the run cannot be fully restored from git
   const GIT_WARN = /^git\.(pushed|untracked)$/;
+  function zoneTitle(v: string): string {
+    if (v.includes('from run id'))
+      return `${v}\nWorked out from the run id: this run was recorded before the machine's zone was saved. Times are not affected.`;
+    if (v.startsWith('unknown')) return `${v}\nThe machine's zone was not saved for this run. Times are not affected.`;
+    return `${v}\nThe UTC offset of the machine that recorded each session. Times are shown in the zone picked in the header.`;
+  }
   const gitSource = (g: Git) => (g?.source ? (GIT_SOURCES[g.source] ?? g.source) : null);
 
   const allSettingRows = $derived.by(() => {
@@ -420,7 +440,11 @@
             >{#each splitMarked(row.k, finder.highlight(row.k)) as part, j (j)}{#if part.mark}<mark>{part.text}</mark
                 >{:else}{part.text}{/if}{/each}</span
           >
-          {#each row.vals as v, i (i)}<span class="v" title={v}>{v}</span>{/each}
+          {#each row.vals as v, i (i)}<span
+              class="v"
+              class:soft={row.k.startsWith('machine_zone') && /^(≈|unknown)/.test(v)}
+              title={row.k.startsWith('machine_zone') ? zoneTitle(v) : v}>{v}</span
+            >{/each}
         </div>
       {/each}
     </div>
@@ -630,6 +654,9 @@
     flex: none;
   }
   /* not `.diff`: that class is the file diff view, whose border and grid it picked up */
+  .srow .v.soft {
+    color: var(--faint);
+  }
   .srow.warn .v {
     color: var(--warn);
   }

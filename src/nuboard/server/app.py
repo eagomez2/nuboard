@@ -45,6 +45,16 @@ from ..artifacts import (
 from ..catalog import Catalog
 from ..catalog import cache_dir as default_cache_dir
 from ..collection import delete_collection, list_collections, save_collection
+from ..hypotheses import (
+    DEFAULT_BOARD,
+    HypothesisError,
+    delete_board,
+    delete_hypothesis,
+    list_boards,
+    load_board,
+    save_board,
+    save_hypothesis,
+)
 from ..jobs import read_meta
 from ..query import QueryError, parse
 from ..reports import (
@@ -124,9 +134,10 @@ class JSON(JSONResponse):
 
 
 def _read_only() -> JSONResponse:
-    """The response to a change of a report on a server started with `--read-only-reports`."""
+    """The response to a change of a report or hypothesis on a `--read-only-reports` server."""
     return JSON(
-        {"error": "reports are read-only on this server (--read-only-reports)"}, status_code=403
+        {"error": "reports and hypotheses are read-only on this server (--read-only-reports)"},
+        status_code=403,
     )
 
 
@@ -1380,6 +1391,137 @@ def create_app(
 
         return JSON({"collections": saved})
 
+    def hypothesis_boards(request: Request) -> Response:
+        """Return the hypothesis boards of every project, or of the `project` query parameter.
+
+        Each entry has `project`, `name`, `title` and `count` (hypotheses).
+        """
+        want = request.query_params.get("project")
+        out = []
+
+        for p in catalog.projects():
+            if want and p["name"] != want:
+                continue
+
+            pdir = project_dir(p["name"])
+
+            if pdir is not None:
+                out += [{"project": p["name"], **b} for b in list_boards(pdir)]
+
+        return JSON({"boards": out})
+
+    def hypotheses(request: Request) -> Response:
+        """Return one hypothesis board of a project, with the runs and reports it refers to.
+
+        Query parameters: `project` (required) and `board` (a board name; by
+        default the first board, or `main` when there is none yet). `boards`
+        lists every board of the project. `runs` maps each run id the
+        board mentions to a short record (`key`, `name`, `status`, times,
+        `summary`, flattened `config`); ids of runs that are gone are left out,
+        so the viewer shows them as "not found". `reports` lists the names of
+        the project's reports that exist.
+        """
+        name = request.query_params.get("project", "")
+        pdir = project_dir(name) if name else None
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=404)
+
+        boards = list_boards(pdir)
+        board = request.query_params.get("board") or (
+            boards[0]["name"] if boards else DEFAULT_BOARD
+        )
+
+        try:
+            data = load_board(pdir, board)
+        except HypothesisError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        wanted = {
+            rid
+            for h in data["hypotheses"]
+            for rid in (
+                [r["id"] for r in h["runs"]] + [h["parent_run"]] + [a["run"] for a in h["also"]]
+            )
+            if rid
+        }
+        found: dict[str, Any] = {}
+
+        for r in catalog.runs():
+            if r["project"] == name and r["id"] in wanted and r["id"] not in found:
+                found[r["id"]] = {
+                    "key": r["key"],
+                    "id": r["id"],
+                    "name": r["name"],
+                    "status": r["status"],
+                    "created": r.get("created"),
+                    "started": r.get("started"),
+                    "summary": r.get("summary") or {},
+                    "config": _flat_config(r.get("config") or {}),
+                }
+
+        return JSON(
+            {
+                "project": name,
+                "name": board,
+                "boards": boards,
+                **data,
+                "runs": found,
+                "reports": [r["name"] for r in report_names(pdir)],
+                "read_only": read_only_reports,
+            }
+        )
+
+    async def hypothesis_save(request: Request) -> Response:
+        """Save or delete a hypothesis, or create, change or delete a board.
+
+        The JSON body holds `project`, `board` (the board name, `main` if
+        left out) and one of `hypothesis` (the hypothesis to create or
+        replace), `delete` (a hypothesis id to delete), `settings` (fields of
+        the board to change; a new board name creates the board) or
+        `delete_board: true`. Returns the saved item, or what was deleted.
+        Refused on a server started with `--read-only-reports`.
+        """
+
+        if read_only_reports:
+            return _read_only()
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+
+        if not isinstance(body, dict):
+            return JSON({"error": "expected a JSON object"}, status_code=400)
+
+        pdir = project_dir(str(body.get("project") or ""))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=404)
+
+        board = body.get("board") or DEFAULT_BOARD
+
+        try:
+            if isinstance(body.get("hypothesis"), dict):
+                return JSON({"hypothesis": save_hypothesis(pdir, body["hypothesis"], board)})
+
+            if body.get("delete"):
+                hid = str(body["delete"])
+                return JSON({"deleted": hid, "existed": delete_hypothesis(pdir, hid, board)})
+
+            if isinstance(body.get("settings"), dict):
+                return JSON({"board": save_board(pdir, body["settings"], board)})
+
+            if body.get("delete_board") is True:
+                return JSON({"deleted_board": board, "existed": delete_board(pdir, board)})
+        except HypothesisError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+
+        return JSON(
+            {"error": "send a hypothesis, settings, an id to delete or delete_board"},
+            status_code=400,
+        )
+
     def project_dir(name: str) -> Path | None:
         """Return the folder of a known project, or None if it is unknown or outside the root."""
 
@@ -1922,6 +2064,9 @@ def create_app(
         Route("/api/alerts", alerts),
         Route("/api/collections", collections),
         Route("/api/collections", collection_save, methods=["POST"]),
+        Route("/api/hypothesis-boards", hypothesis_boards),
+        Route("/api/hypotheses", hypotheses),
+        Route("/api/hypotheses", hypothesis_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),
         Route("/api/views/{project:path}/{name}", view_item, methods=["GET", "DELETE"]),
         Route("/api/best", best_steps),

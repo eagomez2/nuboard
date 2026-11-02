@@ -819,3 +819,81 @@ def test_a_helper_job_logs_into_the_run_without_touching_its_state():
     after = RunReader(train.path)
     assert after.parquet is not None
     assert list(after.scalars("eval/score")[0]) == [0, 10, 20]
+
+
+@pytest.fixture
+def machine_zone(monkeypatch):
+    """Set this process's local time zone, as on a machine in another country."""
+
+    if not hasattr(time, "tzset"):
+        pytest.skip("time.tzset is not available on Windows")
+
+    def use(zone: str) -> None:
+        monkeypatch.setenv("TZ", zone)
+        time.tzset()
+
+    yield use
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_sessions_record_the_machine_offset_and_host(machine_zone):
+    import datetime as dt
+    import socket
+
+    # a run started in Santiago in July (UTC-04:00) and resumed in Berlin (UTC+02:00)
+    july = dt.datetime(2026, 7, 15, 12, tzinfo=dt.timezone.utc).timestamp()
+    machine_zone("America/Santiago")
+    run = nb.init("p", system_metrics=False, _started=july)
+    run.add_scalar({"loss": 1.0}, step=0)
+    run.finish(_ended=july + 60)
+
+    machine_zone("Europe/Berlin")
+    again = nb.init("p", run_id=run.id, resume="must", capture_env=False, system_metrics=False)
+    again.finish()
+
+    sessions = json.loads((run.path / "run.json").read_text())["sessions"]
+    assert sessions[0]["utc_offset"] == sessions[0]["utc_offset_end"] == -4 * 3600
+    assert sessions[0]["host"] == socket.gethostname()
+    assert "host" not in sessions[1]  # capture_env=False leaves the host out
+    expected = dt.datetime.fromtimestamp(sessions[1]["started"]).astimezone().utcoffset()
+    assert expected is not None
+    assert sessions[1]["utc_offset"] == int(expected.total_seconds())
+    assert sessions[1]["utc_offset"] in (3600, 7200)  # Berlin, winter or summer
+
+    # the run id holds the same offset: local 08:00 at 12:00 UTC
+    assert run.id.startswith("20260715T0800-")
+
+
+def test_session_offset_follows_daylight_saving(machine_zone):
+    import datetime as dt
+
+    machine_zone("America/Santiago")
+    january = dt.datetime(2026, 1, 15, 12, tzinfo=dt.timezone.utc).timestamp()
+    run = nb.init("p", capture_env=False, system_metrics=False, _started=january)
+    run.finish(_ended=january + 200 * 86400)  # ended in August, after the clocks went back
+
+    session = json.loads((run.path / "run.json").read_text())["sessions"][0]
+    assert session["utc_offset"] == -3 * 3600
+    assert session["utc_offset_end"] == -4 * 3600
+
+
+def test_runs_without_session_offsets_still_load(tmp_path):
+    run = nb.init("p", capture_env=False, system_metrics=False)
+    run.add_scalar({"loss": 1.0}, step=0)
+    run.finish()
+    path = run.path / "run.json"
+    meta = json.loads(path.read_text())
+
+    for s in meta["sessions"]:  # as written by versions before the offset was recorded
+        s.pop("utc_offset", None)
+        s.pop("utc_offset_end", None)
+        s.pop("host", None)
+
+    path.write_text(json.dumps(meta))
+    again = nb.init("p", run_id=run.id, resume="must", capture_env=False, system_metrics=False)
+    again.finish()
+    sessions = json.loads(path.read_text())["sessions"]
+    assert "utc_offset" not in sessions[0]
+    assert "utc_offset" in sessions[1]
+    assert list(RunReader(run.path).scalars("loss")[0]) == [0]

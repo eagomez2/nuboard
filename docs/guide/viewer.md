@@ -23,6 +23,9 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
   [query language](../reference/query.md).
+- **Time zone chip** (the clock button): **Local time** by default, which shows times as they
+  always have been, in your computer's zone. Optionally, pick another zone to
+  show every date and time in. See [Time zones](#time-zones).
 - **Theme toggle**: light and dark themes; the default follows your system.
 - **About** (the small ⓘ at the bottom of the side bar): the version, the
   copyright, the license and a link to this documentation.
@@ -45,9 +48,11 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in
-  **Charts**, **Sweeps** or **Media**, **Compare**
-  up to eight of them, or **Plot selected**. Charts, Sweeps, Media and
+  edit their **Tags**, **Properties** or **Collection**, open them in
+  **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
+  (the button reads **Details** with one run ticked, and opens its details).
+  These actions sit in the blue selection bar, which appears once a run is
+  ticked. Charts, Sweeps, Media and
   Timeline then show a **Showing N selected runs** banner with buttons to the
   other pages, which keep the selection, and **Show all**, which goes back to
   the query result; **Clear selection** ends it too.
@@ -71,7 +76,7 @@ the viewer at any time:
 - In a run's details, the tag button next to its tags opens an editor: × removes
   a tag, and typing a name and pressing Enter adds one (tags used by other runs
   are suggested). **Done** or Esc closes it.
-- To change many runs at once, select them and press **Tags…**. **Add** takes
+- To change many runs at once, select them and press **Tags**. **Add** takes
   tags separated by commas or spaces, and **Remove** lists the selected runs'
   tags to pick from. Each run keeps its other tags.
 
@@ -93,7 +98,7 @@ link. Each run then has its own value, checked against that type.
 2. **Set it on one run**: click a cell in its ✎ column (Enter saves, Esc
    cancels, an empty value clears it), or edit it in the run's
    **Properties** tab.
-3. **Set it on many runs**: select them and press **Set property…**. Pick the
+3. **Set it on many runs**: select them and press **Properties**. Pick the
    property, then its value, with a control that fits the type: buttons for a
    choice or yes/no, pills for tags, a date picker for a date. A name that is
    not defined yet is defined first.
@@ -111,7 +116,7 @@ as `run.fields` and write them with `run.set_field("verdict", "keep")` in the
 ### Collections
 
 A collection is a named, hand-picked set of runs, such as a shortlist or the
-runs behind a paper figure. Select runs and press **Add to collection…**;
+runs behind a paper figure. Select runs and press **Collection**;
 type an existing name to add to it. Collections are listed under their
 project in the workspace; click one to filter to it (the query becomes
 `collections has "shortlist"`), or hover it and press × to delete it (the
@@ -225,8 +230,8 @@ shared.
 ![Charts page](../assets/charts-light.png#only-light){ .nb-shot }
 ![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
-The Charts page plots the selected runs (from **Plot selected** or **Charts**
-in the selection bar) or, if none are selected, every run matching the query.
+The Charts page plots the selected runs (from **Charts** in the selection
+bar) or, if none are selected, every run matching the query.
 
 - **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
@@ -376,6 +381,12 @@ Artifacts tab.
 
 Lists the Markdown reports of every project, with an editor and a live
 preview side by side. See [Reports](reports.md).
+
+## Hypotheses page
+
+A board per study of the hypotheses you tested, the runs that tested them and
+which run led to the next idea, drawn as a tree or a timeline. See
+[Hypotheses](hypotheses.md).
 
 ## Media page
 
@@ -587,6 +598,84 @@ a symlink counts as the link, not what it points to. On a very large folder it
 pauses after 10 s and asks whether to go on; **Stop here** keeps what was
 measured so far, marked as partial.
 
+## Time zones
+
+Every time a run records is stored as Unix seconds, an exact moment that does
+not depend on any time zone. The viewer writes those moments in one zone.
+You never have to choose one: by default the chip in the header reads
+**Local time**, and times are shown as they always have been, in your
+computer's zone, with nothing converted (hover the chip to see which zone that
+is). To see times in another zone, click the chip and pick:
+
+- **Local time** (the default): your computer's zone, no conversion.
+- **Machine time**: each run on the clock of the machine that recorded it.
+  See [Machine time](#machine-time).
+- **UTC**.
+- **A named zone**, such as `America/Santiago` or `Europe/Berlin`. Type a city
+  to find it. A named zone follows daylight saving at each moment: a run from
+  January and one from July both show the clock time of their own season, no
+  matter when you look at them.
+- **A fixed offset**, such as `UTC-03:00`, which never changes. Type any offset
+  between `UTC-14:00` and `UTC+14:00`.
+
+The choice changes how times are written, and nothing else: data, queries
+(`started > …` still compares Unix seconds), links and saved views stay the
+same. It applies everywhere at once (the run table, run details, chart
+tooltips and wall-time axes, the Timeline, artifact and file dates, and
+exported reports), so the same moment always reads the same. Hover read-outs
+end with the zone's short name, such as `GMT-3`. The choice is kept per
+browser, so two people opening the same link each see their own zone. When a
+picked zone differs from your computer's, the chip shows its short name and
+place (`GMT+1 Berlin`) with a small dot. Pick **Local time** to go back.
+
+Converting needs no network: browsers ship the time zone rules, with each
+zone's history, so past times stay right after a country changes its rules.
+Only a browser that has not been updated since a new rule took effect shows
+times after that change off by the difference; **UTC** and fixed offsets
+avoid zone rules altogether.
+
+### Machine time
+
+With **Machine time**, every time that belongs to one run (the run table's
+start time on hover, run details, the Timeline's hover card) is written on
+the clock of the machine that recorded it, using the offset saved with each
+session. A run resumed on another machine switches clock at the resume, such
+as `UTC−03:00` before it and `UTC+01:00` after it.
+
+A wall-time chart axis or the Timeline puts several runs on one axis, which
+can only have one clock. Where the points sit never changes (they are exact
+moments); only the labels do:
+
+- When every run shown was recorded in the same zone, the axis uses it, and
+  the caption next to it reads `UTC−03:00 · machine time`.
+- When they come from different zones, the axis and its read-out are in UTC,
+  and the caption reads `UTC · runs from different zones`. Each run's own time
+  is still in its run details and hover card.
+- When no run's zone is known, local time is used, captioned
+  `local time, machine zone unknown`.
+
+A run whose machine zone is not known shows local time instead, marked
+`(local)` after the time.
+
+### The machine's zone
+
+**Run details** show a **machine_zone** row: the UTC offset of the machine
+that recorded the run, and its host, such as `UTC−03:00 · lab`. A run
+resumed later gets a row per extra session (`machine_zone.s1`, …), so a run
+started in Santiago and resumed on a cluster in Europe reads `UTC−03:00 ·
+lab` and `UTC+01:00 · cluster`. Each session records its own offset at start
+and at finish, so a clock change during a session shows as
+`UTC−03:00 → UTC−04:00 (clock change)`. Hover a value for what it means.
+
+Runs recorded before this was saved show the first session's offset worked
+out from the run id (whose timestamp is the machine's local time at `init`),
+dimmed, as `≈ UTC−03:00 (from run id)`. It is `unknown` when it cannot be
+worked out: later sessions of those runs, runs given an explicit `run_id`,
+and TensorBoard imports.
+
+The zone setting corrects a machine set to another zone, not a machine whose
+clock is wrong: if a clock was off, the times it recorded are off too.
+
 ## Sharing on a network
 
 `nuboard up --host 0.0.0.0` (or a specific address) makes the viewer reachable
@@ -615,4 +704,5 @@ tries to make through your browser.
 The token travels in plain HTTP. On an untrusted network, keep the default
 host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
 Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
-edited and take uploads unless you add `--read-only-reports`.
+edited and take uploads, and hypothesis boards can be edited, unless you add
+`--read-only-reports`.

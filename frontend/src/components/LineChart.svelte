@@ -5,6 +5,8 @@
   import { baselineExtent, baselineLines } from '../lib/baselines';
   import { cssVar, withAlpha } from '../lib/colors';
   import { fmtAxis, fmtDuration } from '../lib/format';
+  import { chartZone } from '../lib/chartzone';
+  import { timeZone } from '../lib/timezone.svelte';
   import { ema, robustRange } from '../lib/smooth';
 
   export interface CursorValue {
@@ -193,6 +195,15 @@
     const lines = baselines ? baselineLines(data.series, hidden) : [];
     const extent = baselineExtent(lines, logY);
     const xf = xFormatter(data.xKind);
+    // Wall-time ticks come from the shared zone kit, so the axis matches every other time shown.
+    const kit = chartZone(data).kit;
+    const isTime = data.xKind === 'time';
+    let timeLabels = new Map<number, string>();
+    const timeSplits = (u: uPlot, _i: number, min: number, max: number) => {
+      const ticks = kit.ticks(min, max, u.bbox.width / devicePixelRatio / (compact ? 90 : 110));
+      timeLabels = new Map(ticks.map((t) => [t.t, t.label]));
+      return ticks.map((t) => t.t);
+    };
     const errColor = cssVar('--err');
 
     const opts: uPlot.Options = {
@@ -203,7 +214,7 @@
       legend: { show: false },
       padding: compact ? [6, 8, 0, 0] : [12, 12, 0, 4],
       scales: {
-        x: { time: data.xKind === 'time' },
+        x: { time: false },
         y: {
           distr: logY ? 3 : 1,
           range: (u, min, max) => {
@@ -232,7 +243,8 @@
           ticks: { show: false },
           size: compact ? 28 : 40,
           font: `${compact ? 10 : 12}px ${cssVar('--mono') || 'monospace'}`,
-          values: data.xKind === 'time' ? undefined : (u, splits) => splits.map(xf),
+          ...(isTime ? { splits: timeSplits } : {}),
+          values: isTime ? (u, splits) => splits.map((v) => timeLabels.get(v) ?? '') : (u, splits) => splits.map(xf),
         },
         {
           stroke: muted,
@@ -657,6 +669,7 @@
       regions,
       markers,
       baselines,
+      timeZone.pref,
     ];
     schedule();
   });

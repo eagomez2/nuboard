@@ -3,7 +3,8 @@
   import { api, type ChartData } from '../lib/api';
   import { chartsParams, decodeSpec } from '../lib/chartspec';
   import { seriesColor } from '../lib/colors';
-  import { fmtDuration, fmtNum, lowerIsBetter } from '../lib/format';
+  import { chartZone } from '../lib/chartzone';
+  import { fmtDuration, fmtNum, fmtTimeIn, lowerIsBetter } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -58,7 +59,7 @@
   });
   function fmtX(x: number): string {
     const kind = s?.x ?? 'step';
-    if (kind === 'time') return new Date(x * 1000).toLocaleString();
+    if (kind === 'time') return fmtTimeIn(chartZone(data).kit, x);
     if (kind === 'relative' || kind === 'active') return fmtDuration(x);
     if (kind.startsWith('metric:')) return `${kind.slice(7)} ${fmtNum(x)}`;
     return `Step ${Math.round(x).toLocaleString()}`;

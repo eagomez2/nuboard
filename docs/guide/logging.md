@@ -181,7 +181,10 @@ run = nb.init("project", run_name="lower-lr", fork_from=("20261013T0720-d9fe0e01
 A resumed run writes `events.r0.s1.log`, `s2`, … next to the earlier
 sessions. If you restart from a checkpoint at step 5000, points the old session
 logged at step ≥ 5000 are hidden in favour of the new session's points (per
-scalar). A fork copies the parent's points up to the fork step into the new
+scalar). Each session records the UTC offset and host of the machine it ran
+on, so a run resumed on a machine in another time zone shows each part's zone
+in the viewer, while its times, stored in UTC, join without a gap (see
+[Time zones](viewer.md#time-zones)). A fork copies the parent's points up to the fork step into the new
 run's folder, so the new folder still never refers to anything outside it.
 
 To log into a run from a second process while the first is still running, such

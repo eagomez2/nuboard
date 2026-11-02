@@ -8,6 +8,7 @@
   import SelectionBanner from './components/SelectionBanner.svelte';
   import Icon from './components/Icon.svelte';
   import QueryBar from './components/QueryBar.svelte';
+  import ZoneChip from './components/ZoneChip.svelte';
   import RunsPage from './pages/RunsPage.svelte';
   import ChartsPage from './pages/ChartsPage.svelte';
   import MediaPage from './pages/MediaPage.svelte';
@@ -15,6 +16,7 @@
   import SweepsPage from './pages/SweepsPage.svelte';
   import ArtifactsPage from './pages/ArtifactsPage.svelte';
   import ReportsPage from './pages/ReportsPage.svelte';
+  import HypothesesPage from './pages/HypothesesPage.svelte';
   import { DISPLAY_NAME as NAME } from './lib/brand';
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
@@ -28,6 +30,7 @@
     { page: 'sweeps', icon: 'sweep', label: 'Sweeps' },
     { page: 'timeline', icon: 'timeline', label: 'Timeline' },
     { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
+    { page: 'hypotheses', icon: 'tree', label: 'Hypotheses' },
     { page: 'reports', icon: 'report', label: 'Reports' },
   ];
   const titles: Record<Page, string> = {
@@ -38,6 +41,7 @@
     timeline: 'Timeline',
     artifacts: 'Artifacts',
     reports: 'Reports',
+    hypotheses: 'Hypotheses',
   };
 
   onMount(() => {
@@ -129,6 +133,7 @@
         </p>
       </div>
       <QueryBar />
+      <ZoneChip />
       <button
         class="btn theme"
         aria-label="Toggle light/dark theme"
@@ -159,6 +164,8 @@
       <ArtifactsPage />
     {:else if router.page === 'reports'}
       <ReportsPage />
+    {:else if router.page === 'hypotheses'}
+      <HypothesesPage />
     {:else}
       <MediaPage />
     {/if}
@@ -242,8 +249,12 @@
     gap: 4px;
     border: 0;
     border-radius: 999px;
-    padding: 1px 9px;
+    height: 18px;
+    padding: 0 9px;
+    vertical-align: top;
+    margin-top: 1px;
     font: inherit;
+    line-height: 18px;
     font-weight: 600;
     color: var(--accent);
     background: var(--accent-soft);
@@ -275,6 +286,10 @@
     margin: 0;
     color: var(--muted);
     font-size: 13px;
+    /* one fixed line, so the "New results" pill never nudges the page below */
+    height: 20px;
+    line-height: 20px;
+    white-space: nowrap;
   }
   .theme {
     width: 40px;

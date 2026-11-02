@@ -23,7 +23,8 @@ from ._meta import ENV_PREFIX, NAME
 from .collection import attach
 from .jobs import JOBS, merge_jobs, read_jobs
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
+_SESSION_KEYS = ("session", "started", "ended", "utc_offset", "utc_offset_end", "host")
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
 _SKIP_DIRS = {
     "artifacts",
@@ -238,6 +239,12 @@ def make_record(
         "compacted": bool(meta.get("compacted")),
         "media_count": meta.get("media_count") or 0,
         "jobs": [{**j, "status": effective_status(j)} for j in meta.get("jobs") or []],
+        # start, end and machine zone of each session, so the viewer can show machine time
+        "sessions": [
+            {k: s[k] for k in _SESSION_KEYS if k in s}
+            for s in meta.get("sessions") or []
+            if isinstance(s, dict)
+        ],
     }
 
 

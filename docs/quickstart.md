@@ -13,7 +13,8 @@ keeps logging:
 - **llm-pretrain**: a learning-rate sweep with three seeds per rate, one run
   that diverges to NaN, one with a loss spike and one with a throughput drop,
   a dataset and checkpoint lineage, two collections and a few properties.
-- **vit-ablations**: an augmentation ablation with images and HTML reports.
+- **vit-ablations**: an augmentation ablation with images, HTML reports and a
+  hypothesis board.
 - **ppo-atari**: PPO on two Atari games.
 
 ```bash
@@ -31,10 +32,10 @@ instead of writing another 31 runs; delete the folder for a fresh one.
    badge have health alerts; hover the badge to read them. Type
    `where status = crashed` in the query bar, then clear it and try
    `train/loss.min < 2.3`. Open **Columns** and tick the `verdict`
-   property; click a cell to edit it. Select a few runs and press **Tags…**
+   property; click a cell to edit it. Select a few runs and press **Tags**
    to tag them.
 2. **Collections.** Click **shortlist** under the project. Select a few more
-   runs and press **Add to collection…**.
+   runs and press **Collection**.
 3. **Charts.** Type `where tags has "sweep" group by config.optim.lr` and open
    Charts: one line per learning rate with a mean ± std band over three seeds.
    The alerts under the chart jump to the spike or drop they describe. Drag to
@@ -46,7 +47,10 @@ instead of writing another 31 runs; delete the folder for a fresh one.
 6. **Artifacts.** `fineweb-edu:v2` shows its lineage: the run that prepared
    it, the twelve runs that trained on it, the checkpoint one of them saved and
    the evaluation that used the checkpoint.
-7. **Live.** Run `where tags has "live"` on Charts and watch the running run
+7. **Hypotheses.** The board of `vit-ablations` follows the study from the
+   baseline to CutMix. Hover a run to light up its path, and click a card or
+   a run to read its note and conclusion.
+8. **Live.** Run `where tags has "live"` on Charts and watch the running run
    update every couple of seconds.
 
 ## Log your first run
@@ -78,7 +82,7 @@ script of [Get started](get-started.md).
 | --- | --- |
 | `nuboard up [DIR] [--port 6070] [--host 127.0.0.1] [--open]` | Start the viewer on any folder: one run, one project, or a tree of projects. |
 | `nuboard up … [--token VALUE\|--no-token] [--edit-artifacts]` | Set or turn off the access token used off localhost, and allow adding and unlinking artifacts in the viewer. |
-| `nuboard up … [--read-only-reports] [--max-image-mb 20] [--max-audio-mb 50] [--max-text-mb 5]` | Refuse changes to reports (uploads included), or change the size limits of images, audio and text files uploaded into reports. |
+| `nuboard up … [--read-only-reports] [--max-image-mb 20] [--max-audio-mb 50] [--max-text-mb 5]` | Refuse changes to reports (uploads included) and hypothesis boards, or change the size limits of images, audio and text files uploaded into reports. |
 | `nuboard demo [DIR] [--up] [--open]` | Write the demo workspace (default `demo-runs/`). |
 | `nuboard ls [DIR] [-q QUERY]` | List runs, filtered with the [query language](reference/query.md). |
 | `nuboard rm [DIR] -q QUERY` (or `--run ID`) | Delete runs; lists them with their sizes and asks first. See [rm](reference/cli.md#rm). |

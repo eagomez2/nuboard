@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--read-only-reports",
         action="store_true",
-        help="refuse changes to reports, including image and text uploads (for a shared server)",
+        help="refuse changes to reports (uploads included) and hypotheses (for a shared server)",
     )
     p.add_argument(
         "--max-image-mb",

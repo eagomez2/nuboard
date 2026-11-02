@@ -86,7 +86,15 @@
       'New report',
       [
         { label: 'Name', value: 'findings', hint: 'Saved as <project>/reports/<name>.md' },
-        { label: 'Project', value: project || projects[0] || '', suggestions: projects },
+        {
+          label: 'Project',
+          value: '',
+          combo: (app.info?.projects ?? []).map((p) => ({ value: p.name, label: p.name, detail: `${p.runs} runs` })),
+          preselect: project || projects[0] || '',
+          placeholder: 'Type to find a project',
+          newLabel: '',
+          limit: 8,
+        },
       ],
       { confirm: 'Create' },
     );
@@ -220,21 +228,21 @@
         </p>
       {/if}
       {#each byProject as g (g.p)}
-        <div class="proj faint small mono" title={g.p}>{g.p}</div>
+        <div class="item group" title={g.p}><Icon name="folder" size={16} /><span class="bt">{g.p}</span></div>
         {#each g.reports as r (r.project + r.name)}
           <button
-            class="item"
+            class="item child"
             class:on={current?.project === r.project && current?.name === r.name}
             onclick={() => router.set({ rproject: r.project, report: r.name })}
             title="{r.project}/reports/{r.name}.md"
           >
             <Icon name="report" size={15} />
-            <span class="t">{r.title}</span>
-            <span class="faint small when">{fmtAgo(r.updated)}</span>
+            <span class="bt">{r.title}</span>
+            <span class="count when">{fmtAgo(r.updated)}</span>
           </button>
         {/each}
       {/each}
-      <p class="hint faint small">
+      <p class="hint">
         Reports are Markdown files in <code>&lt;project&gt;/reports/</code>. A line
         <code>![caption](media:run/key@step)</code> shows a logged item; the Media page writes it for you.
       </p>
@@ -293,6 +301,61 @@
 </div>
 
 <style>
+  /* the side list, as the Runs workspace draws it: a folder per project, its items indented */
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    background: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    text-align: left;
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .item.group {
+    margin-top: 2px;
+    cursor: default;
+  }
+  .item.child {
+    padding-left: 22px;
+  }
+  .item.child:hover {
+    background: var(--panel-2);
+  }
+  .item.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 550;
+  }
+  .bt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .count {
+    flex: none;
+    color: var(--faint);
+    font: 12px var(--mono);
+  }
+  .count.when {
+    font-family: inherit;
+  }
+  .hint {
+    color: var(--faint);
+    font-size: 12.5px;
+    margin: 14px 8px 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .hint code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
   .layout {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
@@ -339,49 +402,6 @@
   }
   .small {
     font-size: 12px;
-  }
-  .proj {
-    margin: 8px 2px 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 0;
-    background: none;
-    border-radius: 8px;
-    padding: 7px 8px;
-    text-align: left;
-    min-width: 0;
-    color: var(--text);
-  }
-  .item:hover {
-    background: var(--panel-2);
-  }
-  .item.on {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-  .item .t {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .when {
-    flex: none;
-  }
-  .hint {
-    margin: 12px 2px 0;
-    line-height: 1.5;
-  }
-  .hint code {
-    font-family: var(--mono);
-    font-size: 11.5px;
   }
   .main {
     padding: 14px 16px;

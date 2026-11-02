@@ -1,5 +1,6 @@
 import type { Baseline } from './baselines';
 import { tableFromIPC } from 'apache-arrow';
+import type { Board, BoardData, BoardListItem, Hypothesis } from './hypotheses';
 
 export type Num = number | 'nan' | 'inf' | '-inf' | null;
 
@@ -121,6 +122,8 @@ export interface RunBrief {
   alerts: Alert[];
   /** Helper jobs that log into the run, such as an evaluator (`init(..., job="eval")`). */
   jobs?: Job[];
+  /** Each session's start, end and machine zone (`utc_offset`, `utc_offset_end`, `host`); absent from older catalogs. */
+  sessions?: Record<string, any>[];
 }
 
 export interface Job {
@@ -329,6 +332,19 @@ export interface StorageStatus {
   } | null;
 }
 
+/** POST to `/api/hypotheses`; a refusal throws an Error with the server's message. */
+async function hypothesisPost<T>(body: Record<string, unknown>): Promise<T> {
+  const res = await fetch('/api/hypotheses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) location.reload();
+  const out = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(out.error ?? `${res.status}`);
+  return out;
+}
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (res.status === 401) location.reload(); // signed out: the page asks for the token
@@ -447,6 +463,21 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+  /** The hypothesis boards of every project, or of one. */
+  hypothesisBoards: (project?: string | null) =>
+    json<{ boards: BoardListItem[] }>(`/api/hypothesis-boards?${qs({ project })}`),
+  /** One hypothesis board of a project (the first one without `board`), with the runs and reports it refers to. */
+  hypotheses: (project: string, board = '') => json<BoardData>(`/api/hypotheses?${qs({ project, board })}`),
+  /** Create or replace a hypothesis (a new one without `id`); errors carry the server's reason. */
+  saveHypothesis: (project: string, board: string, hypothesis: Hypothesis) =>
+    hypothesisPost<{ hypothesis: Hypothesis }>({ project, board, hypothesis }),
+  deleteHypothesis: (project: string, board: string, id: string) =>
+    hypothesisPost<{ deleted: string }>({ project, board, delete: id }),
+  /** Change a board's settings; a new board name creates the board. */
+  saveBoard: (project: string, board: string, settings: Partial<Board>) =>
+    hypothesisPost<{ board: Board }>({ project, board, settings }),
+  deleteBoard: (project: string, board: string) =>
+    hypothesisPost<{ existed: boolean }>({ project, board, delete_board: true }),
   mediaUrl: (key: string, index: number) => `/api/runs/${encodeURIComponent(key)}/media/${index}`,
   best: (keys: string[], metric: string, mode: 'min' | 'max') =>
     json<{ best: Record<string, { step: number; value: number }> }>(

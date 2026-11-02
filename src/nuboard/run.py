@@ -147,6 +147,22 @@ def _format_run_id(started: float, digest: str) -> str:
     return f"{stamp}-{digest}"
 
 
+def utc_offset(t: float) -> int | None:
+    """Return this machine's UTC offset at Unix time `t`, in seconds.
+
+    The operating system works it out from its own zone settings, daylight
+    saving included, so no zone database is needed. East of UTC is positive
+    (`-10800` is UTC-03:00). Returns None if the local zone cannot be read.
+    """
+
+    try:
+        delta = _dt.datetime.fromtimestamp(t).astimezone().utcoffset()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+    return None if delta is None else int(delta.total_seconds())
+
+
 def _hash_from(shared_id: str) -> str:
     """Derive the 8 hex digit run id hash from an id shared by every rank."""
     return hashlib.sha1(shared_id.encode("utf-8")).hexdigest()[:8]
@@ -295,6 +311,8 @@ class Run:
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
         _started: Start timestamp override, for tests.
+        _record_zone: Record this machine's UTC offset and host in each session
+            entry. False for imports, whose times come from another machine.
 
     Attributes:
         id: The run id (the run folder's name).
@@ -345,8 +363,10 @@ class Run:
         system_interval: float = 30.0,
         capture_console: bool = True,
         _started: float | None = None,
+        _record_zone: bool = True,
     ) -> None:
         self.project_dir = project_dir(project, dir)
+        self._record_zone = _record_zone
         self.project = self.project_dir.name
         self._root = data_root(dir)
         self.dist = _env.detect_dist()
@@ -582,13 +602,34 @@ class Run:
             "world_size": self.dist.world_size,
             "shared_id": self.dist.shared_id,
         }
-        meta["sessions"].append({"session": self.session, "started": self.started, "ended": None})
+        meta["sessions"].append(self._session_entry(host=capture_env))
 
         if capture_env:
             self._capture_env(meta, files)
 
         self._meta = meta
         self._save_meta()
+
+    def _session_entry(self, host: bool) -> dict[str, Any]:
+        """Return the `sessions` entry for this start or resume.
+
+        Besides the session number and start time, it records the machine's UTC
+        offset and, with `host`, its host name, so the viewer can show which zone
+        and machine each session ran on (a run can be resumed elsewhere).
+        Timestamps themselves stay Unix seconds; the offset is for display only.
+        """
+        entry: dict[str, Any] = {"session": self.session, "started": self.started, "ended": None}
+
+        if self._record_zone:
+            offset = utc_offset(self.started)
+
+            if offset is not None:
+                entry["utc_offset"] = offset
+
+            if host:
+                entry["host"] = socket.gethostname()
+
+        return entry
 
     def _capture_env(self, meta: dict[str, Any], files: Path) -> None:
         """Record git, the environment, the packages and the command line, best effort.
@@ -674,7 +715,7 @@ class Run:
             exit=None,
             env={"host": socket.gethostname(), "pid": os.getpid()},
         )
-        meta["sessions"].append({"session": self.session, "started": self.started, "ended": None})
+        meta["sessions"].append(self._session_entry(host=True))  # jobs always record env.host
 
         if capture_env:
             meta["command"] = _env.command_line()
@@ -1663,7 +1704,14 @@ class Run:
             self._meta["exit"] = {"code": exit_code, "error": error}
 
             if self._meta.get("sessions"):
-                self._meta["sessions"][-1]["ended"] = now
+                session = self._meta["sessions"][-1]
+                session["ended"] = now
+
+                if self._record_zone:
+                    offset = utc_offset(now)
+
+                    if offset is not None:
+                        session["utc_offset_end"] = offset
 
             self._save_meta()
 

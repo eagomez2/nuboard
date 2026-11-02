@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+Times can be shown in a time zone you pick, and each run records the zone
+of the machine(s) it ran on.
+
+- **Time zone chip** in the header (the clock button), optional: it reads **Local time** by
+  default, showing times as before in your browser's zone. Pick **Machine
+  time** to show each run on the clock of the machine that recorded it (axes
+  shared by runs from different zones switch to UTC and say so), or UTC, a named zone such as `America/Santiago`
+  (daylight saving followed at each moment) or a fixed offset such as
+  `UTC-03:00`. It changes only how times are written: data, queries, links and
+  saved views are unchanged. All views use it at once (run table, run details,
+  chart tooltips and wall-time axes, the Timeline, artifact and file dates,
+  exported reports), and hover read-outs end with the zone's short name. The
+  choice is kept per browser. See [Time zones](guide/viewer.md#time-zones).
+- **Each session records its machine's zone**: `sessions` entries in
+  `run.json` gain `utc_offset`, `utc_offset_end` and `host`, so a run resumed
+  on a machine in another zone shows each session's offset in **Run details**
+  (`machine_zone`, plus `machine_zone.s1`, … for resumed sessions). Not a breaking change: the keys are additive, and older
+  runs show the first session's offset worked out from the run id, or
+  `unknown`.
+
+A new Hypotheses page keeps the story behind your runs.
+
+- **Hypotheses page** ([#28](https://github.com/eagomez2/nuboard/issues/28)):
+  keep track of what each run was testing and which run led to the next idea.
+  A project can have several boards; each draws its hypotheses as a tree of
+  cards (with verdicts, run outcomes, notes, linked reports and the reason on
+  each arrow) or as a timeline. Runs and reports that are gone show as "not
+  found" instead of breaking the board. Boards are plain JSON in
+  `<project>/hypotheses/<board>/`, safe to commit; see
+  [Hypotheses](guide/hypotheses.md) and the
+  [file format](reference/format.md#hypothesis-boards-hypothesesboard). The
+  demo's `vit-ablations` project has one. `--read-only-reports` now also makes
+  boards read-only.
+
+- **Runs selection bar**: **Compare** (or **Details** for one run) moved into
+  the blue bar with the other actions on the ticked runs; **Plot selected** is
+  gone (the bar's **Charts** does the same); **Tags…**, **Set property…** and
+  **Add to collection…** are now **Tags**, **Properties** and **Collection**.
+
 ## 0.21.0
 
 `init` no longer hangs a multi-GPU job when only rank 0 calls it, and a new

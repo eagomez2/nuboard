@@ -34,6 +34,7 @@ nav:
       - Logging from Python: guide/logging.md
       - Using the viewer: guide/viewer.md
       - Reports: guide/reports.md
+      - Hypotheses: guide/hypotheses.md
       - Sweeps: guide/sweeps.md
       - Health alerts: guide/alerts.md
       - Artifacts and lineage: guide/artifacts.md
