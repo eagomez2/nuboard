@@ -550,7 +550,7 @@
       title={selected.length > MAX_COMPARE ? `Compare up to ${MAX_COMPARE} runs at a time` : undefined}
       onclick={() => router.set({ cmp: selected.join(','), pair: null })}
     >
-      Compare
+      <Icon name="compare" size={15} /> Compare
     </button>
     <button class="btn btn-primary" disabled={!selected.length} onclick={plotSelected}>Plot selected</button>
   </div>

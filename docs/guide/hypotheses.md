@@ -36,8 +36,8 @@ appear on several boards.
 
 ## Working with the board
 
-- **Start**: press **New hypothesis** at the top right (or click the empty
-  canvas to clear the selection) and fill in the form in the side panel: the
+- **Start**: press **+** at the start of the bar at the bottom of the board
+  (or click the empty canvas to clear the selection) and fill in the form in the side panel: the
   question and, if you like, the first run that tests it. A board can have
   several starting points; a hypothesis with nothing under **Comes from** is
   one.

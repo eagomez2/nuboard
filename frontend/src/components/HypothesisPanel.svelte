@@ -49,7 +49,7 @@
     ondelete: (h: Hypothesis) => void;
     onselect: (hyp?: string | null, run?: string | null) => void;
     oncategories: () => void;
-    /** Bumped to show and focus the New hypothesis form. */
+    /** Bumped to show the New hypothesis form and focus it. */
     askNew?: number;
   } = $props();
 
@@ -95,10 +95,10 @@
   // -- forms ------------------------------------------------------------------------------------
   let newTitle = $state('');
   let newInput = $state<HTMLInputElement>();
+  // "New hypothesis" on the page bumps `askNew`: unfold, then put the cursor in the form
   $effect(() => {
     if (!askNew) return;
     untrack(() => side.folded && side.toggle());
-    // the form renders once the selection is cleared
     requestAnimationFrame(() => newInput?.focus());
   });
   let newRun = $state('');

@@ -249,8 +249,12 @@
     gap: 4px;
     border: 0;
     border-radius: 999px;
-    padding: 1px 9px;
+    height: 18px;
+    padding: 0 9px;
+    vertical-align: top;
+    margin-top: 1px;
     font: inherit;
+    line-height: 18px;
     font-weight: 600;
     color: var(--accent);
     background: var(--accent-soft);
@@ -282,6 +286,10 @@
     margin: 0;
     color: var(--muted);
     font-size: 13px;
+    /* one fixed line, so the "New results" pill never nudges the page below */
+    height: 20px;
+    line-height: 20px;
+    white-space: nowrap;
   }
   .theme {
     width: 40px;

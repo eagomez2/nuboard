@@ -114,7 +114,7 @@
   const showDead = new SvelteSet<string>();
   let hover = $state<{ run?: string; hyp?: string } | null>(null);
   let categories = $state(false);
-  // bumped by "New hypothesis": the panel opens its form
+  // bumped by the + in the legend bar: the side panel opens its New hypothesis form
   let askNew = $state(0);
   let drag = $state<{ h: Hypothesis; x: number; y: number; dx: number; dy: number; moved: boolean } | null>(null);
 
@@ -517,15 +517,7 @@
           >
         {/if}
         <span class="grow"></span>
-        {#if ro}<span class="chip">Read-only</span>{:else}
-          <button
-            class="btn sm"
-            onclick={() => {
-              select(null, null);
-              askNew++;
-            }}><Icon name="idea" size={15} /> New hypothesis</button
-          >
-        {/if}
+        {#if ro}<span class="chip">Read-only</span>{/if}
       </div>
 
       <div class="layout">
@@ -842,6 +834,17 @@
           </div>
 
           <div class="legend">
+            {#if !ro}
+              <button
+                class="btn btn-ghost icon sm new"
+                title="New hypothesis"
+                aria-label="New hypothesis"
+                onclick={() => {
+                  select(null, null);
+                  askNew++;
+                }}><Icon name="plus" size={15} /></button
+              >
+            {/if}
             <span class="grp">
               {#each data.board.verdicts as v (v.id)}
                 <span class="verdict" style="--vc:{colorVar(v.color)}"><VerdictIcon icon={v.icon} />{v.label}</span>
@@ -1407,7 +1410,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 14px;
+    gap: 6px 12px;
     font-size: 12px;
     color: var(--muted);
     background: color-mix(in srgb, var(--panel) 94%, transparent);
@@ -1415,6 +1418,9 @@
     border-radius: 9px;
     padding: 5px 6px 5px 10px;
     box-shadow: var(--lift);
+  }
+  .legend .new {
+    margin-left: -4px;
   }
   .legend .grp {
     display: inline-flex;
