@@ -179,11 +179,28 @@
       })
       .catch(() => (alerts = []));
   });
+  // Runs switched off in the legend (their series' labels are in `hidden`): their alerts are
+  // left out of the strip, and counted in a "+N in hidden runs" note.
+  const hiddenRunKeys = $derived(
+    new Set((focusData?.series ?? []).filter((s) => hidden.has(s.label)).flatMap((s) => s.runs)),
+  );
+  const shownAlerts = $derived(alerts.filter((a) => !hiddenRunKeys.has(a.key)));
+  const hiddenAlerts = $derived(alerts.length - shownAlerts.length);
+  // switch back on every series that holds a run with an alert
+  function showHiddenAlerts() {
+    const keys = new Set(alerts.map((a) => a.key));
+    hidden = new Set(
+      [...hidden].filter(
+        (l) => !(focusData?.series ?? []).some((s) => s.label === l && s.runs.some((k) => keys.has(k))),
+      ),
+    );
+  }
   const regions = $derived(
     xKind !== 'step'
       ? []
       : alerts
           .filter((a) => a.alert.metric === focus && a.alert.kind !== 'nonfinite' && runKeys.includes(a.key))
+          .filter((a) => !hiddenRunKeys.has(a.key))
           .map((a) => ({
             x0: a.alert.step,
             x1: a.alert.end_step ?? a.alert.step,
@@ -900,7 +917,7 @@
       {#if alerts.length}
         <div class="alerts" aria-label="Health alerts">
           <span class="label">Alerts</span>
-          {#each alerts.slice(0, 12) as a, i (i)}
+          {#each shownAlerts.slice(0, 12) as a, i (i)}
             <button
               class="alert"
               class:err={a.alert.severity === 'error'}
@@ -913,7 +930,12 @@
               {#if a.alert.rank}<span class="mono faint keep">Rank {a.alert.rank}</span>{/if}
             </button>
           {/each}
-          {#if alerts.length > 12}<span class="faint">+{alerts.length - 12} more</span>{/if}
+          {#if shownAlerts.length > 12}<span class="faint">+{shownAlerts.length - 12} more</span>{/if}
+          {#if hiddenAlerts}
+            <button class="hiddenalerts faint" title="Switch these runs back on" onclick={showHiddenAlerts}
+              >+{hiddenAlerts} in hidden runs</button
+            >
+          {/if}
         </div>
       {/if}
     </div>
@@ -1149,6 +1171,15 @@
     gap: 6px;
     padding: 10px 14px 12px;
     border-top: 1px solid var(--border);
+  }
+  .hiddenalerts {
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    cursor: pointer;
+    text-decoration: underline dotted;
   }
   .alerts .label {
     margin-right: 4px;

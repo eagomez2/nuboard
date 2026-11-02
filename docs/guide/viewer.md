@@ -325,8 +325,10 @@ bar) or, if none are selected, every run matching the query.
   unzoomed, unpinned chart draws them by itself.
 
 - **Alerts strip**: under the focused chart, the
-  [health alerts](alerts.md) of the runs in view. Click one to jump to it;
-  spikes and drops are shaded on the chart.
+  [health alerts](alerts.md) of the runs in view, leaving out runs switched
+  off in the legend (a "+N in hidden runs" note counts them; click it to switch
+  them back on). Click an alert to jump to it; spikes and drops are shaded on
+  the chart.
 
 ## Live updates
 

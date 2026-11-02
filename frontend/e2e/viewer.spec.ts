@@ -627,6 +627,21 @@ test('chart legend: solo a series, then All and None', async ({ page }) => {
   await expect(page.locator('.legend-chip.off')).toHaveCount(0);
 });
 
+test('charts list only the alerts of runs switched on in the legend', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain');
+  const strip = page.getByLabel('Health alerts');
+  await expect(strip.locator('.alert').filter({ hasText: 'lr3e-3-s2' }).first()).toBeVisible();
+  const shown = await strip.locator('.alert').count();
+  await page.locator('.legend-chip').filter({ hasText: 'lr3e-3-s2' }).click();
+  await expect(strip.locator('.alert').filter({ hasText: 'lr3e-3-s2' })).toHaveCount(0);
+  await expect(strip.locator('.alert')).not.toHaveCount(shown);
+  const note = strip.getByRole('button', { name: /in hidden runs/ });
+  await expect(note).toBeVisible();
+  await note.click(); // switches those runs back on
+  await expect(page.locator('.legend-chip.off')).toHaveCount(0);
+  await expect(strip.locator('.alert')).toHaveCount(shown);
+});
+
 test('save view asks in a themed dialog', async ({ page }) => {
   await page.goto('/#/runs');
   await page.getByRole('button', { name: /save (current )?view/i }).click();

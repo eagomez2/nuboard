@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Charts alerts follow the legend** ([#33](https://github.com/eagomez2/nuboard/issues/33)):
+  the alerts strip under the focused chart lists only the runs switched on in
+  the legend (with grouping, the runs of the visible groups). Alerts of runs
+  switched off are counted in a "+N in hidden runs" note, which switches them
+  back on when clicked.
+
 ## 0.22.0
 
 A new Hypotheses page keeps the story behind your runs, and times can be

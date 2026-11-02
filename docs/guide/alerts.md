@@ -20,8 +20,12 @@ readable message such as
   alerts; hover it to read them, click it to open the run's chart. NaN alerts
   make the badge red.
 - **Charts**: a strip under the focused chart lists the alerts of the runs in
-  view. Clicking one focuses its scalar and zooms to the step. Spikes and
-  drops are shaded on the step axis; NaNs keep their dashed marker.
+  view that are switched on in the legend (with grouping, the runs of the
+  visible groups), for every scalar, not only the focused one. Alerts of runs
+  switched off are counted in a "+N in hidden runs" note; click it to switch
+  those runs back on. Clicking an alert focuses its scalar and zooms to the
+  step. Spikes and drops are shaded on the step axis; NaNs keep their dashed
+  marker.
 - **Timeline**: a dot before a run's bar.
 - **Query language**: `alerts > 0` finds every run with an alert.
 
