@@ -523,7 +523,7 @@
             onclick={() => {
               select(null, null);
               askNew++;
-            }}><Icon name="plus" size={15} /> New hypothesis</button
+            }}><Icon name="idea" size={15} /> New hypothesis</button
           >
         {/if}
       </div>

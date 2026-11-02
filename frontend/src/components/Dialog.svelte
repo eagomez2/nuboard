@@ -166,6 +166,8 @@
     width: min(420px, calc(100vw - 32px));
     margin: auto; /* the CSS reset zeroes the native centering */
     padding: 0;
+    /* let a combo box's list float past the bottom edge instead of being cut off */
+    overflow: visible;
     color: var(--text);
     box-shadow:
       0 1px 2px rgba(16, 24, 40, 0.08),

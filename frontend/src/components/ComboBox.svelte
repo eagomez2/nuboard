@@ -149,11 +149,18 @@
   .combo .input {
     width: 100%;
   }
-  /* in the flow rather than floating, so a dialog grows to show it instead of cutting it off */
+  /* floats over what follows, so the dialog keeps its size while you type */
   .list {
-    margin: 4px 0 0;
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    margin: 0;
     padding: 4px;
     list-style: none;
+    max-height: 340px;
+    overflow: auto;
     box-shadow: 0 12px 28px -8px rgba(16, 24, 40, 0.35);
   }
   li {
