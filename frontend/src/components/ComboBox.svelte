@@ -38,7 +38,8 @@
   });
   const more = $derived(matches.length - shown.length);
   const typed = $derived((value ?? '').trim());
-  const isNew = $derived(!!typed && !options.some((o) => o.value.toLowerCase() === typed.toLowerCase()));
+  // an empty `newLabel` allows listed options only
+  const isNew = $derived(!!newLabel && !!typed && !options.some((o) => o.value.toLowerCase() === typed.toLowerCase()));
   const count = $derived(shown.length + (isNew ? 1 : 0));
 
   function openList() {

@@ -19,7 +19,7 @@ export interface DialogField {
   combo?: ComboOption[];
   /** With `combo`: the option highlighted first, and the value when nothing is typed. */
   preselect?: string;
-  /** With `combo`: the label of the option that takes a typed value that is not listed. */
+  /** With `combo`: the label of the option that takes a typed value that is not listed; '' offers none. */
   newLabel?: string;
 }
 

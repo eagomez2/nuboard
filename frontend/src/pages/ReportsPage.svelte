@@ -86,7 +86,14 @@
       'New report',
       [
         { label: 'Name', value: 'findings', hint: 'Saved as <project>/reports/<name>.md' },
-        { label: 'Project', value: project || projects[0] || '', suggestions: projects },
+        {
+          label: 'Project',
+          value: '',
+          combo: (app.info?.projects ?? []).map((p) => ({ value: p.name, label: p.name, detail: `${p.runs} runs` })),
+          preselect: project || projects[0] || '',
+          placeholder: 'Type to find a project',
+          newLabel: '',
+        },
       ],
       { confirm: 'Create' },
     );

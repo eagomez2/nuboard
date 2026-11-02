@@ -27,6 +27,7 @@
     report: 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3',
     bookmark: 'M6 3h12v18l-6-4-6 4z',
     edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+    board: 'M3 4h7v6H3zM14 14h7v6h-7zM10 7h4.5a3 3 0 0 1 3 3v4',
     clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
     tree: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
     download: 'M12 4v11M7 10l5 5 5-5M5 20h14',

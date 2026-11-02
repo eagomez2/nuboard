@@ -202,15 +202,22 @@
         { label: 'Name', value: '', placeholder: 'e.g. Data cleaning' },
         {
           label: 'Project',
-          value: globalProject || project || projects[0],
-          options: projects.map((p) => ({ value: p, label: p })),
+          value: '',
+          combo: (app.info?.projects ?? []).map((p) => ({ value: p.name, label: p.name, detail: `${p.runs} runs` })),
+          preselect: globalProject || project || projects[0],
+          placeholder: 'Type to find a project',
+          newLabel: '',
         },
       ],
       { message: 'A board is one tree of hypotheses, for one study of a project.', confirm: 'Create' },
     );
     const title = res?.[0]?.trim();
-    const proj = res?.[1] || project;
+    const proj = res?.[1]?.trim() || project;
     if (!title || !proj) return;
+    if (!projects.includes(proj)) {
+      await notice('Unknown project', `There is no project named “${proj}”. A board belongs to an existing project.`);
+      return;
+    }
     const base =
       title
         .toLowerCase()
@@ -443,7 +450,7 @@
       <div class="toolbar">
         <div class="seg" role="group" aria-label="View">
           <button aria-pressed={view === 'tree'} onclick={() => router.set({ hview: null })}
-            ><Icon name="tree" size={15} /> Board</button
+            ><Icon name="board" size={15} /> Board</button
           >
           <button aria-pressed={view === 'timeline'} onclick={() => router.set({ hview: 'timeline' })}
             ><Icon name="timeline" size={15} /> Timeline</button
