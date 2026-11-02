@@ -23,7 +23,7 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
   [query language](../reference/query.md).
-- **Time zone chip**: **Local time** by default, which shows times as they
+- **Time zone chip** (the clock button): **Local time** by default, which shows times as they
   always have been, in your computer's zone. Optionally, pick another zone to
   show every date and time in. See [Time zones](#time-zones).
 - **Theme toggle**: light and dark themes; the default follows your system.

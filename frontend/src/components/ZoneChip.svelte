@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
   import { LOCAL, MACHINE, timeZone } from '../lib/timezone.svelte';
   import { allZones, fmtOffset, makeZone, offsetPref, parseZone } from '../lib/tz';
@@ -95,6 +96,7 @@
 </script>
 
 <button class="btn zone" class:differs {title} aria-label="Time zone. {title}" onclick={pick}>
+  <Icon name="clock" size={15} />
   {#if isLocal}
     <span class="place local">Local time</span>
   {:else if isMachine}
@@ -116,6 +118,10 @@
     box-shadow: var(--lift);
     white-space: nowrap;
     font-size: 12px;
+  }
+  .zone > :global(svg) {
+    color: var(--muted);
+    flex: none;
   }
   .short {
     color: var(--text);
