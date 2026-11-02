@@ -5,7 +5,7 @@
 Times can be shown in a time zone you pick, and each run records the zone
 of the machine(s) it ran on.
 
-- **Time zone chip** in the header, optional: it reads **Local time** by
+- **Time zone chip** in the header (the clock button), optional: it reads **Local time** by
   default, showing times as before in your browser's zone. Pick **Machine
   time** to show each run on the clock of the machine that recorded it (axes
   shared by runs from different zones switch to UTC and say so), or UTC, a named zone such as `America/Santiago`

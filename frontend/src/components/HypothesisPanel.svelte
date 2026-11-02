@@ -141,11 +141,9 @@
   }
 </script>
 
-<svelte:window onkeydown={side.onkeydown} />
-
 {#if side.folded}
   <aside class="card side bar">
-    <button class="btn btn-ghost icon" aria-label="Show the panel" title="Show the panel ( [ )" onclick={side.toggle}
+    <button class="btn btn-ghost icon" aria-label="Show the panel" title="Show the panel" onclick={side.toggle}
       ><Icon name="sidebar" size={16} /></button
     >
   </aside>
@@ -155,7 +153,7 @@
       <span class="label">
         {#if picked.size}{picked.size} runs picked{:else if hrun}Run{:else if hyp}Hypothesis{:else}Hypotheses{/if}
       </span>
-      <button class="btn btn-ghost icon" aria-label="Hide the panel" title="Hide the panel ( [ )" onclick={side.toggle}
+      <button class="btn btn-ghost icon" aria-label="Hide the panel" title="Hide the panel" onclick={side.toggle}
         ><Icon name="sidebar" size={16} /></button
       >
     </div>

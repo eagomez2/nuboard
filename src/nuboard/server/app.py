@@ -1391,6 +1391,25 @@ def create_app(
 
         return JSON({"collections": saved})
 
+    def hypothesis_boards(request: Request) -> Response:
+        """Return the hypothesis boards of every project, or of the `project` query parameter.
+
+        Each entry has `project`, `name`, `title` and `count` (hypotheses).
+        """
+        want = request.query_params.get("project")
+        out = []
+
+        for p in catalog.projects():
+            if want and p["name"] != want:
+                continue
+
+            pdir = project_dir(p["name"])
+
+            if pdir is not None:
+                out += [{"project": p["name"], **b} for b in list_boards(pdir)]
+
+        return JSON({"boards": out})
+
     def hypotheses(request: Request) -> Response:
         """Return one hypothesis board of a project, with the runs and reports it refers to.
 
@@ -2045,6 +2064,7 @@ def create_app(
         Route("/api/alerts", alerts),
         Route("/api/collections", collections),
         Route("/api/collections", collection_save, methods=["POST"]),
+        Route("/api/hypothesis-boards", hypothesis_boards),
         Route("/api/hypotheses", hypotheses),
         Route("/api/hypotheses", hypothesis_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),

@@ -212,6 +212,9 @@ def test_api_board_with_missing_runs_and_reports(client):
     client.post("/api/hypotheses", json={"project": "proj", "board": "b2", "settings": {}})
     two = client.get("/api/hypotheses", params={"project": "proj", "board": "b2"}).json()
     assert two["name"] == "b2" and [b["name"] for b in two["boards"]] == ["b2", "main"]
+    listed = client.get("/api/hypothesis-boards").json()["boards"]
+    assert [(b["project"], b["name"]) for b in listed] == [("proj", "b2"), ("proj", "main")]
+    assert client.get("/api/hypothesis-boards", params={"project": "x"}).json()["boards"] == []
     gone = {"project": "proj", "board": "b2", "delete_board": True}
     assert client.post("/api/hypotheses", json=gone).json()["existed"] is True
 

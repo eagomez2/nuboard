@@ -25,20 +25,43 @@
     verdictOf,
     type Board,
     type BoardData,
+    type BoardListItem,
     type CardSetting,
     type HRun,
     type Hypothesis,
     type Placed,
     type ViewOptions,
   } from '../lib/hypotheses';
+  import { Fold } from '../lib/fold.svelte';
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
   const projects = $derived((app.info?.projects ?? []).map((p) => p.name));
-  const project = $derived(router.get('project') || (projects.length === 1 ? projects[0] : ''));
-  // The board asked for in the URL; empty means the project's first board
-  const boardParam = $derived(router.get('hboard'));
+  // The board list follows the workspace's project filter, as the Reports list does
+  const globalProject = $derived(router.get('project'));
+  const boards = new Fold('hypothesesBoardsFolded');
+  let boardList = $state<BoardListItem[]>([]);
+  let boardsLoaded = $state(false);
+  // The board in the URL, else the first one listed
+  const project = $derived(router.get('hproject') || boardList[0]?.project || '');
+  const boardParam = $derived(router.get('hproject') ? router.get('hboard') : (boardList[0]?.name ?? ''));
+
+  async function loadBoards() {
+    const g = globalProject;
+    try {
+      const res = await api.hypothesisBoards(g || null);
+      if (g !== globalProject) return;
+      boardList = res.boards;
+    } catch {
+      boardList = [];
+    }
+    boardsLoaded = true;
+  }
+  $effect(() => {
+    void globalProject;
+    loadBoards();
+  });
 
   let data = $state<BoardData | null>(null);
   let projectRuns = $state<RunBrief[]>([]);
@@ -56,6 +79,7 @@
       const [board, list] = await Promise.all([api.hypotheses(p, b), api.runs('', p)]);
       if (p !== project || b !== boardParam || dragging) return;
       data = board;
+      loadBoards();
       projectRuns = list.runs.filter((r) => r.project === p);
       loadError = '';
     } catch (e) {
@@ -165,27 +189,40 @@
 
   // -- several boards per project -----------------------------------------------------------------
   const boardLabel = (b: { name: string; title: string }) => b.title || b.name;
+  const byProject = $derived(
+    [...new Set(boardList.map((b) => b.project))].map((p) => ({ p, boards: boardList.filter((b) => b.project === p) })),
+  );
   async function newBoard() {
-    if (!data || ro) return;
-    const res = await ask('New board', [{ label: 'Name', value: '', placeholder: 'e.g. Data cleaning' }], {
-      message: 'A board is a separate tree of hypotheses in this project.',
-      confirm: 'Create',
-    });
+    if (data?.read_only || !projects.length) return;
+    const res = await ask(
+      'New board',
+      [
+        { label: 'Name', value: '', placeholder: 'e.g. Data cleaning' },
+        {
+          label: 'Project',
+          value: globalProject || project || projects[0],
+          options: projects.map((p) => ({ value: p, label: p })),
+        },
+      ],
+      { message: 'A board is one tree of hypotheses, for one study of a project.', confirm: 'Create' },
+    );
     const title = res?.[0]?.trim();
-    if (!title) return;
+    const proj = res?.[1] || project;
+    if (!title || !proj) return;
     const base =
       title
         .toLowerCase()
         .replace(/[^a-z0-9_-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 56) || 'board';
-    const taken = new Set(data.boards.map((b) => b.name).concat(data.name));
+    const taken = new Set(boardList.filter((b) => b.project === proj).map((b) => b.name));
     let name = base;
     for (let i = 2; taken.has(name); i++) name = `${base}-${i}`;
     try {
-      await api.saveBoard(project, name, { title });
+      await api.saveBoard(proj, name, { title });
       select(null, null);
-      router.set({ hboard: name });
+      router.set({ hproject: proj, hboard: name });
+      await loadBoards();
     } catch (e) {
       await notice('Not created', e instanceof Error ? e.message : String(e));
     }
@@ -206,8 +243,8 @@
     }
     editingHead = false;
     select(null, null);
-    router.set({ hboard: null });
-    await load();
+    router.set({ hproject: null, hboard: null });
+    await loadBoards();
   }
 
   function setCard(metric: string, stat?: CardSetting['stat']) {
@@ -305,6 +342,12 @@
     const v = cardValue(data.runs[r.id], card);
     return v === null ? '—' : fmtNum(v);
   };
+  const STAT = { best: 'Best', last: 'Last', min: 'Min', max: 'Max' } as const;
+  /** What the chip number is, such as "val/acc (Best)". */
+  const numberName = (h: Hypothesis) => {
+    const card = h.card ?? data?.board.card;
+    return card ? `${card.metric} (${STAT[card.stat]})` : '';
+  };
   const tip = (r: HRun) => {
     const run = data?.runs[r.id];
     if (!run) return `Run ${r.id} was not found. It may have been moved or deleted.`;
@@ -319,460 +362,518 @@
   const dim = (id: string) => !!focus && !focus.has(id);
 </script>
 
-<svelte:window onpointermove={moveDrag} onpointerup={endDrag} />
+<svelte:window onpointermove={moveDrag} onpointerup={endDrag} onkeydown={boards.onkeydown} />
 
-{#if !project}
-  <section class="card pick">
-    <h2>Pick a project</h2>
-    <p class="faint">Each project has its own hypothesis board.</p>
-    <div class="projects">
-      {#each projects as p (p)}
-        <button class="btn" onclick={() => router.set({ project: p })}><Icon name="folder" size={15} /> {p}</button>
-      {/each}
-    </div>
-  </section>
-{:else if loadError && !data}
-  <section class="card pick">Could not load the board: {loadError}</section>
-{:else if data && opts}
-  <div class="toolbar">
-    <div class="boards">
-      <select
-        class="input sm"
-        aria-label="Board"
-        value={data.name}
-        onchange={(e) => {
-          select(null, null);
-          router.set({ hboard: e.currentTarget.value });
-        }}
+<div class="page" class:folded={boards.folded}>
+  {#if boards.folded}
+    <aside class="card side bar">
+      <button
+        class="btn btn-ghost icon"
+        aria-label="Show the board list"
+        title="Show the board list ( [ )"
+        onclick={boards.toggle}><Icon name="sidebar" size={16} /></button
       >
-        {#each data.boards as b (b.name)}<option value={b.name}>{boardLabel(b)}</option>{/each}
-        {#if !data.boards.some((b) => b.name === data!.name)}<option value={data.name}
-            >{boardLabel({ name: data.name, title: data.board.title })}</option
-          >{/if}
-      </select>
-      {#if !ro}
-        <button class="btn btn-ghost icon" title="New board" aria-label="New board" onclick={newBoard}
+      {#if !data?.read_only}
+        <button class="btn btn-ghost icon" aria-label="New board" title="New board" onclick={newBoard}
           ><Icon name="plus" size={16} /></button
         >
       {/if}
-    </div>
-    <div class="seg" role="group" aria-label="View">
-      <button aria-pressed={view === 'tree'} onclick={() => router.set({ hview: null })}
-        ><Icon name="tree" size={15} /> Tree</button
-      >
-      <button aria-pressed={view === 'timeline'} onclick={() => router.set({ hview: 'timeline' })}
-        ><Icon name="timeline" size={15} /> Timeline</button
-      >
-    </div>
-    <label class="tg"
-      ><button
-        class="switch"
-        role="switch"
-        aria-checked={hideDead}
-        aria-label="Hide dead ends"
-        onclick={() => {
-          hideDead = !hideDead;
-          showDead.clear();
-          prefs.set('hypothesesHideDeadEnds', hideDead);
-        }}
-      ></button>Hide dead ends</label
-    >
-    <label class="tg"
-      ><button
-        class="switch"
-        role="switch"
-        aria-checked={starredOnly}
-        aria-label="Starred only"
-        onclick={() => (starredOnly = !starredOnly)}
-      ></button>Starred only</label
-    >
-    <label class="tg"
-      >Number
-      <select
-        class="input sm"
-        value={data.board.card?.metric ?? ''}
-        disabled={ro}
-        onchange={(e) => setCard(e.currentTarget.value)}
-      >
-        <option value="">None</option>
-        {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
-        {#if data.board.card && !metrics.includes(data.board.card.metric)}
-          <option value={data.board.card.metric}>{data.board.card.metric}</option>
+    </aside>
+  {:else}
+    <aside class="card side">
+      <div class="head">
+        <span class="label">Boards</span>
+        <span class="grow"></span>
+        {#if !data?.read_only}
+          <button class="btn sm" onclick={newBoard}><Icon name="plus" size={15} /> New</button>
         {/if}
-      </select>
-      {#if data.board.card}
-        <select
-          class="input sm"
-          aria-label="Summary"
-          value={data.board.card.stat}
-          disabled={ro}
-          onchange={(e) => setCard(data!.board.card!.metric, e.currentTarget.value as CardSetting['stat'])}
+        <button
+          class="btn btn-ghost icon"
+          aria-label="Hide the board list"
+          title="Hide the board list ( [ )"
+          onclick={boards.toggle}><Icon name="sidebar" size={16} /></button
         >
-          <option value="best">Best</option>
-          <option value="last">Last</option>
-          <option value="min">Min</option>
-          <option value="max">Max</option>
-        </select>
+      </div>
+      {#if boardsLoaded && !boardList.length}
+        <p class="faint small">No boards yet. Press <b>New</b> to start one.</p>
       {/if}
-    </label>
-    {#if view === 'tree'}
-      <button
-        class="btn btn-ghost icon"
-        title="Auto-arrange cards"
-        aria-label="Auto-arrange cards"
-        disabled={ro}
-        onclick={autoArrange}><Icon name="grid" size={16} /></button
-      >
-    {/if}
-    <span class="grow"></span>
-    {#if ro}<span class="chip">Read-only</span>{/if}
-  </div>
-
-  <div class="layout">
-    <section class="card canvas-card">
-      <div class="board-head">
-        {#if editingHead}
-          <form
-            onsubmit={(e) => {
-              e.preventDefault();
-              editingHead = false;
-              saveBoard({ title: headTitle, description: headDesc });
+      {#each byProject as g (g.p)}
+        <div class="proj faint small mono" title={g.p}>{g.p}</div>
+        {#each g.boards as b (b.project + '/' + b.name)}
+          <button
+            class="item"
+            class:on={b.project === project && b.name === data?.name}
+            onclick={() => {
+              select(null, null);
+              router.set({ hproject: b.project, hboard: b.name });
             }}
+            title="{b.project}/hypotheses/{b.name}/"
           >
-            <input class="input" bind:value={headTitle} placeholder="Board title (optional)" aria-label="Board title" />
-            <textarea
-              class="input"
-              bind:value={headDesc}
-              rows="2"
-              placeholder="Description (optional)"
-              aria-label="Board description"></textarea>
-            <div class="row">
-              <button class="btn btn-primary sm" type="submit">Save</button>
-              <button class="btn sm" type="button" onclick={() => (editingHead = false)}>Cancel</button>
-              <span class="grow"></span>
-              {#if data.boards.length > 1 || data.hypotheses.length}
-                <button class="btn btn-ghost sm danger" type="button" onclick={deleteBoard}
-                  ><Icon name="trash" size={14} /> Delete board</button
-                >
-              {/if}
-            </div>
-          </form>
-        {:else if data.board.title || data.board.description}
-          <div class="grow">
-            {#if data.board.title}<h2>{data.board.title}</h2>{/if}
-            {#if data.board.description}<p>{data.board.description}</p>{/if}
-          </div>
-          {#if !ro}
-            <button
-              class="btn btn-ghost icon hover-only"
-              title="Edit title and description"
-              aria-label="Edit title and description"
-              onclick={editHead}><Icon name="edit" size={15} /></button
+            <Icon name="tree" size={15} />
+            <span class="t">{boardLabel(b)}</span>
+            <span class="faint small">{b.count}</span>
+          </button>
+        {/each}
+      {/each}
+      <p class="hint faint small">
+        A board is one study: a tree of hypotheses and the runs that tested them. Boards are JSON files in
+        <code>&lt;project&gt;/hypotheses/</code>.
+      </p>
+    </aside>
+  {/if}
+
+  <div class="main">
+    {#if !project}
+      {#if boardsLoaded}
+        <section class="card pick">
+          <h2>No hypothesis boards yet</h2>
+          <p class="faint">
+            A board keeps the story of a study: what you tested, the runs that tested it and which run led to the next
+            idea. Press <b>New</b> in the board list to start one.
+          </p>
+        </section>
+      {:else}
+        <section class="card pick faint">Loading…</section>
+      {/if}
+    {:else if loadError && !data}
+      <section class="card pick">Could not load the board: {loadError}</section>
+    {:else if data && opts}
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="View">
+          <button aria-pressed={view === 'tree'} onclick={() => router.set({ hview: null })}
+            ><Icon name="tree" size={15} /> Tree</button
+          >
+          <button aria-pressed={view === 'timeline'} onclick={() => router.set({ hview: 'timeline' })}
+            ><Icon name="timeline" size={15} /> Timeline</button
+          >
+        </div>
+        <label class="tg"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={hideDead}
+            aria-label="Hide dead ends"
+            onclick={() => {
+              hideDead = !hideDead;
+              showDead.clear();
+              prefs.set('hypothesesHideDeadEnds', hideDead);
+            }}
+          ></button>Hide dead ends</label
+        >
+        <label class="tg"
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={starredOnly}
+            aria-label="Starred only"
+            onclick={() => (starredOnly = !starredOnly)}
+          ></button>Starred only</label
+        >
+        <label class="tg"
+          >Number
+          <select
+            class="input sm"
+            value={data.board.card?.metric ?? ''}
+            disabled={ro}
+            onchange={(e) => setCard(e.currentTarget.value)}
+          >
+            <option value="">None</option>
+            {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
+            {#if data.board.card && !metrics.includes(data.board.card.metric)}
+              <option value={data.board.card.metric}>{data.board.card.metric}</option>
+            {/if}
+          </select>
+          {#if data.board.card}
+            <select
+              class="input sm"
+              aria-label="Summary"
+              value={data.board.card.stat}
+              disabled={ro}
+              onchange={(e) => setCard(data!.board.card!.metric, e.currentTarget.value as CardSetting['stat'])}
             >
+              <option value="best">Best</option>
+              <option value="last">Last</option>
+              <option value="min">Min</option>
+              <option value="max">Max</option>
+            </select>
           {/if}
-        {:else if !ro}
-          <button class="add-head" onclick={editHead}>+ Add a title and description</button>
+        </label>
+        {#if view === 'tree'}
+          <button
+            class="btn btn-ghost icon"
+            title="Auto-arrange cards"
+            aria-label="Auto-arrange cards"
+            disabled={ro}
+            onclick={autoArrange}><Icon name="grid" size={16} /></button
+          >
         {/if}
+        <span class="grow"></span>
+        {#if ro}<span class="chip">Read-only</span>{/if}
       </div>
 
-      <div class="stage" class:dragging={!!drag} onmouseleave={() => (hover = null)} role="presentation">
-        {#if !data.hypotheses.length}
-          <div class="empty faint">
-            <p><b>No hypotheses yet.</b></p>
-            <p>
-              Start with the question you are testing: press <b>New hypothesis</b> in the side panel, then add the runs
-              that test it. Pick a run later and use <b>Follow up</b> to start the next hypothesis from it.
-            </p>
-          </div>
-        {:else if view === 'tree'}
-          <div class="canvas" style="width:{canvasW}px;height:{canvasH}px">
-            <svg width={canvasW} height={canvasH} aria-hidden="true">
-              {#each lines as l (l.to.hyp.id + ':' + l.index)}
-                {@const x1 = l.from.x + SIZE.width}
-                {@const y1 = chipY(l.from, l.run)}
-                {@const x2 = l.to.x}
-                {@const y2 = l.to.y + SIZE.head / 2}
-                {@const mx = (x1 + x2) / 2}
-                <path
-                  class="edge"
-                  class:also={l.also}
-                  class:dim={focus && !(focus.has(l.run) && focus.has(l.to.hyp.id))}
-                  d="M{x1} {y1} C{mx} {y1}, {mx} {y2}, {x2} {y2}"
-                />
-              {/each}
-            </svg>
-            {#each lines as l (l.to.hyp.id + ':' + l.index)}
-              {@const x1 = l.from.x + SIZE.width}
-              {@const y1 = chipY(l.from, l.run)}
-              {@const x2 = l.to.x}
-              {@const y2 = l.to.y + SIZE.head / 2}
-              {@const key = l.also ? `${l.to.hyp.id}:${l.index}` : l.to.hyp.id}
-              {@const at = `left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px`}
-              {@const faded = !!focus && !(focus.has(l.run) && focus.has(l.to.hyp.id))}
-              {#if editingEdge === key}
+      <div class="layout">
+        <section class="card canvas-card">
+          <div class="board-head">
+            {#if editingHead}
+              <form
+                onsubmit={(e) => {
+                  e.preventDefault();
+                  editingHead = false;
+                  saveBoard({ title: headTitle, description: headDesc });
+                }}
+              >
                 <input
-                  class="input label-edit"
-                  style={at}
-                  bind:value={edgeText}
-                  placeholder="Why this link? (empty: no text)"
-                  use:focusInput
-                  onkeydown={(e) => {
-                    if (e.key === 'Enter') finishEdge(true);
-                    if (e.key === 'Escape') finishEdge(false);
-                  }}
-                  onblur={() => finishEdge(true)}
+                  class="input"
+                  bind:value={headTitle}
+                  placeholder="Board title (optional)"
+                  aria-label="Board title"
                 />
-              {:else if l.reason && l.showReason}
+                <textarea
+                  class="input"
+                  bind:value={headDesc}
+                  rows="2"
+                  placeholder="Description (optional)"
+                  aria-label="Board description"></textarea>
+                <div class="row">
+                  <button class="btn btn-primary sm" type="submit">Save</button>
+                  <button class="btn sm" type="button" onclick={() => (editingHead = false)}>Cancel</button>
+                  <span class="grow"></span>
+                  {#if data.boards.length > 1 || data.hypotheses.length}
+                    <button class="btn btn-ghost sm danger" type="button" onclick={deleteBoard}
+                      ><Icon name="trash" size={14} /> Delete board</button
+                    >
+                  {/if}
+                </div>
+              </form>
+            {:else if data.board.title || data.board.description}
+              <div class="grow">
+                {#if data.board.title}<h2>{data.board.title}</h2>{/if}
+                {#if data.board.description}<p>{data.board.description}</p>{/if}
+              </div>
+              {#if !ro}
                 <button
-                  class="elabel"
-                  class:also={l.also}
-                  class:dim={faded}
-                  style={at}
-                  title={ro ? l.reason : 'Click to edit'}
-                  onclick={() => editEdge(key, l.reason)}>{l.reason}</button
-                >
-              {:else if !ro}
-                <button
-                  class="handle"
-                  class:dim={faded}
-                  style={at}
-                  title={l.reason ? 'Text hidden; click to edit' : 'Add text to this link'}
-                  aria-label={l.reason ? 'Edit the hidden text of this link' : 'Add text to this link'}
-                  onclick={() => editEdge(key, l.reason)}>{l.reason ? '…' : '+'}</button
+                  class="btn btn-ghost icon hover-only"
+                  title="Edit title and description"
+                  aria-label="Edit title and description"
+                  onclick={editHead}><Icon name="edit" size={15} /></button
                 >
               {/if}
-            {/each}
+            {:else if !ro}
+              <button class="add-head" onclick={editHead}>+ Add a title and description</button>
+            {/if}
+          </div>
 
-            {#each placed as p (p.hyp.id)}
-              {@const v = verdictOf(data.board, p.hyp.verdict)}
-              {@const n = p.hyp.runs.length}
-              {@const hiddenByFold = foldHidden(p)}
-              <div
-                class="hcard"
-                class:sel={selHyp === p.hyp.id && !selRun}
-                class:starred={p.hyp.star}
-                class:dim={dim(p.hyp.id)}
-                style="left:{p.x}px;top:{p.y}px;border-top-color:{colorVar(v.color)}"
-              >
-                <div
-                  class="hhead"
-                  role="button"
-                  tabindex="0"
-                  title={ro ? p.hyp.title : 'Click to open; drag to move'}
-                  onpointerdown={(e) => startDrag(e, p.hyp)}
-                  onclick={() => !justDragged && select(p.hyp.id)}
-                  onkeydown={(e) => e.key === 'Enter' && select(p.hyp.id)}
-                  onmouseenter={() => (hover = { hyp: p.hyp.id })}
-                >
-                  <div class="k">
-                    <span class="verdict" style="--vc:{colorVar(v.color)}"><VerdictIcon icon={v.icon} />{v.label}</span>
-                    {#if n > 3}
+          <div class="stage" class:dragging={!!drag} onmouseleave={() => (hover = null)} role="presentation">
+            {#if !data.hypotheses.length}
+              <div class="empty faint">
+                <p><b>No hypotheses yet.</b></p>
+                <p>
+                  Start with the question you are testing: press <b>New hypothesis</b> in the side panel, then add the
+                  runs that test it. Pick a run later and use <b>Follow up</b> to start the next hypothesis from it.
+                </p>
+              </div>
+            {:else if view === 'tree'}
+              <div class="canvas" style="width:{canvasW}px;height:{canvasH}px">
+                <svg width={canvasW} height={canvasH} aria-hidden="true">
+                  {#each lines as l (l.to.hyp.id + ':' + l.index)}
+                    {@const x1 = l.from.x + SIZE.width}
+                    {@const y1 = chipY(l.from, l.run)}
+                    {@const x2 = l.to.x}
+                    {@const y2 = l.to.y + SIZE.head / 2}
+                    {@const mx = (x1 + x2) / 2}
+                    <path
+                      class="edge"
+                      class:also={l.also}
+                      class:dim={focus && !(focus.has(l.run) && focus.has(l.to.hyp.id))}
+                      d="M{x1} {y1} C{mx} {y1}, {mx} {y2}, {x2} {y2}"
+                    />
+                  {/each}
+                </svg>
+                {#each lines as l (l.to.hyp.id + ':' + l.index)}
+                  {@const x1 = l.from.x + SIZE.width}
+                  {@const y1 = chipY(l.from, l.run)}
+                  {@const x2 = l.to.x}
+                  {@const y2 = l.to.y + SIZE.head / 2}
+                  {@const key = l.also ? `${l.to.hyp.id}:${l.index}` : l.to.hyp.id}
+                  {@const at = `left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px`}
+                  {@const faded = !!focus && !(focus.has(l.run) && focus.has(l.to.hyp.id))}
+                  {#if editingEdge === key}
+                    <input
+                      class="input label-edit"
+                      style={at}
+                      bind:value={edgeText}
+                      placeholder="Why this link? (empty: no text)"
+                      use:focusInput
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') finishEdge(true);
+                        if (e.key === 'Escape') finishEdge(false);
+                      }}
+                      onblur={() => finishEdge(true)}
+                    />
+                  {:else if l.reason && l.showReason}
+                    <button
+                      class="elabel"
+                      class:also={l.also}
+                      class:dim={faded}
+                      style={at}
+                      title={ro ? l.reason : 'Click to edit'}
+                      onclick={() => editEdge(key, l.reason)}>{l.reason}</button
+                    >
+                  {:else if !ro}
+                    <button
+                      class="handle"
+                      class:dim={faded}
+                      style={at}
+                      title={l.reason ? 'Text hidden; click to edit' : 'Add text to this link'}
+                      aria-label={l.reason ? 'Edit the hidden text of this link' : 'Add text to this link'}
+                      onclick={() => editEdge(key, l.reason)}>{l.reason ? '…' : '+'}</button
+                    >
+                  {/if}
+                {/each}
+
+                {#each placed as p (p.hyp.id)}
+                  {@const v = verdictOf(data.board, p.hyp.verdict)}
+                  {@const n = p.hyp.runs.length}
+                  {@const hiddenByFold = foldHidden(p)}
+                  <div
+                    class="hcard"
+                    class:sel={selHyp === p.hyp.id && !selRun}
+                    class:starred={p.hyp.star}
+                    class:dim={dim(p.hyp.id)}
+                    style="left:{p.x}px;top:{p.y}px;border-top-color:{colorVar(v.color)}"
+                  >
+                    <div
+                      class="hhead"
+                      role="button"
+                      tabindex="0"
+                      title={ro ? p.hyp.title : 'Click to open; drag to move'}
+                      onpointerdown={(e) => startDrag(e, p.hyp)}
+                      onclick={() => !justDragged && select(p.hyp.id)}
+                      onkeydown={(e) => e.key === 'Enter' && select(p.hyp.id)}
+                      onmouseenter={() => (hover = { hyp: p.hyp.id })}
+                    >
+                      <div class="k">
+                        <span class="verdict" style="--vc:{colorVar(v.color)}"
+                          ><VerdictIcon icon={v.icon} />{v.label}</span
+                        >
+                        {#if n > 3}
+                          <button
+                            class="fold"
+                            class:closed={isFolded(p.hyp)}
+                            title={isFolded(p.hyp) ? 'Show all runs' : 'Fold to key runs'}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              if (!ro) toggleFold(p.hyp);
+                            }}
+                            >{n} runs
+                            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"
+                              ><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" /></svg
+                            ></button
+                          >
+                        {:else}
+                          <span>{n} run{n === 1 ? '' : 's'}</span>
+                        {/if}
+                        <span class="meta">
+                          {#if p.hyp.card}<span class="own" title="This card shows {numberName(p.hyp)}"
+                              >{p.hyp.card.metric}</span
+                            >{/if}
+                          {#if p.hyp.reports.length}{p.hyp.reports.length} report{p.hyp.reports.length > 1
+                              ? 's'
+                              : ''}{/if}
+                          {#if p.hyp.star}<span class="star">★</span>{/if}
+                        </span>
+                      </div>
+                      <div class="t">{p.hyp.title}</div>
+                    </div>
+                    {#each p.runs as r (r.id)}
+                      {@const o = outcomeOf(data.board, r.outcome)}
+                      {@const run = data.runs[r.id]}
                       <button
-                        class="fold"
-                        class:closed={isFolded(p.hyp)}
-                        title={isFolded(p.hyp) ? 'Show all runs' : 'Fold to key runs'}
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          if (!ro) toggleFold(p.hyp);
+                        class="chiprow"
+                        class:dead={o?.dead_end}
+                        class:missing={!run}
+                        class:sel={selRun === r.id}
+                        class:picked={picked.has(r.id)}
+                        class:dim={dim(r.id)}
+                        title={tip(r)}
+                        onclick={(e) => clickRun(e, p.hyp, r)}
+                        onmouseenter={() => (hover = { run: r.id })}
+                      >
+                        <span class="dot" style="background:{run ? colorVar(o?.color ?? 'gray') : 'transparent'}"
+                        ></span>
+                        <span class="n">{runName(r.id)}</span>
+                        {#if r.star}<span class="star">★</span>{/if}
+                        {#if run?.status === 'running'}<span class="live">live</span>{/if}
+                        {#if !run}<span class="nf">not found</span>{:else}<span class="m" title={numberName(p.hyp)}
+                            >{chipNumber(p.hyp, r)}</span
+                          >{/if}
+                      </button>
+                    {/each}
+                    {#if p.hidden.length}
+                      <button
+                        class="more"
+                        title={hiddenByFold ? 'Show all runs' : 'Show dead ends'}
+                        onclick={() => {
+                          if (hiddenByFold) {
+                            if (!ro) toggleFold(p.hyp);
+                          } else if (showDead.has(p.hyp.id)) showDead.delete(p.hyp.id);
+                          else showDead.add(p.hyp.id);
                         }}
-                        >{n} runs
-                        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"
-                          ><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" /></svg
+                        >+{p.hidden.length}
+                        <span class="strip"
+                          >{#each p.hidden.slice(0, 16) as r (r.id)}<span
+                              class="dot sm"
+                              style="background:{colorVar(outcomeOf(data.board, r.outcome)?.color ?? 'gray')}"
+                            ></span>{/each}</span
                         ></button
                       >
-                    {:else}
-                      <span>{n} run{n === 1 ? '' : 's'}</span>
                     {/if}
-                    <span class="meta">
-                      {#if p.hyp.reports.length}{p.hyp.reports.length} report{p.hyp.reports.length > 1 ? 's' : ''}{/if}
-                      {#if p.hyp.star}<span class="star">★</span>{/if}
-                    </span>
                   </div>
-                  <div class="t">{p.hyp.title}</div>
-                </div>
-                {#each p.runs as r (r.id)}
-                  {@const o = outcomeOf(data.board, r.outcome)}
-                  {@const run = data.runs[r.id]}
+                {/each}
+              </div>
+            {:else if tl}
+              {@const LANE = 18}
+              {@const ROW = 52}
+              {@const gw = 18 + tl.lanes.length * LANE}
+              {@const laneOf = new Map(tl.lanes.map((l) => [l.hyp.id, l]))}
+              {@const rowOf = new Map(tl.rows.map((row, i) => [row.run.id, i]))}
+              <div class="tl">
+                <svg width={gw} height={tl.rows.length * ROW} aria-hidden="true">
+                  {#each tl.lanes as l (l.hyp.id)}
+                    {@const x = 12 + l.lane * LANE}
+                    {@const c = colorVar(verdictOf(data.board, l.hyp.verdict).color)}
+                    {@const pr = l.hyp.parent_run ? rowOf.get(l.hyp.parent_run) : undefined}
+                    {@const pl = pr !== undefined ? laneOf.get(tl.rows[pr].hyp.id) : undefined}
+                    <line
+                      x1={x}
+                      x2={x}
+                      y1={l.first * ROW + ROW / 2}
+                      y2={l.last * ROW + ROW / 2}
+                      stroke={c}
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                    />
+                    {#if pr !== undefined && pl && pl.hyp.id !== l.hyp.id}
+                      {@const x0 = 12 + pl.lane * LANE}
+                      {@const y0 = pr * ROW + ROW / 2}
+                      {@const y1 = l.first * ROW + ROW / 2}
+                      <path
+                        d="M{x0} {y0} C{x0} {y0 + ROW * 0.8}, {x} {y1 - ROW * 0.8}, {x} {y1}"
+                        fill="none"
+                        stroke={c}
+                        stroke-width="2"
+                        opacity="0.8"
+                      />
+                    {/if}
+                  {/each}
+                  {#each tl.rows as row, i (row.run.id)}
+                    {@const l = laneOf.get(row.hyp.id)}
+                    {#if l}
+                      <circle
+                        cx={12 + l.lane * LANE}
+                        cy={i * ROW + ROW / 2}
+                        r="5.5"
+                        fill={data.runs[row.run.id]
+                          ? colorVar(outcomeOf(data.board, row.run.outcome)?.color ?? 'gray')
+                          : 'var(--panel)'}
+                        stroke={data.runs[row.run.id] ? 'var(--panel)' : 'var(--faint)'}
+                        stroke-width="2"
+                      />
+                    {/if}
+                  {/each}
+                </svg>
+                {#each tl.rows as row, i (row.run.id)}
+                  {@const first = laneOf.get(row.hyp.id)?.first === i}
+                  {@const run = data.runs[row.run.id]}
                   <button
-                    class="chiprow"
-                    class:dead={o?.dead_end}
+                    class="tlrow"
+                    class:sel={selRun === row.run.id}
+                    class:picked={picked.has(row.run.id)}
+                    class:dead={isDead(row.run)}
                     class:missing={!run}
-                    class:sel={selRun === r.id}
-                    class:picked={picked.has(r.id)}
-                    class:dim={dim(r.id)}
-                    title={tip(r)}
-                    onclick={(e) => clickRun(e, p.hyp, r)}
-                    onmouseenter={() => (hover = { run: r.id })}
+                    style="grid-template-columns:{gw}px 150px minmax(0,1fr) 80px"
+                    onclick={(e) => clickRun(e, row.hyp, row.run)}
                   >
-                    <span class="dot" style="background:{run ? colorVar(o?.color ?? 'gray') : 'transparent'}"></span>
-                    <span class="n">{runName(r.id)}</span>
-                    {#if r.star}<span class="star">★</span>{/if}
-                    {#if run?.status === 'running'}<span class="live">live</span>{/if}
-                    {#if !run}<span class="nf">not found</span>{:else}<span class="m">{chipNumber(p.hyp, r)}</span>{/if}
+                    <span></span>
+                    <span class="d mono">{row.time ? fmtDate(row.time) : '—'}</span>
+                    <span class="c">
+                      <span class="l1"
+                        ><span class="n mono">{runName(row.run.id)}</span>{#if row.run.star}<span class="star">★</span
+                          >{/if}<span class="s">{row.hyp.title}</span></span
+                      >
+                      <span class="l2"
+                        >{#if first && row.hyp.reason}<em>Why:</em> {row.hyp.reason} &middot;&nbsp;{/if}{row.run
+                          .conclusion ||
+                          (run ? (run.status === 'running' ? 'Running' : 'No conclusion yet') : 'Run not found')}</span
+                      >
+                    </span>
+                    <span class="d mono right">{run ? chipNumber(row.hyp, row.run) : 'not found'}</span>
                   </button>
                 {/each}
-                {#if p.hidden.length}
-                  <button
-                    class="more"
-                    title={hiddenByFold ? 'Show all runs' : 'Show dead ends'}
-                    onclick={() => {
-                      if (hiddenByFold) {
-                        if (!ro) toggleFold(p.hyp);
-                      } else if (showDead.has(p.hyp.id)) showDead.delete(p.hyp.id);
-                      else showDead.add(p.hyp.id);
-                    }}
-                    >+{p.hidden.length}
-                    <span class="strip"
-                      >{#each p.hidden.slice(0, 16) as r (r.id)}<span
-                          class="dot sm"
-                          style="background:{colorVar(outcomeOf(data.board, r.outcome)?.color ?? 'gray')}"
-                        ></span>{/each}</span
-                    ></button
-                  >
-                {/if}
               </div>
-            {/each}
+            {/if}
           </div>
-        {:else if tl}
-          {@const LANE = 18}
-          {@const ROW = 52}
-          {@const gw = 18 + tl.lanes.length * LANE}
-          {@const laneOf = new Map(tl.lanes.map((l) => [l.hyp.id, l]))}
-          {@const rowOf = new Map(tl.rows.map((row, i) => [row.run.id, i]))}
-          <div class="tl">
-            <svg width={gw} height={tl.rows.length * ROW} aria-hidden="true">
-              {#each tl.lanes as l (l.hyp.id)}
-                {@const x = 12 + l.lane * LANE}
-                {@const c = colorVar(verdictOf(data.board, l.hyp.verdict).color)}
-                {@const pr = l.hyp.parent_run ? rowOf.get(l.hyp.parent_run) : undefined}
-                {@const pl = pr !== undefined ? laneOf.get(tl.rows[pr].hyp.id) : undefined}
-                <line
-                  x1={x}
-                  x2={x}
-                  y1={l.first * ROW + ROW / 2}
-                  y2={l.last * ROW + ROW / 2}
-                  stroke={c}
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                />
-                {#if pr !== undefined && pl && pl.hyp.id !== l.hyp.id}
-                  {@const x0 = 12 + pl.lane * LANE}
-                  {@const y0 = pr * ROW + ROW / 2}
-                  {@const y1 = l.first * ROW + ROW / 2}
-                  <path
-                    d="M{x0} {y0} C{x0} {y0 + ROW * 0.8}, {x} {y1 - ROW * 0.8}, {x} {y1}"
-                    fill="none"
-                    stroke={c}
-                    stroke-width="2"
-                    opacity="0.8"
-                  />
-                {/if}
+
+          <div class="legend">
+            <span class="grp">
+              {#each data.board.verdicts as v (v.id)}
+                <span class="verdict" style="--vc:{colorVar(v.color)}"><VerdictIcon icon={v.icon} />{v.label}</span>
               {/each}
-              {#each tl.rows as row, i (row.run.id)}
-                {@const l = laneOf.get(row.hyp.id)}
-                {#if l}
-                  <circle
-                    cx={12 + l.lane * LANE}
-                    cy={i * ROW + ROW / 2}
-                    r="5.5"
-                    fill={data.runs[row.run.id]
-                      ? colorVar(outcomeOf(data.board, row.run.outcome)?.color ?? 'gray')
-                      : 'var(--panel)'}
-                    stroke={data.runs[row.run.id] ? 'var(--panel)' : 'var(--faint)'}
-                    stroke-width="2"
-                  />
-                {/if}
+            </span>
+            <span class="grp">
+              {#each data.board.outcomes as o (o.id)}
+                <span><i style="background:{colorVar(o.color)}"></i>{o.label.toLowerCase()}</span>
               {/each}
-            </svg>
-            {#each tl.rows as row, i (row.run.id)}
-              {@const first = laneOf.get(row.hyp.id)?.first === i}
-              {@const run = data.runs[row.run.id]}
+            </span>
+            <span class="grp">
+              <svg width="20" height="6" aria-hidden="true"
+                ><path d="M1 3h18" stroke="var(--edge)" stroke-width="1.8" /></svg
+              >led to
+              <svg width="20" height="6" aria-hidden="true"
+                ><path d="M1 3h18" stroke="var(--edge)" stroke-width="1.8" stroke-dasharray="4 3" /></svg
+              >also informed by
+            </span>
+            {#if !ro}
               <button
-                class="tlrow"
-                class:sel={selRun === row.run.id}
-                class:picked={picked.has(row.run.id)}
-                class:dead={isDead(row.run)}
-                class:missing={!run}
-                style="grid-template-columns:{gw}px 150px minmax(0,1fr) 80px"
-                onclick={(e) => clickRun(e, row.hyp, row.run)}
+                class="btn btn-ghost icon sm"
+                title="Edit categories"
+                aria-label="Edit categories"
+                onclick={() => (categories = true)}><Icon name="edit" size={14} /></button
               >
-                <span></span>
-                <span class="d mono">{row.time ? fmtDate(row.time) : '—'}</span>
-                <span class="c">
-                  <span class="l1"
-                    ><span class="n mono">{runName(row.run.id)}</span>{#if row.run.star}<span class="star">★</span
-                      >{/if}<span class="s">{row.hyp.title}</span></span
-                  >
-                  <span class="l2"
-                    >{#if first && row.hyp.reason}<em>Why:</em> {row.hyp.reason}{' · '}{/if}{row.run.conclusion ||
-                      (run ? (run.status === 'running' ? 'Running' : 'No conclusion yet') : 'Run not found')}</span
-                  >
-                </span>
-                <span class="d mono right">{run ? chipNumber(row.hyp, row.run) : 'not found'}</span>
-              </button>
-            {/each}
+            {/if}
           </div>
-        {/if}
+        </section>
+
+        <HypothesisPanel
+          {data}
+          {project}
+          {projectRuns}
+          {selHyp}
+          {selRun}
+          {picked}
+          {ro}
+          onsave={save}
+          ondelete={remove}
+          onselect={select}
+          oncategories={() => (categories = true)}
+        />
       </div>
 
-      <div class="legend">
-        <span class="grp">
-          {#each data.board.verdicts as v (v.id)}
-            <span class="verdict" style="--vc:{colorVar(v.color)}"><VerdictIcon icon={v.icon} />{v.label}</span>
-          {/each}
-        </span>
-        <span class="grp">
-          {#each data.board.outcomes as o (o.id)}
-            <span><i style="background:{colorVar(o.color)}"></i>{o.label.toLowerCase()}</span>
-          {/each}
-        </span>
-        <span class="grp">
-          <svg width="20" height="6" aria-hidden="true"
-            ><path d="M1 3h18" stroke="var(--edge)" stroke-width="1.8" /></svg
-          >led to
-          <svg width="20" height="6" aria-hidden="true"
-            ><path d="M1 3h18" stroke="var(--edge)" stroke-width="1.8" stroke-dasharray="4 3" /></svg
-          >also informed by
-        </span>
-        {#if !ro}
-          <button
-            class="btn btn-ghost icon sm"
-            title="Edit categories"
-            aria-label="Edit categories"
-            onclick={() => (categories = true)}><Icon name="edit" size={14} /></button
-          >
-        {/if}
-      </div>
-    </section>
-
-    <HypothesisPanel
-      {data}
-      {project}
-      {projectRuns}
-      {selHyp}
-      {selRun}
-      {picked}
-      {ro}
-      onsave={save}
-      ondelete={remove}
-      onselect={select}
-      oncategories={() => (categories = true)}
-    />
+      {#if categories}
+        <HypothesisCategories
+          board={data.board}
+          onclose={() => (categories = false)}
+          onsave={(b) => {
+            categories = false;
+            saveBoard(b);
+          }}
+        />
+      {/if}
+    {:else}
+      <section class="card pick faint">Loading…</section>
+    {/if}
   </div>
-
-  {#if categories}
-    <HypothesisCategories
-      board={data.board}
-      onclose={() => (categories = false)}
-      onsave={(b) => {
-        categories = false;
-        saveBoard(b);
-      }}
-    />
-  {/if}
-{:else}
-  <section class="card pick faint">Loading…</section>
-{/if}
+</div>
 
 <style>
   .pick {
@@ -782,21 +883,91 @@
     margin: 0;
     font-size: 17px;
   }
-  .projects {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
   .toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px 18px;
   }
-  .boards {
-    display: inline-flex;
+  .page {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .page.folded {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .main {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .side {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: sticky;
+    top: 16px;
+    min-width: 0;
+  }
+  .side.bar {
+    padding: 6px;
     align-items: center;
-    gap: 2px;
+  }
+  .side .head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .side .icon {
+    width: 30px;
+    height: 30px;
+  }
+  .btn.sm {
+    height: 30px;
+  }
+  .small {
+    font-size: 12px;
+  }
+  .proj {
+    margin: 8px 2px 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    background: none;
+    border-radius: 8px;
+    padding: 7px 8px;
+    text-align: left;
+    min-width: 0;
+    color: var(--text);
+  }
+  .item:hover {
+    background: var(--panel-2);
+  }
+  .item.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .item .t {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hint {
+    margin: 12px 2px 0;
+    line-height: 1.5;
   }
   .board-head .danger {
     color: var(--err);
@@ -939,7 +1110,7 @@
     transform: translate(-50%, -50%);
   }
   .elabel {
-    max-width: 180px;
+    max-width: 112px;
     font-size: 11.5px;
     line-height: 1.3;
     color: var(--muted);
@@ -1060,6 +1231,13 @@
   }
   .fold.closed svg {
     transform: rotate(-90deg);
+  }
+  .own {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    color: var(--muted);
   }
   .meta {
     margin-left: auto;
@@ -1283,8 +1461,13 @@
     color: var(--text);
   }
   @media (max-width: 900px) {
-    .layout {
+    .layout,
+    .page,
+    .page.folded {
       grid-template-columns: minmax(0, 1fr);
+    }
+    .side {
+      position: static;
     }
     .canvas-card {
       height: 70vh;

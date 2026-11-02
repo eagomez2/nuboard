@@ -88,6 +88,11 @@ export interface BoardInfo {
   count: number;
 }
 
+/** A board in the list of every project's boards. */
+export interface BoardListItem extends BoardInfo {
+  project: string;
+}
+
 export interface BoardData {
   project: string;
   /** The board's name (its folder). */
@@ -294,7 +299,7 @@ export interface Size {
   gap: number;
 }
 
-export const SIZE: Size = { head: 60, row: 34, foot: 26, width: 260, pitch: 440, gap: 30 };
+export const SIZE: Size = { head: 60, row: 34, foot: 26, width: 260, pitch: 380, gap: 30 };
 
 export interface Placed {
   hyp: Hypothesis;

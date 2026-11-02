@@ -30,8 +30,8 @@
     { page: 'sweeps', icon: 'sweep', label: 'Sweeps' },
     { page: 'timeline', icon: 'timeline', label: 'Timeline' },
     { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
-    { page: 'reports', icon: 'report', label: 'Reports' },
     { page: 'hypotheses', icon: 'tree', label: 'Hypotheses' },
+    { page: 'reports', icon: 'report', label: 'Reports' },
   ];
   const titles: Record<Page, string> = {
     runs: 'All runs',

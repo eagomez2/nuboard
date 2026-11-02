@@ -1,6 +1,6 @@
 import type { Baseline } from './baselines';
 import { tableFromIPC } from 'apache-arrow';
-import type { Board, BoardData, Hypothesis } from './hypotheses';
+import type { Board, BoardData, BoardListItem, Hypothesis } from './hypotheses';
 
 export type Num = number | 'nan' | 'inf' | '-inf' | null;
 
@@ -463,6 +463,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+  /** The hypothesis boards of every project, or of one. */
+  hypothesisBoards: (project?: string | null) =>
+    json<{ boards: BoardListItem[] }>(`/api/hypothesis-boards?${qs({ project })}`),
   /** One hypothesis board of a project (the first one without `board`), with the runs and reports it refers to. */
   hypotheses: (project: string, board = '') => json<BoardData>(`/api/hypotheses?${qs({ project, board })}`),
   /** Create or replace a hypothesis (a new one without `id`); errors carry the server's reason. */

@@ -47,7 +47,7 @@ instead of writing another 31 runs; delete the folder for a fresh one.
 6. **Artifacts.** `fineweb-edu:v2` shows its lineage: the run that prepared
    it, the twelve runs that trained on it, the checkpoint one of them saved and
    the evaluation that used the checkpoint.
-7. **Hypotheses.** Pick `vit-ablations`: the board follows the study from the
+7. **Hypotheses.** The board of `vit-ablations` follows the study from the
    baseline to CutMix. Hover a run to light up its path, and click a card or
    a run to read its note and conclusion.
 8. **Live.** Run `where tags has "live"` on Charts and watch the running run

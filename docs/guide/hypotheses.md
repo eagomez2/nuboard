@@ -8,15 +8,16 @@ timeline.
 ![Hypotheses page](../assets/hypotheses-light.png){ .nb-shot }
 
 Try it on the demo: `nuboard demo demo-runs --up --open`, then open
-**Hypotheses** in the left rail and pick `vit-ablations`. Its board,
-*Augmentations on ViT-S/16*, goes from a baseline to RandAugment and MixUp,
+**Hypotheses** in the left rail. The board *Augmentations on ViT-S/16*, in
+`vit-ablations`, goes from a baseline to RandAugment and MixUp,
 then to CutMix, and ends on a planned card that has no runs yet.
 
 ## Boards, cards and arrows
 
 - A **board** is one tree of hypotheses in a project. A project can have
-  several boards, one per study: pick one in the menu at the top left, or
-  press **+** to start another. Each board can have a title and a
+  several boards, one per study. The **Boards** list on the left shows every
+  project's boards (or only the project picked in the workspace), like the
+  Reports list; press **New** to start one. `[` folds the list. Each board can have a title and a
   description, shown above the cards.
 - A **card** is a hypothesis: a question or an idea, the runs that tested
   it, and a **verdict** (by default Supported, Rejected or Open), shown as a
@@ -42,13 +43,14 @@ appear on several boards.
 - **Follow up**: click a run, write the next hypothesis under **Follow up**
   and say why. The new card appears to the right with an arrow from that run.
 - **Write it down**: a card has a Markdown note and can link the project's
-  reports. A run has a conclusion. Both show in the side panel, which folds
-  away with the sidebar button (or `[`).
+  reports. A run has a conclusion. Both show in the side panel on the right,
+  which folds away with its sidebar button.
 - **Star** runs and cards that matter. **Starred only** keeps just the paths
   through them.
 - **The number on each run** is one metric, picked under **Number** in the
   toolbar (its best, last, min or max value). A card can pick its own under
-  **Number on this card**.
+  **Number on this card**; its header then names that metric. Hover a number
+  to see which metric and value it is.
 - **Compare**: Shift-click runs, on one card or across cards, to open them
   together in **Charts** or **Compare**. A card's **Open in charts** does the
   same for all of its runs.
