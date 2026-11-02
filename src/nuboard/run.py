@@ -34,8 +34,24 @@ from .artifacts import add_artifact as _add_artifact
 from .catalog import effective_status
 from .figures import WaveformFigure
 from .jobs import MAIN, job_path, read_jobs
+from .timing import COUNT, Timer
 
 _LOG_RE = re.compile(r"^events\.r(\d+)\.s(\d+)\.log$")
+DEFAULT_PREFIXES = {"system": "system", "timing": "timing"}
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_PREFIX_RE = re.compile(r"^[^/\\\x00-\x1f\x7f]+$")
+
+
+def _check_prefix(kind: str, value: Any) -> None:
+    """Raise ValueError unless `value` is a usable name prefix: one non-empty path segment."""
+
+    if not isinstance(value, str) or not _PREFIX_RE.match(value) or value.strip() != value:
+        raise ValueError(
+            f"{kind}_prefix must be one non-empty name segment without '/', such as "
+            f"{DEFAULT_PREFIXES[kind]!r}; got {value!r}"
+        )
+
+
 _active: list[Run] = []
 _hook_installed = False
 
@@ -310,6 +326,15 @@ class Run:
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
+        system_prefix: First segment of the system metric names (`system/...`).
+            Defaults to the one the run already uses when resuming, else
+            `"system"`. Pass the same value on every rank.
+        timing_prefix: First segment of the timer names (`timing/...`, see
+            `Run.timer`). Defaults as for `system_prefix`, with `"timing"`. Both
+            are recorded in `run.json`; runs logged with different prefixes do
+            not line up in the viewer's charts, so keep one choice per project.
+        timing_all_ranks: Default of `Run.timer`'s `all_ranks`: log timers from
+            every rank, not only rank 0.
         _started: Start timestamp override, for tests.
         _record_zone: Record this machine's UTC offset and host in each session
             entry. False for imports, whose times come from another machine.
@@ -324,6 +349,8 @@ class Run:
         session: Index of this session; it grows each time the run is resumed.
         job: Name of this helper job, or None for the main job.
         started: Start time of this session, as a Unix timestamp.
+        prefixes: First segments of the names the run logs itself:
+            `{"system": "system", "timing": "timing"}` unless changed.
 
     Raises:
         FileExistsError: If `run_id` exists and `resume` is None, or if a run folder
@@ -336,7 +363,8 @@ class Run:
             run folder.
         TypeError: If `config` is of an unsupported type.
         ValueError: If `system_metrics` names an unknown group, if `system_devices` names a
-            device that cannot be tracked, or if `job` is given with `fork_from`.
+            device that cannot be tracked, if `job` is given with `fork_from`, or if
+            `system_prefix` or `timing_prefix` is not one name segment.
     """
 
     def __init__(
@@ -362,6 +390,9 @@ class Run:
         system_devices: Any = None,
         system_interval: float = 30.0,
         capture_console: bool = True,
+        system_prefix: str | None = None,
+        timing_prefix: str | None = None,
+        timing_all_ranks: bool = False,
         _started: float | None = None,
         _record_zone: bool = True,
     ) -> None:
@@ -383,6 +414,16 @@ class Run:
         self._media_new = 0  # media and text items logged since run.json was last written
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
+        self._prefix_args = {"system": system_prefix, "timing": timing_prefix}
+
+        for kind, value in self._prefix_args.items():
+            if value is not None:
+                _check_prefix(kind, value)
+
+        self.prefixes = {k: v or DEFAULT_PREFIXES[k] for k, v in self._prefix_args.items()}
+        self._timers: dict[str, Timer] = {}
+        self._timer_warned: set[tuple[str, str]] = set()
+        self._timing_all_ranks = bool(timing_all_ranks)
         groups = parse_groups(system_metrics)
 
         gpu_choice = (
@@ -465,10 +506,14 @@ class Run:
         self.config = _config_to_dict(config)
         self._meta: dict[str, Any] = {}
 
-        if self.dist.is_main and self.job is not None:
-            self._write_job_meta(capture_env)
-        elif self.dist.is_main:
+        if self.dist.is_main and self.job is None:
             self._write_initial_meta(name, tags, notes, group, resumed, fork_from, capture_env)
+        else:  # a helper job or another rank follows the prefixes rank 0 recorded
+            stored = (_fs.read_json(self.path / "run.json", {}) or {}).get("prefixes")
+            self._resolve_prefixes(stored or {})
+
+            if self.dist.is_main:
+                self._write_job_meta(capture_env)
 
         if fork_from is not None and self.dist.is_main:
             self._copy_fork(*fork_from)
@@ -603,12 +648,32 @@ class Run:
             "shared_id": self.dist.shared_id,
         }
         meta["sessions"].append(self._session_entry(host=capture_env))
+        self._resolve_prefixes(meta.get("prefixes") or {})
+        meta["prefixes"] = dict(self.prefixes)
 
         if capture_env:
             self._capture_env(meta, files)
 
         self._meta = meta
         self._save_meta()
+
+    def _resolve_prefixes(self, stored: Mapping[str, Any]) -> None:
+        """Use the prefixes a resumed run (or rank 0) recorded, unless given explicitly."""
+
+        for kind, arg in self._prefix_args.items():
+            old = stored.get(kind)
+
+            if not isinstance(old, str) or not old:
+                continue
+
+            if arg is None:
+                self.prefixes[kind] = old
+            elif arg != old:
+                warnings.warn(
+                    f"{NAME}: run {self.id} logged {kind} scalars under {old!r}/; they are "
+                    f"logged under {arg!r}/ from now on, so the two do not line up",
+                    stacklevel=4,
+                )
 
     def _session_entry(self, host: bool) -> dict[str, Any]:
         """Return the `sessions` entry for this start or resume.
@@ -826,13 +891,16 @@ class Run:
         not affected, and logs from any rank, as only local rank 0 samples.
         """
         writer = self._writer or self._ensure_writer()
+        prefix = self.prefixes["system"] + "/"
 
         if self.job is not None:
-            prefix = f"system/{self.job}/"
+            prefix += f"{self.job}/"
+
+        if prefix != "system/":
             values = {prefix + k.removeprefix("system/"): v for k, v in values.items()}
 
         if writer is not None:
-            writer.queue.append((0, self._last_step, _now(), values))
+            writer.put_own_scalars(self._last_step, _now(), values)
 
     def _on_heartbeat(self) -> None:
         """Update the heartbeat time in `run.json`; called by the writer thread."""
@@ -858,6 +926,7 @@ class Run:
                         heartbeat_interval=self._heartbeat_interval,
                         on_heartbeat=self._on_heartbeat if self.dist.is_main else None,
                         own_pack=self.job is not None,
+                        reserved=tuple(p + "/" for p in self.prefixes.values()),
                     )
 
         return self._writer
@@ -1645,6 +1714,106 @@ class Run:
         """
         return self._writer.summary() if self._writer else {}
 
+    # -- timers -----------------------------------------------------------------
+    def timer(
+        self,
+        name: str,
+        step: int | None = None,
+        *,
+        accumulate: bool | None = None,
+        all_ranks: bool | None = None,
+        sync: bool | None = None,
+    ) -> Timer:
+        """Return the timer called `name`, to time a part of the training code.
+
+        Use it as a context manager, or call `start` and `stop`, which can be in
+        different methods: the same name always returns the same timer, so no
+        handle has to be kept.
+
+        Each stop logs one scalar, `<timing prefix>/<name>` (`timing/train/epoch`),
+        whose value is the duration in seconds and whose time is when the span
+        started. A helper job logs under `timing/<job>/<name>`. Stopping costs
+        about a microsecond and never blocks.
+
+        Args:
+            name: The timer's name, such as `"train/epoch"` or `"callbacks/ema"`.
+            step: Step for the next `stop` (or `flush`). Defaults to the run's
+                latest step, as for system metrics.
+            accumulate: Sum the spans and log their total (and their count) only on
+                `Timer.flush`, for a timer around every batch. Set with the first
+                call for this name.
+            all_ranks: Log from every rank, not only rank 0. Defaults to
+                `init`'s `timing_all_ranks`. Set with the first call.
+            sync: Synchronize CUDA at start and stop, so the time covers the GPU
+                work and not only its launch (only if PyTorch is imported). Set
+                with the first call.
+
+        Returns:
+            The `Timer`.
+
+        Raises:
+            ValueError: If `name` is empty or contains a control character.
+
+        Example:
+            >>> with run.timer("train/epoch", step=epoch):
+            ...     train_one_epoch()
+            >>> run.timer("val/epoch").start()        # in on_validation_start
+            >>> run.timer("val/epoch").stop(step=epoch)  # in on_validation_end
+        """
+        t = self._timers.get(name)
+
+        if t is None:
+            if not isinstance(name, str) or not name.strip("/ ") or _CONTROL.search(name):
+                raise ValueError(f"invalid timer name {name!r}")
+
+            prefix = self.prefixes["timing"] + "/" + (f"{self.job}/" if self.job else "")
+            t = self._timers[name] = Timer(
+                self,
+                name,
+                prefix + name,
+                accumulate=bool(accumulate),
+                all_ranks=self._timing_all_ranks if all_ranks is None else bool(all_ranks),
+                sync=bool(sync),
+            )
+        else:
+            options = (("accumulate", accumulate), ("all_ranks", all_ranks), ("sync", sync))
+
+            for option, value in options:
+                if value is not None and getattr(t, option) != bool(value):
+                    if (name, option) not in self._timer_warned:
+                        self._timer_warned.add((name, option))
+                        warnings.warn(
+                            f"{NAME}: timer {name!r} was created with {option}="
+                            f"{getattr(t, option)}; {option}={value} is ignored",
+                            RuntimeWarning,
+                            stacklevel=2,
+                        )
+
+        if step is not None:
+            t._step = step
+
+        return t
+
+    def _log_timer(
+        self, timer: Timer, step: int | None, started: float, seconds: float, count: int | None
+    ) -> None:
+        """Queue one timer point; called by `Timer.stop` and `Timer.flush`."""
+
+        if not (self.dist.is_main or timer.all_ranks):
+            return
+
+        writer = self._writer or self._ensure_writer()
+
+        if writer is None:
+            return
+
+        data = {timer.key: seconds}
+
+        if count is not None:
+            data[timer.key + COUNT] = count
+
+        writer.put_own_scalars(self._last_step if step is None else step, started, data)
+
     def flush(self) -> None:
         """Block until everything logged so far is written (rarely needed)."""
 
@@ -1677,6 +1846,7 @@ class Run:
         if self._finished:
             return
 
+        self._close_timers()
         self._finished = True
 
         if self in _active:
@@ -1731,6 +1901,25 @@ class Run:
             except Exception as exc:  # pragma: no cover
                 warnings.warn(f"{NAME}: compaction failed, logs are intact: {exc!r}", stacklevel=2)
 
+    def _close_timers(self) -> None:
+        """Log what accumulating timers summed; drop timers still running, with a warning."""
+        running = []
+
+        for t in self._timers.values():
+            if t.running:
+                running.append(t.name)
+                t._t0 = None
+
+            if t.accumulate:
+                t.flush()
+
+        if running:
+            warnings.warn(
+                f"{NAME}: timers still running at finish were not logged: {', '.join(running)}",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+
     def _atexit(self) -> None:
         """Finish the run when the interpreter exits."""
         self.finish()
@@ -1783,6 +1972,9 @@ def init(
     system_devices: Any = None,
     system_interval: float = 30.0,
     capture_console: bool = True,
+    system_prefix: str | None = None,
+    timing_prefix: str | None = None,
+    timing_all_ranks: bool = False,
     _started: float | None = None,
 ) -> Run:
     """Start (or resume) a run in `<dir>/<project>/runs/<run_id>/`.
@@ -1844,6 +2036,15 @@ def init(
         system_interval: Seconds between system samples.
         capture_console: Copy what the script prints to stdout and stderr into
             `files/output.log`, shown in the viewer's run details.
+        system_prefix: First segment of the system metric names (`system/...`).
+            Defaults to the one the run already uses when resuming, else
+            `"system"`. Pass the same value on every rank.
+        timing_prefix: First segment of the timer names (`timing/...`, see
+            `Run.timer`). Defaults as for `system_prefix`, with `"timing"`. Both
+            are recorded in `run.json`; runs logged with different prefixes do
+            not line up in the viewer's charts, so keep one choice per project.
+        timing_all_ranks: Default of `Run.timer`'s `all_ranks`: log timers from
+            every rank, not only rank 0.
         _started: Start timestamp override, for tests.
 
     Returns:
@@ -1859,8 +2060,9 @@ def init(
         TimeoutError: If a non-zero rank waits 120 s without rank 0 creating the
             run folder.
         TypeError: If `config` is of an unsupported type.
-        ValueError: If `system_metrics` names an unknown group, or if `system_devices` names a
-            device that cannot be tracked.
+        ValueError: If `system_metrics` names an unknown group, if `system_devices` names a
+            device that cannot be tracked, or if `system_prefix` or `timing_prefix` is not
+            one name segment.
 
     Example:
         >>> import nuboard as nb
@@ -1888,6 +2090,9 @@ def init(
         system_devices=system_devices,
         system_interval=system_interval,
         capture_console=capture_console,
+        system_prefix=system_prefix,
+        timing_prefix=timing_prefix,
+        timing_all_ranks=timing_all_ranks,
         _started=_started,
     )
 

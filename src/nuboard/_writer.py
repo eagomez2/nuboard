@@ -23,7 +23,7 @@ from typing import Any
 from . import _format as fmt
 from ._meta import NAME
 
-_SCALARS, _TEXT, _MEDIA = 0, 1, 2
+_SCALARS, _TEXT, _MEDIA, _OWN = 0, 1, 2, 3  # _OWN: scalars logged by the run itself
 
 
 def _flatten(data: Mapping[str, Any], prefix: str = "") -> Iterable[tuple[str, Any]]:
@@ -88,6 +88,9 @@ class Writer:
         on_heartbeat: Called from the writer thread after each heartbeat.
         own_pack: Write media to `media.r<rank>.s<session>.pack` instead of the
             rank's shared pack, for a helper job that runs alongside the main one.
+        reserved: Name prefixes (such as `"timing/"`) kept for scalars the run
+            logs itself; a scalar logged with `put_scalars` under one of them
+            gets a one-time warning, from the writer thread.
     """
 
     def __init__(
@@ -99,7 +102,9 @@ class Writer:
         heartbeat_interval: float = 10.0,
         on_heartbeat: Callable[[], None] | None = None,
         own_pack: bool = False,
+        reserved: tuple[str, ...] = (),
     ) -> None:
+        self.reserved = reserved
         self.log_path = run_dir / f"events.r{rank}.s{session}.log"
         self.pack_path = run_dir / (
             f"media.r{rank}.s{session}.pack" if own_pack else f"media.r{rank}.pack"
@@ -139,6 +144,19 @@ class Writer:
             data: Metric names to numbers, possibly nested.
         """
         self.queue.append((_SCALARS, step, t, data))
+
+    def put_own_scalars(self, step: int, t: float, data: Mapping[str, Any]) -> None:
+        """Queue scalars the run logs itself (timers, system metrics).
+
+        Like `put_scalars`, but names under a reserved prefix are expected and
+        not warned about.
+
+        Args:
+            step: Training step.
+            t: Unix time.
+            data: Metric names to numbers.
+        """
+        self.queue.append((_OWN, step, t, data))
 
     def put_text(self, key: str, step: int, t: float, text: str) -> None:
         """Queue a text entry.
@@ -353,10 +371,18 @@ class Writer:
                     item = q.popleft()
                     kind = item[0]
 
-                    if kind == _SCALARS:
+                    if kind == _SCALARS or kind == _OWN:
                         _, step, t, data = item
 
                         for name, raw in _flatten(data):
+                            if (
+                                kind == _SCALARS
+                                and self.reserved
+                                and name not in self._ids
+                                and name.startswith(self.reserved)
+                            ):
+                                self._warn_reserved(name)
+
                             try:
                                 v = _to_float(raw)
                             except (TypeError, ValueError):
@@ -410,6 +436,17 @@ class Writer:
                 self._f.flush()
         except Exception as exc:  # pragma: no cover - never break training
             self._warn_once("drain", f"{NAME}: failed to write a batch: {exc!r}")
+
+    def _warn_reserved(self, name: str) -> None:
+        """Warn once that a hand-logged scalar uses a prefix the run keeps for itself."""
+        prefix = next(p for p in self.reserved if name.startswith(p))
+        self._warn_once(
+            name,
+            f"{NAME}: {name!r} starts with {prefix!r}, which this run keeps for its own "
+            "scalars (timers and system metrics); it is logged, but the viewer may treat "
+            "it as one of them. Use run.timer() for timings, another name, or other "
+            "prefixes with init(timing_prefix=..., system_prefix=...).",
+        )
 
     def _append_pack(self, data: bytes) -> int:
         """Append `data` to the media pack and return its byte offset."""
