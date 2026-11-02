@@ -27,6 +27,7 @@
     report: 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3',
     bookmark: 'M6 3h12v18l-6-4-6 4z',
     edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+    tree: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
     download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
     trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
     tag: 'M3 12V3h9l9 9-9 9zM7.5 7.5h.01',

@@ -380,6 +380,12 @@ Artifacts tab.
 Lists the Markdown reports of every project, with an editor and a live
 preview side by side. See [Reports](reports.md).
 
+## Hypotheses page
+
+A board per study of the hypotheses you tested, the runs that tested them and
+which run led to the next idea, drawn as a tree or a timeline. See
+[Hypotheses](hypotheses.md).
+
 ## Media page
 
 Shows images, audio, video, figures, point clouds, HTML and text logged with
@@ -696,4 +702,5 @@ tries to make through your browser.
 The token travels in plain HTTP. On an untrusted network, keep the default
 host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
 Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
-edited and take uploads unless you add `--read-only-reports`.
+edited and take uploads, and hypothesis boards can be edited, unless you add
+`--read-only-reports`.

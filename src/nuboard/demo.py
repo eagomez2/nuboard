@@ -22,6 +22,7 @@ from . import _fs
 from .cells import Audio
 from .collection import save_collection
 from .figures import WaveformFigure
+from .hypotheses import save_board, save_hypothesis
 from .reports import save_fields, save_report, save_snapshot
 from .run import add_artifact, init
 
@@ -685,6 +686,7 @@ def _vit_runs(root: Path, base: float) -> None:
         run.finish(_ended=t)
 
     _vit_notes(root / "vit-ablations", ids, curves)
+    _vit_hypotheses(root / "vit-ablations", ids)
 
 
 def _vit_extra(epoch: int, acc: float, rng: random.Random) -> dict[str, float]:
@@ -836,6 +838,109 @@ def _vit_notes(project: Path, ids: dict[str, str], curves: dict[str, list[float]
         "## Errors\n\n"
         f"![CutMix confusion](media:{ids['cutmix-s0']}/eval/confusion@100)\n\n"
         "| run | val/acc |\n|---|---|\n| none-s0 | 0.80 |\n| cutmix-s0 | 0.83 |\n",
+    )
+
+
+def _vit_hypotheses(project: Path, ids: dict[str, str]) -> None:
+    """Add a hypothesis board to the `vit-ablations` demo: how the augmentation study unfolded."""
+    board = "augmentations"
+    save_board(
+        project,
+        {
+            "title": "Augmentations on ViT-S/16",
+            "description": (
+                "Which augmentation closes the gap on ImageNet-100, and why we ended on CutMix."
+            ),
+            "card": {"metric": "val/acc", "stat": "best", "higher": True},
+        },
+        board=board,
+    )
+
+    def run(name: str, outcome: str, conclusion: str = "", star: bool = False) -> dict[str, Any]:
+        return {"id": ids[name], "outcome": outcome, "conclusion": conclusion, "star": star}
+
+    save_hypothesis(
+        project,
+        {
+            "id": "baseline",
+            "title": "How far does plain ViT-S/16 get?",
+            "note": "The reference point for everything else: no augmentation, two seeds.",
+            "verdict": "supported",
+            "runs": [
+                run(
+                    "none-s0",
+                    "continued",
+                    "Overfits after epoch 40; every later idea starts here.",
+                    True,
+                ),
+                run("none-s1", "open", "Same curve as seed 0."),
+            ],
+        },
+        board=board,
+    )
+    save_hypothesis(
+        project,
+        {
+            "id": "randaug",
+            "title": "Stronger per-image augmentation helps",
+            "parent_run": ids["none-s0"],
+            "reason": "baseline overfits",
+            "verdict": "supported",
+            "runs": [
+                run("randaug-s0", "open", "About +2 points, steady across seeds."),
+                run("randaug-s1", "open"),
+            ],
+        },
+        board=board,
+    )
+    save_hypothesis(
+        project,
+        {
+            "id": "mixup",
+            "title": "Mixing images helps more than per-image changes",
+            "parent_run": ids["none-s0"],
+            "reason": "regularize the labels too",
+            "verdict": "rejected",
+            "runs": [
+                run("mixup-s0", "continued", "Better than the baseline, worse than RandAugment."),
+                run("mixup-s1", "dropped", "Noisy: seeds disagree by a point."),
+            ],
+        },
+        board=board,
+    )
+    save_hypothesis(
+        project,
+        {
+            "id": "cutmix",
+            "title": "Pasting patches (CutMix) keeps the gain without the noise",
+            "note": (
+                "MixUp blends whole images, which ViT patches may not like. CutMix pastes a patch "
+                "instead, so each patch stays a real image.\n\n"
+                "**Result:** the best of the study, about +2.6 points. See the report."
+            ),
+            "parent_run": ids["mixup-s0"],
+            "reason": "keep local structure",
+            "also": [{"run": ids["randaug-s0"], "reason": "the bar to beat"}],
+            "verdict": "supported",
+            "star": True,
+            "reports": ["augmentation-findings"],
+            "runs": [
+                run("cutmix-s0", "continued", "Best run of the study.", True),
+                run("cutmix-s1", "open", "Confirms seed 0."),
+            ],
+        },
+        board=board,
+    )
+    save_hypothesis(
+        project,
+        {
+            "id": "longer",
+            "title": "A longer schedule adds another point",
+            "note": "Next up: 300 epochs with CutMix. No runs yet.",
+            "parent_run": ids["cutmix-s0"],
+            "reason": "still improving at epoch 100",
+        },
+        board=board,
     )
 
 

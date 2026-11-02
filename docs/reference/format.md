@@ -42,6 +42,8 @@ path.
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
+    hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number
+    hypotheses/<board>/<id>.json          one hypothesis of that board
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
 
@@ -426,6 +428,57 @@ their `inputs` and `outputs` entries, and the viewer shows them as unlinked.
 `runs` holds run ids (folder names) of the same project, in the order they
 were added. Ids of runs that no longer exist are ignored. Written atomically;
 deleting the file deletes the collection.
+
+## Hypothesis boards: `hypotheses/<board>/`
+
+A project can have several boards, one folder each. Board names and
+hypothesis ids are 1 to 64 letters, digits, `-` or `_`. Everything is written
+atomically by the viewer and is safe to commit to git.
+
+`board.json` (optional; a board without it uses the defaults):
+
+```json
+{"title": "Augmentations on ViT-S/16", "description": "Which augmentation …",
+ "verdicts": [{"id": "supported", "label": "Supported", "color": "s4", "icon": "check"}, "…"],
+ "outcomes": [{"id": "dropped", "label": "Dropped", "color": "gray", "dead_end": true}, "…"],
+ "card": {"metric": "val/acc", "stat": "best", "higher": true}}
+```
+
+- `verdicts` and `outcomes` hold 1 to 8 categories each. `color` is one of
+  `s1` … `s7` (the viewer's series colors) or `gray`; `icon` is one of
+  `check`, `x`, `circle`, `star`, `question`, `pause`. Missing or empty lists
+  give the defaults: Supported, Rejected and Open for verdicts; Continued,
+  Open and Dropped (a dead end) for outcomes.
+- `card` is the number shown on each run: a metric and its `best`, `last`,
+  `min` or `max` value; `higher` says which way is best. `null` shows none.
+
+`<id>.json`, one hypothesis (the file name is its id):
+
+```json
+{"id": "cutmix", "title": "Pasting patches keeps the gain", "note": "Markdown …",
+ "parent_run": "20261101T2007-3c1e88a0", "reason": "keep local structure", "show_reason": true,
+ "also": [{"run": "20261101T1837-9b0d71aa", "reason": "the bar to beat"}],
+ "runs": [{"id": "20261101T2037-5f2a9e10", "outcome": "continued", "conclusion": "Best run.", "star": true}],
+ "verdict": "supported", "star": true, "reports": ["augmentation-findings"],
+ "position": {"dx": 0, "dy": 0}, "folded": null, "card": null,
+ "created": 1791980000.0, "updated": 1791981000.0}
+```
+
+- `parent_run` is the run the hypothesis came from (the arrow), or `null` for
+  a starting point; `reason` is the text on the arrow, hidden when
+  `show_reason` is false. `also` lists dashed "also informed by" links.
+- `runs` are run ids of the same project, each with an outcome id, a
+  conclusion and a star. A run is listed by at most one hypothesis of a board.
+- `verdict` and `outcome` hold category ids; an unknown id shows as Open (or
+  the first category).
+- `reports` are report names of the project. `position` is how far the card
+  was dragged from its automatic place; `folded` is `null` for automatic
+  (folded above five runs); `card` overrides the board's number.
+
+Runs and reports that no longer exist show as "not found". A parent link that
+would make a loop is refused on save and drawn as a starting point if it is
+found on disk. Files that are not JSON objects are skipped, and unknown or
+invalid values fall back to defaults.
 
 ## Saved views: `views/*.json`
 

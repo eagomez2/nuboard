@@ -16,6 +16,7 @@
   import SweepsPage from './pages/SweepsPage.svelte';
   import ArtifactsPage from './pages/ArtifactsPage.svelte';
   import ReportsPage from './pages/ReportsPage.svelte';
+  import HypothesesPage from './pages/HypothesesPage.svelte';
   import { DISPLAY_NAME as NAME } from './lib/brand';
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
@@ -30,6 +31,7 @@
     { page: 'timeline', icon: 'timeline', label: 'Timeline' },
     { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
     { page: 'reports', icon: 'report', label: 'Reports' },
+    { page: 'hypotheses', icon: 'tree', label: 'Hypotheses' },
   ];
   const titles: Record<Page, string> = {
     runs: 'All runs',
@@ -39,6 +41,7 @@
     timeline: 'Timeline',
     artifacts: 'Artifacts',
     reports: 'Reports',
+    hypotheses: 'Hypotheses',
   };
 
   onMount(() => {
@@ -161,6 +164,8 @@
       <ArtifactsPage />
     {:else if router.page === 'reports'}
       <ReportsPage />
+    {:else if router.page === 'hypotheses'}
+      <HypothesesPage />
     {:else}
       <MediaPage />
     {/if}
