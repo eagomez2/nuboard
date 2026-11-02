@@ -12,7 +12,7 @@
     placeholder = '',
     newLabel = 'New',
     describedby,
-    limit = 8,
+    limit = 50,
   }: {
     id: string;
     value?: string; // undefined until the dialog fills its values in

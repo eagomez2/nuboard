@@ -126,6 +126,7 @@
               preselect={f.preselect}
               placeholder={f.placeholder}
               newLabel={f.newLabel}
+              limit={f.limit}
               describedby={f.hint ? `nb-dialog-hint-${i}` : undefined}
             />
             {#if f.hint}<span class="hint" id="nb-dialog-hint-{i}">{f.hint}</span>{/if}

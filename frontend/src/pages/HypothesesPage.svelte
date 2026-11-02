@@ -207,6 +207,7 @@
           preselect: globalProject || project || projects[0],
           placeholder: 'Type to find a project',
           newLabel: '',
+          limit: 8,
         },
       ],
       { message: 'A board is one tree of hypotheses, for one study of a project.', confirm: 'Create' },
@@ -236,24 +237,31 @@
       await notice('Not created', e instanceof Error ? e.message : String(e));
     }
   }
-  async function deleteBoard() {
-    if (!data || ro) return;
-    const n = data.hypotheses.length;
+  /** Delete a board (the open one by default) after asking. */
+  async function deleteBoard(b?: BoardListItem) {
+    if (data?.read_only) return;
+    const target =
+      b ?? (data ? { project, name: data.name, title: data.board.title, count: data.hypotheses.length } : null);
+    if (!target) return;
+    const n = target.count;
     const ok = await confirmAction(
       'Delete board',
-      `Delete the board “${boardLabel({ name: data.name, title: data.board.title })}” and its ${n} hypothes${n === 1 ? 'is' : 'es'}? Runs and reports are not touched.`,
+      `Delete the board “${boardLabel(target)}” and its ${n} hypothes${n === 1 ? 'is' : 'es'}? Runs and reports are not touched.`,
       { confirm: 'Delete', danger: true },
     );
     if (!ok) return;
     try {
-      await api.deleteBoard(project, data.name);
+      await api.deleteBoard(target.project, target.name);
     } catch (e) {
       await notice('Not deleted', e instanceof Error ? e.message : String(e));
     }
-    editingHead = false;
-    select(null, null);
-    router.set({ hproject: null, hboard: null });
+    if (target.project === project && target.name === data?.name) {
+      editingHead = false;
+      select(null, null);
+      router.set({ hproject: null, hboard: null });
+    }
     await loadBoards();
+    await load();
   }
 
   function setCard(metric: string, stat?: CardSetting['stat']) {
@@ -409,19 +417,29 @@
       {#each byProject as g (g.p)}
         <div class="item group" title={g.p}><Icon name="folder" size={16} /><span class="bt">{g.p}</span></div>
         {#each g.boards as b (b.project + '/' + b.name)}
-          <button
-            class="item child"
-            class:on={b.project === project && b.name === data?.name}
-            onclick={() => {
-              select(null, null);
-              router.set({ hproject: b.project, hboard: b.name });
-            }}
-            title="{b.project}/hypotheses/{b.name}/"
-          >
-            <Icon name="tree" size={15} />
-            <span class="bt">{boardLabel(b)}</span>
-            <span class="count">{b.count}</span>
-          </button>
+          <div class="brow">
+            <button
+              class="item child"
+              class:on={b.project === project && b.name === data?.name}
+              onclick={() => {
+                select(null, null);
+                router.set({ hproject: b.project, hboard: b.name });
+              }}
+              title="{b.project}/hypotheses/{b.name}/"
+            >
+              <Icon name="tree" size={15} />
+              <span class="bt">{boardLabel(b)}</span>
+              <span class="count">{b.count}</span>
+            </button>
+            {#if !data?.read_only}
+              <button
+                class="del"
+                aria-label="Delete board {boardLabel(b)}"
+                title="Delete board"
+                onclick={() => deleteBoard(b)}>×</button
+              >
+            {/if}
+          </div>
         {/each}
       {/each}
       <p class="hint">
@@ -547,11 +565,9 @@
                   <button class="btn btn-primary sm" type="submit">Save</button>
                   <button class="btn sm" type="button" onclick={() => (editingHead = false)}>Cancel</button>
                   <span class="grow"></span>
-                  {#if data.boards.length > 1 || data.hypotheses.length}
-                    <button class="btn btn-ghost sm danger" type="button" onclick={deleteBoard}
-                      ><Icon name="trash" size={14} /> Delete board</button
-                    >
-                  {/if}
+                  <button class="btn btn-ghost sm danger" type="button" onclick={() => deleteBoard()}
+                    ><Icon name="trash" size={14} /> Delete board</button
+                  >
                 </div>
               </form>
             {:else if data.board.title || data.board.description}
@@ -935,6 +951,32 @@
     background: var(--accent-soft);
     color: var(--accent);
     font-weight: 550;
+  }
+  .brow {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .brow .del {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 6px;
+    background: var(--panel-2);
+    color: var(--faint);
+    padding: 0 7px;
+    font-size: 15px;
+    line-height: 22px;
+    visibility: hidden;
+  }
+  .brow .del:hover {
+    color: var(--err);
+  }
+  .brow:hover .del,
+  .brow:focus-within .del {
+    visibility: visible;
   }
   .bt {
     flex: 1;

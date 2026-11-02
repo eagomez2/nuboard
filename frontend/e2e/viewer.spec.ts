@@ -1895,7 +1895,7 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
 test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.locator('.body .row input[type=checkbox]').nth(0).check();
-  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.getByRole('button', { name: 'Details' }).click();
   await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click();
   const jump = page.getByRole('group', { name: 'Open this run in' });
   await jump.getByRole('button', { name: 'Charts' }).click();
@@ -2074,4 +2074,25 @@ test.describe('time zone picker', () => {
     await expect(page.locator('button.zone')).toContainText('UTC');
     expect(await page.evaluate(() => localStorage.getItem('timeZone'))).toBe('"UTC"');
   });
+});
+
+test('the hypotheses page shows the demo board, a run panel, the timeline and a new board', async ({ page }) => {
+  await page.goto('/#/hypotheses');
+  await expect(page.getByRole('heading', { name: 'Augmentations on ViT-S/16' })).toBeVisible();
+  await expect(page.locator('.hcard')).toHaveCount(5);
+  await page.locator('.chiprow', { hasText: 'cutmix-s0' }).click();
+  await expect(page.locator('aside textarea')).toHaveValue('Best run of the study.');
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Timeline' }).click();
+  await expect(page.locator('.tlrow')).toHaveCount(8);
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Board' }).click();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Name').fill('Loss choice');
+  await page.getByRole('dialog').getByLabel('Project').fill('speech');
+  await page
+    .getByRole('dialog')
+    .getByRole('option', { name: /speech-denoise/ })
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/hboard=loss-choice/);
+  await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
 });

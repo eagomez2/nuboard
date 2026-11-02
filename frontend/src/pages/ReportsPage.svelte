@@ -93,6 +93,7 @@
           preselect: project || projects[0] || '',
           placeholder: 'Type to find a project',
           newLabel: '',
+          limit: 8,
         },
       ],
       { confirm: 'Create' },

@@ -547,10 +547,15 @@
     <button
       class="btn"
       disabled={selected.length < 1 || selected.length > MAX_COMPARE}
-      title={selected.length > MAX_COMPARE ? `Compare up to ${MAX_COMPARE} runs at a time` : undefined}
+      title={selected.length > MAX_COMPARE
+        ? `Compare up to ${MAX_COMPARE} runs at a time`
+        : selected.length === 1
+          ? 'Show the run details'
+          : undefined}
       onclick={() => router.set({ cmp: selected.join(','), pair: null })}
     >
-      <Icon name="compare" size={15} /> Compare
+      <!-- one run opens its details; two or more open them side by side -->
+      {#if selected.length === 1}<Icon name="info" size={15} /> Details{:else}<Icon name="compare" size={15} /> Compare{/if}
     </button>
     <button class="btn btn-primary" disabled={!selected.length} onclick={plotSelected}>Plot selected</button>
   </div>

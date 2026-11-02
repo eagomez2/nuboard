@@ -77,6 +77,7 @@
           preselect: timeZone.pref,
           placeholder: 'Type a city, zone or offset (UTC-03:00)',
           newLabel: 'Use',
+          limit: 8,
           hint: 'Optional, and only changes how times are shown in this browser. Named zones follow daylight saving at each moment; fixed offsets never change.',
         },
       ],
