@@ -32,10 +32,10 @@ instead of writing another 31 runs; delete the folder for a fresh one.
    badge have health alerts; hover the badge to read them. Type
    `where status = crashed` in the query bar, then clear it and try
    `train/loss.min < 2.3`. Open **Columns** and tick the `verdict`
-   property; click a cell to edit it. Select a few runs and press **Tags…**
+   property; click a cell to edit it. Select a few runs and press **Tags**
    to tag them.
 2. **Collections.** Click **shortlist** under the project. Select a few more
-   runs and press **Add to collection…**.
+   runs and press **Collection**.
 3. **Charts.** Type `where tags has "sweep" group by config.optim.lr` and open
    Charts: one line per learning rate with a mean ± std band over three seeds.
    The alerts under the chart jump to the spike or drop they describe. Drag to

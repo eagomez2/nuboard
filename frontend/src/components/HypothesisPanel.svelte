@@ -178,10 +178,11 @@
       </ul>
       <div class="row">
         <button class="btn btn-primary sm" onclick={() => openCharts([...picked])}
-          ><Icon name="charts" size={14} /> Open in charts</button
+          ><Icon name="charts" size={14} /> Charts</button
         >
         <button class="btn sm" onclick={() => openCompare([...picked])}
-          ><Icon name="compare" size={14} /> Compare</button
+          >{#if picked.size === 1}<Icon name="info" size={14} /> Details{:else}<Icon name="compare" size={14} />
+            Compare{/if}</button
         >
         <button class="btn btn-ghost sm" onclick={() => picked.clear()}>Clear</button>
       </div>
@@ -530,10 +531,11 @@
         {#if hyp.runs.some((r) => data.runs[r.id])}
           <div class="row">
             <button class="btn sm" onclick={() => openCharts(hyp.runs.map((r) => r.id))}
-              ><Icon name="charts" size={14} /> Open in charts</button
+              ><Icon name="charts" size={14} /> Charts</button
             >
             <button class="btn sm" onclick={() => openCompare(hyp.runs.map((r) => r.id))}
-              ><Icon name="compare" size={14} /> Compare</button
+              >{#if hyp.runs.filter((r) => data.runs[r.id]).length === 1}<Icon name="info" size={14} />
+                Details{:else}<Icon name="compare" size={14} /> Compare{/if}</button
             >
           </div>
         {/if}
@@ -658,6 +660,10 @@
     top: 16px;
     max-height: calc(100vh - 32px);
     overflow: auto;
+  }
+  /* a scrolling column must not squeeze its rows (it cut the "← hypothesis" line) */
+  .side > :global(*) {
+    flex-shrink: 0;
   }
   .side.bar {
     width: 44px;

@@ -36,6 +36,11 @@ A new Hypotheses page keeps the story behind your runs.
   demo's `vit-ablations` project has one. `--read-only-reports` now also makes
   boards read-only.
 
+- **Runs selection bar**: **Compare** (or **Details** for one run) moved into
+  the blue bar with the other actions on the ticked runs; **Plot selected** is
+  gone (the bar's **Charts** does the same); **Tags…**, **Set property…** and
+  **Add to collection…** are now **Tags**, **Properties** and **Collection**.
+
 ## 0.21.0
 
 `init` no longer hangs a multi-GPU job when only rank 0 calls it, and a new

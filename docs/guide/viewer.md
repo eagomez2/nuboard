@@ -48,10 +48,11 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
-  edit their **Tags…**, **Set property…**, **Add to collection…**, open them in
-  **Charts**, **Sweeps** or **Media**, **Compare**
-  up to eight of them (the button reads **Details** with one run ticked, and
-  opens its details), or **Plot selected**. Charts, Sweeps, Media and
+  edit their **Tags**, **Properties** or **Collection**, open them in
+  **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
+  (the button reads **Details** with one run ticked, and opens its details).
+  These actions sit in the blue selection bar, which appears once a run is
+  ticked. Charts, Sweeps, Media and
   Timeline then show a **Showing N selected runs** banner with buttons to the
   other pages, which keep the selection, and **Show all**, which goes back to
   the query result; **Clear selection** ends it too.
@@ -75,7 +76,7 @@ the viewer at any time:
 - In a run's details, the tag button next to its tags opens an editor: × removes
   a tag, and typing a name and pressing Enter adds one (tags used by other runs
   are suggested). **Done** or Esc closes it.
-- To change many runs at once, select them and press **Tags…**. **Add** takes
+- To change many runs at once, select them and press **Tags**. **Add** takes
   tags separated by commas or spaces, and **Remove** lists the selected runs'
   tags to pick from. Each run keeps its other tags.
 
@@ -97,7 +98,7 @@ link. Each run then has its own value, checked against that type.
 2. **Set it on one run**: click a cell in its ✎ column (Enter saves, Esc
    cancels, an empty value clears it), or edit it in the run's
    **Properties** tab.
-3. **Set it on many runs**: select them and press **Set property…**. Pick the
+3. **Set it on many runs**: select them and press **Properties**. Pick the
    property, then its value, with a control that fits the type: buttons for a
    choice or yes/no, pills for tags, a date picker for a date. A name that is
    not defined yet is defined first.
@@ -115,7 +116,7 @@ as `run.fields` and write them with `run.set_field("verdict", "keep")` in the
 ### Collections
 
 A collection is a named, hand-picked set of runs, such as a shortlist or the
-runs behind a paper figure. Select runs and press **Add to collection…**;
+runs behind a paper figure. Select runs and press **Collection**;
 type an existing name to add to it. Collections are listed under their
 project in the workspace; click one to filter to it (the query becomes
 `collections has "shortlist"`), or hover it and press × to delete it (the
@@ -229,8 +230,8 @@ shared.
 ![Charts page](../assets/charts-light.png#only-light){ .nb-shot }
 ![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
-The Charts page plots the selected runs (from **Plot selected** or **Charts**
-in the selection bar) or, if none are selected, every run matching the query.
+The Charts page plots the selected runs (from **Charts** in the selection
+bar) or, if none are selected, every run matching the query.
 
 - **Summary cards**: best value of the focused scalar, running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.

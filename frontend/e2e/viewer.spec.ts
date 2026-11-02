@@ -551,7 +551,7 @@ test('properties: define one from Columns, edit a cell, set it on selected runs'
   const boxes = page.locator('.body .row input[type=checkbox]');
   await boxes.nth(1).check();
   await boxes.nth(2).check();
-  await page.getByRole('button', { name: 'Set property…' }).click();
+  await page.getByRole('button', { name: 'Properties' }).click();
   dlg = page.getByRole('dialog', { name: 'Set a property on 2 runs' });
   await dlg.getByLabel('Property').fill('grade');
   await dlg.getByRole('button', { name: 'Next' }).click();
@@ -562,7 +562,7 @@ test('properties: define one from Columns, edit a cell, set it on selected runs'
   await expect(page.getByTitle('Edit grade').nth(1)).toHaveText('B');
   await expect(page.getByTitle('Edit grade').nth(2)).toHaveText('B');
   // a name that is not defined yet is defined first, with its type
-  await page.getByRole('button', { name: 'Set property…' }).click();
+  await page.getByRole('button', { name: 'Properties' }).click();
   await page.getByRole('dialog').getByLabel('Property').fill('epochs_seen');
   await page.getByRole('dialog').getByRole('button', { name: 'Next' }).click();
   dlg = page.getByRole('dialog', { name: 'Add a property' });
@@ -597,7 +597,7 @@ test('tags: edit one run in its details, and many from the selection', async ({ 
   // many runs: add one tag and remove another, keeping the rest
   await rows.nth(0).locator('input[type=checkbox]').first().check();
   await rows.nth(1).locator('input[type=checkbox]').first().check();
-  await page.getByRole('button', { name: 'Tags…' }).click();
+  await page.getByRole('button', { name: 'Tags', exact: true }).click();
   const dlg = page.getByRole('dialog', { name: 'Tags of 2 runs' });
   await dlg.getByLabel('Add').fill('shortlist');
   await dlg.getByRole('button', { name: 'best', exact: true }).click();
