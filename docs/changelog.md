@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.23.0
+
+Timers measure where training time goes, with a new Timing tab in the run
+details, and the Charts alerts follow the legend. No breaking changes.
 
 - **Timers** ([#32](https://github.com/eagomez2/nuboard/issues/32)):
   `run.timer(name)` times parts of the training code (an epoch, validation, a
