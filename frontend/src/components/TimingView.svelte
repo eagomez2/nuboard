@@ -184,6 +184,8 @@
       label: `session ${s.session}${s.host ? ` · ${s.host}` : ''}`,
     })),
   );
+  // over the big chart a dot follows the cursor; elsewhere it marks the shown step
+  let inPlot = $state(false);
   let cursor = $state<{ x: number; value: number } | null>(null);
   function openInCharts(metric: string) {
     router.go('charts', { sel: key, metric, cmp: null, pair: null, tab: null, tstep: null, trank: null });
@@ -346,31 +348,47 @@
                 )}</td
               >
               <td class="spark">
-                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (a mouse shortcut; the step stepper does it by keyboard) -->
-                <svg
-                  width="100%"
-                  preserveAspectRatio="none"
-                  height={SH}
-                  viewBox="0 0 {SW} {SH}"
-                  role="img"
-                  aria-label="{t.name} per step"
-                  onmousemove={(e) => onSparkMove(e, t.name, t.series)}
-                  onmouseleave={() => (hover = null)}
-                  onclick={(e) => onSparkClick(e, t.name, t.series)}
-                >
-                  {#each summary.sessions as s (s.session)}
-                    <line class="sess" x1={sx(s.step)} x2={sx(s.step)} y1="0" y2={SH} />
-                  {/each}
-                  {#if p.band}<path d={p.band} fill={colorOf(t.name)} opacity="0.18" />{/if}
-                  <path d={p.line} fill="none" stroke={colorOf(t.name)} stroke-width="1.2" />
+                <div class="sparkbox">
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (a mouse shortcut; the step stepper does it by keyboard) -->
+                  <svg
+                    width="100%"
+                    preserveAspectRatio="none"
+                    height={SH}
+                    viewBox="0 0 {SW} {SH}"
+                    role="img"
+                    aria-label="{t.name} per step"
+                    onmousemove={(e) => onSparkMove(e, t.name, t.series)}
+                    onmouseleave={() => (hover = null)}
+                    onclick={(e) => onSparkClick(e, t.name, t.series)}
+                  >
+                    {#each summary.sessions as s (s.session)}
+                      <line class="sess" x1={sx(s.step)} x2={sx(s.step)} y1="0" y2={SH} />
+                    {/each}
+                    {#if p.band}<path d={p.band} fill={colorOf(t.name)} opacity="0.18" />{/if}
+                    <path d={p.line} fill="none" stroke={colorOf(t.name)} stroke-width="1.2" />
+                    {#if shownStep !== null}
+                      <line class="at" x1={sx(shownStep)} x2={sx(shownStep)} y1="0" y2={SH} />
+                    {/if}
+                  </svg>
+                  <!-- the dots are HTML: the line stretches to the cell's width, which would squash a circle -->
                   {#if shownStep !== null}
                     {@const i = nearest(t.series, shownStep)}
-                    <line class="at" x1={sx(shownStep)} x2={sx(shownStep)} y1="0" y2={SH} />
                     {#if i >= 0 && t.series.y[i] !== null}
-                      <circle class="dot" cx={sx(t.series.x[i])} cy={p.sy(t.series.y[i] ?? 0)} r="2.5" />
+                      <span
+                        class="dot"
+                        style="left: {(sx(t.series.x[i]) / SW) * 100}%; top: {p.sy(t.series.y[i] ?? 0)}px"
+                      ></span>
                     {/if}
                   {/if}
-                </svg>
+                  {#if hover && hover.row === t.name && hover.value !== null}
+                    <span
+                      class="dot hov"
+                      style="left: {(sx(hover.step) / SW) * 100}%; top: {p.sy(hover.value)}px; border-color: {colorOf(
+                        t.name,
+                      )}"
+                    ></span>
+                  {/if}
+                </div>
                 {#if hover && hover.row === t.name}
                   <span class="tip mono"
                     >step {Math.round(hover.step).toLocaleString('en')} · {fmtSeconds(
@@ -395,7 +413,8 @@
                       >Open in Charts <Icon name="external" size={12} /></button
                     >
                   </div>
-                  <div class="bigplot">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="bigplot" onpointerenter={() => (inPlot = true)} onpointerleave={() => (inPlot = false)}>
                     <LineChart
                       data={chartOf(t.name, t.series)}
                       height={220}
@@ -407,6 +426,8 @@
                       themeVersion={app.themeVersion}
                       {regions}
                       yFormat={fmtSeconds}
+                      markers
+                      pinX={inPlot ? null : shownStep}
                       onCursor={(x, v) => (cursor = x === null || !v.length ? null : { x, value: v[0].value })}
                     />
                   </div>
@@ -754,10 +775,21 @@
     stroke-width: 1;
     stroke-dasharray: 2 2;
   }
+  .sparkbox {
+    position: relative;
+  }
   .dot {
-    fill: var(--panel);
-    stroke: var(--accent);
-    stroke-width: 1.5;
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1.5px solid var(--accent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .dot.hov {
+    background: var(--panel);
   }
   .tip {
     position: absolute;
