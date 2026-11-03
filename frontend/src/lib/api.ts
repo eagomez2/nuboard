@@ -513,8 +513,11 @@ export const api = {
         limit,
       })}`,
     ),
-  /** Check a path, add a version, or unlink or restore versions (needs `--edit-artifacts`). */
-  editArtifacts: <T>(op: 'check' | 'add' | 'unlink', body: Record<string, unknown>) =>
+  /**
+   * Check a path, add a version (from a path, or from a run's files with `promote`), or unlink
+   * or restore versions (needs `--edit-artifacts`).
+   */
+  editArtifacts: <T>(op: 'check' | 'add' | 'promote' | 'unlink', body: Record<string, unknown>) =>
     fetch(`/api/artifacts/${op}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

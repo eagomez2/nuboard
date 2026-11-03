@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Artifact versions from a run's files**: with `nuboard up --edit-artifacts`,
+  the Files tab has **New artifact version** next to Download, and an artifact
+  icon on folder rows. It opens the same form as **New version** on the
+  Artifacts page, with the source filled in and a choice of **Copy** (the
+  default) or **Reference**. A reference to files inside the project is stored
+  relative to the project (`reference_base: "project"`), so it survives
+  copying, rsyncing and merging; a running run can only be copied. The run is
+  recorded as the producer and the run folder is never changed. Without the
+  flag the buttons are hidden. `nuboard artifact add` with a path inside a run
+  does the same, `promote_run_path` does it from Python, and `nuboard rm`
+  keeps a run that a referenced version needs unless `--force`.
 - **Run details tabs** have icons, and only the first five show in the row: the
   rest, and the Charts, Sweeps and Media shortcuts, are in a **⋮** menu, so
   the settings filter stays on the same line on a laptop screen.

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
-import re
 import threading
 from pathlib import Path
 from typing import Any
 
 from .. import _fs
+from .._fs import RUN_INTERNAL as _INTERNAL
 from .tensorfiles import SUFFIXES as TENSOR_SUFFIXES
 
 MAX_FILES = 20_000  # files listed per run; the count and size still cover every file
@@ -23,12 +23,6 @@ IMAGE_SUFFIXES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpe
 
 MAX_PINS = 200
 _pins_lock = threading.Lock()
-
-# Files NuBoard writes itself, at the top of a run folder
-_INTERNAL = re.compile(
-    r"^(run\.json|annotations\.json|data\.parquet|events\.r\d+\.s\d+\.log"
-    r"|media\.r\d+(\.s\d+)?\.pack|jobs/[^/]+\.json)$"
-)
 
 
 def kind_of(rel: str, path: Path, sniff: bool) -> str:

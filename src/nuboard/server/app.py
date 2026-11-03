@@ -38,6 +38,7 @@ from ..artifacts import (
     UNLINKED,
     add_artifact,
     find_artifact_projects,
+    promote_run_path,
     restore_artifact,
     unlink_artifact,
     version_folders,
@@ -347,8 +348,8 @@ def create_app(
         token: Access token every request must carry (see `auth.Guard`), or None
             for an open viewer.
         edit_artifacts: Allow adding artifact versions (as references to paths
-            on this machine) and unlinking and restoring them. Without it those
-            requests are refused.
+            on this machine, or from a run's files by copy or reference) and
+            unlinking and restoring them. Without it those requests are refused.
         read_only_reports: Refuse every change to reports: saving, snapshots
             and uploads, as on a shared server.
         max_image_bytes: Size limit of an image uploaded into a report.
@@ -1317,6 +1318,59 @@ def create_app(
 
         return JSON({"project": project, "name": art.name, "version": art.version})
 
+    async def artifact_promote(request: Request) -> Response:
+        """Add an artifact version from a file or folder of a run, in the run's project.
+
+        JSON body: `run` (run key), `path` (inside the run folder), `name`, `store`
+        (`copy`, the default, or `reference`), and optionally `type`,
+        `description`, `metadata` (an object) and `checksum`. A reference is
+        stored relative to the project and needs a run that is not running.
+        Returns the new version as `{project, name, version}`.
+        """
+        body = await edit_body(request)
+
+        if isinstance(body, Response):
+            return body
+
+        key = str(body.get("run") or "")
+        record = catalog.get(key)
+        run_dir = catalog.path_of(key) if record else None
+        name = _fs.sanitize(str(body.get("name") or ""), "")
+        metadata = body.get("metadata") or {}
+        kind = body.get("type") or None
+        store = body.get("store") or "copy"
+
+        if run_dir is None or record is None:
+            return JSON({"error": f"unknown run {key!r}"}, status_code=400)
+
+        if not name:
+            return JSON({"error": "enter a name"}, status_code=400)
+
+        if store not in ("copy", "reference"):
+            return JSON({"error": "store must be copy or reference"}, status_code=400)
+
+        if not isinstance(metadata, dict) or (kind is not None and not isinstance(kind, str)):
+            return JSON({"error": "metadata must be an object and type a string"}, 400)
+
+        try:
+            art = await run_in_threadpool(
+                promote_run_path,
+                run_dir,
+                str(body.get("path") or ""),
+                name,
+                copy=store == "copy",
+                type=kind,
+                metadata=metadata,
+                checksum=bool(body.get("checksum")),
+                description=str(body.get("description") or ""),
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+        except OSError as exc:
+            return JSON({"error": f"the version could not be added: {exc}"}, status_code=409)
+
+        return JSON({"project": record["project"], "name": art.name, "version": art.version})
+
     async def artifact_unlink(request: Request) -> Response:
         """Unlink one version (`version`) or every version of an artifact, or restore one.
 
@@ -2100,6 +2154,7 @@ def create_app(
         Route("/api/artifacts/files", artifact_files),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),
         Route("/api/artifacts/add", artifact_add, methods=["POST"]),
+        Route("/api/artifacts/promote", artifact_promote, methods=["POST"]),
         Route("/api/artifacts/unlink", artifact_unlink, methods=["POST"]),
         Route("/api/alerts", alerts),
         Route("/api/collections", collections),

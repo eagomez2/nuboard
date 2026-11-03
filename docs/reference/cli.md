@@ -34,7 +34,7 @@ further) is used.
 | `--open` | | open a browser tab |
 | `--token VALUE` | `$NUBOARD_TOKEN`, or random off localhost | access token; the printed link signs a browser in |
 | `--no-token` | | serve a non-local `--host` without a token (anyone who reaches it can use it) |
-| `--edit-artifacts` | | allow adding artifact versions (references to paths on the server) and unlinking them in the viewer |
+| `--edit-artifacts` | | allow adding artifact versions (references to paths on the server, or from a run's files by copy or reference) and unlinking them in the viewer |
 | `--read-only-reports` | | refuse every change to reports (uploads included) and hypothesis boards (for a shared server) |
 | `--max-image-mb` | `20` | size limit of an image uploaded into a report |
 | `--max-text-mb` | `5` | size limit of a text file uploaded into a report |
@@ -101,8 +101,11 @@ This cannot be undone. Delete these runs? [y/N]
 | `--dry-run` | list the runs and exit |
 | `-y`, `--yes` | delete without asking; without it and without a terminal, nothing is deleted |
 | `--include-running` | also delete runs that are still logging (skipped by default) |
+| `--force` | also delete runs whose files a linked artifact version references (kept by default); those versions then report their files as missing |
 
-Artifact versions a deleted run produced are kept. Each run folder is moved
+Artifact versions a deleted run produced are kept. A run whose files a version
+references (made from the run's files without copying) is listed as
+`kept`, with the versions, unless `--force`. Each run folder is moved
 out of `runs/` before it is removed, so a run is never left half deleted.
 Exit codes: 0 when done or nothing to delete, 2 on an error or when not
 confirmed.

@@ -5,7 +5,9 @@ name. `plan` finds them without touching anything, `render` lists them with
 their sizes, and `apply` deletes them. Each run folder is first moved out of
 `runs/` into the project's hidden `.rm-tmp/` folder, then removed, so a run is
 either fully listed or gone, never half there. Running runs are skipped unless
-asked for, and the artifact versions a run produced are kept.
+asked for, and the artifact versions a run produced are kept. A run whose
+files an artifact version references (made with `promote_run_path` without
+copying) is kept too, unless forced, since the version would lose its files.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ class Target:
     status: str
     bytes: int
     outputs: list[str] = field(default_factory=list)
+    needed_by: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -42,6 +45,7 @@ class Plan:
     root: Path
     targets: list[Target] = field(default_factory=list)
     skipped: list[Target] = field(default_factory=list)
+    kept: list[Target] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
 
     @property
@@ -81,6 +85,7 @@ def plan(
     query: str = "",
     runs: list[str] | None = None,
     include_running: bool = False,
+    force: bool = False,
 ) -> Plan:
     """Find the runs under `root` matching `query` and/or named in `runs`.
 
@@ -90,6 +95,8 @@ def plan(
         runs: Run ids or names; a run matches if it is listed here or matches
             the query (when both are given, it must do both).
         include_running: Also delete runs that are still logging.
+        force: Also delete runs whose files artifact versions reference; those
+            versions then report their files as missing.
 
     Returns:
         The plan. Nothing is written.
@@ -98,6 +105,7 @@ def plan(
         ValueError: If `root` is missing, neither `query` nor `runs` is given,
             or the query is invalid.
     """
+    from .artifacts import versions_needing
     from .jobs import read_meta
     from .query import parse
 
@@ -143,10 +151,13 @@ def plan(
             record["status"],
             _size(path),
             outputs,
+            [f"{a.name}:v{a.version}" for a in versions_needing(path)],
         )
 
         if record["status"] == "running" and not include_running:
             p.skipped.append(target)
+        elif target.needed_by and not force:
+            p.kept.append(target)
         else:
             p.targets.append(target)
 
@@ -167,10 +178,16 @@ def render(p: Plan) -> str:
     for t in p.skipped:
         lines.append(f"  ! running   {t.project:<20} {t.id}  skipped (pass --include-running)")
 
+    for t in p.kept:
+        lines.append(
+            f"  ! kept      {t.project:<20} {t.id}  {', '.join(t.needed_by)} reference its files "
+            "(unlink them, or pass --force)"
+        )
+
     for name in p.unknown:
         lines.append(f"  ? {name}: no such run")
 
-    if p.targets or p.skipped or p.unknown:
+    if p.targets or p.skipped or p.kept or p.unknown:
         lines.append("")
 
     lines.append(f"Total: {len(p.targets)} run(s), {_human(p.bytes)}")
@@ -211,6 +228,7 @@ def main(
     query: str,
     runs: list[str] | None,
     include_running: bool,
+    force: bool = False,
     dry_run: bool,
     yes: bool,
 ) -> int:
@@ -222,7 +240,7 @@ def main(
     """
 
     try:
-        p = plan(root, query, runs, include_running)
+        p = plan(root, query, runs, include_running, force)
     except ValueError as exc:
         print(f"error: {exc}")
         return 2
