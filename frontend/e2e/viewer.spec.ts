@@ -627,6 +627,21 @@ test('chart legend: solo a series, then All and None', async ({ page }) => {
   await expect(page.locator('.legend-chip.off')).toHaveCount(0);
 });
 
+test('charts list only the alerts of runs switched on in the legend', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain');
+  const strip = page.getByLabel('Health alerts');
+  await expect(strip.locator('.alert').filter({ hasText: 'lr3e-3-s2' }).first()).toBeVisible();
+  const shown = await strip.locator('.alert').count();
+  await page.locator('.legend-chip').filter({ hasText: 'lr3e-3-s2' }).click();
+  await expect(strip.locator('.alert').filter({ hasText: 'lr3e-3-s2' })).toHaveCount(0);
+  await expect(strip.locator('.alert')).not.toHaveCount(shown);
+  const note = strip.getByRole('button', { name: /in hidden runs/ });
+  await expect(note).toBeVisible();
+  await note.click(); // switches those runs back on
+  await expect(page.locator('.legend-chip.off')).toHaveCount(0);
+  await expect(strip.locator('.alert')).toHaveCount(shown);
+});
+
 test('save view asks in a themed dialog', async ({ page }) => {
   await page.goto('/#/runs');
   await page.getByRole('button', { name: /save (current )?view/i }).click();
@@ -1981,6 +1996,32 @@ test('a text file that fits its box has no Full screen button', async ({ page })
   const pre = await openLiveFile(page, 'config.yaml');
   await expect.poll(() => pre.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
   await expect(page.getByRole('button', { name: /full screen/i })).toHaveCount(0);
+});
+
+test("the Timing tab shows where a run's time went, per rank", async ({ page }) => {
+  const runs = (await (await page.request.get('/api/runs?project=vit-ablations')).json()).runs;
+  const run = runs.find((r: { name: string }) => r.name === 'cutmix-s1');
+  await page.goto(`/#/runs?project=vit-ablations&cmp=${run.key}`);
+  await page.getByRole('button', { name: 'Timing', exact: true }).click();
+  // findings, then the timers in tree order with a summed child under train/epoch
+  await expect(page.locator('.chip', { hasText: 'rank 2 slowest' })).toBeVisible();
+  const rows = page.locator('tr.row');
+  await expect(rows.first()).toContainText('train/epoch');
+  await expect(rows.nth(1)).toContainText('data/wait');
+  await expect(rows.nth(1)).toContainText('summed');
+  await expect(page.getByText('waiting for other ranks')).toBeVisible();
+  await expect(page.getByText('not under a timer')).toBeVisible();
+  // a lane per rank in the timeline
+  await expect(page.locator('svg text', { hasText: /^rank 3$/ })).toBeVisible();
+  // a row opens its chart, which jumps to Charts on that scalar
+  await rows.first().click();
+  await page.getByRole('button', { name: /Open in Charts/ }).click();
+  await expect(page).toHaveURL(/#\/charts\?.*metric=timing(%2F|\/)train(%2F|\/)epoch/);
+  await expect(page.locator('.stat .big').first()).toContainText(/\d s$/);
+  // on Charts, the timing section comes last and starts folded
+  const last = page.locator('.sect .fold').last();
+  await expect(last).toContainText('timing');
+  await expect(last).toHaveAttribute('aria-expanded', 'false');
 });
 
 test.describe('time zone', () => {

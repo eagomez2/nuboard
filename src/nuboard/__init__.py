@@ -16,6 +16,7 @@ from .artifacts import Artifact
 from .cells import Audio, Image
 from .figures import WaveformFigure
 from .run import Run, add_artifact, get_artifact, init
+from .timing import Timer
 
 try:
     __version__ = _metadata.version(NAME)
@@ -55,6 +56,7 @@ __all__ = [
     "Audio",
     "Image",
     "Run",
+    "Timer",
     "WaveformFigure",
     "__version__",
     "add_artifact",

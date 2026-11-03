@@ -23,7 +23,7 @@ from ._meta import ENV_PREFIX, NAME
 from .collection import attach
 from .jobs import JOBS, merge_jobs, read_jobs
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 _SESSION_KEYS = ("session", "started", "ended", "utc_offset", "utc_offset_end", "host")
 STALE_AFTER_S = 120.0  # a "running" run without a heartbeat for this long is "lost"
 _SKIP_DIRS = {
@@ -230,6 +230,8 @@ def make_record(
         "dirty": bool(git.get("dirty")),
         "host": env.get("host"),
         "world_size": (meta.get("distributed") or {}).get("world_size", 1),
+        # first segment of the system metric and timer names (init's system_prefix, timing_prefix)
+        "prefixes": {"system": "system", "timing": "timing", **(meta.get("prefixes") or {})},
         "fork": meta.get("fork"),
         "inputs": meta.get("inputs") or [],
         "outputs": meta.get("outputs") or [],

@@ -38,6 +38,7 @@ class Store:
         self._lock = threading.Lock()
         self._log_bytes: dict[str, int] = {}
         self._alerts: dict[str, tuple[Any, list[dict[str, Any]]]] = {}
+        self._timing: dict[tuple[str, int | None], tuple[Any, dict[str, Any]]] = {}
 
     def reader(self, key: str) -> RunReader | None:
         """Return the cached reader for a run, creating it if needed.
@@ -153,6 +154,64 @@ class Store:
                 cached = self._alerts[key] = (state, check_run(reader))
 
         return cached[1]
+
+    def timing(self, key: str, rank: int | None) -> dict[str, Any] | None:
+        """Return the Timing tab's summary of a run (see `nuboard.timings.summarize`).
+
+        Cached until the run's log sizes, compaction state or `run.json` change.
+
+        Args:
+            key: Catalog key of the run.
+            rank: The rank to show, or None for every rank.
+
+        Returns:
+            The summary, or None if the run is unknown.
+        """
+        from ..timings import summarize
+
+        reader = self.fresh_reader(key)
+        record = self.catalog.get(key)
+
+        if reader is None or record is None:
+            return None
+
+        meta = reader.meta()
+        state = (
+            tuple(sorted(reader.log_sizes().items())),
+            reader.parquet is not None,
+            meta.get("heartbeat"),
+            meta.get("ended"),
+        )
+        cached = self._timing.get((key, rank))
+
+        if cached is None or cached[0] != state:
+            with reader.lock:
+                cached = self._timing[(key, rank)] = (state, summarize(reader, meta, rank))
+
+            while len(self._timing) > MAX_READERS:
+                self._timing.pop(next(iter(self._timing)))
+
+        return cached[1]
+
+    def timing_spans(self, key: str, step: int | None) -> dict[str, Any] | None:
+        """Return the spans of one step of a run, for the Timing tab's timeline.
+
+        Args:
+            key: Catalog key of the run.
+            step: The step, or None for the last timed one.
+
+        Returns:
+            See `nuboard.timings.spans`; None if the run is unknown.
+        """
+        from ..timings import spans
+
+        reader = self.fresh_reader(key)
+
+        if reader is None:
+            return None
+
+        with reader.lock:
+            return spans(reader, reader.meta(), step)
 
     # -- series ----------------------------------------------------------------
     def raw_series(

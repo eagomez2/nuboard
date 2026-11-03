@@ -41,6 +41,7 @@
     zoom = null,
     pinX = null,
     onPinValues,
+    yFormat = fmtAxis,
   }: {
     data: ChartData | null;
     smoothing?: number;
@@ -73,6 +74,8 @@
     pinX?: number | null;
     /** The values at `pinX`, reported whenever they change. */
     onPinValues?: (x: number | null, values: CursorValue[]) => void;
+    /** Labels of the y axis, such as durations for timers. */
+    yFormat?: (v: number) => string;
   } = $props();
   let dots: HTMLElement[] = [];
   // the data point each dot marks, per series label; kept in data units so a pinned dot
@@ -252,7 +255,7 @@
           ticks: { show: false },
           size: compact ? 44 : 56,
           font: `${compact ? 10 : 12}px ${cssVar('--mono') || 'monospace'}`,
-          values: (u, splits) => splits.map(fmtAxis),
+          values: (u, splits) => splits.map(yFormat),
         },
       ],
       cursor: {

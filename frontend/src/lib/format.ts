@@ -32,6 +32,32 @@ export function fmtDuration(s: number | null | undefined): string {
   return `${Math.floor(s / 86400)}d ${Math.round((s % 86400) / 3600)}h`;
 }
 
+/** A duration in seconds with the precision timers need: `850 ms`, `12.3 s`, `1m 22s`, `1h 04m`. */
+export function fmtSeconds(s: number | null | undefined): string {
+  if (s === null || s === undefined || !Number.isFinite(s)) return '—';
+  const a = Math.abs(s);
+  if (a === 0) return '0 s';
+  if (a < 0.001) return `${+(s * 1e6).toPrecision(2)} µs`;
+  if (a < 1) return `${+(s * 1000).toPrecision(a < 0.01 ? 2 : 3)} ms`;
+  if (a < 60) return `${+s.toPrecision(3)} s`;
+  const r = Math.round(s);
+  if (r < 3600) return `${Math.floor(r / 60)}m ${String(r % 60).padStart(2, '0')}s`;
+  const m = Math.round(s / 60);
+  if (m < 1440) return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+  const h = Math.round(s / 3600);
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** A count in short form: `980`, `49.5k`, `1.04M`, `3.2B`. */
+export function fmtCount(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a < 1e4) return Math.round(n).toLocaleString('en');
+  if (a < 1e6) return `${+(n / 1e3).toPrecision(3)}k`;
+  if (a < 1e9) return `${+(n / 1e6).toPrecision(3)}M`;
+  return `${+(n / 1e9).toPrecision(3)}B`;
+}
+
 export function fmtAgo(t: number | null | undefined, now = Date.now() / 1000, run?: RunZoneInfo | null): string {
   if (!t) return '—';
   const d = now - t;

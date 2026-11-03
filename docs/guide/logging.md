@@ -106,6 +106,27 @@ unprocessed input, set it once with
 `run.add_scalar_baseline("val/pesq", 1.31)`. The chart draws it as a dashed
 line that a switch turns off.
 
+## Timing the training code
+
+`run.timer(name)` measures how long a part of the code takes, without
+decorators and without changing the timed code. Use it as a block, or start it
+in one method and stop it in another: the same name returns the same timer.
+
+```python
+with run.timer("train/epoch", step=epoch):
+    train_one_epoch()
+
+run.timer("val/epoch").start()        # in on_validation_start
+run.timer("val/epoch").stop()         # in on_validation_end
+```
+
+For code that runs on every batch, `accumulate=True` sums the spans and logs
+one point per `flush()`. Timers are scalars under `timing/`, so they also show
+on the Charts page; the run details get a **Timing** tab with each timer's
+share of the run, its duration per step and a timeline per rank. See
+[`timer`](../api/timer.md) and, for several GPUs,
+[Distributed training](distributed.md#timers).
+
 ## Text, images, audio, figures, PR curves, distributions, tables, point clouds, HTML
 
 Each kind of media has its own `add_*` method, described in full, with its

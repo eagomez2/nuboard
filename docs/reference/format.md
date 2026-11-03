@@ -129,6 +129,7 @@ ignore keys they do not know.
 | `git` | object/null | `commit`, `branch`, `remote`, `root`, `dirty`, `pushed`, `untracked`, `source`; see below. Null outside a git repository or without git. |
 | `env` | object | `host`, `platform`, `python`, `executable`, `argv`, `cwd`, `pid`, `gpus`, `cuda_visible_devices`. `gpus` lists the NVIDIA GPUs the process can use (after `CUDA_VISIBLE_DEVICES`), each with `device` (`cuda:i`), `index` (on the machine), `uuid`, `name`, `memory` and `driver`; older runs have only the last three, for every GPU of the machine. |
 | `distributed` | object | `world_size`, `shared_id`. |
+| `prefixes` | object | `{system, timing}`: the first segment of the system metric and timer names, `"system"` and `"timing"` unless changed with `init`'s `system_prefix` and `timing_prefix`. Absent from older runs, which use the defaults. |
 | `inputs`, `outputs` | list | Artifacts used / logged: `{artifact, version}`, plus `project` and `project_path` for another project's artifact (see [Artifacts](#artifacts)). |
 | `fork` | object/null | `{run_id, step}` when created with `fork_from`. |
 | `exit` | object/null | `{code, error}`; `error` holds the last 4,000 characters of the traceback. |
@@ -237,6 +238,26 @@ Scalars named `system/...` are the [system samples](../api/init.md#system-scalar
 of `system_metrics`. They are ordinary `S` frames, written by `LOCAL_RANK` 0
 of each machine into its own rank's log. Their step is the latest training
 step, so several samples can share a step, in time order.
+
+### Timing keys
+
+Scalars named `timing/...` are [timers](../api/timer.md). They are ordinary
+`S` frames with one difference in meaning: `value` is the span's duration in
+seconds, and `time` is the wall-clock time the span **started** (not when it
+was logged), so `time + value` is when it ended. A helper job's timers are
+named `timing/<job>/...`. A timer made with `accumulate=True` logs one point per
+`flush`: `value` is the summed duration, `time` the start of the first summed
+span, and the hidden key `<name>\x1fcount` (like the `\x1flow` and `\x1fhigh`
+band keys) holds how many spans were summed.
+
+Timers are written by rank 0, or by every rank for those made with
+`all_ranks=True`, each into its own rank's log. Spans that nest (a
+`data/wait` inside `train/epoch`) are not linked in the file: a reader finds
+the nesting from the intervals of one rank.
+
+`system` and `timing` are the defaults of the run's `prefixes` (see
+[`run.json`](#runjson)); a run that changed them uses its own in place of
+`system/` and `timing/`.
 
 A scalar logged with `low` and `high` writes them as two companion scalars
 in the same `S` frame, named `<key>` followed by the unit separator `0x1f`

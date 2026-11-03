@@ -21,6 +21,9 @@ nb.init(
     system_devices=None,
     system_interval=30.0,
     capture_console=True,
+    system_prefix=None,
+    timing_prefix=None,
+    timing_all_ranks=False,
 ) -> Run
 ```
 
@@ -80,6 +83,16 @@ marks it crashed.
 - **capture_console** (*bool*): copy what the script prints to stdout and
   stderr into `files/output.log`, shown as **Console** in the run details. See
   [Console output](init.md#console-output).
+- **system_prefix**, **timing_prefix** (*str*, optional): the first segment of
+  the names the run logs itself: system metrics (`system/...`) and
+  [timers](timer.md) (`timing/...`). Change them to keep these words for your
+  own scalars, such as `timing_prefix="perf"`. One segment, without `/`.
+  Defaults to what a resumed run already uses, else `"system"` and `"timing"`.
+  Both are recorded in `run.json` under `prefixes`. Runs logged with different
+  prefixes do not line up in the viewer's charts, queries and saved views, so
+  keep one choice per project, and pass the same values on every rank.
+- **timing_all_ranks** (*bool*): the default of [`run.timer`](timer.md)'s
+  `all_ranks`: log timers from every rank, not only rank 0.
 
 **What it records**
 

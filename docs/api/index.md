@@ -50,6 +50,7 @@ NuBoard.
 | [`add_point_cloud`](add_point_cloud.md) | 3D points, such as a lidar scan or an embedding | Media › Point clouds |
 | [`add_html`](add_html.md) | an HTML document | Media › HTML |
 | [`add_file`](add_file.md) | a file or folder, such as a config file | Run details |
+| [`timer`](timer.md) | how long parts of the training code take, such as epochs and callbacks | Charts, Run details › Timing |
 | `nb.init(system_metrics=...)` | [CPU, memory and GPU use](init.md#system-scalars) as `system/` scalars | Charts |
 | `nb.init(capture_console=...)` | [what the script prints](init.md#console-output) | Run details › Console |
 | [`add_artifact`, `use_artifact`](add_artifact.md) | versioned datasets and checkpoints, copied or referenced, and which runs used them | Artifacts |

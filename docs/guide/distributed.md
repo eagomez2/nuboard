@@ -78,3 +78,14 @@ rank's event log. A job on 4 machines with 8 GPUs each logs 4 sets, each with
 8 GPUs. Pick a rank in the viewer to see another machine's. See
 [System scalars](../api/init.md#system-scalars) for what is logged and how to
 turn groups off.
+
+## Timers
+
+[Timers](../api/timer.md) are logged by rank 0 only, like scalars. To see how
+the ranks differ (a slow rank makes the others wait at the next
+synchronization), create a timer with `all_ranks=True`, or set
+`nb.init(timing_all_ranks=True)` for every timer: each rank then logs its own
+timings into its own event log, without any communication between ranks.
+Never average timings across ranks inside the training loop with a collective
+such as `all_reduce`: it adds a synchronization to every stop and hangs if a
+rank skips a timer. The viewer aggregates the ranks instead.

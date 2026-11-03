@@ -180,7 +180,7 @@ tabs, in every run of the project; a pin only shows as a tab where a run has
 a file it names. **Unpin** in a pinned tab, or the pin button in the tree,
 removes it.
 
-For a single run there are two more tabs:
+For a single run there are more tabs:
 
 - **Notes**: Markdown notes for the run, with a preview. Notes can use
   headings, lists, tables, links and code, and embed any logged item with
@@ -199,6 +199,24 @@ For a single run there are two more tabs:
   as columns and work in queries (`verdict = "keep"`,
   `topics has "augmentation"`). Definitions are kept in
   `<project>/fields.json`.
+- **Timing** (only for a run with [timers](../api/timer.md)): where the run's
+  time went. A line on top gives the share of the run's wall time that timers
+  covered, the steps and the ranks, then a few findings, such as a step that
+  took over three times its timer's median, or a rank that was the slowest in
+  most steps; click a finding to show that step or every rank. The table lists
+  each timer with its **Calls** (`1.04M` for a million), **Mean/step**, **p95**,
+  **Total**, **Share** of the run and a line of its duration per step (hover for
+  the value, click to show that step below; dashed lines mark resumed
+  sessions). A timer whose spans fall inside another's is indented under it;
+  `summed` marks an `accumulate=True` timer. Two more rows say how long ranks
+  waited for each other and how much time no timer covered. Click a row for a
+  full chart of that timer, and **Open in Charts** to compare it across runs.
+  **Timeline** draws one step with a lane per rank: each span where it ran,
+  summed timers as a thin strip (they have no position in time), and the time a
+  rank waited for the others hatched; `‹ ›` moves between steps. **Ranks**
+  switches between rank 0 and all ranks (per step the mean, shaded from the
+  fastest to the slowest rank) or a single rank. Kept in the URL as `trank`
+  and `tstep`.
 
 **Charts**, **Sweeps** and **Media** after the tabs open those pages with
 only the run (or the compared runs), as the selection bar does, without
@@ -314,7 +332,11 @@ bar) or, if none are selected, every run matching the query.
   gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
   **Filter scalars** takes a regular expression (as in TensorBoard, case
   insensitive; `loss|acc`, `^train/`) and shows only the matching charts; it
-  is kept in the URL as `cfind`.
+  is kept in the URL as `cfind`. The run's own scalars come last and start
+  folded: **system** (system metrics) and then **timing** ([timers](../api/timer.md),
+  drawn with durations such as `1.2 s` or `3m 05s` on the y axis and in the
+  inspector, lower being better). Runs that renamed these prefixes with
+  `init(system_prefix=..., timing_prefix=...)` are handled the same way.
 - A run that logged NaN gets a dashed marker at the first NaN with a
   `NaN · run` label.
 - **Live**: while runs are running, the server pushes updates over
@@ -325,8 +347,10 @@ bar) or, if none are selected, every run matching the query.
   unzoomed, unpinned chart draws them by itself.
 
 - **Alerts strip**: under the focused chart, the
-  [health alerts](alerts.md) of the runs in view. Click one to jump to it;
-  spikes and drops are shaded on the chart.
+  [health alerts](alerts.md) of the runs in view, leaving out runs switched
+  off in the legend (a "+N in hidden runs" note counts them; click it to switch
+  them back on). Click an alert to jump to it; spikes and drops are shaded on
+  the chart.
 
 ## Live updates
 
