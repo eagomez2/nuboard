@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 
 import pytest
@@ -167,3 +168,134 @@ def test_the_viewer_promotes_only_with_edit_artifacts(tmp_path):
         assert listed[1]["producers"] == [key] and listed[2]["producers"] == [key]
         assert listed[1]["manifest"]["reference_base"] == "project"
         assert listed[2]["manifest"]["metadata"] == {"step": 4}
+
+
+# -- reading a version's files, and versions that would contain other versions --
+
+
+def test_a_version_reads_like_a_mapping_of_its_listed_files(tmp_path):
+    run = make_run(tmp_path / "exp")
+    folder = promote_run_path(run.path, "files/ckpt", "ckpt")
+    single = promote_run_path(run.path, "files/ckpt/model.bin", "model", copy=False)
+
+    assert sorted(folder) == ["model.bin", "state.json"] and len(folder) == 2
+    assert folder["state.json"].read_text("utf-8") == "{}"
+    assert "model.bin" in folder and "nope.bin" not in folder
+
+    # a single-file reference: its folder holds other files, which are not keys
+    assert list(single) == ["model.bin"] and "state.json" not in single
+    assert single["model.bin"] == run.path / "files" / "ckpt" / "model.bin"
+
+    with pytest.raises(KeyError, match=r"lists model\.bin"):
+        single["state.json"]
+
+
+def test_subfolder_keys_and_an_empty_version_is_still_truthy(tmp_path):
+    src = tmp_path / "data"
+    (src / "train").mkdir(parents=True)
+    (src / "train" / "a.bin").write_bytes(b"1")
+    (tmp_path / "empty").mkdir()
+    art = nb.add_artifact("proj", "data", src, dir=tmp_path / "exp")
+    empty = nb.add_artifact("proj", "empty", tmp_path / "empty", dir=tmp_path / "exp")
+
+    assert art["train/a.bin"].read_bytes() == b"1"
+    assert art["train\\a.bin"] == art["train/a.bin"]
+    assert len(empty) == 0 and bool(empty)
+
+
+def test_a_version_cannot_contain_or_live_inside_artifact_versions(tmp_path):
+    from nuboard.artifacts import add_artifact
+
+    project = tmp_path / "exp" / "proj"
+    run = make_run(tmp_path / "exp")
+    first = promote_run_path(run.path, "files/ckpt", "ckpt")
+
+    for src in (project, project.parent, first.path, first.path / "files"):
+        for reference in (False, True):
+            with pytest.raises(ValueError, match="artifact"):
+                add_artifact(project, "bad", src, reference=reference)
+
+    other = tmp_path / "exp" / "other"  # another project's versions inside the source
+    add_artifact(other, "x", run.path / "files" / "ckpt")
+
+    with pytest.raises(ValueError, match="contains artifact versions"):
+        add_artifact(project, "bad", other, reference=True)
+
+    assert not list((project / "artifacts").glob("bad/.staging-*"))
+
+
+def test_same_as_latest_matches_unchanged_files_only(tmp_path):
+    from nuboard.artifacts import add_artifact, same_as_latest
+
+    project = tmp_path / "proj"
+    src = tmp_path / "best.pt"
+    src.write_bytes(b"a" * 10)
+
+    assert same_as_latest(project, "model", src) is None
+    add_artifact(project, "model", src)
+    assert same_as_latest(project, "model", src) == 1
+
+    src.write_bytes(b"b" * 10)  # same size, other bytes: the copy's SHA-256 tells
+    assert same_as_latest(project, "model", src) is None
+
+    add_artifact(project, "ref", src, reference=True)
+    assert same_as_latest(project, "ref", src) == 1
+    os.utime(src, ns=(1, 1))
+    assert same_as_latest(project, "ref", src) is None
+
+
+def test_stale_staging_folders_are_removed_and_fresh_ones_kept(tmp_path):
+    from nuboard.artifacts import remove_stale_staging
+
+    adir = tmp_path / "artifacts" / "model"
+    old, fresh = adir / ".staging-old", adir / ".staging-new"
+
+    for d in (old, fresh):
+        (d / "files").mkdir(parents=True)
+        (d / "files" / "x.bin").write_bytes(b"x")
+
+    for p in (old, old / "files", old / "files" / "x.bin"):
+        os.utime(p, (0, 0))
+
+    assert remove_stale_staging(adir) == [old]
+    assert fresh.exists() and not old.exists()
+
+
+def test_the_viewer_asks_before_adding_the_same_files_again(tmp_path):
+    run = make_run(tmp_path / "exp")
+    client = TestClient(
+        create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", edit_artifacts=True)
+    )
+    body = {"run": run.path.name, "path": "files/ckpt/model.bin", "name": "model", "store": "copy"}
+    key = client.get("/api/runs").json()["runs"][0]["key"]
+    body["run"] = key
+
+    assert client.post("/api/artifacts/promote", json=body).json()["version"] == 1
+    again = client.post("/api/artifacts/promote", json=body)
+    assert again.status_code == 409 and again.json()["duplicate_of"] == 1
+    assert (
+        client.post("/api/artifacts/promote", json={**body, "allow_duplicate": True}).json()[
+            "version"
+        ]
+        == 2
+    )
+
+    bad = client.post("/api/artifacts/add", json={"project": "proj", "name": "all", "path": "proj"})
+    assert bad.status_code == 400 and "artifacts/ folder" in bad.json()["error"]
+
+
+def test_a_broken_manifest_does_not_break_the_artifact_list(tmp_path):
+    run = make_run(tmp_path / "exp")
+    good = promote_run_path(run.path, "files/ckpt", "ckpt")
+    broken = good.path.parent / "v2"
+    broken.mkdir()
+    (broken / "manifest.json").write_bytes(b'["not", "an object"]')
+    client = TestClient(create_app(tmp_path / "exp", cache_dir=tmp_path / "cache"))
+
+    listed = {a["version"]: a for a in client.get("/api/artifacts").json()["artifacts"]}
+    assert listed[1]["problem"] == "" and listed[1]["file_count"] == 2
+    assert "not valid JSON" in listed[2]["problem"] and listed[2]["file_count"] == 0
+    files = client.get(
+        "/api/artifacts/files", params={"project": "proj", "name": "ckpt", "version": 2}
+    )
+    assert files.json()["files"] == []

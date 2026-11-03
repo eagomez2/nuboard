@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **Reading an artifact's files**: an `Artifact` reads like a mapping from
+  each listed file's path inside the version to the file, so
+  `art["best.pt"]`, `"best.pt" in art`, `list(art)` and `len(art)` work for
+  copies and references alike. Only the files the manifest lists are keys,
+  which matters for a reference to one file, whose `files` folder may hold
+  others.
+- **Artifact versions can no longer contain other versions**: a source inside
+  a project's `artifacts/` folder, or one that contains it or another
+  project's versions, is refused. Before, referencing the project folder made
+  each new version list the previous versions' manifests.
+- **The viewer asks before adding identical files again**: adding or
+  promoting files that are the same as the artifact's latest version shows
+  "the same as v1" with **Add anyway** (`allow_duplicate` in the API) instead
+  of adding a duplicate version.
+- **The Artifacts page cannot hang on loading**: a version with a missing,
+  unreadable or malformed manifest is listed with the problem instead of
+  breaking the list, and a list that fails or takes over 20 seconds shows an
+  error with **Retry**. A copy that is interrupted removes its staging
+  folder, and staging folders abandoned for 6 hours are removed when a
+  version of that artifact is added or the viewer starts with
+  `--edit-artifacts`.
 - **Artifact versions from a run's files**: with `nuboard up --edit-artifacts`,
   the Files tab has **New artifact version** next to Download, and an artifact
   icon on folder rows. It opens the same form as **New version** on the

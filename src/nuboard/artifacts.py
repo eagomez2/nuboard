@@ -31,7 +31,9 @@ import shutil
 import socket
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,12 @@ _UNSET_RE = re.compile(r"\$\{?(\w+)")
 @dataclass(frozen=True)
 class Artifact:
     """One version of a named artifact stored in a project.
+
+    A version is a set of files, even when it holds one. It reads like a mapping
+    from each file's path inside the version (as listed in the manifest, with `/`
+    separators, such as `"best.pt"` or `"train/shard-000.bin"`) to the file on
+    this machine: `art["best.pt"]`, `"best.pt" in art`, `list(art)`, `len(art)`.
+    Only listed files are keys; other files in the same folder are not.
 
     Attributes:
         name: The artifact's (sanitized) name.
@@ -110,6 +118,45 @@ class Artifact:
             return self.path / "files"
 
         return self._resolve(self.manifest.get("root") or self.manifest["reference"])
+
+    @cached_property
+    def _index(self) -> dict[str, dict[str, Any]]:
+        """Manifest entries by their path inside the version."""
+        return {str(f["path"]): f for f in self.manifest.get("files") or [] if "path" in f}
+
+    def __getitem__(self, key: str) -> Path:
+        """Return the file at `key`, a path inside the version such as `"ckpt/best.pt"`.
+
+        Raises:
+            KeyError: If the version does not list that file; the message names
+                some that it does.
+        """
+        key = str(key).replace("\\", "/").strip("/")
+
+        if key not in self._index:
+            listed = list(self._index)
+            some = ", ".join(listed[:5]) + (
+                f" and {len(listed) - 5} more" if len(listed) > 5 else ""
+            )
+            raise KeyError(f"{self.ref} has no file {key!r}; it lists {some or 'no files'}")
+
+        return self.files / key
+
+    def __contains__(self, key: object) -> bool:
+        """True if the version lists the file `key`."""
+        return isinstance(key, str) and key.replace("\\", "/").strip("/") in self._index
+
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over the paths of the version's files, in manifest order."""
+        return iter(self._index)
+
+    def __len__(self) -> int:
+        """Number of files in the version."""
+        return len(self._index)
+
+    def __bool__(self) -> bool:
+        """Always true: a version with no files is still a version."""
+        return True
 
     def verify(self) -> list[str]:
         """Check the files against the manifest by size, without reading them.
@@ -281,6 +328,71 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+_VERSION_FILE_RE = re.compile(r"(^|/)artifacts/(\.unlinked/)?[^/]+/v\d+/manifest\.json$")
+"""A version's manifest, by its path: a source listing one would swallow other versions."""
+
+
+STALE_STAGING = 6 * 3600
+"""Seconds without a change after which a staging folder is taken as abandoned."""
+
+
+def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Path]:
+    """Delete the abandoned `.staging-*` folders of one artifact.
+
+    A staging folder is left behind when the process making a version is killed
+    mid-copy. One is abandoned when nothing in it changed for `max_age` seconds,
+    so a copy still in progress, which keeps writing, is never touched.
+
+    Args:
+        adir: The artifact's folder, `<project>/artifacts/<name>/`.
+        max_age: Seconds without a change.
+
+    Returns:
+        The folders deleted.
+    """
+    removed = []
+    cutoff = time.time() - max_age
+
+    try:
+        stagings = [
+            Path(e.path) for e in os.scandir(adir) if e.name.startswith(".staging-") and e.is_dir()
+        ]
+    except OSError:
+        return removed
+
+    for d in stagings:
+        try:
+            newest = max([d.stat().st_mtime, *(p.stat().st_mtime for p in d.rglob("*"))])
+        except OSError:
+            continue
+
+        if newest < cutoff:
+            shutil.rmtree(d, ignore_errors=True)
+            removed.append(d)
+
+    return removed
+
+
+def _refuse_artifact_folders(src: Path, project_dir: Path) -> None:
+    """Raise ValueError if `src` is inside the project's `artifacts/` folder or contains it.
+
+    A version made from such a path would list (or, for a copy, copy into itself)
+    the project's own versions.
+    """
+    src = src.resolve()
+    art = (project_dir / "artifacts").resolve()
+
+    if src == art or _inside(src, art) is not None:
+        raise ValueError(
+            f"{src} is inside {art}: an artifact cannot be made from artifact versions"
+        )
+
+    if src.is_dir() and _inside(art, src) is not None:
+        raise ValueError(
+            f"{src} contains the project's artifacts/ folder: pick a folder inside it instead"
+        )
+
+
 def add_artifact(
     project_dir: Path,
     name: str,
@@ -329,6 +441,8 @@ def add_artifact(
 
     Raises:
         FileNotFoundError: If `src` does not exist.
+        ValueError: If `src` is inside an `artifacts/` folder or contains one, so
+            the version would list other versions' files.
         OSError: If the staging folder cannot be renamed for a reason other than
             another writer claiming the same version.
     """
@@ -339,8 +453,10 @@ def add_artifact(
     if not src.exists():
         raise FileNotFoundError(src)
 
+    _refuse_artifact_folders(src, project_dir)
     adir = project_dir / "artifacts" / name
     adir.mkdir(parents=True, exist_ok=True)
+    remove_stale_staging(adir)
     staging = adir / f".staging-{_fs.random_suffix()}"
     files_dir = staging / "files"
 
@@ -361,13 +477,28 @@ def add_artifact(
             stored = raw.rstrip("/\\") if "$" in raw else _portable(src)
             root = stored if src.is_dir() else str(Path(stored).parent)
             extra = {"reference": stored, "root": root}
-    elif src.is_dir():
-        shutil.copytree(src, files_dir)
-        listed = sorted(files_dir.rglob("*"))
     else:
-        files_dir.mkdir(parents=True)
-        shutil.copy2(src, files_dir / src.name)
-        listed = [files_dir / src.name]
+        try:
+            if src.is_dir():
+                shutil.copytree(src, files_dir)
+                listed = sorted(files_dir.rglob("*"))
+            else:
+                files_dir.mkdir(parents=True)
+                shutil.copy2(src, files_dir / src.name)
+                listed = [files_dir / src.name]
+        except BaseException:  # a full disk or Ctrl+C: leave no half-copied version behind
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+    nested = next(
+        (p for p in listed if _VERSION_FILE_RE.search(p.relative_to(files_dir).as_posix())), None
+    )
+
+    if nested is not None:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise ValueError(
+            f"{src} contains artifact versions ({nested.parent}): pick a folder without one"
+        )
 
     entries = []
 
@@ -411,6 +542,62 @@ def add_artifact(
                 raise
 
     return Artifact(name, version, adir / f"v{version}", manifest)
+
+
+def same_as_latest(project_dir: Path, name: str, src: str | os.PathLike[str]) -> int | None:
+    """Return the latest version of an artifact if `src` holds the same files, else None.
+
+    The files must have the same paths and sizes, and the same SHA-256 when the
+    version recorded one (copies always do, which reads `src`), or else the same
+    modification time (references). A version that recorded neither never matches.
+
+    Args:
+        project_dir: The project's folder.
+        name: Artifact name.
+        src: File or folder a new version would be made from.
+
+    Returns:
+        The matching version number, or None.
+    """
+    adir = project_dir / "artifacts" / _fs.sanitize(name, "artifact")
+    versions = _versions(adir)
+    src = _expand(os.fspath(src))
+
+    if not versions or not src.exists():
+        return None
+
+    manifest = _fs.read_json(adir / f"v{versions[-1]}" / "manifest.json", {})
+    old = manifest.get("files") if isinstance(manifest, dict) else None
+
+    if not isinstance(old, list):
+        return None
+
+    if src.is_dir():
+        new = {p.relative_to(src).as_posix(): p for p in src.rglob("*") if p.is_file()}
+    else:
+        new = {src.name: src}
+
+    if len(new) != len(old) or any(new.get(str(f.get("path"))) is None for f in old):
+        return None
+
+    try:
+        stats = {str(f["path"]): new[str(f["path"])].stat() for f in old}
+
+        if any(stats[str(f["path"])].st_size != f.get("size") for f in old):
+            return None
+
+        for f in old:
+            p = new[str(f["path"])]
+
+            if "sha256" in f:
+                if _sha256(p) != f["sha256"]:
+                    return None
+            elif "mtime_ns" not in f or stats[str(f["path"])].st_mtime_ns != f["mtime_ns"]:
+                return None
+    except OSError:
+        return None
+
+    return versions[-1]
 
 
 def promote_run_path(

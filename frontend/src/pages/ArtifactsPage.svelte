@@ -21,17 +21,43 @@
   let reloads = $state(0);
   let formOpen = $state(false);
 
+  // An answer that takes this long is shown as an error with Retry rather than an endless spinner.
+  const LOAD_TIMEOUT = 20_000;
+  let loadError = $state('');
+  let asked = 0; // requests sent; a reply older than the one shown is dropped
+  let shown = 0;
+
   $effect(() => {
     void app.runs?.version;
     void reloads;
+    const n = ++asked;
     api
       .artifacts(router.get('project') || null)
       .then((r) => {
+        if (n < shown) return;
+        shown = n;
         all = r.artifacts;
         loaded = true;
+        loadError = '';
       })
-      .catch(() => (loaded = true));
+      .catch((e) => {
+        if (!loaded) loadError = `The artifact list could not be loaded: ${e instanceof Error ? e.message : e}`;
+      });
   });
+
+  $effect(() => {
+    void reloads;
+    if (loaded) return;
+    const timer = setTimeout(() => {
+      if (!loaded && !loadError) loadError = 'The artifact list is taking too long to load.';
+    }, LOAD_TIMEOUT);
+    return () => clearTimeout(timer);
+  });
+
+  function retry() {
+    loadError = '';
+    reloads++;
+  }
 
   const edit = $derived(!!app.info?.edit_artifacts);
   const showUnlinked = $derived(router.get('unlinked') === '1');
@@ -262,7 +288,12 @@
   />
 {/if}
 
-{#if !loaded}
+{#if !loaded && loadError}
+  <div class="card empty" role="alert">
+    <p>{loadError}</p>
+    <button class="btn btn-primary" onclick={retry}>Retry</button>
+  </div>
+{:else if !loaded}
   <div class="card empty">Loading artifacts…</div>
 {:else if !artifacts.length}
   <div class="card empty">
@@ -353,6 +384,9 @@ run.use_artifact("dataset:latest")</pre>
               </span>
             {/if}
           </div>
+          {#if selected.problem}<p class="err" role="alert">
+              {selected.problem}. Check <code>{selected.project}/artifacts/{selected.name}/v{selected.version}/</code>.
+            </p>{/if}
           {#if selected.manifest.description}<p class="desc">{selected.manifest.description}</p>{/if}
           <div class="facts">
             <div class="fact-name">
@@ -659,6 +693,12 @@ run.use_artifact("dataset:latest")</pre>
   .latest {
     color: var(--accent);
     background: var(--accent-soft);
+  }
+  .err {
+    margin: 0;
+    font-size: 13px;
+    color: var(--err);
+    overflow-wrap: anywhere;
   }
   .desc {
     margin: 0;

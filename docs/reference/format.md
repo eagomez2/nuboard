@@ -379,9 +379,12 @@ resume added a session) they read the logs. No coordination is needed.
 
 ## Artifacts
 
-`artifacts/<name>/v<N>/` is created by copying into a staging folder and
-renaming it into place, so a version is either complete or absent.
-`manifest.json`:
+`artifacts/<name>/v<N>/` is created by copying into a staging folder
+(`artifacts/<name>/.staging-<rand>/`) and renaming it into place, so a version
+is either complete or absent. A staging folder left by a killed process is
+ignored by readers, and removed once nothing in it changed for 6 hours. A
+version's source can never be inside an `artifacts/` folder or contain one,
+so no version lists another version's files. `manifest.json`:
 
 ```json
 {

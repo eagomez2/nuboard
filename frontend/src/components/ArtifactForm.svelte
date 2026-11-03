@@ -175,47 +175,32 @@
     return `${what}${files} · ${c.partial ? 'at least ' : ''}${fmtBytes(c.size ?? 0)}`;
   }
 
-  async function add() {
+  // set when the files match the latest version: the form offers to add them anyway
+  let duplicateOf = $state<number | null>(null);
+
+  type Added = { project: string; name: string; version: number; duplicate_of?: number };
+
+  async function add(allowDuplicate = false) {
     busy = true;
     error = '';
+    duplicateOf = null;
     const common = {
       name: cleanName,
       type: type || null,
       description: description.trim(),
       metadata: Object.fromEntries(meta.map((m) => [m.key.trim(), metaValue(m)])),
       checksum,
+      allow_duplicate: allowDuplicate,
     };
-    if (source) {
-      const res = await api
-        .editArtifacts<{ project: string; name: string; version: number }>('promote', {
-          ...common,
-          run: source.runKey,
-          path: source.path,
-          store: stored,
-        })
-        .catch((e) => ({ error: String(e) }) as { error: string; project: string; name: string; version: number });
-      busy = false;
-      if (res.error) {
-        error = res.error;
-        return;
-      }
-      onadded(res.project, res.name, res.version);
-      return;
-    }
-    const res = await api
-      .editArtifacts<{ project: string; name: string; version: number }>('add', {
-        project,
-        name: cleanName,
-        path: path.trim(),
-        type: type || null,
-        description: description.trim(),
-        metadata: Object.fromEntries(meta.map((m) => [m.key.trim(), metaValue(m)])),
-        checksum,
-      })
-      .catch((e) => ({ error: String(e) }) as { error: string; project: string; name: string; version: number });
+    const res = await (
+      source
+        ? api.editArtifacts<Added>('promote', { ...common, run: source.runKey, path: source.path, store: stored })
+        : api.editArtifacts<Added>('add', { ...common, project, path: path.trim() })
+    ).catch((e) => ({ error: String(e) }) as Added & { error: string });
     busy = false;
     if (res.error) {
       error = res.error;
+      duplicateOf = typeof res.duplicate_of === 'number' ? res.duplicate_of : null;
       return;
     }
     onadded(res.project, res.name, res.version);
@@ -474,7 +459,14 @@
         <dd>{hashed ? 'Yes, every file is hashed' : 'No, files are checked by size'}</dd>
       </dl>
     {/if}
-    {#if error}<p class="err" role="alert">{error}</p>{/if}
+    {#if error}<p class="err" role="alert">
+        {error}{#if duplicateOf !== null}. <button
+            type="button"
+            class="btn btn-ghost sm"
+            disabled={busy}
+            onclick={() => add(true)}>Add anyway</button
+          >{/if}
+      </p>{/if}
     <div class="actions">
       {#if review}
         <button type="button" class="btn" disabled={busy} onclick={() => (review = false)}>Back</button>

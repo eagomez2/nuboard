@@ -74,6 +74,8 @@ export interface ArtifactVersion {
   consumers: string[];
   /** Hidden with Unlink; its folder is in `artifacts/.unlinked/` and can be restored. */
   unlinked?: boolean;
+  /** Why the manifest could not be read, such as a half-written file; '' when it was. */
+  problem?: string;
   manifest: {
     type?: string | null;
     metadata?: Record<string, unknown>;

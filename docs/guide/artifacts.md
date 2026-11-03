@@ -147,6 +147,31 @@ out: `run.use_artifact("model:v1")`.
 To find a version without recording it, such as in a notebook, use
 `nb.get_artifact("datasets/fineweb-edu:v2")`.
 
+### Reading a version's files
+
+A version is a set of files, even when it holds one, so `files` is always a
+folder: the one the files are stored under. The version itself reads like a
+mapping from each file's path inside it (as the manifest lists it, with `/`
+separators) to the file on this machine:
+
+```python
+model = run.use_artifact("model:latest")
+list(model)               # ["best.pt"]: what the version holds
+"best.pt" in model        # True
+model["best.pt"]          # Path to the file, for a copy or a reference
+len(model)                # 1
+
+data = run.use_artifact("datasets/fineweb-edu:v2")
+data["train/shard-000.bin"]  # files in subfolders too
+```
+
+Only the files the version listed when it was made are keys. For a
+reference to one file, `files` is the folder that file sits in, which may hold
+other files; they are not part of the version, and `model["other.pt"]` raises
+a `KeyError` naming the files it does list. A file added to a referenced
+folder later is not part of the version either. Prefer the mapping to
+listing `files` yourself.
+
 ## Data on several machines
 
 When the data has a copy on each machine, such as on a laptop for evaluation
@@ -287,6 +312,12 @@ The Artifacts page is read-only unless the viewer was started with
   metadata (text, number, yes/no or JSON) and, if you want, SHA-256 checksums,
   then review and add. Nothing is copied, and the viewer cannot upload files;
   use `nuboard artifact add --copy` or `nb.add_artifact` for a copy.
+  A path inside a project's `artifacts/` folder, or one that contains it (such
+  as the project itself), is refused, since the version would list other
+  versions.
+- If the files are the same as the artifact's latest version (same paths and
+  sizes, and the same SHA-256 or modification time), the form says so and
+  offers **Add anyway** instead of silently adding an identical version.
 - **New artifact version** in a run's **Files** tab makes a version from a
   file of that run (the button next to **Download**), or from a folder (the
   artifact icon on the folder's row). It opens the same form, with the

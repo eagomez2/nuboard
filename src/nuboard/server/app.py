@@ -39,7 +39,9 @@ from ..artifacts import (
     add_artifact,
     find_artifact_projects,
     promote_run_path,
+    remove_stale_staging,
     restore_artifact,
+    same_as_latest,
     unlink_artifact,
     version_folders,
 )
@@ -1047,15 +1049,28 @@ def create_app(
         if cached and cached[0] == stamp:
             return cached[1]
 
-        manifest = _fs.read_json(vdir / "manifest.json", {}) or {}
-        files = manifest.pop("files", None) or []
-        out = {
-            "manifest": manifest,
-            "file_count": len(files),
-            "size": sum(int(f.get("size") or 0) for f in files),
-        }
+        problem = ""
 
-        if stamp is not None:
+        try:
+            manifest = _fs.read_json(vdir / "manifest.json", None)
+        except (OSError, ValueError) as exc:  # unreadable, or not UTF-8
+            manifest, problem = None, f"manifest.json cannot be read: {exc}"
+
+        if not isinstance(manifest, dict):
+            problem = problem or "manifest.json is missing or not valid JSON"
+            manifest = {}
+
+        files = manifest.pop("files", None)
+        files = [f for f in files if isinstance(f, dict)] if isinstance(files, list) else []
+        size = 0
+
+        for f in files:
+            with contextlib.suppress(TypeError, ValueError):
+                size += int(f.get("size") or 0)
+
+        out = {"manifest": manifest, "file_count": len(files), "size": size, "problem": problem}
+
+        if stamp is not None and not problem:  # a half-written manifest is read again
             summaries[vdir] = (stamp, out)
 
         return out
@@ -1171,7 +1186,13 @@ def create_app(
         if cached and cached[0] == stamp:
             files = cached[1]
         else:
-            files = (_fs.read_json(vdir / "manifest.json", {}) or {}).get("files") or []
+            try:
+                manifest = _fs.read_json(vdir / "manifest.json", {})
+            except (OSError, ValueError):
+                manifest = {}
+
+            listed = manifest.get("files") if isinstance(manifest, dict) else None
+            files = [f for f in listed if isinstance(f, dict)] if isinstance(listed, list) else []
             file_lists.clear()  # keep only the version being browsed
             file_lists[vdir] = (stamp, files)
 
@@ -1265,12 +1286,19 @@ def create_app(
 
         return JSON(out)
 
+    def duplicate(name: str, version: int) -> Response:
+        """Refuse a version with the same files as the latest; the form offers to add it anyway."""
+        msg = f"these files are the same as {name}:v{version}, the latest version"
+        return JSON({"error": msg, "duplicate_of": version}, status_code=409)
+
     async def artifact_add(request: Request) -> Response:
         """Add an artifact version that references a path on this machine.
 
         JSON body: `project`, `name`, `path` (as for `artifact_check`), and
-        optionally `type`, `description`, `metadata` (an object) and `checksum`
-        (also hash every file). Returns the new version as `{project, name, version}`.
+        optionally `type`, `description`, `metadata` (an object), `checksum`
+        (also hash every file) and `allow_duplicate`. Returns the new version as
+        `{project, name, version}`, or a 409 with `duplicate_of` when the files are
+        the same as the latest version's and `allow_duplicate` is not set.
         """
         body = await edit_body(request)
 
@@ -1301,6 +1329,12 @@ def create_app(
         if not target.exists():
             return JSON({"error": f"{target} does not exist"}, status_code=400)
 
+        if not body.get("allow_duplicate"):
+            dup = await run_in_threadpool(same_as_latest, pdir, name, target)
+
+            if dup is not None:
+                return duplicate(name, dup)
+
         try:
             art = await run_in_threadpool(
                 add_artifact,
@@ -1313,6 +1347,8 @@ def create_app(
                 checksum=bool(body.get("checksum")),
                 description=str(body.get("description") or ""),
             )
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
         except OSError as exc:
             return JSON({"error": f"the version could not be added: {exc}"}, status_code=409)
 
@@ -1323,9 +1359,10 @@ def create_app(
 
         JSON body: `run` (run key), `path` (inside the run folder), `name`, `store`
         (`copy`, the default, or `reference`), and optionally `type`,
-        `description`, `metadata` (an object) and `checksum`. A reference is
-        stored relative to the project and needs a run that is not running.
-        Returns the new version as `{project, name, version}`.
+        `description`, `metadata` (an object), `checksum` and `allow_duplicate`
+        (as for `artifact_add`). A reference is stored relative to the project and
+        needs a run that is not running. Returns the new version as
+        `{project, name, version}`.
         """
         body = await edit_body(request)
 
@@ -1352,11 +1389,22 @@ def create_app(
         if not isinstance(metadata, dict) or (kind is not None and not isinstance(kind, str)):
             return JSON({"error": "metadata must be an object and type a string"}, 400)
 
+        rel = str(body.get("path") or "")
+
+        if not body.get("allow_duplicate") and rel:
+            target = path_inside(run_dir, rel)
+
+            if target is not None:
+                dup = await run_in_threadpool(same_as_latest, run_dir.parent.parent, name, target)
+
+                if dup is not None:
+                    return duplicate(name, dup)
+
         try:
             art = await run_in_threadpool(
                 promote_run_path,
                 run_dir,
-                str(body.get("path") or ""),
+                rel,
                 name,
                 copy=store == "copy",
                 type=kind,
@@ -2122,6 +2170,17 @@ def create_app(
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         """Run the change poller while the app is up."""
         hub._task = asyncio.create_task(hub.run())
+
+        if edit_artifacts:  # versions abandoned mid-copy by an earlier viewer or script
+
+            def sweep() -> None:
+                for pdir in find_artifact_projects(catalog.root):
+                    with contextlib.suppress(OSError):
+                        for e in os.scandir(pdir / "artifacts"):
+                            if e.is_dir() and not e.name.startswith("."):
+                                remove_stale_staging(Path(e.path))
+
+            asyncio.get_running_loop().run_in_executor(None, sweep)
 
         try:
             yield
