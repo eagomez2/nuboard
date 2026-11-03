@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Run details tabs** have icons, and only the first five show in the row: the
+  rest, and the Charts, Sweeps and Media shortcuts, are in a **⋮** menu, so
+  the settings filter stays on the same line on a laptop screen.
+- **Timing tab**: the dot marking the shown step on each per-step line is
+  round (it was stretched with the line), and a timer's full chart marks the
+  shown step and follows the cursor with a dot.
+
 ## 0.23.0
 
 Timers measure where training time goes, with a new Timing tab in the run

@@ -50,6 +50,10 @@
     router.set({ sfind: text || null });
   }
   function onWindowKey(e: KeyboardEvent) {
+    if (e.key === 'Escape' && moreOpen) {
+      moreOpen = false;
+      return;
+    }
     const el = e.target as HTMLElement | null;
     const typing = !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
     if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && tab === 'settings') {
@@ -155,6 +159,48 @@
     const rank = f.match(/\.r(\d+)\.log$/)?.[1];
     return rank ? `Console r${rank}` : 'Console';
   }
+
+  // The tabs in order; the first five show, the rest are in a ⋮ menu (the open one always shows)
+  type Tab = { id: string; label: string; icon: string; title?: string; mono?: boolean };
+  const MAX_TABS = 5;
+  const allTabs = $derived.by((): Tab[] => {
+    const one = details.length === 1;
+    return [
+      ...(one ? [{ id: 'notes', label: 'Notes', icon: 'notes' }] : []),
+      ...(one ? [{ id: 'properties', label: 'Properties', icon: 'list-bullet' }] : []),
+      { id: 'settings', label: 'All settings', icon: 'sliders' },
+      ...files.map((f) => ({
+        id: f,
+        label: fileLabel(f),
+        icon: 'terminal',
+        title: `files/${f}: what the script printed`,
+      })),
+      {
+        id: 'filetree',
+        label: 'Files',
+        icon: 'folder',
+        title: 'Every file in the run folder: browse, preview, diff, download and pin',
+      },
+      ...(one && details[0].timing
+        ? [
+            {
+              id: 'timing',
+              label: 'Timing',
+              icon: 'stopwatch',
+              title: "Where this run's time went: its timers, per step and per rank",
+            },
+          ]
+        : []),
+      ...pinTabs.map((p) => ({ id: `pin:${p}`, label: pinLabel(p), icon: 'pin', title: `Pinned: ${p}`, mono: true })),
+    ];
+  });
+  const shownTabs = $derived.by(() => {
+    const first = allTabs.slice(0, MAX_TABS);
+    const open = allTabs.find((t, i) => i >= MAX_TABS && t.id === tab);
+    return open ? [...first, open] : first;
+  });
+  const moreTabs = $derived(allTabs.filter((t) => !shownTabs.includes(t)));
+  let moreOpen = $state(false);
 
   $effect(() => {
     const t = tab;
@@ -278,7 +324,7 @@
   const errorText = $derived(details.map((d) => d.run.error).find(Boolean));
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
+<svelte:window onkeydown={onWindowKey} onclick={() => (moreOpen = false)} />
 
 <div class="card cmp" bind:this={panel}>
   <div class="top">
@@ -302,60 +348,62 @@
   {/if}
 
   <div class="tabs">
-    {#if details.length === 1}
-      <button class="tab" aria-pressed={tab === 'notes'} onclick={() => router.set({ tab: 'notes' })}>Notes</button>
-      <button class="tab" aria-pressed={tab === 'properties'} onclick={() => router.set({ tab: 'properties' })}
-        >Properties</button
-      >
-    {/if}
-    <button class="tab" aria-pressed={tab === 'settings'} onclick={() => router.set({ tab: null })}>All settings</button
-    >
-    {#each files as f (f)}
+    {#each shownTabs as t (t.id)}
       <button
         class="tab"
-        aria-pressed={tab === f}
-        title={`files/${f}: what the script printed`}
-        onclick={() => router.set({ tab: f })}>{fileLabel(f)}</button
+        class:mono={t.mono}
+        aria-pressed={tab === t.id}
+        title={t.title}
+        onclick={() => router.set({ tab: t.id === 'settings' ? null : t.id })}
+        ><Icon name={t.icon} size={13} /> {t.label}</button
       >
     {/each}
-    <button
-      class="tab"
-      aria-pressed={tab === 'filetree'}
-      title="Every file in the run folder: browse, preview, diff, download and pin"
-      onclick={() => router.set({ tab: 'filetree' })}>Files</button
-    >
-    {#if details.length === 1 && details[0].timing}
+    <span class="more">
       <button
-        class="tab"
-        aria-pressed={tab === 'timing'}
-        title="Where this run's time went: its timers, per step and per rank"
-        onclick={() => router.set({ tab: 'timing' })}>Timing</button
+        class="tab icon"
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        title={moreTabs.length
+          ? `${moreTabs.length} more: ${moreTabs.map((t) => t.label).join(', ')}; open in Charts, Sweeps or Media`
+          : 'Open in Charts, Sweeps or Media'}
+        aria-label="More tabs"
+        onclick={(e) => {
+          e.stopPropagation();
+          moreOpen = !moreOpen;
+        }}><Icon name="more" size={15} /></button
       >
-    {/if}
-    {#each pinTabs as p (p)}
-      <button
-        class="tab mono"
-        aria-pressed={tab === `pin:${p}`}
-        title="Pinned: {p}"
-        onclick={() => router.set({ tab: `pin:${p}` })}><Icon name="pin" size={12} /> {pinLabel(p)}</button
-      >
-    {/each}
-    <span class="jump" role="group" aria-label="Open {keys.length === 1 ? 'this run' : 'these runs'} in">
-      {#each JUMPS as j (j.page)}
-        <button
-          class="tab"
-          title="{j.label} with only {keys.length === 1 ? 'this run' : 'these runs'}"
-          onclick={() => router.go(j.page, { sel: keys.join(','), cmp: null, pair: null, tab: null })}
-          ><Icon name={j.icon} size={13} /> {j.label}</button
-        >
-      {/each}
+      {#if moreOpen}
+        <div class="menu" role="menu">
+          {#each moreTabs as t (t.id)}
+            <button
+              role="menuitem"
+              class:mono={t.mono}
+              title={t.title}
+              onclick={() => {
+                moreOpen = false;
+                router.set({ tab: t.id });
+              }}><Icon name={t.icon} size={14} /> {t.label}</button
+            >
+          {/each}
+          {#if moreTabs.length}<hr />{/if}
+          <span class="mlabel">Open {keys.length === 1 ? 'this run' : 'these runs'} in</span>
+          {#each JUMPS as j (j.page)}
+            <button
+              role="menuitem"
+              title="{j.label} with only {keys.length === 1 ? 'this run' : 'these runs'}"
+              onclick={() => router.go(j.page, { sel: keys.join(','), cmp: null, pair: null, tab: null })}
+              ><Icon name={j.icon} size={14} /> {j.label}</button
+            >
+          {/each}
+        </div>
+      {/if}
     </span>
     {#if tab === 'settings'}
       <div class="find" class:bad={!!finder.error}>
         <Icon name="search" size={14} />
         <input
           class="mono"
-          placeholder="Filter keys  (/regex/, !exclude)"
+          placeholder="Filter  (/regex/, !exclude)"
           aria-label="Filter settings"
           aria-invalid={!!finder.error}
           title={finder.error ?? 'Press / to focus, Esc to clear'}
@@ -540,9 +588,56 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  .jump {
-    display: inline-flex;
-    gap: 6px;
+  .tab.icon {
+    padding: 5px 8px;
+  }
+  .more {
+    position: relative;
+  }
+  .menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 20;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .menu hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 4px 2px;
+  }
+  .mlabel {
+    padding: 4px 8px 2px;
+    font-size: 11px;
+    color: var(--faint);
+  }
+  .menu button.mono {
+    font-family: var(--mono);
+  }
+  .menu button:hover,
+  .menu button:focus-visible {
+    background: var(--accent-soft);
   }
   .tab {
     display: inline-flex;
@@ -563,6 +658,10 @@
     font-weight: 600;
   }
   .find {
+    /* shrinks to stay on the tab row; wraps only when even 170 px do not fit */
+    flex: 1 1 170px;
+    max-width: 380px;
+    min-width: 0;
     margin-left: auto;
     display: inline-flex;
     align-items: center;
@@ -582,7 +681,10 @@
     background: var(--err-bg);
   }
   .find input {
-    width: 230px;
+    flex: 1;
+    width: 0;
+    min-width: 0;
+    text-overflow: ellipsis;
     border: 0;
     outline: none;
     background: transparent;
