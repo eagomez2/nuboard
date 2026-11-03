@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.24.0
+
+Artifact versions can be made from a run's files in the viewer, and an
+artifact's files are read by their path inside the version. Artifacts can no
+longer contain other versions, and the Artifacts page no longer hangs on a
+bad version. No breaking changes; the viewer now asks before adding files
+identical to the latest version.
 
 - **Reading an artifact's files**: an `Artifact` reads like a mapping from
   each listed file's path inside the version to the file, so
