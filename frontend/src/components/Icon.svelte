@@ -55,7 +55,7 @@
     terminal: 'M3 5h18v14H3zM7 10l3 2-3 2M12 15h4',
     stopwatch: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 1.5M10 2h4M18.5 5.5l1.5 1.5',
     external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
-    more: 'M12 5h.01M12 12h.01M12 19h.01',
+    more: 'M12.45 5a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0zM12.45 12a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0zM12.45 19a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0z',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>

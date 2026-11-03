@@ -370,7 +370,7 @@
         onclick={(e) => {
           e.stopPropagation();
           moreOpen = !moreOpen;
-        }}><Icon name="more" size={15} /></button
+        }}><Icon name="more" size={16} filled /></button
       >
       {#if moreOpen}
         <div class="menu" role="menu">
@@ -590,9 +590,13 @@
   }
   .tab.icon {
     padding: 5px 8px;
+    /* as tall as the labelled tabs */
+    align-self: stretch;
   }
   .more {
     position: relative;
+    display: inline-flex;
+    align-self: stretch;
   }
   .menu {
     position: absolute;
