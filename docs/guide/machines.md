@@ -65,6 +65,7 @@ second time.
 | Reports, views | Copied when missing. When both differ, DEST's stays and SRC's is copied next to it as `<name>-from-<SRC folder>`. Report files are named by their content, so they copy freely. |
 | `sweeps.json` | Hide rules that only exclude are combined; otherwise DEST's are kept. |
 | `fields.json` | Properties DEST lacks are added; one defined differently on each side keeps DEST's definition. |
+| `directions.json` | Directions DEST lacks are added; a scalar better lower on one side and higher on the other keeps DEST's. |
 
 Each run and artifact version is copied to `<project>/.merge-tmp/` and then
 moved into place, so a viewer open on DEST never shows a half-copied run.

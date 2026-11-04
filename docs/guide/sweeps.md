@@ -54,9 +54,18 @@ objective. Some notes:
 
 ## Objective and parameters
 
-- **Objective**: pick a scalar and whether to use its **Best** value (the
-  minimum for losses and errors, the maximum otherwise) or its **Last** value.
-  Lower-is-better scalars are flipped so the best runs are always on top.
+- **Objective**: pick a scalar and which value of each run to use: the
+  **Min** or **Max** it reached at any step, or its **Last** value (`stat` in
+  the URL). The arrow next to the scalar says which way is better, **↓** lower
+  or **↑** higher, and so which runs rank first and go on top of the
+  objective axis. Max of a lower-is-better scalar (or Min of a
+  higher-is-better one) ranks by each run's worst, the smallest loss spike or
+  the shallowest accuracy dip, and the label says "(its worst)". The arrow
+  starts as a guess from the name (faint and dashed); a
+  click changes your view and **Save for everyone** keeps it in the project;
+  see
+  [Which way is better](viewer.md#which-way-is-better). Hover any of these
+  buttons for a short explanation.
 - **Parameters**: every config key whose value differs between the runs, plus
   properties. The chosen ones are chips in axis order: drag a chip to move its
   axis, and click its **×** to remove it. The bar inside a chip is the
@@ -109,7 +118,7 @@ label shows only what differs from the other values: the elements that differ
 for lists of one length (`[0]=0.08`), the items not in every list for lists of
 different lengths (`flip, mixup`), and the paths that differ for nested values
 (`[1].dim=512`). Labels are cut to 40 characters. Hover a label for the full
-value, or click it to open it pretty-printed with a **Copy** button. The Best
+value, or click it to open it pretty-printed with a **Copy** button. The Top
 runs table uses the same labels.
 
 A list of plain values with the same length in every run has a **Split** button
@@ -122,26 +131,26 @@ saved views and report links keep them. In the demo, try `crop_scale` and
 ## Parallel coordinates
 
 Each run is one line through every parameter axis to the objective axis.
-Lines are colored from orange (worst) to blue (best). Runs without a value for
+Lines are colored from orange (ranked last) to blue (ranked first). Runs without a value for
 the objective (still starting, or diverged to NaN) are dashed and end below
 the axis.
 
 **Drag along any axis** to keep only the runs inside that range. Filters on
-several axes combine, and the scatters, best-runs table and **Plot N runs**
+several axes combine, and the scatters, Top runs table and **Plot N runs**
 button follow them. Click an axis to clear its filter.
 
 The corner button next to **Plot N runs** shows the chart full screen (Esc
 leaves), and the bookmark button adds it to a [report](reports.md) as a
 snapshot.
 
-## Scatters and best runs
+## Scatters and top runs
 
 Below the chart, one scatter per parameter plots the objective against it.
 **Grid** sets the plots per row (fit to width, or 1 to 6) and the rows per page
 (1 to 6, or all), with a pager when there are more; both are remembered and
 kept in the URL (`scols`, `srows`). The bookmark button on each scatter adds
 it to a report.
-The **Best runs** table lists the top ten runs that pass the filters. Click a
+The **Top runs** table lists the ten first-ranked runs that pass the filters. Click a
 run anywhere on the page to open its details on the Runs page, or press
 **Plot N runs** to open them on Charts.
 

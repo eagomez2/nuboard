@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
+import os
+import socket
 import zipfile
 
+import numpy as np
 import pyarrow as pa
 import pytest
 from starlette.testclient import TestClient
 
 import nuboard as nb
 from nuboard.server import create_app
-from nuboard.server.app import _input_versions
+from nuboard.server.app import Hub, _input_versions
 
 
 @pytest.fixture
@@ -514,6 +518,71 @@ def test_run_folder_files_are_listed_previewed_and_downloaded(tmp_path):
         assert c.get(f"/api/runs/{key}/text/nope.txt").status_code == 404
 
 
+def test_directions_are_shared_in_the_project_folder(tmp_path):
+    for name in ("asr-v1", "asr-v2"):
+        run = nb.init(name, capture_env=False)
+        run.finish()
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+    direction = lambda project, name, g: c.post(  # noqa: E731
+        "/api/directions", json={"project": project, "name": name, "direction": g}
+    )
+
+    with TestClient(app) as c:
+        assert c.get("/api/directions").json() == {"directions": {}}
+        assert direction("asr-v1", "wer", "min").json()["directions"] == {"wer": "min"}
+        assert direction("asr-v2", "wer", "max").json()["directions"] == {"wer": "max"}
+        assert direction("asr-v1", "score", "max").json()["directions"] == {
+            "score": "max",
+            "wer": "min",
+        }
+        # every project's directions, so a view of several can see them disagree
+        assert c.get("/api/directions").json()["directions"] == {
+            "asr-v1": {"score": "max", "wer": "min"},
+            "asr-v2": {"wer": "max"},
+        }
+        assert direction("asr-v1", "score", None).json()["directions"] == {"wer": "min"}
+        assert direction("asr-v1", "wer", "best").status_code == 400
+        assert direction("asr-v1", "", "min").status_code == 400
+        assert direction("nope", "wer", "min").status_code == 400
+        # a save says what it last saw: refused when someone changed it meanwhile
+        cas = lambda g, expect: c.post(  # noqa: E731
+            "/api/directions",
+            json={"project": "asr-v1", "name": "wer", "direction": g, "expect": expect},
+        )
+        refused = cas("max", None)
+        assert refused.status_code == 409
+        assert refused.json()["current"] == "min"
+        assert cas("max", "min").json()["directions"] == {"wer": "max"}
+        assert cas("min", "min").status_code == 409
+
+    saved = json.loads((tmp_path / "exp" / "asr-v1" / "directions.json").read_text())
+    assert saved == {"directions": {"wer": "max"}}
+
+    locked = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", lock_directions=True)
+
+    with TestClient(locked) as c:
+        assert c.get("/api/info").json()["lock_directions"] is True
+        assert direction("asr-v1", "wer", "min").status_code == 403
+        assert c.get("/api/directions").json()["directions"]["asr-v1"] == {"wer": "max"}
+
+
+def test_a_changed_directions_file_is_announced_to_open_viewers():
+    sig = [("p", 1)]
+    hub = Hub(None)  # type: ignore[arg-type]  # only the directions check runs
+    hub.directions_sig = lambda: tuple(sig)
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    hub.queues.add(queue)
+
+    asyncio.run(hub._check_directions())  # the first look only remembers
+    assert queue.empty()
+    asyncio.run(hub._check_directions())
+    assert queue.empty()
+    sig[0] = ("p", 2)  # edited by another viewer, a merge or by hand
+    asyncio.run(hub._check_directions())
+    assert queue.get_nowait().startswith("event: directions\n")
+
+
 def test_pins_are_shared_in_the_project_folder(tmp_path):
     run = nb.init("pinned", capture_env=False)
     run.finish()
@@ -1012,3 +1081,59 @@ def test_sweep_hide_rules_are_stored_in_the_project(client, tmp_path):
     assert client.post(url, json={"project": "zzz", "hide": "x"}).status_code == 400
     assert client.post(url, json={"project": "sweep", "hide": "x" * 1001}).status_code == 400
     assert client.get(url, params={"project": "zzz"}).json() == {"hide": ""}
+
+
+def _log_x_chart(c, keys, group, **params):
+    """Fetch `loss` for `keys` and return its x values and series metadata."""
+    res = c.get(
+        "/api/scalars",
+        params={"runs": ",".join(keys), "metric": "loss", "points": 200, **group, **params},
+    )
+    table = pa.ipc.open_stream(res.content).read_all()
+    return table.column("x").to_numpy(), json.loads(table.schema.metadata[b"series"])
+
+
+@pytest.mark.parametrize("grouped", [False, True])
+def test_log_x_spreads_points_over_every_decade(tmp_path, grouped):
+    # 100k steps: compacted with three zoom levels, the coarsest far too sparse for step 1-100
+    for name, scale in (("long", 1), ("long2", 2))[: 2 if grouped else 1]:
+        with nb.init("logx", run_name=name, capture_env=False) as run:
+            for s in range(100_000):
+                run.add_scalar({"loss": scale / (s + 1)}, step=s)
+
+    with TestClient(create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")) as c:
+        keys = [r["key"] for r in c.get("/api/runs").json()["runs"]]
+        group = {"group": "name"} if grouped else {}
+        linear, _ = _log_x_chart(c, keys, group)
+        log, series = _log_x_chart(c, keys, group, logx="1")
+        # step 0 cannot be drawn on a log axis: it is left out and counted
+        assert log.min() > 0
+        assert all(s["nonpositive"] == 1 for s in series)
+        assert "nonpositive" not in _log_x_chart(c, keys, group)[1][0]
+
+        for lo, hi in ((1, 10), (10, 100), (100, 1000), (10_000, 100_000)):
+            assert np.count_nonzero((log >= lo) & (log < hi)) >= 5, (lo, hi)
+
+        assert np.count_nonzero(linear < 100) < np.count_nonzero(log < 100)
+        # zoomed into the first decades, finer data still fills the view
+        zoomed, _ = _log_x_chart(c, keys, group, logx="1", xmin=2, xmax=50)
+        assert np.count_nonzero((zoomed >= 2) & (zoomed <= 50)) >= 40
+        # wall time has no log axis: the flag is ignored
+        assert "nonpositive" not in _log_x_chart(c, keys, group, logx="1", x="time")[1][0]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="TIME_WAIT does not block a bind on Windows")
+def test_a_port_whose_server_just_stopped_is_reused():
+    from nuboard.cli import _free_port
+
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    port = server.getsockname()[1]
+    client = socket.create_connection(("127.0.0.1", port))
+    conn, _ = server.accept()
+    conn.close()  # the server closes first, so its side lingers in TIME_WAIT
+    client.close()
+    server.close()
+    assert _free_port("127.0.0.1", port) == port

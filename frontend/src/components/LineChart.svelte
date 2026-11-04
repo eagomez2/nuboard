@@ -24,6 +24,7 @@
     showBands = true,
     robust = true,
     logY = false,
+    logX = false,
     height = 360,
     compact = false,
     hidden = new Set<string>(),
@@ -50,6 +51,8 @@
     showBands?: boolean;
     robust?: boolean;
     logY?: boolean;
+    /** Log x-axis: points at x <= 0 are left out; zoom, pan and the cursor work in log10(x). */
+    logX?: boolean;
     height?: number;
     compact?: boolean;
     hidden?: Set<string>;
@@ -117,6 +120,23 @@
     return out;
   }
 
+  /**
+   * Ticks of a log x-axis at 1–9 × each power of ten in view. uPlot's own start at the range's
+   * left end, which after a zoom is no round number (32.3, 42.3, … 102.3).
+   */
+  function logSplits(_u: uPlot, _i: number, min: number, max: number): number[] {
+    if (!(min > 0) || !(max > min)) return [];
+    const out: number[] = [];
+    for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++) {
+      const p = 10 ** e;
+      for (let m = 1; m <= 9; m++) {
+        const v = e < 0 ? Number((m * p).toFixed(-e)) : m * p;
+        if (v >= min && v <= max) out.push(v);
+      }
+    }
+    return out;
+  }
+
   function xFormatter(kind: string) {
     if (kind === 'relative' || kind === 'active') return (v: number) => fmtDuration(v);
     return (v: number) => fmtAxis(v);
@@ -136,7 +156,9 @@
     const yValues: Float64Array[] = [];
     const xValues: ArrayLike<number>[] = [];
     let col = 1;
-    data.series.forEach((s, i) => {
+    data.series.forEach((full, i) => {
+      // a log axis cannot draw x <= 0 (step 0): leave those points out (x is sorted)
+      const s = logX ? positiveOnly(full) : full;
       if (hidden.has(s.label) || !s.x.length) return;
       const color = colorOf(s.label, i);
       const dim = highlight !== null && highlight !== s.label;
@@ -193,6 +215,11 @@
       view = { x: zoom ? [zoom[0], zoom[1]] : null, y: null };
       lastZoom = zkey;
     }
+    if (logX && view.x && !(view.x[0] > 0)) {
+      // a range from a linear axis that starts at or before 0: start it at the first point
+      const first = Math.min(...xValues.map((xs) => xs[0]));
+      view = { x: view.x[1] > first ? [first, view.x[1]] : null, y: view.y };
+    }
     fitXs = xValues;
     fitYs = yValues;
     const lines = baselines ? baselineLines(data.series, hidden) : [];
@@ -217,7 +244,8 @@
       legend: { show: false },
       padding: compact ? [6, 8, 0, 0] : [12, 12, 0, 4],
       scales: {
-        x: { time: false },
+        // uPlot rounds a log range out to whole powers of ten: keep the data's (or the zoom's) own ends
+        x: logX ? { time: false, distr: 3, log: 10, range: (u, min, max) => [min, max] } : { time: false },
         y: {
           distr: logY ? 3 : 1,
           range: (u, min, max) => {
@@ -246,8 +274,11 @@
           ticks: { show: false },
           size: compact ? 28 : 40,
           font: `${compact ? 10 : 12}px ${cssVar('--mono') || 'monospace'}`,
-          ...(isTime ? { splits: timeSplits } : {}),
-          values: isTime ? (u, splits) => splits.map((v) => timeLabels.get(v) ?? '') : (u, splits) => splits.map(xf),
+          ...(isTime ? { splits: timeSplits } : logX ? { splits: logSplits } : {}),
+          // a log axis labels only some of its ticks: uPlot passes the others as null
+          values: isTime
+            ? (u, splits) => splits.map((v) => timeLabels.get(v) ?? '')
+            : (u, splits) => splits.map((v) => (v == null ? '' : xf(v))),
         },
         {
           stroke: muted,
@@ -290,7 +321,7 @@
             if (u.select.width > 4) {
               const a = u.posToVal(u.select.left, 'x');
               const b = u.posToVal(u.select.left + u.select.width, 'x');
-              view = { x: [a, b], y: null };
+              view = { x: [a, b], y: null }; // posToVal follows the log scale
               report(0);
             }
           },
@@ -298,7 +329,7 @@
         setCursor: [
           (u) => {
             if (!onCursor && !markers) return;
-            const idx = u.cursor.idx;
+            const idx = cursorIdx(u);
             const moveDots = markers && !pinned && pinX == null;
             if (idx === null || idx === undefined) {
               if (moveDots) {
@@ -485,7 +516,18 @@
     return values;
   }
 
-  /** Index of the x closest to `x` in the chart's sorted x values. */
+  /** A series without its points at x <= 0 (its x values are sorted). */
+  function positiveOnly<T extends { x: Float64Array; y: Float64Array; lo: Float64Array; hi: Float64Array }>(s: T): T {
+    let k = 0;
+    while (k < s.x.length && !(s.x[k] > 0)) k++;
+    if (!k) return s;
+    return { ...s, x: s.x.subarray(k), y: s.y.subarray(k), lo: s.lo.subarray(k), hi: s.hi.subarray(k) };
+  }
+
+  /**
+   * Index of the x closest to `x` in the chart's sorted x values: closest on screen, so on a
+   * log axis the distance is measured in log10(x) (there 10 is nearer 1 than 100 is).
+   */
   function nearest(xs: ArrayLike<number>, x: number): number {
     let lo = 0;
     let hi = xs.length - 1;
@@ -494,7 +536,16 @@
       if (xs[mid] < x) lo = mid + 1;
       else hi = mid;
     }
-    return lo > 0 && Math.abs(xs[lo - 1] - x) <= Math.abs(xs[lo] - x) ? lo - 1 : lo;
+    if (lo === 0) return lo;
+    const [a, b, v] = logX ? [toX(xs[lo - 1]), toX(xs[lo]), toX(x)] : [xs[lo - 1], xs[lo], x];
+    return Math.abs(a - v) <= Math.abs(b - v) ? lo - 1 : lo;
+  }
+
+  /** The data index under the cursor. uPlot picks the nearest x linearly, which is off on a log axis. */
+  function cursorIdx(u: uPlot): number | null | undefined {
+    const idx = u.cursor.idx;
+    if (!logX || idx == null || u.cursor.left == null || u.cursor.left < 0) return idx;
+    return nearest(u.data[0], u.posToVal(u.cursor.left, 'x'));
   }
 
   /** Show `pinX`: dots on the nearest points and the values there; clear them when unpinned. */
@@ -541,9 +592,11 @@
     });
   }
 
-  // y is zoomed and panned in log space on a log axis
+  // x and y are zoomed and panned in log space on a log axis
   const toY = (v: number) => (logY ? Math.log10(Math.max(v, 1e-300)) : v);
   const fromY = (v: number) => (logY ? 10 ** v : v);
+  const toX = (v: number) => (logX ? Math.log10(Math.max(v, 1e-300)) : v);
+  const fromX = (v: number) => (logX ? 10 ** v : v);
 
   /** Show x and y; a null y fits the y-axis to the data in view. */
   function setView(x: [number, number], y: [number, number] | null) {
@@ -562,8 +615,9 @@
     wheelTimer = window.setTimeout(() => {
       if (!view.x) return;
       let [a, b] = view.x;
-      // round to ~5 significant digits of the span, to keep the URL readable
-      const digits = Math.min(Math.max(4 - Math.floor(Math.log10(b - a)), 0), 20);
+      // round to ~5 significant digits of the span (on a log axis, of the left end), to keep
+      // the URL readable
+      const digits = Math.min(Math.max(4 - Math.floor(Math.log10(logX ? Math.min(a, b - a) : b - a)), 0), 20);
       [a, b] = [Number(a.toFixed(digits)), Number(b.toFixed(digits))];
       lastZoom = `${a}~${b}`;
       onZoom?.([a, b]);
@@ -605,18 +659,19 @@
     e.preventDefault();
     const [[x0, x1], [y0, y1]] = now;
     const delta = (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.deltaY || e.deltaX);
+    const [lx0, lx1] = [toX(x0), toX(x1)];
     if (zooming) {
       const f = Math.min(Math.max(Math.exp(delta * 0.002), 0.5), 2);
-      const ax = u.posToVal(e.offsetX, 'x');
-      const x: [number, number] = [ax - (ax - x0) * f, ax + (x1 - ax) * f];
+      const ax = toX(u.posToVal(e.offsetX, 'x'));
+      const x: [number, number] = [fromX(ax - (ax - lx0) * f), fromX(ax + (lx1 - ax) * f)];
       if (e.altKey) {
         const ay = toY(u.posToVal(e.offsetY, 'y'));
         const [ly0, ly1] = [toY(y0), toY(y1)];
         setView(x, [fromY(ay - (ay - ly0) * f), fromY(ay + (ly1 - ay) * f)]);
       } else setView(x, view.y);
     } else {
-      const shift = (x1 - x0) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
-      setView([x0 + shift, x1 + shift], view.y);
+      const shift = (lx1 - lx0) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
+      setView([fromX(lx0 + shift), fromX(lx1 + shift)], view.y);
     }
     report(250);
   }
@@ -628,16 +683,17 @@
     if (!u || !now) return;
     const [[x0, x1], [y0, y1]] = now;
     const [ly0, ly1] = [toY(y0), toY(y1)];
+    const [lx0, lx1] = [toX(x0), toX(x1)];
     const w = u.over.clientWidth || 1;
     const h = u.over.clientHeight || 1;
     const sx = e.clientX;
     const sy = e.clientY;
     panned = false;
     const move = (ev: MouseEvent) => {
-      const dx = ((ev.clientX - sx) / w) * (x1 - x0);
+      const dx = ((ev.clientX - sx) / w) * (lx1 - lx0);
       const dy = ((ev.clientY - sy) / h) * (ly1 - ly0);
       if (dx || dy) panned = true;
-      setView([x0 - dx, x1 - dx], [fromY(ly0 + dy), fromY(ly1 + dy)]);
+      setView([fromX(lx0 - dx), fromX(lx1 - dx)], [fromY(ly0 + dy), fromY(ly1 + dy)]);
     };
     const up = () => {
       window.removeEventListener('mousemove', move);
@@ -664,6 +720,7 @@
       showBands,
       robust,
       logY,
+      logX,
       height,
       hidden.size,
       [...hidden].join('|'),

@@ -922,7 +922,7 @@ def _vit_hypotheses(project: Path, ids: dict[str, str]) -> None:
             "description": (
                 "Which augmentation closes the gap on ImageNet-100, and why we ended on CutMix."
             ),
-            "card": {"metric": "val/acc", "stat": "best", "higher": True},
+            "card": {"metric": "val/acc", "stat": "max", "top": "max"},
         },
         board=board,
     )

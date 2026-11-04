@@ -186,6 +186,8 @@ def test_project_files_are_combined_or_copied_next_to_dest(tmp_path):
         "fields.json",
         {"fields": [{"name": "verdict", "type": "bool"}, {"name": "gpu", "type": "number"}]},
     )
+    put(a, "directions.json", {"directions": {"score": "max"}})
+    put(b, "directions.json", {"directions": {"score": "min", "train/loss": "min"}})
 
     p = merge.plan(b, a)
     assert by_kind(p, "report") == [
@@ -200,6 +202,14 @@ def test_project_files_are_combined_or_copied_next_to_dest(tmp_path):
         "fields.json",
         "defined differently on each side, DEST's kept: verdict",
     ) in by_kind(p, "fields.json")
+    assert by_kind(p, "directions.json") == [
+        ("~", "directions.json", "1 direction added"),
+        (
+            "!",
+            "directions.json",
+            "better lower on one side, higher on the other, DEST's kept: score",
+        ),
+    ]
     merge.apply(p)
 
     reports = a / "proj" / "reports"
@@ -210,6 +220,8 @@ def test_project_files_are_combined_or_copied_next_to_dest(tmp_path):
     assert json.loads((a / "proj/sweeps.json").read_text()) == {"hide": "!seed !path"}
     names = [f["name"] for f in json.loads((a / "proj/fields.json").read_text())["fields"]]
     assert names == ["verdict", "gpu"]
+    directions = json.loads((a / "proj/directions.json").read_text())["directions"]
+    assert directions == {"score": "max", "train/loss": "min"}
     again = merge.plan(b, a)
     assert [a.name for a in again.changes] == []
     assert by_kind(again, "report")[1] == (

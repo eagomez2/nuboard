@@ -123,9 +123,16 @@ export function fmtValue(v: unknown): string {
   return JSON.stringify(v);
 }
 
-/** Lower is better for losses/errors; higher for everything else. */
-export function lowerIsBetter(metric: string): boolean {
-  return /loss|error|err\b|perplexity|ppl|mse|mae|rmse|wer|cer|nll|regret|time|latency/i.test(metric);
+/** The end of a scalar's range a screen ranks first: its min or its max. */
+export type Extreme = 'min' | 'max';
+
+/**
+ * What a screen starts on for `metric` before anything was picked: Min for names that read as
+ * losses, errors or durations, Max for everything else. Only a first guess: a wrong one is a
+ * click away, and never hides anything.
+ */
+export function defaultStat(metric: string): Extreme {
+  return /loss|error|err\b|perplexity|ppl|mse|mae|rmse|wer|cer|nll|regret|time|latency/i.test(metric) ? 'min' : 'max';
 }
 
 /** The metric to show first: a training loss if there is one. */

@@ -96,7 +96,8 @@ form where the token can be pasted.
   need it, not `0.0.0.0/0`.
 - **Read-only viewers.** Artifacts are read-only unless you add
   `--edit-artifacts`. Add `--read-only-reports` so viewers cannot edit
-  reports, upload files into them or change hypothesis boards.
+  reports, upload files into them or change hypothesis boards, and
+  `--lock-directions` so they cannot save which way is better for a metric.
 - **Scripts** send the token in a header: `Authorization: token VALUE`.
 
 `--no-token` serves the network address without a token. Anyone who can reach

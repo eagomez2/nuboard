@@ -155,7 +155,15 @@ def test_board_categories_are_cleaned_and_capped(tmp_path):
     ids = [o["id"] for o in board["outcomes"]]
     assert ids[0] == "x" and len(set(ids)) == 2 and board["outcomes"][1]["dead_end"] is True
     assert board["outcomes"][0]["color"] in ("s4", "s5", "s1", "s2", "s3", "s6", "s7", "gray")
-    assert board["card"] == {"metric": "val/loss", "stat": "best", "higher": False}
+    assert board["card"] == {"metric": "val/loss", "stat": "min", "top": "min"}
+
+    # boards from before Min / Max: "best" becomes min or max by the old `higher` flag
+    old = clean_board({"card": {"metric": "val/acc", "stat": "best", "higher": True}})["card"]
+    assert old == {"metric": "val/acc", "stat": "max", "top": "max"}
+    old = clean_board({"card": {"metric": "val/acc", "stat": "last", "higher": True}})["card"]
+    assert old == {"metric": "val/acc", "stat": "last", "top": "max"}
+    new = clean_board({"card": {"metric": "val/acc", "stat": "last", "top": "min"}})["card"]
+    assert new == {"metric": "val/acc", "stat": "last", "top": "min"}
 
     # a partial update keeps the rest; an empty list falls back to the defaults
     board = save_board(tmp_path, {"description": "why", "verdicts": []})

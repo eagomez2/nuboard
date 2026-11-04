@@ -51,7 +51,14 @@ appear on several boards.
 - **Star** runs and cards that matter. **Starred only** keeps just the paths
   through them.
 - **The number on each run** is one metric, picked under **Number** in the
-  toolbar (its best, last, min or max value). A card can pick its own under
+  toolbar: its **Min**, **Max** or **Last** value. Each card marks its top
+  run's number (▲, in the accent color): the lowest for Min, the highest for
+  Max, and for Last the end the arrow next to it says is better, the metric's
+  direction in the project, read live (see
+  [Which way is better](viewer.md#which-way-is-better)). Flipping the arrow
+  moves the marks. A metric starts on Min when its name reads as a loss or
+  error, else on Max.
+  A card can pick its own under
   **Number on this card**; its header then names that metric. Hover a number
   to see which metric and value it is.
 - **Compare**: Shift-click runs, on one card or across cards, to open them
@@ -59,7 +66,7 @@ appear on several boards.
   same for all of its runs.
 - **Hover** a run or a card to highlight the path through it.
 - **Fold**: cards with more than five runs fold to their key runs (starred,
-  best, running, missing, selected, and runs an arrow starts from). Click
+  top, running, missing, selected, and runs an arrow starts from). Click
   **N runs ⌄** under the verdict to fold or unfold.
 - **Arrange**: drag a card by its header to move it. The grid button puts
   every card back in its automatic place.

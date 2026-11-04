@@ -6,7 +6,10 @@
   import { FullScreen } from '../lib/fullscreen.svelte';
   import { addSnapshotToReport } from '../lib/reports.svelte';
   import { svgToPng } from '../lib/snapshot';
-  import { defaultMetric, fmtAxis, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAxis, fmtNum, fmtValue } from '../lib/format';
+  import { rememberStat, statFor, type Stat } from '../lib/stat';
+  import { directionOf } from '../lib/directions.svelte';
+  import DirectionButton from '../components/DirectionButton.svelte';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { keyFilter } from '../lib/keyfilter';
@@ -45,8 +48,25 @@
     const m = router.get('metric');
     return m && metrics.includes(m) ? m : defaultMetric(metrics);
   });
-  const stat = $derived(router.get('stat', 'best'));
-  const lower = $derived(lowerIsBetter(metric));
+  // Min, Max or Last of each run's history (see lib/stat.ts), ranked by the scalar's direction
+  // (lib/directions.svelte.ts): ↓ lower is better ranks the lowest values first, ↑ the highest. It is
+  // saved in the project; when the runs shown are from projects that disagree, the view's own
+  // choice (`dir` in the URL) decides, and the highest rank first until one is picked.
+  const shownProjects = $derived([...new Set(runs.map((r) => r.project))].sort());
+  const direction = $derived(directionOf(shownProjects, metric, true, router.get('dir')));
+  const top = $derived(direction.direction ?? 'max');
+  const lower = $derived(top === 'min');
+  const stat = $derived(statFor('sweeps', metric, router.get('stat'), true, direction.direction ?? undefined));
+  // Max of a lower-is-better scalar (or Min of a higher-is-better one) ranks by each run's worst:
+  // the smallest loss spike, the shallowest accuracy dip. Said so in the label.
+  const worstCase = $derived(stat !== 'last' && stat !== top);
+  const rankText = $derived(
+    `Each run's ${stat === 'min' ? 'lowest' : stat === 'max' ? 'highest' : 'last'} value${worstCase ? ' (its worst)' : ''}, ${lower ? 'lowest' : 'highest'} ranked first`,
+  );
+  function setStat(v: Stat) {
+    rememberStat('sweeps', metric, v);
+    router.set({ stat: v });
+  }
 
   // ---- snapshots for reports, and the grid of scatter plots ----
   async function saveToReport(svg: SVGSVGElement | null | undefined, title: string, caption: string) {
@@ -70,7 +90,7 @@
   function value(r: RunBrief): number | null {
     const s = r.summary[metric];
     if (!s) return null;
-    const v = stat === 'last' ? num(s.last) : lower ? s.min : s.max;
+    const v = stat === 'last' ? num(s.last) : stat === 'min' ? s.min : s.max;
     return v !== null && Number.isFinite(v) ? v : null;
   }
 
@@ -224,7 +244,7 @@
   const plotW = $derived(Math.max(320, width - 2 * PAD));
   const xOf = (i: number) => PAD + (axes.length <= 1 ? plotW / 2 : (i / (axes.length - 1)) * plotW);
   const h = $derived(H - TOP - BOTTOM);
-  // The metric axis is flipped for lower-is-better metrics so the best runs are always on top.
+  // The metric axis is flipped when ranking by the lowest values, so the first-ranked runs are on top.
   const pos = (axis: Axis, v: Value): number | null => {
     const n = norm(axis, v);
     if (n === null) return null;
@@ -315,16 +335,36 @@
     <select
       class="input mono metric"
       value={metric}
-      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value })}
+      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value, stat: null, dir: null })}
       aria-label="Scalar"
     >
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
+    <DirectionButton projects={shownProjects} name={metric} />
     <div class="seg" role="group" aria-label="Statistic">
-      <button aria-pressed={stat === 'best'} onclick={() => router.set({ stat: null })}>Best</button>
-      <button aria-pressed={stat === 'last'} onclick={() => router.set({ stat: 'last' })}>Last</button>
+      <button
+        aria-pressed={stat === 'min'}
+        title="Score each run by the lowest value it reached at any step."
+        onclick={() => setStat('min')}>Min</button
+      >
+      <button
+        aria-pressed={stat === 'max'}
+        title="Score each run by the highest value it reached at any step."
+        onclick={() => setStat('max')}>Max</button
+      >
+      <button
+        aria-pressed={stat === 'last'}
+        title="Score each run by its value at the last logged step, where it ended up."
+        onclick={() => setStat('last')}>Last</button
+      >
     </div>
-    <span class="muted">{lower ? 'Lower is better' : 'Higher is better'} · {kept.length} of {runs.length} runs</span>
+    <span
+      class="muted"
+      title={worstCase
+        ? `Ranks by each run's worst ${metric}: ${stat === 'max' ? 'the highest it reached, where lower is better' : 'the lowest it fell to, where higher is better'}. Useful for stability: the smallest spike or dip ranks first.`
+        : 'Min, Max or Last picks the number of each run; the arrow next to the scalar says which way is better, and so which runs rank first.'}
+      >{rankText} · {kept.length} of {runs.length} runs</span
+    >
     <span class="grow"></span>
     {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}
     <button
@@ -412,7 +452,7 @@
             >
             <text class="sub" {x} y={TOP - 12} text-anchor="middle"
               >{isMetric
-                ? `${stat} · best on top`
+                ? `${stat} · ${lower ? 'lowest' : 'highest'} on top`
                 : a.numeric
                   ? a.log
                     ? 'log scale'
@@ -473,7 +513,9 @@
       </svg>
       <p class="hint">
         Drag along an axis to keep only the runs in that range; click an axis to clear its filter. Line color goes from
-        orange (worst) to blue (best). The bars next to each parameter show its rank correlation with the objective.
+        orange (ranked last) to blue (ranked first: {lower ? 'lowest' : 'highest'}
+        {stat === 'last' ? 'last value' : stat}). The bars next to each parameter show its rank correlation with the
+        scalar.
       </p>
     </div>
   {/if}
@@ -594,8 +636,10 @@
 
   <section class="card best">
     <div class="sh">
-      <span class="label keep">Best runs</span><span class="faint trunc" title="{metric} ({stat}), filtered"
-        >{metric} ({stat}), filtered</span
+      <span class="label keep">Top runs</span><span
+        class="faint trunc"
+        title="{metric} ({stat}, {lower ? 'lowest' : 'highest'} first), filtered"
+        >{metric} ({stat}, {lower ? 'lowest' : 'highest'} first), filtered</span
       >
     </div>
     <table>

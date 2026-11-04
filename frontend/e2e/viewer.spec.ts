@@ -88,26 +88,36 @@ test('small charts show values on hover, the pinned step and their full names', 
   const over = small.locator('.u-over');
   await expect(over).toBeVisible();
   await expect(small.locator('.fullname')).toHaveText(/\S/);
-  // hovering a small chart: a read-out with each run's value, at most 8 and best first
-  const box = (await over.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  // hovering a small chart: a read-out with each run's value, at most 8 and largest first
   const tip = small.getByRole('status');
-  await expect(tip).toBeVisible();
+  await expect(async () => {
+    const box = (await over.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+    await expect(tip).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
   await expect(tip.locator('.tx')).toHaveText(/^Step [\d,]+$/);
   expect(await tip.locator('.trow').count()).toBeLessThanOrEqual(8);
+  const shownValues = (await tip.locator('.tv').allInnerTexts()).map(Number);
+  expect(shownValues).toEqual([...shownValues].sort((a, b) => b - a));
   await page.mouse.move(0, 0);
   await expect(tip).toHaveCount(0);
   // pinning the main chart: the small charts show that step
+  // (a chart drawn again just then, for new data, can miss a click: settle, then try again)
   const main = page.locator('.main .chart').first().locator('.u-over');
-  await main.scrollIntoViewIfNeeded();
-  const mb = (await main.boundingBox())!;
-  await page.mouse.move(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
-  await page.mouse.click(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
-  await expect(page.getByText('Pinned · click chart to release')).toBeVisible();
-  await small.scrollIntoViewIfNeeded();
-  const sb = (await over.boundingBox())!;
-  await page.mouse.move(sb.x + 10, sb.y + 10);
-  await expect(tip).toContainText('pinned');
+  await expect(async () => {
+    await expect(main).toBeVisible();
+    await main.scrollIntoViewIfNeeded();
+    const mb = (await main.boundingBox())!;
+    await page.mouse.move(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
+    await page.mouse.click(mb.x + mb.width * 0.3, mb.y + mb.height / 2);
+    await expect(page.getByText('Pinned · click chart to release')).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(async () => {
+    await small.scrollIntoViewIfNeeded();
+    const sb = (await over.boundingBox())!;
+    await page.mouse.move(sb.x + 10, sb.y + 10);
+    await expect(tip).toContainText('pinned', { timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
   // the names under the charts can be turned off
   await page.getByRole('switch', { name: 'Full names' }).click();
   await expect(page).toHaveURL(/names=0/);
@@ -205,19 +215,27 @@ test('the all-runs PR chart downloads as a PNG and goes to a report', async ({ p
   await expect(page).toHaveURL(/#\/media.*mfind=/);
 });
 
-test('best-step mode shows each run at its lowest or highest value of the scalar', async ({ page }) => {
-  await page.goto('/#/media?project=vit-ablations&mmode=best&mmetric=val%2Floss&mfind=%5Esamples%2Faugmented%24');
+test('min/max-step mode shows each run at the min or max of the scalar', async ({ page }) => {
+  const url = '/#/media?project=vit-ablations&mmode=best&mmetric=val%2Floss&mfind=%5Esamples%2Faugmented%24';
+  await page.goto(url);
   const note = page.locator('.bestnote').first();
   const firstCard = page.locator('.grid').first().locator('> *').first();
-  // val/loss: lower is better, so Lowest is the default, late in training; Highest is near the start
-  await expect(page.getByRole('button', { name: 'Lowest', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(note).toContainText(/^Lowest\s+val\/loss:\s+cutmix-s1\s+0\.7\d*\s+at step (9\d|100)\b/);
+  // val/loss reads as a loss, so Min is where it starts, late in training; Max is near the start
+  await expect(page.getByRole('button', { name: 'Min', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(note).toContainText(/^Min\s+val\/loss:\s+cutmix-s1\s+0\.7\d*\s+at step (9\d|100)\b/);
   await expect(firstCard).toContainText(/Step (9\d|100)\b/);
-  await page.getByRole('button', { name: 'Highest', exact: true }).click();
-  await expect(note).toContainText(/^Highest\s+val\/loss:\s+cutmix-s1\s+0\.9\d*\s+at step [0-5]\b/);
+  await page.getByRole('button', { name: 'Max', exact: true }).click();
+  await expect(note).toContainText(/^Max\s+val\/loss:\s+cutmix-s1\s+0\.9\d*\s+at step [0-5]\b/);
   await expect(firstCard).toContainText(/Step [0-5]\b/);
-  await page.getByRole('button', { name: 'Lowest', exact: true }).click();
+  // the choice is remembered for this scalar on this page
+  await page.goto(url.replace('&mmode=best', '&mmode=latest'));
+  await page.goto(url);
+  await expect(page.getByRole('button', { name: 'Max', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Min', exact: true }).click();
   await expect(firstCard).toContainText(/Step (9\d|100)\b/);
+  // links from before Min / Max still work
+  await page.goto(url + '&mdir=max');
+  await expect(note).toContainText(/^Max\s+val\/loss/);
 });
 
 test('runs table shows alerts, collections and editable custom fields', async ({ page }) => {
@@ -431,7 +449,9 @@ test('media page plays audio with the waveform and simple players', async ({ pag
   await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.duration)).toBeCloseTo(2.6, 1);
 });
 
-test('media page plots waveform figures, with exact values, region lanes, selections and notes', async ({ page }) => {
+test('media page plots waveform figures, with exact values, region lanes, selections and notes @live', async ({
+  page,
+}) => {
   // at step 0, so the note below is not on the figure the listening report embeds (step 30)
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
@@ -663,7 +683,7 @@ test('media page filters kinds, sets the grid and picks the best step', async ({
   await expect(page.locator('section.section figure')).toHaveCount(2);
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(page.locator('section.section figure')).toHaveCount(2);
-  await page.getByRole('button', { name: 'best scalar' }).click();
+  await page.getByRole('button', { name: 'At scalar min/max' }).click();
   await expect(page).toHaveURL(/mmode=best/);
   await expect(page.locator('figure .step').first()).toContainText('Step');
 });
@@ -700,6 +720,9 @@ test('run details show Markdown notes and typed properties', async ({ page }) =>
   await page.getByRole('button', { name: 'Properties', exact: true }).click();
   await expect(page.locator('#prop-verdict')).toHaveValue('keep');
   await page.locator('#prop-gpu_hours').fill('7.25');
+  // the panel has settled with the edit in it before Save is clicked
+  await expect(page.locator('#prop-gpu_hours')).toHaveValue('7.25');
+  await expect(page.getByRole('button', { name: 'Save 1 change' })).toBeEnabled();
   await page.getByRole('button', { name: 'Save 1 change' }).click();
   await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
   await page.getByRole('button', { name: 'Add property' }).click();
@@ -1156,6 +1179,37 @@ test('tables compare steps, sort, filter and open a row', async ({ page }) => {
   await card.getByRole('button', { name: /^pesq/ }).click();
   await expect(card.locator('th[aria-sort="ascending"]')).toHaveText(/pesq/);
   await expect(card.locator('td.heat[style*="color-mix"]').first()).toBeVisible();
+  // changes show as up and down until a column gets a direction; then they are colored green or orange
+  await expect(
+    card
+      .locator('td.heat .d')
+      .filter({ hasText: /^[▲▼] / })
+      .first(),
+  ).toBeVisible();
+  await expect(card.locator('td.heat[style*="--s4"], td.heat[style*="--s5"]')).toHaveCount(0);
+  await expect(card.getByText(/went up/)).toBeVisible();
+  const direction = card.getByRole('button', { name: 'Direction of pesq: none' });
+  await direction.click();
+  await expect(card.getByRole('button', { name: 'Direction of pesq: max' })).toHaveText('↑');
+  await expect(card.locator('td.heat[style*="--s4"]').first()).toBeVisible();
+  await expect(card.getByText(/improved/)).toBeVisible();
+  // a view's own choice until saved for everyone; Reset drops it
+  await expect(card.getByText('Directions changed')).toBeVisible();
+  await card.getByRole('button', { name: 'Reset' }).click();
+  await expect(card.getByRole('button', { name: 'Direction of pesq: none' })).toBeVisible();
+  await card.getByRole('button', { name: 'Direction of pesq: none' }).click();
+  await card.getByRole('button', { name: 'Save for everyone' }).click();
+  await expect(card.getByText('Directions changed')).toHaveCount(0);
+  await page.reload();
+  await expect(card.getByRole('button', { name: 'Direction of pesq: max' })).toBeVisible();
+  await card.getByRole('button', { name: /^pesq/ }).click(); // sorting is not kept by a reload
+  await expect(card.locator('th[aria-sort="ascending"]')).toHaveText(/pesq/);
+  await card.getByRole('button', { name: 'Direction of pesq: max' }).click();
+  await expect(card.getByRole('button', { name: 'Direction of pesq: min' })).toHaveText('↓');
+  await card.getByRole('button', { name: 'Direction of pesq: min' }).click();
+  await card.getByRole('button', { name: 'Save for everyone' }).click();
+  await expect(card.getByRole('button', { name: 'Direction of pesq: none' })).toBeVisible();
+  await expect(card.getByText('Directions changed')).toHaveCount(0);
   await card.getByLabel('Filter rows').fill('noise = babble and snr_in < 0');
   await expect(card.getByText(/^\d of 40 rows$/)).toBeVisible();
   await card.getByLabel('Filter rows').fill('nope < 1');
@@ -1496,7 +1550,7 @@ test('the timeline zooms with presets, steps back and forth, and with Ctrl + whe
   await expect(page).toHaveURL(/tz=/);
 });
 
-test('live updates wait behind an Update button when Charts are paused, and a Refresh pill elsewhere', async ({
+test('live updates wait behind an Update button when Charts are paused, and a Refresh pill elsewhere @live', async ({
   page,
 }) => {
   await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
@@ -1957,7 +2011,7 @@ async function openLiveFile(page: Page, file: string) {
   return pre;
 }
 
-test('live updates of a running run keep the open file and its scroll', async ({ page }) => {
+test('live updates of a running run keep the open file and its scroll @live', async ({ page }) => {
   const pre = await openLiveFile(page, 'progress.log');
   // the demo's live run adds a line about every 0.25 s; wait until the file scrolls
   await expect
@@ -1990,7 +2044,7 @@ test('live updates of a running run keep the open file and its scroll', async ({
   await expect.poll(() => pre.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 4)).toBe(true);
 });
 
-test('Full screen shows a long run file on the whole screen, and Esc brings it back', async ({ page }) => {
+test('Full screen shows a long run file on the whole screen, and Esc brings it back @live', async ({ page }) => {
   const pre = await openLiveFile(page, 'progress.log');
   await expect
     .poll(() => pre.evaluate((el) => el.scrollHeight > el.clientHeight + 100), { timeout: 20_000 })
@@ -2007,7 +2061,7 @@ test('Full screen shows a long run file on the whole screen, and Esc brings it b
   await expect.poll(() => pre.evaluate((el) => el.clientHeight)).toBe(boxed);
 });
 
-test('a text file that fits its box has no Full screen button', async ({ page }) => {
+test('a text file that fits its box has no Full screen button @live', async ({ page }) => {
   const pre = await openLiveFile(page, 'config.yaml');
   await expect.poll(() => pre.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
   await expect(page.getByRole('button', { name: /full screen/i })).toHaveCount(0);
@@ -2136,6 +2190,16 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.goto('/#/hypotheses');
   await expect(page.getByRole('heading', { name: 'Augmentations on ViT-S/16' })).toBeVisible();
   await expect(page.locator('.hcard')).toHaveCount(5);
+  // each card marks its top run's number; with Last, flipping the arrow moves the marks
+  const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
+  await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
+  await page.getByRole('combobox', { name: 'Summary' }).selectOption('last');
+  const highest = await tops();
+  await page.getByRole('button', { name: /^Direction of val\/acc/ }).click();
+  await expect.poll(tops).not.toBe(highest);
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await expect.poll(tops).toBe(highest);
+  await page.getByRole('combobox', { name: 'Summary' }).selectOption('max');
   await page.locator('.chiprow', { hasText: 'cutmix-s0' }).click();
   await expect(page.locator('aside textarea')).toHaveValue('Best run of the study.');
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Timeline' }).click();
@@ -2151,4 +2215,130 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/hboard=loss-choice/);
   await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
+});
+
+test('runs show each result as its min, max or last value', async ({ page }) => {
+  await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
+  const result = page.getByRole('group', { name: 'Result' });
+  // train/loss reads as a loss: Min is where it starts
+  await expect(result.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.result .mname').first()).toHaveText('train/loss · min');
+  await result.getByRole('button', { name: 'Max' }).click();
+  await expect(page).toHaveURL(/res=max/);
+  await expect(page.locator('.result .mname').first()).toHaveText('train/loss · max');
+  await result.getByRole('button', { name: 'Last' }).click();
+  await expect(page.locator('.result .mname').first()).toHaveText('train/loss · last');
+  // remembered for this scalar
+  await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
+  await expect(result.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('sweeps rank by min, max or last, in the direction of the direction arrow', async ({ page }) => {
+  await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss&params=optim.lr');
+  const stat = page.getByRole('group', { name: 'Statistic' });
+  // a loss: ↓ lower is better, guessed from the name (dashed) until set; Min is where it starts
+  const direction = page.getByRole('button', { name: /^Direction of train\/loss/ });
+  await expect(direction).toHaveText('↓');
+  await expect(direction).toHaveClass(/guess/);
+  await expect(stat.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.pc .metricaxis .sub')).toHaveText('min · lowest on top');
+  const top = page.locator('section.best tbody tr td.right');
+  const read = async () => (await top.allInnerTexts()).map(Number);
+  await expect(top.first()).toBeVisible();
+  const lows = await read();
+  expect(lows).toEqual([...lows].sort((a, b) => a - b));
+  await stat.getByRole('button', { name: 'Last' }).click();
+  await expect(page.locator('.pc .metricaxis .sub')).toHaveText('last · lowest on top');
+  await expect(page.getByText(/Each run's last value, lowest ranked first/)).toBeVisible();
+  const lasts = await read();
+  expect(lasts).toEqual([...lasts].sort((a, b) => a - b));
+  // flipping the arrow changes this view only: the highest rank first, nothing saved yet
+  await direction.click();
+  await expect(direction).toHaveText('↑');
+  await expect(page).toHaveURL(/dir=max/);
+  await expect(page.locator('.pc .metricaxis .sub')).toHaveText('last · highest on top');
+  const highs = await read();
+  expect(highs).toEqual([...highs].sort((a, b) => b - a));
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await expect(direction).toHaveText('↓');
+  // Save for everyone keeps it in the project, where every screen reads it
+  await direction.click();
+  await page.getByRole('button', { name: 'Save for everyone' }).click();
+  await expect(page).not.toHaveURL(/dir=/);
+  await expect(direction).not.toHaveClass(/guess/);
+  await expect(page.getByRole('button', { name: 'Save for everyone' })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^Direction of train\/loss/ })).toHaveAttribute(
+    'title',
+    /as set in llm-pretrain/,
+  );
+  await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
+  const runsDirection = page.getByRole('button', { name: /^Direction of train\/loss/ });
+  await expect(runsDirection).toHaveText('↑');
+  // put it back for the other tests
+  await runsDirection.click();
+  await page.getByRole('button', { name: 'Save for everyone' }).click();
+  await expect(runsDirection).toHaveText('↓');
+  await expect(page.getByRole('button', { name: 'Save for everyone' })).toHaveCount(0);
+});
+
+test('the Charts summary card shows the lowest or highest last value', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
+  const card = page.locator('.stat').first();
+  // val/acc does not read as a loss: Max is where it starts
+  await expect(card).toContainText('Highest val/acc');
+  await card.getByRole('button', { name: 'Min' }).click();
+  await expect(card).toContainText('Lowest val/acc');
+  await expect(page).toHaveURL(/cstat=min/);
+  await expect(page.locator('.inspector .im')).toContainText('Lowest first');
+});
+
+test('log x: ticks on powers of ten, zoom and pins in log space, off for wall time', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  await page.getByRole('switch', { name: 'Log x' }).click();
+  await expect(page).toHaveURL(/logx=1/);
+  const over = page.locator('.focus .u-over').first();
+  await expect(over).toBeVisible();
+  // step 0 cannot be drawn on a log axis: the inspector says how many points were left out
+  await expect(page.locator('.inspector .leftout')).toContainText('not shown on the log x-axis');
+  // hovering near the left edge picks an early step: the cursor works in log space
+  // (the chart is drawn again for the log axis: hover until it answers)
+  let box = (await over.boundingBox())!;
+  await expect(async () => {
+    box = (await over.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.1 + Math.random(), box.y + box.height / 2);
+    await expect(page.locator('.inspector .ix')).toHaveText(/Step\s+\d{1,3}$/, { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await page.mouse.click(box.x + box.width * 0.1, box.y + box.height / 2);
+  await expect(page.getByText('Pinned · click chart to release')).toBeVisible();
+  const pinned = await page.locator('.inspector .ix').innerText();
+  // Ctrl + wheel zooms around the cursor in log space; the pin stays on its step
+  await page.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect(page).toHaveURL(/zoom=\d[\d.e+]*(~|%7E)[\d.e+]+/);
+  const [a, b] = decodeURIComponent(new URL(page.url()).hash.match(/zoom=([^&]+)/)![1])
+    .split('~')
+    .map(Number);
+  expect(a).toBeGreaterThan(0);
+  expect(b / a).toBeGreaterThan(10); // zoomed by a factor in log space, not by a linear span
+  await expect(page.locator('.inspector .ix')).toHaveText(pinned);
+  await expect(page.locator('.focus .nb-dot').first()).toBeVisible();
+  // wall time has no log scale
+  await page.getByRole('button', { name: 'Wall time' }).click();
+  await expect(page.getByRole('switch', { name: 'Log x' })).toBeDisabled();
+  await expect(page.locator('.inspector .leftout')).toHaveCount(0);
+});
+
+test('the spectrogram frequency axis can be turned off', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mkinds=audio');
+  const freq = page.getByRole('switch', { name: 'Frequency axis' });
+  await expect(freq).toHaveAttribute('aria-checked', 'true');
+  await freq.click();
+  await expect(page).toHaveURL(/fax=0/);
+  await expect(freq).toHaveAttribute('aria-checked', 'false');
+  // it labels the spectrogram, so it goes away with it
+  await page.getByRole('switch', { name: 'Spectrogram' }).click();
+  await expect(freq).toHaveCount(0);
 });

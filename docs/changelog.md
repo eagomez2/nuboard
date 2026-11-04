@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.25.0
+
+A log x axis for Charts, a frequency axis switch for spectrograms, and
+**Min / Max / Last** everywhere "Best" was, with one saved **direction** per
+scalar (which way is better) that every page reads. The end-to-end tests are
+steadier, and `nuboard up` no longer moves to another port right after a
+restart ([#39](https://github.com/eagomez2/nuboard/issues/39),
+[#27](https://github.com/eagomez2/nuboard/issues/27)). No breaking changes:
+old links and hypothesis boards that used "best" map to Min or Max.
+
+- **Log x on Charts**: a switch next to the x axis picker draws step (or any
+  increasing x) on a log scale. Zoom, pan, pinned points and HTML exports work
+  in log space, the server spreads points evenly over each decade, and points
+  at x ≤ 0 are left out with a note. Off for wall time.
+- **Spectrogram frequency axis**: Media has a **Frequency axis** switch
+  while Spectrogram is on; toggling it does not recompute the FFT. Reports
+  and exports show the axis too.
+- **Min / Max / Last instead of Best**: Runs, Sweeps, the Charts summary
+  card, Media (**At scalar min/max**) and hypothesis cards pick each run's
+  lowest, highest or last value, starting from a guess from the name and
+  remembering your choice per page. Tooltips list the largest value first.
+- **Which way is better, as a direction**: an arrow next to the scalar, as
+  papers mark it (↓ lower is better, ↑ higher). Sweeps and the Runs result
+  column rank by it, tables color their changes by it, and hypothesis cards
+  mark each card's top run (▲) by it. A faint, dashed arrow is a guess from
+  the name. A click changes only your view (`dir` in the URL); **Save for
+  everyone** keeps it in `<project>/directions.json`, the one place it is
+  stored, and **Reset** goes back. Saves are refused when someone changed the
+  direction meanwhile, are locked across processes, and open viewers update
+  within seconds of any change. Projects shown together that disagree show
+  **↕** and color nothing. A table column's direction is kept apart from a
+  scalar of the same name. `nuboard up --lock-directions` makes them
+  read-only, and `nuboard merge` combines them, reporting conflicts.
+- **Tables no longer guess better or worse**: changes are gray ▲ / ▼ until a
+  column has a direction (the **±** button in its header).
+- **Sweeps says what it ranks**: "Each run's lowest value, lowest ranked
+  first", with "(its worst)" when Max is paired with ↓ (or Min with ↑), which
+  ranks by stability: the smallest spike or dip first.
+- **Steadier end-to-end tests**: tests that need a live run use their own
+  demo server and the rest a still one, waits cover redraws, and a failing
+  test is retried once.
+- **`nuboard up` keeps its port after a restart**: a port whose server just
+  stopped is reused instead of moving to the next free one.
+- **Docs**: the Quickstart and Guides buttons on the home page are rounded and
+  raised, with a hover lift; a new "Which way is better" section explains
+  directions.
+
 ## 0.24.1
 
 A docs release: the About page shows NuBoard's main features in tabs, a new

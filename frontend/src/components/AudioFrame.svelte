@@ -31,7 +31,7 @@
     duration?: number;
     group: string;
     header: { label?: string; name?: string; tags?: string[] };
-    /** Spectrogram colormap, frequency scale and window, and the amplitude axis (see MediaPage's options). */
+    /** Spectrogram colormap, frequency scale and window, and the amplitude and frequency axes (see MediaPage's options). */
     options: AudioOptions;
     notes?: AudioNote[];
     onnotes?: (notes: AudioNote[]) => void;
@@ -70,6 +70,7 @@
       waveHeight: 72,
       spectrogramHeight: options.spectrogram ? 140 : 0,
       axis: options.axis,
+      freqAxis: options.freqAxis,
       normalize: false,
       notes: !!onnotes,
       annotations: $state.snapshot(notes),
@@ -108,6 +109,7 @@
       options.fftSize,
       options.spectrogram,
       options.axis,
+      options.freqAxis,
     ];
     void notes;
     send();
