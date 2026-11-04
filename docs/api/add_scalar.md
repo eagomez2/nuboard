@@ -70,8 +70,10 @@ for step in range(500):
     loss = 2.2 * math.exp(-step / 120) + 0.25 + 0.04 * math.sin(step / 7)
     run.add_scalar({"train": {"loss": loss, "lr": lr}}, step=step)
 
-    if step % 50 == 0:
-        run.add_scalar("eval/loss", loss + 0.08, step=step)
+    if step % 25 == 0:
+        # mean and std over evaluation batches, logged as a range
+        mean, std = loss + 0.08, 0.05 + 0.15 * math.exp(-step / 150)
+        run.add_scalar("eval/loss", mean, step=step, low=mean - std, high=mean + std)
         run.add_scalar("eval/acc", 1 - loss / 3, step=step)
 
 run.finish()
@@ -80,3 +82,7 @@ run.finish()
 **Expected result**
 
 ![Charts for train/loss, train/lr, eval/loss and eval/acc](../assets/api/scalars.png)
+
+`eval/loss`, logged with `low` and `high`, has a shaded band around its line:
+
+![eval/loss with a shaded band from its logged low and high values](../assets/api/scalars-range.png)

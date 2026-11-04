@@ -58,3 +58,7 @@ for epoch in range(30):
 
 run.finish()
 ```
+
+**Expected result**
+
+![val/pesq rising over 30 epochs above a dashed baseline at 1.31 with a light band from 1.19 to 1.43](../assets/api/baseline.png)

@@ -119,3 +119,7 @@ for epoch in range(5):
 
 run.finish()
 ```
+
+**Expected result**
+
+![The run's Timing tab: train/epoch with data/wait summed under it, and val/epoch, with calls, mean per step, p95 and total, and the spans of one epoch](../assets/api/timer.png)
