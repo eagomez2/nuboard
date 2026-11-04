@@ -15,8 +15,8 @@ a plain folder on disk, and opens thousands of them in a fast viewer that runs
 on your own machine. There is no account to create, no server to keep running
 and no database to back up.
 
-[Quickstart](quickstart.md){ .md-button .md-button--primary }
-[Guides](guide/logging.md){ .md-button }
+[:material-rocket-launch-outline: Quickstart :material-arrow-right:{ .nb-go }](quickstart.md){ .md-button .md-button--primary }
+[:material-book-open-variant: Guides](guide/logging.md){ .md-button }
 
 </div>
 
