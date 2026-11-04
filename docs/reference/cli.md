@@ -40,8 +40,9 @@ further) is used.
 | `--max-text-mb` | `5` | size limit of a text file uploaded into a report |
 | `--max-audio-mb` | `50` | size limit of an audio file uploaded into a report |
 
-See [Using the viewer](../guide/viewer.md) and
-[Sharing on a network](../guide/viewer.md#sharing-on-a-network).
+See [Using the viewer](../guide/viewer.md),
+[Sharing on a network](../guide/viewer.md#sharing-on-a-network) and
+[Sharing from a cloud machine](../guide/sharing.md).
 
 ## demo
 

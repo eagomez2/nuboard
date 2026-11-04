@@ -704,6 +704,10 @@ clock is wrong: if a clock was off, the times it recorded are off too.
 
 ## Sharing on a network
 
+[Sharing from a cloud machine](sharing.md) compares the ways to reach a viewer
+on another machine (SSH port forwarding, a token, HTTPS behind a proxy) and
+what each means for access and security.
+
 `nuboard up --host 0.0.0.0` (or a specific address) makes the viewer reachable
 from other machines, and anyone who reaches it could read your runs and change
 notes, tags and reports. So, like Jupyter, it then asks for a token:

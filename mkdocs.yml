@@ -45,6 +45,7 @@ nav:
       - Evaluating while training: guide/jobs.md
       - Importing from TensorBoard: guide/tensorboard.md
       - Working on several machines: guide/machines.md
+      - Sharing from a cloud machine: guide/sharing.md
   - Reference:
       - Command line: reference/cli.md
       - Query language: reference/query.md
