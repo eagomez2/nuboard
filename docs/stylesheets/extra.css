@@ -143,3 +143,91 @@
   font-size: 0.7rem;
   color: var(--md-default-fg-color--light);
 }
+
+/* About page: feature tabs over a screenshot (Material content tabs, no autoplay) */
+.md-typeset .nb-features .tabbed-set {
+  margin: 1.5rem 0 2rem;
+}
+.md-typeset .nb-features .tabbed-labels {
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: none;
+  padding: 0.2rem 0.2rem 0.8rem;
+}
+.md-typeset .nb-features .tabbed-labels::before {
+  display: none; /* Material's sliding underline */
+}
+.md-typeset .nb-features .tabbed-labels > label {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.6rem;
+  background: var(--md-default-bg-color);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.18);
+  padding: 0.45rem 0.85rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--md-default-fg-color--light);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.md-typeset .nb-features .tabbed-labels > label > [href]:first-child {
+  padding: 0; /* Material puts the label's padding on this link */
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.md-typeset .nb-features .tabbed-labels .twemoji svg {
+  width: 1.05em;
+  height: 1.05em;
+}
+.md-typeset .nb-features .tabbed-labels > label:hover {
+  color: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(16, 24, 40, 0.08), 0 8px 18px -8px rgba(0, 114, 178, 0.45);
+}
+.md-typeset .nb-features .tabbed-set > input:nth-child(1):checked ~ .tabbed-labels > :nth-child(1),
+.md-typeset .nb-features .tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > :nth-child(2),
+.md-typeset .nb-features .tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > :nth-child(3),
+.md-typeset .nb-features .tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > :nth-child(4),
+.md-typeset .nb-features .tabbed-set > input:nth-child(5):checked ~ .tabbed-labels > :nth-child(5),
+.md-typeset .nb-features .tabbed-set > input:nth-child(6):checked ~ .tabbed-labels > :nth-child(6) {
+  background: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+  color: var(--nb-on-primary, #fff);
+  transform: none;
+  box-shadow: 0 6px 16px -6px rgba(0, 114, 178, 0.6);
+}
+[data-md-color-scheme="slate"] .nb-features {
+  --nb-on-primary: #0e1218;
+}
+/* The description sits in a box of fixed height, so switching tabs never moves the image. */
+.md-typeset .nb-features .nb-feature-text {
+  box-sizing: border-box;
+  height: 5.2rem;
+  max-width: 44rem;
+  margin: 0 auto 1rem;
+  padding: 0.6rem 1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  text-align: center;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.6rem;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.md-typeset .nb-features .nb-feature-text strong {
+  color: var(--md-default-fg-color);
+}
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .nb-features .nb-feature-text {
+    height: 7.6rem;
+    font-size: 0.74rem;
+  }
+}

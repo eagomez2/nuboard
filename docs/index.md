@@ -46,8 +46,57 @@ $ nuboard up experiments
 nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+C to stop)
 ```
 
-![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-light.png#only-light){ .nb-shot }
-![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-dark.png#only-dark){ .nb-shot }
+<div class="nb-features" markdown>
+
+=== ":material-view-dashboard-outline: Overview"
+
+    **All your runs, one fast viewer.** <span>Group a sweep into mean ± std bands, smooth, zoom and catch NaNs and spikes while runs train.</span>
+    { .nb-feature-text }
+
+    ![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-light.png#only-light){ .nb-shot }
+    ![The Charts page: a learning-rate sweep grouped by lr, with mean ± std bands over three seeds and health alerts below](assets/charts-dark.png#only-dark){ .nb-shot }
+
+=== ":material-chart-bell-curve: Ranges"
+
+    **Log a range, not just a number.** <span>Give `add_scalar` a `low` and `high` and each run gets its own shaded band, such as ± std over evaluation batches.</span>
+    { .nb-feature-text }
+
+    ![eval/loss for four runs, each drawn with a shaded band from its logged low and high values](assets/about/ranges-light.png#only-light){ .nb-shot }
+    ![eval/loss for four runs, each drawn with a shaded band from its logged low and high values](assets/about/ranges-dark.png#only-dark){ .nb-shot }
+
+=== ":material-timer-outline: Timing"
+
+    **See where the time goes.** <span>Wrap training and validation in `run.timer`: mean and p95 per step, slow outliers, and which rank everyone waited for.</span>
+    { .nb-feature-text }
+
+    ![The Timing tab of a run: each timer with its calls, mean per step, p95 and total, and a per-rank timeline of one step](assets/about/timing-light.png#only-light){ .nb-shot }
+    ![The Timing tab of a run: each timer with its calls, mean per step, p95 and total, and a per-rank timeline of one step](assets/about/timing-dark.png#only-dark){ .nb-shot }
+
+=== ":material-waveform: Audio"
+
+    **Audio with its annotations.** <span>Overlay a voice activity probability and label tracks on the waveform, then play, zoom and leave notes on any region.</span>
+    { .nb-feature-text }
+
+    ![A waveform figure: a denoised speech clip with its speech probability on top and target, predicted and event tracks below](assets/about/audio-light.png#only-light){ .nb-shot }
+    ![A waveform figure: a denoised speech clip with its speech probability on top and target, predicted and event tracks below](assets/about/audio-dark.png#only-dark){ .nb-shot }
+
+=== ":material-chart-timeline: Timeline"
+
+    **What ran before what.** <span>Overlapping runs, crashes and the artifact versions each run produced, on one time axis.</span>
+    { .nb-feature-text }
+
+    ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-light.png#only-light){ .nb-shot }
+    ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-dark.png#only-dark){ .nb-shot }
+
+=== ":material-source-branch: Hypotheses"
+
+    **Keep the why next to the what.** <span>Each card is a question, the runs that tested it and a verdict, linked to the idea that came next.</span>
+    { .nb-feature-text }
+
+    ![A hypotheses board: cards with a question, the runs that tested it and a verdict, linked by arrows that say what led to what](assets/about/hypotheses-light.png#only-light){ .nb-shot }
+    ![A hypotheses board: cards with a question, the runs that tested it and a verdict, linked by arrows that say what led to what](assets/about/hypotheses-dark.png#only-dark){ .nb-shot }
+
+</div>
 
 <div class="grid cards" markdown>
 
