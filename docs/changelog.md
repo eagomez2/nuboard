@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.1
+
+A docs release: the About page shows NuBoard's main features in tabs, a new
+guide covers sharing results from a cloud machine, and the Python API pages
+have more pictures. No code changes
+([#37](https://github.com/eagomez2/nuboard/issues/37)).
+
+- **Feature tabs on the About page**: the single screenshot is now six tabs
+  (Overview, Ranges, Timing, Audio, Timeline and Hypotheses), each with a
+  screenshot in light and dark and a short description in a box of fixed
+  height, so switching tabs never moves the image. Nothing rotates on its own.
+- **Sharing from a cloud machine**: a new guide compares SSH port forwarding,
+  a token on the network and HTTPS behind a reverse proxy, with the pros and
+  cons of each for accessibility and security. The viewer guide and the
+  command line reference link to it.
+- **More pictures in the Python API pages**: `add_scalar` logs `eval/loss`
+  with `low` and `high` and shows its band, `add_scalar_baseline` and `timer`
+  show what their examples produce, and the `add_audio` example logs a plucked
+  arpeggio with harmonics and vibrato instead of a chirp, for a richer
+  spectrogram.
+
 ## 0.24.0
 
 Artifact versions can be made from a run's files in the viewer, and an
