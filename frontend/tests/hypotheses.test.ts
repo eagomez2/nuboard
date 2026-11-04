@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   SIZE,
   bestRun,
+  cardChoice,
+  cardFor,
   cardValue,
   edges,
   isFolded,
@@ -32,7 +34,7 @@ const board: Board = {
     { id: 'open', label: 'Open', color: 'gray', dead_end: false },
     { id: 'dropped', label: 'Dropped', color: 's6', dead_end: true },
   ],
-  card: { metric: 'loss', stat: 'best', higher: false },
+  card: { metric: 'loss', stat: 'min', top: 'min' },
 };
 
 const r = (id: string, extra: Partial<HRun> = {}): HRun => ({
@@ -136,5 +138,24 @@ describe('hypotheses', () => {
     const [p] = layout([h('a', [], null, { position: { dx: -500, dy: 40 } })], opts({}));
     expect(p.x).toBe(0);
     expect(p.y).toBe(40);
+  });
+
+  it('marks the lowest or highest run as the top one, as the card says', () => {
+    const hyps = [h('a', [r('lo'), r('hi')])];
+    const runs: Record<string, BoardRun> = { lo: run('lo', 1), hi: run('hi', 3) };
+    expect(bestRun(hyps[0], runs, cardFor('loss', 'min'))).toBe('lo');
+    expect(bestRun(hyps[0], runs, cardFor('loss', 'max'))).toBe('hi');
+    expect(bestRun(hyps[0], runs, cardFor('loss', 'last:max'))).toBe('hi');
+    expect(bestRun(hyps[0], runs, cardFor('loss', 'last:min'))).toBe('lo');
+    // with nothing picked, the name only sets where the choice starts
+    expect(cardFor('val/loss', null)).toEqual({ metric: 'val/loss', stat: 'min', top: 'min' });
+    expect(cardFor('val/acc', null)).toEqual({ metric: 'val/acc', stat: 'max', top: 'max' });
+    expect(cardChoice(cardFor('val/acc', 'last:min'))).toBe('last');
+    expect(cardFor('val/acc', 'last', 'min').top).toBe('min');
+    // Last follows the direction set in the project, read live; else the card's own
+    const last = cardFor('loss', 'last', 'min');
+    expect(bestRun(hyps[0], runs, last)).toBe('lo');
+    expect(bestRun(hyps[0], runs, last, () => 'max')).toBe('hi');
+    expect(bestRun(hyps[0], runs, last, () => null)).toBe('lo');
   });
 });

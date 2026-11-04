@@ -216,7 +216,7 @@
           return r.v != null;
         })
         .sort(function (a, b) {
-          return d.lower ? a.v - b.v : b.v - a.v;
+          return b.v - a.v; // largest on top, as in the viewer
         });
       rows.slice(0, 15).forEach(function (r) {
         var extra = r.lo != null && r.hi != null && r.lo !== r.hi ? '  (' + num(r.lo) + ' to ' + num(r.hi) + ')' : '';

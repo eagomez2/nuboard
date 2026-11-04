@@ -8,7 +8,8 @@ import { DISPLAY_NAME, NAME } from './brand';
 import { decodeSpec } from './chartspec';
 import { baselineExtent, baselineLines } from './baselines';
 import { HIST_MIME, POINTS_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME } from './media';
-import { fmtDateTime, lowerIsBetter } from './format';
+import { fmtDateTime } from './format';
+import { columnKey, directionOf, loadDirections } from './directions.svelte';
 import { chartZone } from './chartzone';
 import { makeZone } from './tz';
 import { tableHtml, type TableData } from './tables';
@@ -218,6 +219,7 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
       points: 900,
       xmin: spec.zoom?.[0],
       xmax: spec.zoom?.[1],
+      logx: spec.logx && spec.x !== 'time',
     });
   } catch {
     return null;
@@ -255,11 +257,11 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
     c: l.series.length === 1 ? l.series[0] % 8 : null,
   }));
   const json = JSON.stringify({
-    lower: lowerIsBetter(spec.metric),
     xKind: data.xKind,
     // the zone picked when exporting, so the file reads times the same way on any machine
     zone: data.xKind === 'time' ? chartZone(data).kit.spec : undefined,
     log: spec.log,
+    logx: spec.logx && spec.x !== 'time',
     zoom: spec.zoom,
     range,
     extent,
@@ -381,6 +383,21 @@ function nbCharts() {
           values: (u, splits) => splits.map((x) => labels.get(x) || ''),
         };
       }
+      if (d.logx) {
+        // 1-9 x each power of ten in view (uPlot's own log ticks start at a zoomed range's left end)
+        xAxis = {
+          splits: (u, i, min, max) => {
+            const out = [];
+            if (!(min > 0) || !(max > min)) return out;
+            for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++)
+              for (let m = 1; m <= 9; m++) {
+                const x = e < 0 ? Number((m * 10 ** e).toFixed(-e)) : m * 10 ** e;
+                if (x >= min && x <= max) out.push(x);
+              }
+            return out;
+          },
+        };
+      }
       const y = { distr: d.log ? 3 : 1 };
       if (d.range) y.range = () => d.range;
       else if (d.extent) y.range = (u, min, max) => {
@@ -425,13 +442,13 @@ function nbCharts() {
       el.innerHTML = '';
       const u = new uPlot({
         width: el.clientWidth || 800, height: 300, series, bands, legend: { show: false }, padding: [12, 12, 0, 4],
-        scales: { x: { time: false }, y },
+        scales: { x: d.logx ? { time: false, distr: 3, log: 10, range: (u, min, max) => [min, max] } : { time: false }, y },
         axes: [Object.assign({ size: 40 }, axis, xAxis), Object.assign({ size: 56 }, axis)],
         cursor: { drag: { x: true, y: false }, points: { show: false } },
         hooks: { draw: [drawBaselines], setCursor: [(p) => p.nbTip && p.nbTip()] },
       }, tables.length === 1 ? tables[0] : uPlot.join(tables), el);
       if (window.nbLineTip) u.nbTip = nbLineTip(u, el, d, mains, (c) => v('--s' + (c + 1)) || '#0072b2');
-      if (d.zoom) u.setScale('x', { min: d.zoom[0], max: d.zoom[1] });
+      if (d.zoom && (!d.logx || d.zoom[0] > 0)) u.setScale('x', { min: d.zoom[0], max: d.zoom[1] });
       nbDrawn.set(el, u);
     } catch (e) {
       el.textContent = 'This chart could not be drawn: ' + e;
@@ -549,6 +566,7 @@ async function mediaHtml(
       waveHeight: 72,
       spectrogramHeight: 140,
       axis: true,
+      freqAxis: true,
       normalize: false,
       notes: false,
       annotations: item.notes ?? [],
@@ -566,7 +584,8 @@ async function mediaHtml(
       .pop();
     const base = prev ? ((await (await fetch(api.mediaUrl(found.run, prev.index!))).json()) as TableData) : null;
     const since = prev ? `<small class="nbmore">Colors show the change since step ${prev.step}.</small>` : '';
-    body = tableHtml(table, base, lowerIsBetter) + since;
+    await loadDirections();
+    body = tableHtml(table, base, (name) => directionOf([project], columnKey(item.key, name), false).direction) + since;
   } else if (item.mime === PR_MIME) {
     const data = (await (await fetch(url)).json()) as PRData;
     const series = [{ name: found.run_name, color: 'var(--s1)', data }];
@@ -794,6 +813,7 @@ export async function reportHtml(
               waveHeight: 72,
               spectrogramHeight: 140,
               axis: true,
+              freqAxis: true,
               normalize: false,
               notes: false,
               annotations: [],

@@ -36,6 +36,7 @@ further) is used.
 | `--no-token` | | serve a non-local `--host` without a token (anyone who reaches it can use it) |
 | `--edit-artifacts` | | allow adding artifact versions (references to paths on the server, or from a run's files by copy or reference) and unlinking them in the viewer |
 | `--read-only-reports` | | refuse every change to reports (uploads included) and hypothesis boards (for a shared server) |
+| `--lock-directions` | | refuse saving which way is better for a scalar or table column (`directions.json`); views can still flip it for themselves |
 | `--max-image-mb` | `20` | size limit of an image uploaded into a report |
 | `--max-text-mb` | `5` | size limit of a text file uploaded into a report |
 | `--max-audio-mb` | `50` | size limit of an audio file uploaded into a report |

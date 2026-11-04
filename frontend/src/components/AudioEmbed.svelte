@@ -12,7 +12,7 @@
     url={src}
     title={caption || name}
     group={src}
-    options={{ colormap: 'theme', scale: 'linear', fftSize: 1024, spectrogram: true, axis: true }}
+    options={{ colormap: 'theme', scale: 'linear', fftSize: 1024, spectrogram: true, axis: true, freqAxis: true }}
     header={{ label: caption || name, name: '', tags: [] }}
   />
   <figcaption>

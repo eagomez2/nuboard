@@ -730,7 +730,7 @@
     }
 
     ctx.putImageData(image, 0, 0);
-    drawFrequencyLabels(ctx, rows, channels);
+    if (args.freqAxis !== false) drawFrequencyLabels(ctx, rows, channels);
   }
 
   function drawFrequencyLabels(ctx, rows, channels) {
@@ -1671,8 +1671,9 @@
     // NOTE: Every rerun sends the same arguments; only rebuild (and decode
     // the audio again) when the arguments or the theme changed
     // (the notes, name and tags do not need a rebuild either)
-    // (nor does the amplitude axis, which is drawn over the waveform)
-    const { annotations: notes, header, axis, ...rest } = newArgs;
+    // (nor do the amplitude and frequency axes, which are drawn over the
+    // waveform and the computed spectrogram)
+    const { annotations: notes, header, axis, freqAxis, ...rest } = newArgs;
     const key = JSON.stringify([rest, newTheme || {}]);
 
     if (key !== structure) {
@@ -1689,6 +1690,11 @@
     if (!!args.axis !== !!axis) {
       args.axis = axis;
       drawAmplitudeAxis();
+    }
+
+    if ((args.freqAxis !== false) !== (freqAxis !== false)) {
+      args.freqAxis = freqAxis;
+      requestSpectrogram();
     }
 
     setAnnotations(notes);

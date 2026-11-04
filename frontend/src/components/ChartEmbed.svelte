@@ -4,7 +4,7 @@
   import { chartsParams, decodeSpec } from '../lib/chartspec';
   import { seriesColor } from '../lib/colors';
   import { chartZone } from '../lib/chartzone';
-  import { fmtDuration, fmtNum, fmtTimeIn, lowerIsBetter } from '../lib/format';
+  import { fmtDuration, fmtNum, fmtTimeIn } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -31,6 +31,7 @@
         points: 900,
         xmin: c.zoom?.[0],
         xmax: c.zoom?.[1],
+        logx: c.logx && c.x !== 'time',
         signal: ctrl.signal,
       })
       .then((d) => {
@@ -53,10 +54,8 @@
   let values = $state<CursorValue[]>([]);
   let pinned = $state(false);
   let at = $state<{ x: number; y: number; w: number } | null>(null);
-  const rows = $derived.by(() => {
-    const lower = lowerIsBetter(s?.metric ?? '');
-    return [...values].sort((a, b) => (lower ? a.value - b.value : b.value - a.value));
-  });
+  // largest on top, as in the Charts page's small charts
+  const rows = $derived([...values].sort((a, b) => b.value - a.value));
   function fmtX(x: number): string {
     const kind = s?.x ?? 'step';
     if (kind === 'time') return fmtTimeIn(chartZone(data).kit, x);
@@ -94,6 +93,7 @@
         zoom={s.zoom}
         robust={s.robust}
         logY={s.log}
+        logX={s.logx && s.x !== 'time'}
         baselines={s.base}
         {hidden}
         {colorOf}

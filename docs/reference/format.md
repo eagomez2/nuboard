@@ -42,6 +42,7 @@ path.
     reports/files/*.png, *.svg            chart and plot snapshots embedded in reports
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
+    directions.json                            which way is better per scalar or table column
     hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number
     hypotheses/<board>/<id>.json          one hypothesis of that board
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
@@ -472,7 +473,7 @@ atomically by the viewer and is safe to commit to git.
 {"title": "Augmentations on ViT-S/16", "description": "Which augmentation …",
  "verdicts": [{"id": "supported", "label": "Supported", "color": "s4", "icon": "check"}, "…"],
  "outcomes": [{"id": "dropped", "label": "Dropped", "color": "gray", "dead_end": true}, "…"],
- "card": {"metric": "val/acc", "stat": "best", "higher": true}}
+ "card": {"metric": "val/acc", "stat": "max", "top": "max"}}
 ```
 
 - `verdicts` and `outcomes` hold 1 to 8 categories each. `color` is one of
@@ -480,8 +481,12 @@ atomically by the viewer and is safe to commit to git.
   `check`, `x`, `circle`, `star`, `question`, `pause`. Missing or empty lists
   give the defaults: Supported, Rejected and Open for verdicts; Continued,
   Open and Dropped (a dead end) for outcomes.
-- `card` is the number shown on each run: a metric and its `best`, `last`,
-  `min` or `max` value; `higher` says which way is best. `null` shows none.
+- `card` is the number shown on each run: a metric and its `min`, `max` or
+  `last` value. `top` (`min` or `max`) says which run of a hypothesis is
+  marked as its top one, the lowest or highest number; it equals `stat`
+  unless that is `last`. `null` shows none. Boards written before this had
+  `stat: "best"` and a `higher` flag; they are read as `max` when `higher`
+  is true and `min` otherwise.
 
 `<id>.json`, one hypothesis (the file name is its id):
 
@@ -604,6 +609,21 @@ A value must fit its definition: a number for `number`, `true`/`false` for
 `bool`, one of `options` for `choice`, a list drawn from `options` for `tags`
 (any value when `options` is empty), `YYYY-MM-DD` for `date` and an `http(s)`
 address for `link`. The viewer and `Run.set_field` refuse values that do not.
+
+## Which way is better: `directions.json`
+
+```json
+{"directions": {"train/loss": "min", "val/acc": "max", "eval/samples › pesq": "max"}}
+```
+
+One entry per scalar, or per table column (the table's key and the column
+joined by ` › `), saved with **Save for everyone** in the viewer: `min` means
+lower is better, `max` higher. A name without an entry is guessed from its
+name where a screen must rank (Sweeps, the Runs result column, hypothesis
+cards) and left neutral in tables. It is the only place a direction is
+stored: hypothesis boards keep only Min / Max / Last. The viewer writes it
+under a lock (`.directions.lock` next to it) and refuses a save when the entry
+changed since it was shown. `nuboard up --lock-directions` refuses every change.
 
 ## The catalog cache
 

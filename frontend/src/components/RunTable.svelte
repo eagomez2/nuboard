@@ -5,7 +5,10 @@
   import TagPills from './TagPills.svelte';
   import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
   import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
-  import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue } from '../lib/format';
+  import { rememberStat, statFor, type Stat } from '../lib/stat';
+  import { directionOf } from '../lib/directions.svelte';
+  import DirectionButton from './DirectionButton.svelte';
   import { router } from '../lib/router.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
   import { defineProperty, valueField } from '../lib/properties';
@@ -72,20 +75,26 @@
 
   const find = $derived(router.get('find').toLowerCase());
   const showArchived = $derived(router.get('archived') === '1');
-  const resultMode = $derived(router.get('res', 'best'));
   const metrics = $derived(app.runs?.metrics ?? []);
   const metric = $derived.by(() => {
     const m = router.get('metric');
     if (m && metrics.includes(m)) return m;
     return defaultMetric(metrics);
   });
-  const lower = $derived(lowerIsBetter(metric));
+  // the result column shows each run's min, max or last value of the scalar (see lib/stat.ts), and
+  // sorts first in the scalar's direction (lib/directions.svelte.ts): ↑ highest first, ↓ lowest
+  const direction = $derived(directionOf(listedProjects, metric, true, router.get('dir')));
+  const resultMode = $derived(statFor('runs', metric, router.get('res'), true, direction.direction ?? undefined));
+  function setResult(stat: Stat) {
+    rememberStat('runs', metric, stat);
+    router.set({ res: stat });
+  }
 
   function result(r: RunBrief): number | null {
     const s = r.summary[metric];
     if (!s) return null;
     if (resultMode === 'last') return num(s.last);
-    return lower ? s.min : s.max;
+    return resultMode === 'min' ? s.min : s.max;
   }
 
   const sortedRows = $derived.by(() => {
@@ -183,7 +192,10 @@
       );
       const value = result(r);
       if (value !== null)
-        res = Math.max(res, textWidth(`${metric} ↓`, 11.5, true) + 8 + textWidth(fmtNum(value), 14, true));
+        res = Math.max(
+          res,
+          textWidth(`${metric} · ${resultMode}`, 11.5, true) + 8 + textWidth(fmtNum(value), 14, true),
+        );
       notes = Math.max(notes, textWidth(notePreview(r.notes ?? ''), 13));
       cols.forEach((c, i) => {
         const v = c.startsWith('field:') ? r.fields?.[c.slice(6)] : undefined;
@@ -409,7 +421,13 @@
     const same = router.get('sort') === col;
     router.set({
       sort: col,
-      desc: same ? (router.get('desc') ? null : '1') : col === 'started' || (col === 'result' && !lower) ? '1' : null,
+      desc: same
+        ? router.get('desc')
+          ? null
+          : '1'
+        : col === 'started' || (col === 'result' && direction.direction !== 'min')
+          ? '1'
+          : null,
     });
   }
   async function annotate(keys: string[], patch: Parameters<typeof api.annotate>[1]) {
@@ -458,14 +476,16 @@
     <select
       class="input metric mono"
       value={metric}
-      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value })}
+      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value, res: null, dir: null })}
       aria-label="Result scalar"
     >
       {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
     </select>
+    <DirectionButton projects={listedProjects} name={metric} />
     <div class="seg" role="group" aria-label="Result">
-      <button aria-pressed={resultMode === 'best'} onclick={() => router.set({ res: null })}>Best</button>
-      <button aria-pressed={resultMode === 'last'} onclick={() => router.set({ res: 'last' })}>Last</button>
+      <button aria-pressed={resultMode === 'min'} onclick={() => setResult('min')}>Min</button>
+      <button aria-pressed={resultMode === 'max'} onclick={() => setResult('max')}>Max</button>
+      <button aria-pressed={resultMode === 'last'} onclick={() => setResult('last')}>Last</button>
     </div>
     <label class="toggle">
       <button
@@ -747,7 +767,7 @@
             </span>
             <span class="result mono right">
               {#if value !== null}
-                <span class="mname">{metric} {lower ? '↓' : '↑'}</span>
+                <span class="mname">{metric} · {resultMode}</span>
                 <span class:bad={!Number.isFinite(value) || r.nonfinite.includes(metric)}>
                   {r.nonfinite.includes(metric) && resultMode === 'last' ? 'NaN' : fmtNum(value)}
                 </span>

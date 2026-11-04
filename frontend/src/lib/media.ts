@@ -7,6 +7,8 @@ export interface AudioOptions {
   spectrogram: boolean;
   /** Amplitude labels on the waveform. */
   axis: boolean;
+  /** Frequency labels on the spectrogram. */
+  freqAxis: boolean;
 }
 
 export type MediaKind = 'image' | 'audio' | 'video' | 'figure' | 'table' | 'points' | 'html' | 'text';

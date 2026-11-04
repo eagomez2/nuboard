@@ -10,15 +10,19 @@
   import type { RunBrief } from '../lib/api';
   import { confirmAction } from '../lib/dialog.svelte';
   import { Fold } from '../lib/fold.svelte';
-  import { fmtNum, fmtValue, lowerIsBetter } from '../lib/format';
+  import { fmtNum, fmtValue } from '../lib/format';
+  import { directionOf } from '../lib/directions.svelte';
   import {
+    CARD_CHOICES,
+    cardChoice,
+    cardFor,
     colorVar,
     newHypothesis,
     outcomeOf,
     ownerOf,
     verdictOf,
     type BoardData,
-    type CardSetting,
+    type CardChoice,
     type HRun,
     type Hypothesis,
   } from '../lib/hypotheses';
@@ -145,9 +149,12 @@
   });
 
   const metrics = $derived([...new Set(projectRuns.flatMap((r) => Object.keys(r.summary ?? {})))].sort());
-  function setOwnCard(h: Hypothesis, metric: string, stat?: CardSetting['stat']) {
+  function setOwnCard(h: Hypothesis, metric: string, choice?: CardChoice) {
     edit(h, (c) => {
-      c.card = metric ? { metric, stat: stat ?? c.card?.stat ?? 'best', higher: !lowerIsBetter(metric) } : null;
+      const keepLast = !choice && c.card?.stat === 'last';
+      c.card = metric
+        ? cardFor(metric, choice ?? (keepLast ? 'last' : null), directionOf([project], metric).direction ?? 'max')
+        : null;
     });
   }
 </script>
@@ -598,14 +605,11 @@
             {#if hyp.card}
               <select
                 class="input stat"
-                value={hyp.card.stat}
+                value={cardChoice(hyp.card)}
                 aria-label="Summary"
-                onchange={(e) => setOwnCard(hyp, hyp.card!.metric, e.currentTarget.value as CardSetting['stat'])}
+                onchange={(e) => setOwnCard(hyp, hyp.card!.metric, e.currentTarget.value as CardChoice)}
               >
-                <option value="best">Best</option>
-                <option value="last">Last</option>
-                <option value="min">Min</option>
-                <option value="max">Max</option>
+                {#each CARD_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
               </select>
             {/if}
           </div>

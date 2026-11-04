@@ -11,7 +11,7 @@ import math
 import os
 import re
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ from ..artifacts import (
 from ..catalog import Catalog
 from ..catalog import cache_dir as default_cache_dir
 from ..collection import delete_collection, list_collections, save_collection
+from ..directions import DirectionConflict, change_direction, read_directions
 from ..hypotheses import (
     DEFAULT_BOARD,
     HypothesisError,
@@ -266,6 +267,9 @@ def _brief(record: dict[str, Any], metrics: set[str] | None) -> dict[str, Any]:
     return out
 
 
+_NO_EXPECT = object()  # a save that does not say what it last saw
+
+
 class Hub:
     """Polls the folder once for all clients and fans changes out over SSE.
 
@@ -281,14 +285,20 @@ class Hub:
         self.store = store
         self.queues: set[asyncio.Queue[str]] = set()
         self._task: asyncio.Task[None] | None = None
+        # Project files watched for changes, announced as a `directions` event: a function that
+        # returns their signature (set by `create_app`, which knows the project folders).
+        self.directions_sig: Callable[[], object] | None = None
+        self._directions_last: object = None
 
     async def run(self) -> None:
         """Poll for changes forever while clients are connected.
 
         Every 1.5 s, the catalog is refreshed (only running runs, plus a full
         rescan every 8 s) and live runs' logs are checked for growth. Changed
-        runs are announced as a `runs` event and grown logs as a `data` event.
-        Errors while polling are ignored so the loop keeps running.
+        runs are announced as a `runs` event and grown logs as a `data` event,
+        and a changed `directions.json` in any project (from any viewer, a merge or
+        a hand edit) as a `directions` event. Errors while polling are ignored so
+        the loop keeps running.
         """
         last_full = time.time()
 
@@ -317,6 +327,24 @@ class Hub:
             if grown:
                 self._send("data", {"changed": sorted(grown)})
 
+            await self._check_directions()
+
+    async def _check_directions(self) -> None:
+        """Send a `directions` event when a watched `directions.json` changed since last time."""
+
+        if self.directions_sig is None:
+            return
+
+        try:
+            sig = await run_in_threadpool(self.directions_sig)
+        except Exception:  # pragma: no cover - keep the loop alive
+            return
+
+        if self._directions_last is not None and sig != self._directions_last:
+            self._send("directions", {"changed": []})
+
+        self._directions_last = sig
+
     def _send(self, event: str, data: dict[str, Any]) -> None:
         """Queue an SSE message with the given event name and JSON data for every client."""
         msg = f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -333,6 +361,7 @@ def create_app(
     token: str | None = None,
     edit_artifacts: bool = False,
     read_only_reports: bool = False,
+    lock_directions: bool = False,
     max_image_bytes: int = MAX_IMAGE_BYTES,
     max_text_bytes: int = MAX_TEXT_BYTES,
     max_audio_bytes: int = MAX_AUDIO_BYTES,
@@ -354,6 +383,8 @@ def create_app(
             unlinking and restoring them. Without it those requests are refused.
         read_only_reports: Refuse every change to reports: saving, snapshots
             and uploads, as on a shared server.
+        lock_directions: Refuse changes to which way is better (`directions.json`); views can still
+            flip a direction for themselves.
         max_image_bytes: Size limit of an image uploaded into a report.
         max_text_bytes: Size limit of a text file uploaded into a report.
         max_audio_bytes: Size limit of an audio file uploaded into a report.
@@ -365,6 +396,23 @@ def create_app(
     catalog.refresh()
     store = Store(catalog)
     hub = Hub(store)
+
+    def directions_sig() -> tuple[tuple[str, int], ...]:
+        """The modification time of every project's `directions.json` (0 when it has none)."""
+        out = []
+
+        for p in catalog.projects():
+            pdir = project_dir(p["name"])
+            f = pdir / "directions.json" if pdir else None
+
+            try:
+                out.append((p["name"], f.stat().st_mtime_ns if f else 0))
+            except OSError:
+                out.append((p["name"], 0))
+
+        return tuple(out)
+
+    hub.directions_sig = directions_sig
 
     def record_or_404(key: str) -> dict[str, Any]:
         """Return a run's catalog record, refreshing once if missing; else raise `_NotFound`."""
@@ -412,6 +460,7 @@ def create_app(
                 "catalog_version": catalog.version,
                 "edit_artifacts": edit_artifacts,
                 "read_only_reports": read_only_reports,
+                "lock_directions": lock_directions,
                 "upload_limits": {
                     "image": max_image_bytes,
                     "text": max_text_bytes,
@@ -800,7 +849,8 @@ def create_app(
         Query parameters: `runs` (comma-separated keys), `metric` (required),
         `x` (x axis, default `step`), `group`, `agg` (default `std`), `points`
         (clamped to 16-20000, default 1000), `rank` (default 0), `xmin` and
-        `xmax`. Invalid values give a 400 response.
+        `xmax`, and `logx` (`1` for a log x-axis). Invalid values give a 400
+        response.
         """
         qp = request.query_params
         keys = [k for k in qp.get("runs", "").split(",") if k]
@@ -825,6 +875,7 @@ def create_app(
                 rank=int(qp.get("rank", 0)),
                 xmin=opt("xmin"),
                 xmax=opt("xmax"),
+                logx=qp.get("logx") == "1",
             )
         except ValueError as exc:
             return PlainTextResponse(str(exc), 400)
@@ -2063,6 +2114,59 @@ def create_app(
 
         return JSON({"pins": pins})
 
+    def directions_get(request: Request) -> Response:
+        """Return the directions set in every project, as `{project: {name: "min" | "max"}}`."""
+        out: dict[str, dict[str, str]] = {}
+
+        for p in catalog.projects():
+            pdir = project_dir(p["name"])
+            directions = read_directions(pdir) if pdir else {}
+
+            if directions:
+                out[p["name"]] = directions
+
+        return JSON({"directions": out})
+
+    async def directions_save(request: Request) -> Response:
+        """Set or clear one direction of a project.
+
+        JSON body: `project`, `name`, `direction` (`min`, `max` or null) and `expect`, what the
+        viewer last saw for it (`min`, `max` or null). When the file says otherwise, someone
+        changed it meanwhile: nothing is written and the answer is 409 with the `current` value.
+        Refused (403) when the viewer was started with `--lock-directions`.
+        """
+
+        if lock_directions:
+            return JSON({"error": "directions are locked on this viewer"}, status_code=403)
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        pdir = project_dir(str(body.get("project", "")))
+
+        if pdir is None:
+            return JSON({"error": "unknown project"}, status_code=400)
+
+        direction = body.get("direction")
+        expect = body.get("expect") if "expect" in body else _NO_EXPECT
+
+        try:
+            directions = change_direction(
+                pdir,
+                str(body.get("name", "")),
+                str(direction) if direction is not None else None,
+                *(() if expect is _NO_EXPECT else (expect,)),
+            )
+        except DirectionConflict as exc:
+            return JSON({"error": str(exc), "current": exc.current}, status_code=409)
+        except ValueError as exc:
+            return JSON({"error": str(exc)}, status_code=400)
+        except OSError as exc:
+            return JSON({"error": f"directions.json could not be saved: {exc}"}, status_code=409)
+
+        return JSON({"directions": directions})
+
     def sweep_settings_get(request: Request) -> Response:
         """Return the Sweeps settings of the `project` query parameter (`<project>/sweeps.json`).
 
@@ -2207,6 +2311,8 @@ def create_app(
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/sweep-keys", sweep_keys),
+        Route("/api/directions", directions_get),
+        Route("/api/directions", directions_save, methods=["POST"]),
         Route("/api/sweep-settings", sweep_settings_get),
         Route("/api/sweep-settings", sweep_settings_save, methods=["POST"]),
         Route("/api/artifacts", artifacts),

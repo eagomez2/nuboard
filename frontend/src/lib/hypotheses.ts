@@ -5,6 +5,7 @@
  */
 import type { MetricSummary } from './api';
 import { num } from './api';
+import { defaultStat } from './format';
 
 export type CategoryColor = 's1' | 's2' | 's3' | 's4' | 's5' | 's6' | 's7' | 'gray';
 export const COLORS: CategoryColor[] = ['s4', 's5', 's1', 's2', 's3', 's6', 's7', 'gray'];
@@ -30,8 +31,33 @@ export interface Outcome {
 /** The number a run chip shows: one metric, summarized. */
 export interface CardSetting {
   metric: string;
-  stat: 'best' | 'last' | 'min' | 'max';
-  higher: boolean;
+  stat: 'min' | 'max' | 'last';
+  /** Which run of a hypothesis is marked as its top one: the lowest or highest number (= `stat` unless Last). */
+  top: 'min' | 'max';
+}
+
+/**
+ * The chip setting picked in a "Number" menu: `min`, `max` or `last`. Last ranks by the metric's
+ * direction in the project (see `cardTop`); `last:min` and `last:max` say which end the card
+ * keeps for when the project has none set.
+ */
+export type CardChoice = 'min' | 'max' | 'last' | 'last:min' | 'last:max';
+export const CARD_CHOICES: { value: CardChoice; label: string }[] = [
+  { value: 'min', label: 'Min' },
+  { value: 'max', label: 'Max' },
+  { value: 'last', label: 'Last' },
+];
+export const cardChoice = (c: CardSetting): CardChoice => c.stat;
+
+/**
+ * The setting for `metric` with `choice` (or, without one, what Min / Max guesses for its name).
+ * `last` keeps `top` (the metric's current direction) for when the project has none set.
+ */
+export function cardFor(metric: string, choice: CardChoice | null, top?: 'min' | 'max'): CardSetting {
+  const c = choice ?? defaultStat(metric);
+  if (c === 'min' || c === 'max') return { metric, stat: c, top: c };
+  const end = c === 'last:min' ? 'min' : c === 'last:max' ? 'max' : (top ?? defaultStat(metric));
+  return { metric, stat: 'last', top: end };
 }
 
 export interface Board {
@@ -158,26 +184,32 @@ export function cardValue(run: BoardRun | undefined, card: CardSetting | null): 
   if (!run || !card) return null;
   const s = run.summary?.[card.metric];
   if (!s) return null;
-  const v =
-    card.stat === 'last'
-      ? num(s.last)
-      : card.stat === 'min'
-        ? s.min
-        : card.stat === 'max'
-          ? s.max
-          : card.higher
-            ? s.max
-            : s.min;
+  const v = card.stat === 'last' ? num(s.last) : card.stat === 'min' ? s.min : s.max;
   return v === null || v === undefined || !Number.isFinite(v) ? null : v;
 }
 
-/** The id of the run with the best chip number in a hypothesis, or null. */
-export function bestRun(h: Hypothesis, runs: Record<string, BoardRun>, card: CardSetting | null): string | null {
+/**
+ * Which end is the top for a card: Min and Max their own end; Last the direction set for the
+ * metric in the project (`dirOf`, read live, so the card follows a change), else the one the card
+ * was saved with.
+ */
+export function cardTop(card: CardSetting, dirOf?: (metric: string) => 'min' | 'max' | null): 'min' | 'max' {
+  if (card.stat !== 'last') return card.stat;
+  return dirOf?.(card.metric) ?? card.top;
+}
+
+/** The id of the run with the top chip number in a hypothesis (lowest or highest, see `cardTop`), or null. */
+export function bestRun(
+  h: Hypothesis,
+  runs: Record<string, BoardRun>,
+  card: CardSetting | null,
+  dirOf?: (metric: string) => 'min' | 'max' | null,
+): string | null {
   if (!card) return null;
   let best: string | null = null;
   let bv = 0;
-  const better = (a: number, b: number) =>
-    card.stat === 'max' || (card.stat !== 'min' && card.higher) ? a > b : a < b;
+  const top = cardTop(card, dirOf);
+  const better = (a: number, b: number) => (top === 'max' ? a > b : a < b);
   for (const r of h.runs) {
     const v = cardValue(runs[r.id], card);
     if (v !== null && (best === null || better(v, bv))) {
@@ -198,6 +230,8 @@ export interface ViewOptions {
   starredOnly: boolean;
   /** The selected run, kept visible when its hypothesis is folded. */
   selectedRun?: string | null;
+  /** The direction set for a metric in the project, which cards set to Last rank by. */
+  dirOf?: (metric: string) => 'min' | 'max' | null;
 }
 
 /** Hypotheses with more runs than this start folded. */
@@ -277,7 +311,7 @@ export function filteredRuns(h: Hypothesis, o: ViewOptions, starred?: Set<string
 export function visibleRuns(h: Hypothesis, hyps: Hypothesis[], o: ViewOptions, starred?: Set<string>): HRun[] {
   const base = filteredRuns(h, o, starred);
   if (!isFolded(h)) return base;
-  const best = bestRun(h, o.runs, h.card ?? o.board.card);
+  const best = bestRun(h, o.runs, h.card ?? o.board.card, o.dirOf);
   const linked = new Set(hyps.flatMap((k) => [k.parent_run, ...k.also.map((a) => a.run)]).filter(Boolean));
   return base.filter(
     (r) =>

@@ -102,13 +102,15 @@ function escHtml(s: string): string {
 
 /**
  * A table as static HTML for an export: the first `limit` rows, with each
- * number tinted by its change since `base` (green better, orange worse) and
- * the change next to it. Colors come from the export's `--s4` and `--s5`.
+ * number's change since `base` next to it (▲ up, ▼ down). Columns with a direction
+ * (`directionOf`, set in the viewer) are tinted green when they moved toward it and
+ * orange when they moved away; others gray. Colors come from the export's
+ * `--s4` and `--s5`.
  */
 export function tableHtml(
   table: TableData,
   base: TableData | null,
-  lowerIsBetter: (name: string) => boolean,
+  directionOf: (name: string) => 'min' | 'max' | null,
   limit = 200,
 ): string {
   const idCol = Math.max(
@@ -148,11 +150,13 @@ export function tableHtml(
           let style = '';
           if (typeof was === 'number' && v !== was) {
             const delta = v - was;
-            const good = lowerIsBetter(table.columns[i].name) ? delta < 0 : delta > 0;
+            const direction = directionOf(table.columns[i].name);
             const size = Math.abs(delta) / ranges[i];
+            const color = !direction ? '--faint' : (direction === 'min' ? delta < 0 : delta > 0) ? '--s4' : '--s5';
+            const strength = direction ? Math.min(40, 6 + size * 90) : Math.min(28, 4 + size * 60);
             if (size >= 0.01)
-              style = ` style="background:color-mix(in srgb, var(${good ? '--s4' : '--s5'}) ${Math.round(Math.min(40, 6 + size * 90))}%, transparent)"`;
-            extra = `<small>${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(decimals[i])}</small>`;
+              style = ` style="background:color-mix(in srgb, var(${color}) ${Math.round(strength)}%, transparent)"`;
+            extra = `<small>${delta > 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(decimals[i])}</small>`;
           }
           return `<td class="n"${style}>${v.toFixed(decimals[i])}${extra}</td>`;
         }

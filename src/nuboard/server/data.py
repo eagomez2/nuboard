@@ -17,7 +17,7 @@ from ..alerts import check_run
 from ..catalog import Catalog
 from ..query import resolve
 from ..reader import RunReader, align
-from ..series import aggregate, bucket_envelope, x_values
+from ..series import LEVEL_FACTOR, aggregate, bucket_envelope, log_cut, x_values
 
 MAX_READERS = 256
 
@@ -223,6 +223,7 @@ class Store:
         points: int,
         xmin: float | None,
         xmax: float | None,
+        logx: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool] | None:
         """Load one run's series of `metric` at a resolution that suits the chart.
 
@@ -230,6 +231,11 @@ class Store:
         `2 * points` points in the visible range is read (the visible share is
         estimated from the coarsest level). Otherwise the raw scalars are used.
         With a zoom range, the series is cut to it plus one point on each side.
+
+        On a log x-axis (`logx`) one level is not enough: the first decades
+        take as much room as the last, so finer levels fill in the left part
+        of the view, each from where the coarser one gets too sparse (see
+        `log_cut`).
 
         Args:
             key: Catalog key of the run.
@@ -240,6 +246,7 @@ class Store:
             points: Approximate number of points the chart will draw.
             xmin: Lower end of the zoom range in x units, or None.
             xmax: Upper end of the zoom range in x units, or None.
+            logx: The chart has a log x-axis.
 
         Returns:
             A tuple `(x, y, lo, hi, band)`, or None if the run is unknown or has
@@ -250,7 +257,7 @@ class Store:
         """
 
         if x_kind.startswith("metric:"):
-            return self._series_against(key, metric, x_kind[7:], rank, points, xmin, xmax)
+            return self._series_against(key, metric, x_kind[7:], rank, points, xmin, xmax, logx)
 
         reader = self.fresh_reader(key)
         record = self.catalog.get(key)
@@ -286,14 +293,31 @@ class Store:
                 if n * frac >= points * 2:
                     level = i
 
-            s, t, v, lo, hi = pq.read(metric, level, rank)
-            lo = np.where(np.isnan(lo), v, lo)
-            hi = np.where(np.isnan(hi), v, hi)
             band = bool(pq.levels(metric + fmt.BAND_LOW) or pq.levels(metric + fmt.BAND_HIGH))
 
-            if band:  # the outer edges of the bounds each point summarizes
-                lo = _level_bound(pq.read(metric + fmt.BAND_LOW, level, rank), s, 3)
-                hi = _level_bound(pq.read(metric + fmt.BAND_HIGH, level, rank), s, 4)
+            def read_level(k: int) -> tuple[np.ndarray, ...]:
+                """Read zoom level `k` as `(steps, times, values, lo, hi)`."""
+                s, t, v, lo, hi = pq.read(metric, k, rank)
+                lo = np.where(np.isnan(lo), v, lo)
+                hi = np.where(np.isnan(hi), v, hi)
+
+                if band:  # the outer edges of the bounds each point summarizes
+                    lo = _level_bound(pq.read(metric + fmt.BAND_LOW, k, rank), s, 3)
+                    hi = _level_bound(pq.read(metric + fmt.BAND_HIGH, k, rank), s, 4)
+
+                return s, t, v, lo, hi
+
+            if logx and level > 0:
+                s, t, v, lo, hi = _log_levels(
+                    read_level,
+                    level,
+                    lambda s, t: x_values(x_kind, s, t, start),
+                    points,
+                    xmin,
+                    xmax,
+                )
+            else:
+                s, t, v, lo, hi = read_level(level)
         else:
             s, t, v = reader.scalars(metric, rank)
             lo = hi = v
@@ -325,6 +349,7 @@ class Store:
         points: int,
         xmin: float | None,
         xmax: float | None,
+        logx: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool] | None:
         """`metric` with another metric (e.g. tokens seen) as x, matched by step.
 
@@ -359,7 +384,9 @@ class Store:
             if xmax is not None:
                 smax = float(np.interp(xmax, xv, xs_f))
 
-        data = self.raw_series(key, metric, "step", rank, points, smin, smax)
+        data = self.raw_series(
+            key, metric, "step", rank, points, smin, smax, logx=logx and increasing
+        )
 
         if data is None:
             return None
@@ -428,6 +455,7 @@ class Store:
         rank: int = 0,
         xmin: float | None = None,
         xmax: float | None = None,
+        logx: bool = False,
     ) -> bytes:
         """Build the data of one chart as an Arrow IPC stream.
 
@@ -448,6 +476,9 @@ class Store:
             rank: Process rank whose values to read.
             xmin: Lower end of the zoom range in x units, or None.
             xmax: Upper end of the zoom range in x units, or None.
+            logx: The chart has a log x-axis: points at x <= 0 are left out
+                (counted in each series' `nonpositive`), and points are spread
+                evenly in log10(x) rather than in x. Ignored for wall time.
 
         Returns:
             An Arrow IPC stream with one row per point and the columns `series`
@@ -457,9 +488,11 @@ class Store:
             whether `lo` and `hi` are logged bounds to draw as a band (`band`,
             ungrouped only), the scalar's baseline (`baseline`: `value` and
             optionally `low` and `high`, or None; for a group, the mean over
-            its runs that have one), last finite value and whether it has
-            non-finite values.
+            its runs that have one), last finite value, whether it has
+            non-finite values and, with `logx`, how many points at x <= 0
+            were left out (`nonpositive`).
         """
+        logx = logx and x_kind != "time"
         series_meta: list[dict[str, Any]] = []
         cols: dict[str, list[np.ndarray]] = {c: [] for c in ("series", "x", "y", "lo", "hi")}
 
@@ -478,19 +511,30 @@ class Store:
                 cols[name].append(np.asarray(arr, "f8"))
 
         loaded: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool]] = {}
+        dropped: dict[str, int] = {}
 
         for key in keys:
-            data = self.raw_series(key, metric, x_kind, rank, points, xmin, xmax)
+            data = self.raw_series(key, metric, x_kind, rank, points, xmin, xmax, logx)
 
-            if data is not None:
-                loaded[key] = data
+            if data is None:
+                continue
+
+            if logx:  # a log axis cannot show x <= 0 (step 0, the start of relative time)
+                x, v, lo, hi, band = data
+                keep = x > 0
+                dropped[key] = int(len(x) - np.count_nonzero(keep))
+
+                if not keep.all():
+                    data = (x[keep], v[keep], lo[keep], hi[keep], band)
+
+            loaded[key] = data
 
         if not group_by:
             names = {key: (self.catalog.get(key) or {}).get("name", key) for key in loaded}
             counts = collections.Counter(names.values())
 
             for key, (x, v, lo, hi, band) in loaded.items():
-                xb, yb, lob, hib = bucket_envelope(x, v, lo, hi, points)
+                xb, yb, lob, hib = bucket_envelope(x, v, lo, hi, points, logx)
                 label = names[key]
 
                 if counts[label] > 1:  # series are told apart by label in the viewer
@@ -503,6 +547,7 @@ class Store:
                         "group": None,
                         "band": band,
                         "baseline": self._baseline([key], metric),
+                        **({"nonpositive": dropped.get(key, 0)} if logx else {}),
                     },
                     xb,
                     yb,
@@ -527,6 +572,7 @@ class Store:
                     points,
                     xmin,
                     xmax,
+                    logx,
                 )
                 center = stats["median"] if agg == "median" else stats["mean"]
 
@@ -548,6 +594,9 @@ class Store:
                         "group": _jsonable(values[label]),
                         "n": len(members),
                         "baseline": self._baseline(members, metric),
+                        **(
+                            {"nonpositive": sum(dropped.get(k, 0) for k in members)} if logx else {}
+                        ),
                     },
                     stats["x"][keep],
                     center[keep],
@@ -577,6 +626,56 @@ class Store:
             writer.write_table(table)
 
         return sink.getvalue().to_pybytes()
+
+
+def _log_levels(
+    read_level: Any,
+    level: int,
+    x_of: Any,
+    points: int,
+    xmin: float | None,
+    xmax: float | None,
+) -> tuple[np.ndarray, ...]:
+    """Stitch zoom levels for a log x-axis: coarse on the right, finer to the left.
+
+    Starting at `level`, each level is used from where it is fine enough (see
+    `log_cut`) up to where the coarser one took over; the next finer level
+    fills in what is left of it, down to level 0 or the left edge of the view.
+
+    Args:
+        read_level: Reads a level as `(steps, times, values, lo, hi)`.
+        level: The coarsest level to use, as chosen for a linear axis.
+        x_of: Maps `(steps, times)` to x values.
+        points: Approximate number of points the chart draws.
+        xmin: Lower end of the zoom range in x units, or None.
+        xmax: Upper end of the zoom range in x units, or None.
+
+    Returns:
+        `(steps, times, values, lo, hi)`, sorted by step.
+    """
+    parts: list[tuple[np.ndarray, ...]] = []
+    right = np.inf
+    lo_x = xmin if xmin is not None and xmin > 0 else None
+
+    for k in range(level, -1, -1):
+        cols = read_level(k)
+        x = x_of(cols[0], cols[1])
+
+        if lo_x is None:  # the first positive x of the raw data, about
+            positive = x[x > 0]
+            lo_x = float(positive[0]) / LEVEL_FACTOR**k if len(positive) else 1.0
+
+        hi_x = xmax if xmax is not None else (float(x[-1]) if len(x) else lo_x)
+        cut = -np.inf if k == 0 else log_cut(x, lo_x, max(hi_x, lo_x), points)
+        keep = (x >= cut) & (x < right)
+        parts.append(tuple(c[keep] for c in cols))
+        right = cut
+
+        if cut <= lo_x:
+            break
+
+    parts.reverse()
+    return tuple(np.concatenate([p[i] for p in parts]) for i in range(5))
 
 
 def _level_bound(data: tuple[np.ndarray, ...], steps: np.ndarray, col: int) -> np.ndarray:

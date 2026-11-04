@@ -31,11 +31,18 @@ def _free_port(host: str, port: int) -> int:
     """Return the first port from `port` to `port + 19` that can be bound on `host`.
 
     Wildcard hosts (`0.0.0.0`, `::`) are probed on `127.0.0.1`. Exits with
-    `SystemExit` when none of the 20 ports is free.
+    `SystemExit` when none of the 20 ports is free. A port whose last server
+    just stopped still counts as free: its closed connections linger for a
+    minute (TIME_WAIT), which uvicorn's own `SO_REUSEADDR` binds through, so
+    the probe sets it too (except on Windows, where it would allow binding a
+    port in use).
     """
 
     for candidate in range(port, port + 20):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if os.name != "nt":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
             try:
                 s.bind((host if host not in ("0.0.0.0", "::") else "127.0.0.1", candidate))
                 return candidate
@@ -70,6 +77,7 @@ def up(
     no_token: bool = False,
     edit_artifacts: bool = False,
     read_only_reports: bool = False,
+    lock_directions: bool = False,
     max_image_mb: float = 20,
     max_text_mb: float = 5,
     max_audio_mb: float = 50,
@@ -91,6 +99,7 @@ def up(
         no_token: Serve a non-loopback address without a token.
         edit_artifacts: Allow adding, unlinking and restoring artifact versions.
         read_only_reports: Refuse changes to reports, including uploads.
+        lock_directions: Refuse changes to which way is better for each scalar (`directions.json`).
         max_image_mb: Size limit, in MB, of an image uploaded into a report.
         max_text_mb: Size limit, in MB, of a text file uploaded into a report.
         max_audio_mb: Size limit, in MB, of an audio file uploaded into a report.
@@ -124,6 +133,7 @@ def up(
         token=token,
         edit_artifacts=edit_artifacts,
         read_only_reports=read_only_reports,
+        lock_directions=lock_directions,
         max_image_bytes=int(max_image_mb * 1024 * 1024),
         max_text_bytes=int(max_text_mb * 1024 * 1024),
         max_audio_bytes=int(max_audio_mb * 1024 * 1024),
@@ -145,6 +155,9 @@ def up(
 
     if read_only_reports:
         print("  Reports are read-only: they cannot be edited and nothing can be uploaded.")
+
+    if lock_directions:
+        print("  Directions (which way is better) are locked: views can flip them, not save them.")
 
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(link)).start()
@@ -247,6 +260,11 @@ def main(argv: list[str] | None = None) -> None:
         "--read-only-reports",
         action="store_true",
         help="refuse changes to reports (uploads included) and hypotheses (for a shared server)",
+    )
+    p.add_argument(
+        "--lock-directions",
+        action="store_true",
+        help="refuse saving which way is better for a scalar (directions.json)",
     )
     p.add_argument(
         "--max-image-mb",
@@ -405,6 +423,7 @@ def main(argv: list[str] | None = None) -> None:
             no_token=args.no_token,
             edit_artifacts=args.edit_artifacts,
             read_only_reports=args.read_only_reports,
+            lock_directions=args.lock_directions,
             max_image_mb=args.max_image_mb,
             max_text_mb=args.max_text_mb,
             max_audio_mb=args.max_audio_mb,

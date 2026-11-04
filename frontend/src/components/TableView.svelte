@@ -2,16 +2,18 @@
   import { flip } from 'svelte/animate';
   import MediaView from './MediaView.svelte';
   import { api, type MediaItem } from '../lib/api';
-  import { lowerIsBetter } from '../lib/format';
+  import { canSaveDirections, columnKey, directionOf, setDirection, type Extreme } from '../lib/directions.svelte';
+  import { app } from '../lib/state.svelte';
   import { TABLE_MIME } from '../lib/media';
   import { isCellRef, loadTable, rowFilter, runMedia, type Cell, type TableData } from '../lib/tables';
 
   /**
    * A table logged with `add_table`, at the step of `item`. Each cell is
    * compared with the same row (matched by the table's id column) at the
-   * previous step or the first one: tinted green when it got better and orange
-   * when it got worse, with the change next to the value. Rows glide to their
-   * new place when the step changes.
+   * previous step or the first one, with the change next to the value (▲ up,
+   * ▼ down). A column given a direction in its header (↑ or ↓) is also tinted:
+   * green when it moved toward the direction, orange when it moved away. Rows glide
+   * to their new place when the step changes.
    */
   let { runKey, runName, item }: { runKey: string; runName: string; item: MediaItem } = $props();
 
@@ -97,7 +99,48 @@
       return vals.length ? Math.max(...vals) - Math.min(...vals) || 1 : 1;
     }),
   );
-  const better = (col: number, delta: number) => (lowerIsBetter(columns[col].name) ? delta < 0 : delta > 0);
+  // Each numeric column's direction (lib/directions.svelte.ts): none by default, so changes are only
+  // shown as up or down; with ↑ or ↓ they are colored as better or worse. Never guessed from the
+  // name. Clicking changes only this view; "Save for everyone" keeps the changed ones in the
+  // run's project, under the table's key and the column (never shared with a scalar).
+  const project = $derived(app.runByKey(runKey)?.project ?? '');
+  const saved = $derived(
+    columns.map((c) =>
+      c.type === 'number' ? directionOf([project], columnKey(item.key, c.name), false).direction : null,
+    ),
+  );
+  let mine = $state<Record<string, Extreme | 'none'>>({}); // this view's own choices, by column
+  const directions = $derived(
+    columns.map((c, i) => (c.name in mine ? (mine[c.name] === 'none' ? null : (mine[c.name] as Extreme)) : saved[i])),
+  );
+  const unsaved = $derived(columns.filter((c, i) => c.name in mine && directions[i] !== saved[i]).map((c) => c.name));
+  let directionError = $state('');
+  let saving = $state(false);
+  function cycleDirection(col: number) {
+    const next: Record<string, Extreme | 'none'> = { none: 'max', max: 'min', min: 'none' };
+    mine = { ...mine, [columns[col].name]: next[directions[col] ?? 'none'] };
+    directionError = '';
+  }
+  async function saveDirections() {
+    directionError = '';
+    saving = true;
+    try {
+      for (const name of unsaved) {
+        const i = columns.findIndex((c) => c.name === name);
+        await setDirection(project, columnKey(item.key, name), directions[i], saved[i]);
+      }
+      mine = {};
+    } catch (e) {
+      directionError = `Not saved: ${(e as Error).message}`;
+    } finally {
+      saving = false;
+    }
+  }
+
+  /** Whether a change moved toward the column's direction; null when the column has none. */
+  const better = (col: number, delta: number): boolean | null =>
+    directions[col] ? (directions[col] === 'min' ? delta < 0 : delta > 0) : null;
+  const sign = (delta: number) => (delta > 0 ? '▲' : delta < 0 ? '▼' : '');
 
   const filtering = $derived.by((): { rows: Cell[][]; error: string } => {
     if (!table) return { rows: [], error: '' };
@@ -147,7 +190,8 @@
       sum += old;
       n++;
       if (Math.abs(now - old) > 0.08 * ranges[primary]) {
-        if (better(primary, now - old)) up++;
+        // with a direction: improved and got worse; without: went up and down
+        if (better(primary, now - old) ?? now > old) up++;
         else down++;
       }
     }
@@ -160,7 +204,8 @@
     const now = row[primary];
     if (typeof old !== 'number' || typeof now !== 'number') return '';
     if (Math.abs(now - old) <= 0.08 * ranges[primary]) return '';
-    return better(primary, now - old) ? 'better' : 'worse';
+    const good = better(primary, now - old);
+    return good === null ? '' : good ? 'better' : 'worse';
   }
 
   // Decimals per column: as few as the logged values need, at most 3
@@ -186,14 +231,15 @@
     const size = Math.abs(delta) / ranges[col];
     const flat = size < 0.01;
     const good = better(col, delta);
-    const color = good ? 'var(--s4)' : 'var(--s5)';
+    // no direction: a gray tint, as strong as the change, that says nothing about better or worse
+    const color = good === null ? 'var(--faint)' : good ? 'var(--s4)' : 'var(--s5)';
+    const strength = good === null ? Math.min(28, 4 + size * 60) : Math.min(40, 6 + size * 90);
     const tint =
       flat || mode === 'delta'
         ? ''
-        : `background-color: color-mix(in srgb, ${color} ${Math.round(Math.min(40, 6 + size * 90))}%, transparent)`;
-    const text =
-      mode === 'color' || delta === 0 ? '' : `${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(digits(col))}`;
-    return { text, tint, cls: flat ? 'flat' : good ? 'up' : 'down' };
+        : `background-color: color-mix(in srgb, ${color} ${Math.round(strength)}%, transparent)`;
+    const text = mode === 'color' || delta === 0 ? '' : `${sign(delta)} ${Math.abs(delta).toFixed(digits(col))}`;
+    return { text, tint, cls: flat ? 'flat' : good === null ? 'moved' : good ? 'up' : 'down' };
   }
 
   // Trend of the primary column over the loaded steps
@@ -273,18 +319,32 @@
         <span
           >Mean {columns[primary].name} <b>{summary.mean.toFixed(Math.max(2, digits(primary)))}</b>
           {#if summary.delta !== null}
-            <span class="pill {better(primary, summary.delta) ? 'up' : 'down'}"
-              >{summary.delta >= 0 ? '+' : '−'}{Math.abs(summary.delta).toFixed(digits(primary))}</span
+            {@const good = better(primary, summary.delta)}
+            <span class="pill {good === null ? 'moved' : good ? 'up' : 'down'}"
+              >{sign(summary.delta)} {Math.abs(summary.delta).toFixed(digits(primary))}</span
             >
           {/if}</span
         >
         {#if base && against}
-          <span><b>{summary.up}</b> improved</span>
-          <span><b class="bad">{summary.down}</b> got worse</span>
+          {#if directions[primary]}
+            <span><b>{summary.up}</b> improved</span>
+            <span><b class="bad">{summary.down}</b> got worse</span>
+          {:else}
+            <span><b>{summary.up}</b> went up</span>
+            <span><b>{summary.down}</b> went down</span>
+          {/if}
           <span class="faint">Since step {against.step.toLocaleString()}</span>
         {/if}
       {/if}
       {#if filterError}<span class="bad">{filterError}</span>{/if}
+      {#if unsaved.length}
+        <span class="faint" title="Your view differs from {project} for {unsaved.join(', ')}">Directions changed</span>
+        {#if canSaveDirections()}<button class="btn btn-ghost sm" disabled={saving} onclick={saveDirections}
+            >Save for everyone</button
+          >{/if}
+        <button class="btn btn-ghost sm" onclick={() => ((mine = {}), (directionError = ''))}>Reset</button>
+      {/if}
+      {#if directionError}<span class="bad">{directionError}</span>{/if}
     </div>
 
     <div class="scroll" role="region" aria-label="{runName} {item.key} at step {item.step}">
@@ -297,10 +357,24 @@
                 class:num={c.type === 'number'}
                 aria-sort={sort?.col === i ? (sort.asc ? 'ascending' : 'descending') : 'none'}
               >
-                <button onclick={() => sortBy(i)}
-                  >{c.name}{#if c.type === 'number'}<span class="dir">{lowerIsBetter(c.name) ? ' ↓' : ' ↑'}</span
-                    >{/if}{#if sort?.col === i}<span class="arrow">{sort.asc ? ' ▲' : ' ▼'}</span>{/if}</button
-                >
+                <div class="thc">
+                  <button onclick={() => sortBy(i)}
+                    >{c.name}{#if sort?.col === i}<span class="arrow">{sort.asc ? ' ▲' : ' ▼'}</span>{/if}</button
+                  >
+                  {#if c.type === 'number'}
+                    <button
+                      class="direction"
+                      class:set={directions[i]}
+                      class:unsaved={unsaved.includes(c.name)}
+                      aria-label="Direction of {c.name}: {directions[i] ?? 'none'}"
+                      title={directions[i]
+                        ? `${directions[i] === 'min' ? '↓ Lower' : '↑ Higher'} is better for ${c.name}: changes in that direction are colored green, the other way orange. ${unsaved.includes(c.name) ? 'Your view only, until you choose Save for everyone.' : `Saved in ${project}.`} Click to switch to ${directions[i] === 'max' ? '↓ lower is better' : '± no direction'}.`
+                        : `No direction set for ${c.name}: changes are only shown as up or down, in gray. Click to say ↑ higher is better (click again for ↓ lower is better), and changes get colored green when they improve and orange when they get worse. It changes your view only, until you choose Save for everyone.`}
+                      onclick={() => cycleDirection(i)}
+                      >{directions[i] === 'min' ? '↓' : directions[i] === 'max' ? '↑' : '±'}</button
+                    >
+                  {/if}
+                </div>
               </th>
             {/each}
             {#if trendIndex.length > 1 && primary >= 0}<th>Trend <span class="dir">{columns[primary].name}</span></th
@@ -474,6 +548,10 @@
     color: var(--s5);
     background: color-mix(in srgb, var(--s5) 14%, transparent);
   }
+  .pill.moved {
+    color: var(--muted);
+    background: var(--panel-2);
+  }
   /* square corners: rounded ones clipped the highlighted row when it was the last one */
   .scroll {
     overflow: auto;
@@ -518,6 +596,44 @@
   .dir {
     font-weight: 400;
     color: var(--faint);
+  }
+  .thc {
+    display: flex;
+    align-items: center;
+  }
+  .thc > button:first-child {
+    flex: 1;
+  }
+  th button.direction {
+    flex: none;
+    width: auto;
+    padding: 0 5px;
+    margin: 0 2px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--faint);
+    border: 1px solid transparent;
+  }
+  th button.direction:hover {
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  th button.direction.set {
+    color: var(--accent);
+    border-color: var(--border);
+  }
+  th button.direction.unsaved {
+    border-style: dashed;
+    border-color: var(--accent);
+  }
+  .summary {
+    align-items: center;
+  }
+  .summary .sm {
+    font-size: 12px;
+    padding: 1px 8px;
+    margin: -2px -10px;
   }
   .arrow {
     color: var(--accent);
@@ -568,6 +684,9 @@
   }
   .d.flat {
     color: var(--faint);
+  }
+  .d.moved {
+    color: var(--muted);
   }
   .clip {
     color: var(--accent);

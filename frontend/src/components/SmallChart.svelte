@@ -3,7 +3,7 @@
   import LineChart, { type CursorValue } from './LineChart.svelte';
   import { api, type ChartData } from '../lib/api';
   import { chartZone } from '../lib/chartzone';
-  import { fmtDuration, fmtNum, fmtSeconds, fmtTimeIn, lowerIsBetter } from '../lib/format';
+  import { fmtDuration, fmtNum, fmtSeconds, fmtTimeIn } from '../lib/format';
 
   let {
     metric,
@@ -15,6 +15,7 @@
     showRaw,
     showBands,
     robust,
+    logX = false,
     baselines,
     hidden,
     highlight,
@@ -36,6 +37,8 @@
     showRaw: boolean;
     showBands: boolean;
     robust: boolean;
+    /** Log x-axis, as on the focus chart. */
+    logX?: boolean;
     baselines: boolean;
     hidden: Set<string>;
     highlight: string | null;
@@ -53,19 +56,15 @@
     timing?: boolean;
   } = $props();
 
-  // A tooltip with each run's value under the cursor (or at the pinned step), best first.
+  // A tooltip with each run's value under the cursor (or at the pinned step), largest first.
   const TIP_ROWS = 8;
   let at = $state<{ x: number; w: number } | null>(null);
   let cursorX = $state<number | null>(null);
   let cursorValues = $state<CursorValue[]>([]);
   let pinValues = $state<CursorValue[]>([]);
   const tipX = $derived(pinX ?? cursorX);
-  const rows = $derived.by(() => {
-    const lower = timing || lowerIsBetter(metric);
-    return [...(pinX != null ? pinValues : cursorValues)].sort((a, b) =>
-      lower ? a.value - b.value : b.value - a.value,
-    );
-  });
+  // largest on top: a fixed order, so the tooltip never has to guess whether lower is better
+  const rows = $derived([...(pinX != null ? pinValues : cursorValues)].sort((a, b) => b.value - a.value));
   function fmtX(v: number) {
     if (x === 'time') return fmtTimeIn(chartZone(data).kit, v);
     if (x === 'relative' || x === 'active') return fmtDuration(v);
@@ -93,7 +92,7 @@
     void tick;
     const ctrl = new AbortController();
     api
-      .chart({ runs, metric, x, group, agg, points: 320, signal: ctrl.signal })
+      .chart({ runs, metric, x, group, agg, points: 320, logx: logX, signal: ctrl.signal })
       .then((d) => {
         data = d;
         error = null;
@@ -136,6 +135,7 @@
         {showRaw}
         {showBands}
         {robust}
+        {logX}
         {baselines}
         {hidden}
         {highlight}

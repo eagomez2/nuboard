@@ -174,6 +174,8 @@ export interface Info {
   edit_artifacts?: boolean;
   /** Started with `--read-only-reports`: reports cannot be changed and nothing can be uploaded. */
   read_only_reports?: boolean;
+  /** Started with `--lock-directions`: directions (which way is better) cannot be saved. */
+  lock_directions?: boolean;
   /** Size limits, in bytes, of files uploaded into a report. */
   upload_limits?: { image: number; text: number; audio?: number };
 }
@@ -336,6 +338,8 @@ export interface SeriesMeta {
   baseline?: Baseline | null;
   last: number | null;
   nonfinite: boolean;
+  /** On a log x-axis: how many points at x <= 0 were left out (they cannot be drawn). */
+  nonpositive?: number;
 }
 
 export interface Series extends SeriesMeta {
@@ -468,6 +472,32 @@ export const api = {
       body: JSON.stringify({ keys, patch }),
     }),
   /** Config keys whose value differs between the runs, with each run's value; unlike `RunBrief.config`, not cut to 64 values. */
+  /** Which way is better per scalar or column, per project (`<project>/directions.json`). */
+  directions: () => json<{ directions: Record<string, Record<string, 'min' | 'max'>> }>('/api/directions'),
+  /**
+   * Save one direction. `expect` is what the viewer last saw for it; when the project says
+   * otherwise (someone changed it meanwhile) nothing is saved and a `DirectionConflict` is thrown.
+   */
+  saveDirection: async (
+    project: string,
+    name: string,
+    direction: 'min' | 'max' | null,
+    expect: 'min' | 'max' | null,
+  ) => {
+    const res = await fetch('/api/directions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ project, name, direction, expect }),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      directions?: Record<string, 'min' | 'max'>;
+      error?: string;
+      current?: 'min' | 'max' | null;
+    };
+    if (res.status === 409 && body.current !== undefined) throw new DirectionConflict(body.current);
+    if (!res.ok || !body.directions) throw new Error(body.error ?? `${res.status}`);
+    return body.directions;
+  },
   /** A project's Sweeps settings, shared by everyone in `<project>/sweeps.json`. */
   sweepSettings: (project: string) => json<{ hide: string }>(`/api/sweep-settings?${qs({ project })}`),
   saveSweepSettings: async (project: string, hide: string) => {
@@ -631,6 +661,8 @@ export const api = {
     points: number;
     xmin?: number | null;
     xmax?: number | null;
+    /** A log x-axis: points spread evenly in log10(x), and x <= 0 left out. */
+    logx?: boolean;
     signal?: AbortSignal;
   }): Promise<ChartData> {
     const url = `/api/scalars?${qs({
@@ -642,6 +674,7 @@ export const api = {
       points: p.points,
       xmin: p.xmin,
       xmax: p.xmax,
+      logx: p.logx ? 1 : null,
     })}`;
     const res = await fetch(url, { signal: p.signal });
     if (!res.ok) throw new Error(await res.text());
@@ -684,4 +717,13 @@ export function num(v: Num | undefined): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === 'number') return v;
   return v === 'nan' ? NaN : v === 'inf' ? Infinity : -Infinity;
+}
+
+/** A direction changed in the project since the viewer read it; `current` is what it is now. */
+export class DirectionConflict extends Error {
+  constructor(public current: 'min' | 'max' | null) {
+    super(
+      `someone changed it meanwhile; it is now ${current === 'min' ? '↓ lower' : current === 'max' ? '↑ higher' : 'unset'}`,
+    );
+  }
 }

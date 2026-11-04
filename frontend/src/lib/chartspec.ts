@@ -11,6 +11,8 @@ export interface ChartSpec {
   raw: boolean;
   robust: boolean;
   log: boolean;
+  /** Log x-axis (absent in older specs: off). */
+  logx: boolean;
   /** Draw baselines (absent in older specs: on). */
   base: boolean;
   /** Shade ranges around the curves (absent in older specs: on). */
@@ -26,6 +28,7 @@ export function encodeSpec(s: ChartSpec): string {
   if (!s.raw) p.set('raw', '0');
   if (!s.robust) p.set('robust', '0');
   if (s.log) p.set('log', '1');
+  if (s.logx) p.set('logx', '1');
   if (!s.base) p.set('base', '0');
   if (!s.bands) p.set('bands', '0');
   if (s.zoom) p.set('zoom', `${s.zoom[0]}~${s.zoom[1]}`);
@@ -49,6 +52,7 @@ export function decodeSpec(text: string): ChartSpec | null {
     raw: p.get('raw') !== '0',
     robust: p.get('robust') !== '0',
     log: p.get('log') === '1',
+    logx: p.get('logx') === '1',
     base: p.get('base') !== '0',
     bands: p.get('bands') !== '0',
     zoom: z.length === 2 && z.every(Number.isFinite) ? [z[0], z[1]] : null,
@@ -68,6 +72,7 @@ export function chartsParams(s: ChartSpec): Record<string, string | null> {
     raw: s.raw ? null : '0',
     robust: s.robust ? null : '0',
     log: s.log ? '1' : null,
+    logx: s.logx ? '1' : null,
     base: s.base ? null : '0',
     bands: s.bands ? null : '0',
     zoom: s.zoom ? `${s.zoom[0]}~${s.zoom[1]}` : null,

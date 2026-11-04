@@ -25,6 +25,7 @@ from typing import Any
 
 from . import _fs
 from .catalog import effective_status
+from .directions import read_directions
 
 # What a project folder can hold besides runs; a folder holding any of these is a project.
 _PROJECT_ENTRIES = (
@@ -35,6 +36,7 @@ _PROJECT_ENTRIES = (
     "reports",
     "sweeps.json",
     "fields.json",
+    "directions.json",
 )
 _NOT_PROJECTS = {"runs", "artifacts", "collections", "views", "reports", "node_modules"}
 TMP = ".merge-tmp"  # staging inside a DEST project; hidden folders are never indexed
@@ -50,7 +52,7 @@ class Action:
     Attributes:
         project: Project path relative to SRC and DEST (`""` when they are projects).
         kind: `run`, `artifact`, `collection`, `report`, `report-file`, `view`,
-            `sweeps.json`, `fields.json` or `annotations`.
+            `sweeps.json`, `fields.json`, `directions.json` or `annotations`.
         op: `+` copy, `=` nothing to do, `~` update or combine, `!` needs a look
             (a conflict that is skipped, a renamed copy, a renumbered artifact).
         name: What it is about: a run id, `name:vN`, a file name.
@@ -696,6 +698,52 @@ def _plan_files(project: str, sp: Path, dp: Path, src_name: str) -> list[Action]
                 )
             )
 
+    directions = sp / "directions.json"
+
+    if directions.is_file():
+        dest = dp / "directions.json"
+        sig = [_fingerprint(directions), _fingerprint(dest)]
+        mine = read_directions(sp)
+        theirs = read_directions(dp)
+        new = {k: v for k, v in mine.items() if k not in theirs}
+        clash = sorted(k for k, v in mine.items() if k in theirs and theirs[k] != v)
+
+        def act(op: str, detail: str, data: dict | None = None, conflict: bool = False) -> None:
+            out.append(
+                Action(
+                    project,
+                    "directions.json",
+                    op,
+                    "directions.json",
+                    detail,
+                    str(directions),
+                    str(dest),
+                    conflict,
+                    data=data,
+                    sig=sig,
+                )
+            )
+
+        if not dest.exists():
+            act(ADD, "new")
+        elif new:
+            n = len(new)
+            act(
+                UPDATE,
+                f"{n} direction{'s' if n > 1 else ''} added",
+                {"directions": dict(sorted({**theirs, **new}.items()))},
+            )
+
+        if dest.exists() and clash:
+            act(
+                ATTENTION,
+                f"better lower on one side, higher on the other, DEST's kept: {', '.join(clash)}",
+                None,
+                True,
+            )
+        elif dest.exists() and not new:
+            act(SAME, "identical")
+
     return out
 
 
@@ -773,6 +821,7 @@ _ORDER = [
     "view",
     "sweeps.json",
     "fields.json",
+    "directions.json",
 ]
 _TITLES = {"report-file": "report files", "annotations": "annotations"}
 

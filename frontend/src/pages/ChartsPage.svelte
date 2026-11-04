@@ -9,16 +9,8 @@
   import { api, type Alert, type ChartData } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
-  import {
-    defaultMetric,
-    fmtAgo,
-    fmtDuration,
-    fmtTimeIn,
-    fmtNum,
-    fmtSeconds,
-    fmtValue,
-    lowerIsBetter,
-  } from '../lib/format';
+  import { defaultMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtSeconds, fmtValue } from '../lib/format';
+  import { defaultStat, rememberedStat, rememberStat, type Extreme } from '../lib/stat';
   import { reservedPrefixes, sectionOf } from '../lib/prefixes';
   import { onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
@@ -37,6 +29,9 @@
   const showNames = $derived(router.get('names', '1') === '1');
   const robust = $derived(router.get('robust', '1') === '1');
   const logY = $derived(router.get('log') === '1');
+  // log x makes no sense for wall time, so it is off (and its switch disabled) there
+  const logXSet = $derived(router.get('logx') === '1');
+  const logX = $derived(logXSet && xKind !== 'time');
   const showBase = $derived(router.get('base', '1') === '1');
   const showBands = $derived(router.get('bands', '1') === '1');
   const zoom = $derived.by((): [number, number] | null => {
@@ -129,8 +124,9 @@
         // a zoomed chart also gets half a view on each side, so smoothing is warmed up at the
         // edges and a small pan or zoom out shows data before the next fetch arrives
         points: zoom ? 2800 : 1400,
-        xmin: zoom ? zoom[0] - (zoom[1] - zoom[0]) / 2 : undefined,
-        xmax: zoom ? zoom[1] + (zoom[1] - zoom[0]) / 2 : undefined,
+        xmin: zoom ? padded(zoom)[0] : undefined,
+        xmax: zoom ? padded(zoom)[1] : undefined,
+        logx: logX,
         signal: ctrl.signal,
       })
       .then((d) => {
@@ -142,6 +138,17 @@
       });
     return () => ctrl.abort();
   });
+
+  /** A zoom range with half its width added on each side (in log10(x) on a log axis). */
+  function padded([a, b]: [number, number]): [number, number] {
+    if (!logX || !(a > 0) || !(b > a)) return [a - (b - a) / 2, b + (b - a) / 2];
+    const [la, lb] = [Math.log10(a), Math.log10(b)];
+    return [10 ** (la - (lb - la) / 2), 10 ** (lb + (lb - la) / 2)];
+  }
+  // points at x <= 0 that a log x-axis cannot draw, said in the inspector
+  const leftOut = $derived(
+    logX ? (focusData?.series ?? []).reduce((n, s) => n + (hidden.has(s.label) ? 0 : (s.nonpositive ?? 0)), 0) : 0,
+  );
 
   // Live: new points redraw the charts (at most every 2 s) unless updates are paused or you
   // are working with the chart (zoomed, pinned or hovering it); then an Update button
@@ -229,13 +236,24 @@
     const span = Math.max((a.alert.end_step ?? a.alert.step) - a.alert.step, 200);
     router.set({
       metric: a.alert.metric,
+      ...(a.alert.metric === focus ? {} : { cstat: null }),
       x: null,
       zoom: `${Math.max(0, a.alert.step - 3 * span)}~${(a.alert.end_step ?? a.alert.step) + 3 * span}`,
     });
   }
 
   // ---- derived summaries ----
-  const lower = $derived(focusTiming || lowerIsBetter(focus));
+  // The summary card shows the lowest or highest last value (Min / Max on the card), and the
+  // inspector lists values in that order. Timers start on Min (see lib/stat.ts).
+  const cardStat = $derived.by((): Extreme => {
+    const v = router.get('cstat') || rememberedStat('charts', focus);
+    return v === 'min' || v === 'max' ? v : focusTiming ? 'min' : defaultStat(focus);
+  });
+  function setCardStat(v: Extreme) {
+    rememberStat('charts', focus, v);
+    router.set({ cstat: v });
+  }
+  const lower = $derived(cardStat === 'min');
   const best = $derived.by(() => {
     const finite = (focusData?.series ?? []).filter((s) => s.last !== null && !s.nonfinite);
     if (!finite.length) return null;
@@ -325,6 +343,7 @@
         raw: showRaw,
         robust,
         log: logY,
+        logx: logX,
         base: showBase,
         bands: showBands,
         zoom,
@@ -392,7 +411,7 @@
       return [];
     }),
   );
-  // In the inspector's order: lowest first when lower is better
+  // In the inspector's order: lowest first on Min
   const baseRows = $derived(
     showBase
       ? baselineLines(focusData?.series ?? [], hidden).sort((a, b) => (lower ? a.value - b.value : b.value - a.value))
@@ -477,7 +496,7 @@
     return (q ? metrics.filter((m) => m.toLowerCase().includes(q)) : metrics).slice(0, 300);
   });
   function pick(m: string) {
-    router.set({ metric: m, zoom: null });
+    router.set({ metric: m, zoom: null, cstat: null });
     pickOpen = false;
     pickFind = '';
   }
@@ -559,8 +578,14 @@
   <section class="stats">
     <div class="card stat">
       <div class="label lrow">
-        <span class="trunc" title="Best {focus || 'metric'}">Best {focus || 'metric'}</span>
-        <span class="faint keep">({lower ? 'Lowest' : 'Highest'} last)</span>
+        <span class="trunc" title="{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}"
+          >{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}</span
+        >
+        <span class="faint keep">(last value)</span>
+        <div class="seg mini" role="group" aria-label="Lowest or highest">
+          <button aria-pressed={cardStat === 'min'} onclick={() => setCardStat('min')}>Min</button>
+          <button aria-pressed={cardStat === 'max'} onclick={() => setCardStat('max')}>Max</button>
+        </div>
       </div>
       <div class="big mono">{best ? fmtV(best.last) : '—'}</div>
       {#if best}
@@ -803,6 +828,21 @@
         >
         <label
           class="tg"
+          class:off={xKind === 'time'}
+          title={xKind === 'time'
+            ? 'Wall time has no log scale; pick another x-axis'
+            : 'Log scale for the x-axis. Points at x ≤ 0 (such as step 0) cannot be drawn and are left out.'}
+          ><button
+            class="switch"
+            role="switch"
+            aria-checked={logX}
+            aria-label="Log x"
+            disabled={xKind === 'time'}
+            onclick={() => router.set({ logx: logXSet ? null : '1', zoom: null })}
+          ></button>Log x</label
+        >
+        <label
+          class="tg"
           title="Draw new points as runs log them. Off, or while you zoom, pin or hover a chart, an Update button appears instead."
           ><button class="switch" role="switch" aria-checked={live} aria-label="Live" onclick={() => setLive(!live)}
           ></button>Live</label
@@ -820,7 +860,7 @@
               class="mono tab"
               aria-pressed={m === focus}
               title={m}
-              onclick={() => router.set({ metric: m, zoom: null })}>{m}</button
+              onclick={() => router.set({ metric: m, zoom: null, cstat: null })}>{m}</button
             >
           {/each}
         </div>
@@ -915,6 +955,7 @@
           {showBands}
           {robust}
           {logY}
+          {logX}
           {zoom}
           {hidden}
           {highlight}
@@ -976,6 +1017,11 @@
           >{lower ? 'Lowest first' : 'Highest first'}</span
         >
       </div>
+      {#if leftOut}
+        <p class="faint small leftout" role="note">
+          {leftOut.toLocaleString()} point{leftOut === 1 ? '' : 's'} at x ≤ 0 not shown on the log x-axis
+        </p>
+      {/if}
       {#each inspector as v (v.label)}
         <div class="irow" class:hl={highlight === v.label}>
           <div class="itop">
@@ -1111,6 +1157,7 @@
                 {showRaw}
                 {showBands}
                 {robust}
+                {logX}
                 baselines={showBase}
                 {hidden}
                 {highlight}
@@ -1122,7 +1169,7 @@
                 fullName={showNames}
                 timing={isTiming(m)}
                 onFocus={() => {
-                  router.set({ metric: m, zoom: null });
+                  router.set({ metric: m, zoom: null, cstat: null });
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
               />
@@ -1269,6 +1316,18 @@
     gap: 6px;
     align-items: baseline;
     min-width: 0;
+  }
+  .seg.mini {
+    margin-left: auto;
+    padding: 2px;
+    border-radius: 8px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .seg.mini button {
+    padding: 1px 7px;
+    font-size: 11.5px;
+    border-radius: 6px;
   }
   .stat .label .faint {
     text-transform: none;
@@ -1420,6 +1479,12 @@
     gap: 8px;
     color: var(--muted);
     font-size: 13.5px;
+  }
+  .tg.off {
+    opacity: 0.5;
+  }
+  .leftout {
+    margin: 0 0 6px;
   }
   .smooth input {
     width: 120px;

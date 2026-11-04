@@ -42,8 +42,11 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **Table**: status, star, name and folder (with the run's collections and its
   tags as colored pills; a tag keeps its color everywhere), the config keys
   that differ between the listed runs, a result column, start time, duration, reviewed mark and
-  notes. Pick the result scalar in the toolbar and switch between **Best**
-  (min for losses and errors, max otherwise) and **Last**. Click a column
+  notes. Pick the result scalar in the toolbar and switch between **Min**,
+  **Max** and **Last** of each run's history (`res` in the URL). The **↑** /
+  **↓** button next to the scalar says which way is better (see
+  [Which way is better](#which-way-is-better)); sorting by the result starts
+  with the best runs. Click a column
   header to sort. The list is virtualized, so thousands of runs scroll
   smoothly.
 - **Filter box**: quick text filter on name, id, project, tags and notes.
@@ -253,7 +256,9 @@ shared.
 The Charts page plots the selected runs (from **Charts** in the selection
 bar) or, if none are selected, every run matching the query.
 
-- **Summary cards**: best value of the focused scalar, running runs and last
+- **Summary cards**: the lowest or highest last value of the focused scalar
+  (the **Min** / **Max** switch on the card, `cstat` in the URL, starting as
+  on the Runs page and remembered per scalar), running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
 - **Grouping**: `group by config.optim.lr` in the query (or the **Group by**
   menu) draws one line per group with a band: mean ± std (default), mean ± sem,
@@ -289,8 +294,8 @@ bar) or, if none are selected, every run matching the query.
   logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.
 - **Display row**: Smooth and the Raw, Ranges, Points, Baseline, Ignore
-  outliers and Log y switches sit on their own row under the grouping and
-  x-axis controls.
+  outliers, Log y and Log x switches sit on their own row under the grouping
+  and x-axis controls.
 - **Smoothing**: debiased exponential moving average (as in TensorBoard). With
   **Raw** on, the unsmoothed data is drawn faintly behind the smoothed line.
 - **Points**: a dot on each curve at the logged point under the cursor, so
@@ -301,6 +306,12 @@ bar) or, if none are selected, every run matching the query.
   fits the y-axis to the 1st–99th percentile of the values, so a few spikes
   (such as a huge loss at step 0) do not flatten every curve. Off, the axis
   fits every point. **Log y** switches to a log scale.
+- **Log x** puts the x-axis on a log scale (`logx=1`), for every x-axis but
+  wall time. Points at x ≤ 0, such as step 0, cannot be drawn there and are
+  left out; the inspector says how many. The server spreads the points evenly
+  in log10(x), filling the first decades from the finer zoom levels, so
+  there are about as many points per pixel at step 10 as at step 100,000.
+  Zoom, pan, the cursor and pinned points all work in log space.
 - **Zoom and pan**: drag across a chart to zoom into a range. Over the
   focused chart, **Ctrl** (**⌘** on a Mac) + scroll, or a trackpad pinch,
   zooms in and out around the cursor, also past the ends of the data, with
@@ -312,7 +323,8 @@ bar) or, if none are selected, every run matching the query.
   does not restart at the edge; the view stays where you left it while it
   loads. Double-click, or **Reset zoom**, to reset.
 - **Inspector**: hover a chart to see every series' value at that step,
-  sorted best first, with ± std for grouped series. Click to pin the step.
+  sorted lowest or highest first as the summary card's Min / Max says, with
+  ± std for grouped series. Click to pin the step.
   Without hovering it shows the latest values of the series shown (in the
   zoomed range).
 - **Linked crosshair**: hovering any chart moves the crosshair on all of them.
@@ -325,7 +337,7 @@ bar) or, if none are selected, every run matching the query.
 - **All scalars**: a small chart per scalar, grouped by prefix (`train/`,
   `eval/`, `perf/`…). Small charts load as you scroll. Click a title to bring
   the scalar into focus. Hovering a small chart shows each run's value at the
-  cursor, best first (up to eight, then "+N more"). While the main chart is
+  cursor, largest first (up to eight, then "+N more"). While the main chart is
   pinned, every small chart draws a dashed line at that step with a dot on
   each curve, and hovering one shows its values there. The full scalar name
   is written under each chart; **Full names** in the display row turns that
@@ -366,10 +378,44 @@ duration and summary, and read the run once more when it finishes or crashes.
 are only heartbeats are ignored). Going back to Runs or Charts catches up by
 itself.
 
+## Which way is better
+
+Whether lower or higher is better for a scalar (or a table column) is one
+setting per project, shown as an arrow next to it, as papers mark it: **↓**
+lower is better, **↑** higher is better. Sweeps and the Runs result column rank
+by it, tables color their changes by it, and hypothesis cards set to Last pick
+their top run by it. Hover the arrow to see what it says and where it comes
+from.
+
+- **Until one is saved**, Sweeps, Runs and hypothesis cards guess from the
+  name (`loss`, `error`, `wer`, `time`, ... are better lower), shown as a faint,
+  dashed arrow. Tables do not guess: their changes stay gray.
+- **Clicking the arrow changes only your view** (`dir` in the URL, so links and
+  saved views keep it). Nothing shared changes by accident.
+- **Save for everyone** appears while your view differs from the project, with
+  **Reset** to go back. Saving writes `<project>/directions.json`, the one place a
+  direction is kept: every screen reads it, and open viewers update as soon as
+  it changes, whoever changed it. Logging code never sets it, so runs cannot
+  disagree about it.
+- **A save never overwrites someone else's.** If the direction changed since
+  your view showed it, the save is refused and the new one is shown. Two
+  viewers on the same folder take turns writing the file.
+- **Several projects shown** that disagree make the arrow **↕**: nothing is
+  colored as better or worse, and the hover text says which project says
+  what. Clicking it picks a direction for this view; it can only be saved with
+  one project shown.
+- A table column is kept apart from a scalar with the same name (as
+  `<table> › <column>`), so the two never share a direction.
+- `nuboard up --lock-directions` locks directions on a shared viewer: views can
+  still flip them, but nothing can be saved.
+
 ## Sweeps page
 
 Parallel coordinates over the parameters that vary between runs, with brushing
-on every axis, a grid of scatters (one per parameter) and a best-runs table.
+on every axis, a grid of scatters (one per parameter) and a table of the top
+runs. **Min**, **Max** or **Last** picks the value of each run, and the **↑**
+/ **↓** next to the objective says which runs rank first (and go on top of the
+axis).
 The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
 
@@ -435,9 +481,9 @@ be scrolled through its steps while the others stay put.
 - **By key / by run**: a section per key with a card per run (default), or a
   section per run with a card per key.
 - **Step**: **Latest** shows each run's last item; **Pick step** moves every
-  card to the item at or before one step; **Best scalar** moves each run to
-  the item closest to the step where a scalar of your choice was lowest or
-  highest (for example the best `val/acc`). Moving a card's own slider
+  card to the item at or before one step; **At scalar min/max** moves each
+  run to the item closest to the step where a scalar of your choice was at
+  its **Min** or **Max** (for example the highest `val/acc`). Moving a card's own slider
   overrides the page-wide step for that card only.
 - **Grid**: **Columns** sets the cards per row (fit to width, or 1 to 8) and
   **Rows** how many rows each section shows per page (1 to 6, or all); a
@@ -498,19 +544,23 @@ items download from their card with an extension that matches their type
 
 Tables (`add_table`) take the whole width of the section. Each run's card has
 its step slider, and every number is compared with the same row at the
-**Previous step** or the **First step** (or **Nothing**): the cell is tinted
-green when it got better and orange when it got worse, darker for bigger
-changes, with the change next to the value (**Color + Δ**, **Color** or
-**Δ**). A column counts as better when lower if its name looks like a loss or
-error (`loss`, `error`, `wer`, ...), and when higher otherwise; the arrow next
-to each column name says which.
+**Previous step** or the **First step** (or **Nothing**): the change is
+written next to the value, ▲ up or ▼ down, and the cell is tinted gray,
+darker for bigger changes (**Color + Δ**, **Color** or **Δ**). The small
+**±** button next to a numeric column's name says which way is better, as
+papers mark it: **↑** (higher is better) or **↓** (lower is better); then its
+changes are tinted green toward it and orange away from it. Tables never guess
+a direction from the name. A click changes your view; **Save for everyone**
+keeps it in the project (see [Which way is better](#which-way-is-better)), and
+HTML exports use it.
 
 - Click a column to sort; rows glide to their new place when the step changes,
   and the arrows next to the rank say how many places a row moved.
 - **Filter rows** takes comparisons joined with `and`, such as
   `snr_in < 0 and noise = babble`; other text matches the row id.
-- The summary counts the rows that improved or got worse on the sorted column
-  (or the first column that changed), with its mean and change.
+- The summary counts the rows that went up or down on the sorted column (or
+  the first column that changed), or that improved or got worse when it has a
+  direction, with its mean and change.
 - **Trend** draws that column for each row across the logged steps.
 - Click a row for its values at every step and its media: an audio cell opens
   in the waveform player, with notes.
@@ -582,9 +632,11 @@ remembered):
   **Colors** picks the spectrogram colormap (theme, viridis, magma or gray),
   **Frequency** its scale (linear, log or mel), **Window** the FFT size (256
   to 4096 samples; the hop is a quarter of it), and **Spectrogram** hides it
-  to show only waveforms. **Amplitude axis** labels the waveform's amplitude
-  (±1 is full scale) down its left edge. The choices are remembered in the
-  browser and kept in the URL (`cmap`, `fscale`, `fft`, `spec`, `amp`), so a
+  to show only waveforms. **Frequency axis** (shown with the spectrogram)
+  labels its frequencies down the left edge, and **Amplitude axis** labels
+  the waveform's amplitude (±1 is full scale). The choices are remembered in
+  the browser and kept in the URL (`cmap`, `fscale`, `fft`, `spec`, `fax`,
+  `amp`), so a
   shared link shows the
   same view.
 - **Simple**: the browser's own audio controls, as in TensorBoard.

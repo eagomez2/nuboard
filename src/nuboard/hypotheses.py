@@ -41,7 +41,7 @@ COLORS = ("s4", "s5", "s1", "s2", "s3", "s6", "s7", "gray")
 #: Icons a verdict can take.
 ICONS = ("check", "x", "circle", "star", "question", "pause")
 #: Summaries a run chip can show for its metric.
-STATS = ("best", "last", "min", "max")
+STATS = ("min", "max", "last")
 #: Most categories in each list.
 MAX_CATEGORIES = 8
 
@@ -155,7 +155,13 @@ def _categories(raw: Any, defaults: list[dict[str, Any]], kind: str) -> list[dic
 
 
 def _card(raw: Any) -> dict[str, Any] | None:
-    """Clean the "number on run chips" setting: a metric, a summary and a direction.
+    """Clean the "number on run chips" setting: a metric, a summary and which end ranks first.
+
+    `stat` is `min`, `max` or `last`; `top` (`min` or `max`) says which run of a
+    hypothesis is marked as its top one: the lowest or highest number. It
+    follows `stat` for `min` and `max`. Older boards had `stat: "best"` and a
+    `higher` flag: `best` becomes `max` when `higher`, else `min`,
+    and `higher` gives `top`.
 
     Returns None (no number) when `raw` has no metric name.
     """
@@ -163,10 +169,14 @@ def _card(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or not isinstance(raw.get("metric"), str) or not raw["metric"]:
         return None
 
+    legacy = "max" if raw.get("higher") else "min"
+    stat = raw.get("stat") if raw.get("stat") in STATS else legacy
+    top = raw.get("top") if raw.get("top") in ("min", "max") else legacy
+
     return {
         "metric": raw["metric"][:200],
-        "stat": raw.get("stat") if raw.get("stat") in STATS else "best",
-        "higher": bool(raw.get("higher")),
+        "stat": stat,
+        "top": stat if stat != "last" else top,
     }
 
 

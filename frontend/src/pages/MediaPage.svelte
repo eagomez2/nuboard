@@ -8,7 +8,8 @@
   import { seriesVar } from '../lib/colors';
   import { addOverlayToReport, appendToReport, askReport } from '../lib/reports.svelte';
   import { chartToPng } from '../lib/snapshot';
-  import { defaultMetric, fmtNum, lowerIsBetter } from '../lib/format';
+  import { defaultMetric, fmtNum } from '../lib/format';
+  import { rememberStat, statFor, type Extreme } from '../lib/stat';
   import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, mediaRef, type MediaKind } from '../lib/media';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
@@ -166,12 +167,17 @@
   const bestMetric = $derived(
     metricNames.includes(router.get('mmetric')) ? router.get('mmetric') : defaultMetric(metricNames),
   );
-  const bestDir = $derived((router.get('mdir') || (lowerIsBetter(bestMetric) ? 'min' : 'max')) as 'min' | 'max');
+  // the step where the scalar is at its min or max (`mdir`, as in older links; see lib/stat.ts)
+  const bestDir = $derived(statFor('media', bestMetric, router.get('mdir'), false) as Extreme);
+  function setBestDir(v: Extreme) {
+    rememberStat('media', bestMetric, v);
+    router.set({ mdir: v });
+  }
   let best = $state<Record<string, { step: number; value: number }>>({});
   let bestAsked = 0;
   $effect(() => {
     if (mode !== 'best' || !bestMetric || !runs.length) return;
-    // only the newest answer counts: one for an older choice (Lowest before Highest, another
+    // only the newest answer counts: one for an older choice (Min before Max, another
     // scalar, a live refresh) can arrive after it and would show the other end
     const asked = ++bestAsked;
     api
@@ -246,7 +252,7 @@
     prefs.set('player', p);
     router.set({ player: p === 'wave' ? null : p });
   }
-  const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1', amp: '1' };
+  const AUDIO_DEFAULTS = { cmap: 'theme', fscale: 'linear', fft: '1024', spec: '1', amp: '1', fax: '1' };
   type AudioOpt = keyof typeof AUDIO_DEFAULTS;
   const opt = (k: AudioOpt) => router.get(k, prefs.get(k, AUDIO_DEFAULTS[k]));
   function setOpt(k: AudioOpt, v: string) {
@@ -259,6 +265,7 @@
     fftSize: Number(opt('fft')) || 1024,
     spectrogram: opt('spec') !== '0',
     axis: opt('amp') !== '0',
+    freqAxis: opt('fax') !== '0',
   });
   const showsAudio = $derived(kinds.includes('audio') && kindCounts.audio.size > 0);
 
@@ -394,7 +401,7 @@
       <div class="seg" role="group" aria-label="Step to show">
         <button aria-pressed={mode === 'latest'} onclick={() => router.set({ mmode: null })}>Latest</button>
         <button aria-pressed={mode === 'step'} onclick={() => router.set({ mmode: 'step' })}>Pick step</button>
-        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>Best scalar</button>
+        <button aria-pressed={mode === 'best'} onclick={() => router.set({ mmode: 'best' })}>At scalar min/max</button>
       </div>
       {#if mode === 'step' && allSteps.length}
         <label class="slider">
@@ -413,15 +420,15 @@
           class="input sm mono metric"
           aria-label="Scalar"
           value={bestMetric}
-          onchange={(e) => router.set({ mmetric: e.currentTarget.value })}
+          onchange={(e) => router.set({ mmetric: e.currentTarget.value, mdir: null })}
         >
           {#each metricNames as m (m)}<option value={m}>{m}</option>{/each}
         </select>
-        <div class="seg" role="group" aria-label="Best is">
-          <button aria-pressed={bestDir === 'min'} onclick={() => router.set({ mdir: 'min' })}>Lowest</button>
-          <button aria-pressed={bestDir === 'max'} onclick={() => router.set({ mdir: 'max' })}>Highest</button>
+        <div class="seg" role="group" aria-label="Statistic">
+          <button aria-pressed={bestDir === 'min'} onclick={() => setBestDir('min')}>Min</button>
+          <button aria-pressed={bestDir === 'max'} onclick={() => setBestDir('max')}>Max</button>
         </div>
-        <span class="faint small">each run shows the item logged closest to its best step</span>
+        <span class="faint small">each run shows the item logged closest to the step of its {bestDir}</span>
       {/if}
       <span class="spacer"></span>
       <span class="label">Grid</span>
@@ -507,6 +514,18 @@
             ></button>
             <span class="faint">Spectrogram</span></label
           >
+          {#if audioOptions.spectrogram}
+            <label class="opt"
+              ><button
+                class="switch"
+                role="switch"
+                aria-checked={audioOptions.freqAxis}
+                aria-label="Frequency axis"
+                onclick={() => setOpt('fax', audioOptions.freqAxis ? '0' : '1')}
+              ></button>
+              <span class="faint">Frequency axis</span></label
+            >
+          {/if}
           <label class="opt"
             ><button
               class="switch"
@@ -664,7 +683,7 @@
           </div>
           {#if mode === 'best' && by === 'key'}
             <p class="faint small bestnote">
-              {bestDir === 'min' ? 'Lowest' : 'Highest'}
+              {bestDir === 'min' ? 'Min' : 'Max'}
               {bestMetric}:
               {#each cards.slice(page * size, page * size + size) as c, i (c.id)}{#if best[c.run.key]}{@const b =
                     best[c.run.key]}{@const shown = shownItem(c.items, b.step, true)}{i ? ' · ' : ''}{c.run.name}

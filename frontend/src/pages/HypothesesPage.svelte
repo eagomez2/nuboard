@@ -9,9 +9,14 @@
   import HypothesisCategories from '../components/HypothesisCategories.svelte';
   import { api, type RunBrief } from '../lib/api';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
-  import { fmtDate, fmtNum, lowerIsBetter } from '../lib/format';
+  import { fmtDate, fmtNum } from '../lib/format';
+  import { directionOf } from '../lib/directions.svelte';
+  import DirectionButton from '../components/DirectionButton.svelte';
   import {
+    CARD_CHOICES,
     SIZE,
+    cardChoice,
+    cardFor,
     cardValue,
     chipY,
     colorVar,
@@ -26,6 +31,7 @@
     type Board,
     type BoardData,
     type BoardListItem,
+    type CardChoice,
     type CardSetting,
     type HRun,
     type Hypothesis,
@@ -127,6 +133,11 @@
           showDeadEnds: showDead,
           starredOnly,
           selectedRun: selRun || null,
+          // this view's own choice (the arrow next to the board's metric) applies to that metric
+          dirOf: (m: string) => {
+            const g = directionOf([project], m, true, m === data?.board.card?.metric ? router.get('dir') : null);
+            return g.set ? g.direction : null;
+          },
         }
       : null,
   );
@@ -264,10 +275,16 @@
     await load();
   }
 
-  function setCard(metric: string, stat?: CardSetting['stat']) {
+  // a new metric starts on the guess from its name (Min for losses, else Max); Last stays Last
+  function setCard(metric: string, choice?: CardChoice) {
     if (!data) return;
+    const old = data.board.card;
     const card: CardSetting | null = metric
-      ? { metric, stat: stat ?? data.board.card?.stat ?? 'best', higher: !lowerIsBetter(metric) }
+      ? cardFor(
+          metric,
+          choice ?? (old?.stat === 'last' ? 'last' : null),
+          directionOf([project], metric).direction ?? 'max',
+        )
       : null;
     saveBoard({ card });
   }
@@ -359,8 +376,8 @@
     const v = cardValue(data.runs[r.id], card);
     return v === null ? '—' : fmtNum(v);
   };
-  const STAT = { best: 'Best', last: 'Last', min: 'Min', max: 'Max' } as const;
-  /** What the chip number is, such as "val/acc (Best)". */
+  const STAT = { last: 'Last', min: 'Min', max: 'Max' } as const;
+  /** What the chip number is, such as "val/acc (Max)". */
   const numberName = (h: Hypothesis) => {
     const card = h.card ?? data?.board.card;
     return card ? `${card.metric} (${STAT[card.stat]})` : '';
@@ -514,17 +531,17 @@
             <select
               class="input sm"
               aria-label="Summary"
-              value={data.board.card.stat}
+              value={cardChoice(data.board.card)}
               disabled={ro}
-              onchange={(e) => setCard(data!.board.card!.metric, e.currentTarget.value as CardSetting['stat'])}
+              onchange={(e) => setCard(data!.board.card!.metric, e.currentTarget.value as CardChoice)}
             >
-              <option value="best">Best</option>
-              <option value="last">Last</option>
-              <option value="min">Min</option>
-              <option value="max">Max</option>
+              {#each CARD_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
             </select>
           {/if}
         </label>
+        {#if data.board.card?.stat === 'last'}
+          <DirectionButton projects={[project]} name={data.board.card.metric} fallback={data.board.card.top} />
+        {/if}
         {#if view === 'tree'}
           <button
             class="btn btn-ghost icon"
