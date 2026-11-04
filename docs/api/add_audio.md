@@ -43,8 +43,14 @@ import nuboard as nb
 
 run = nb.init("api-tour", run_name="audio")
 rate = 16_000
-t = np.arange(2 * rate) / rate
-clean = 0.4 * np.sin(2 * np.pi * (220 + 220 * t) * t)  # a rising chirp
+t = np.arange(3 * rate) / rate
+
+# A plucked arpeggio: six notes of half a second, each with 8 harmonics and vibrato
+notes = np.repeat([262, 330, 392, 523, 392, 330], rate // 2)
+f0 = notes * (1 + 0.015 * np.sin(2 * np.pi * 5.5 * t))
+phase = 2 * np.pi * np.cumsum(f0) / rate
+pluck = np.minimum(1, (t % 0.5) / 0.01) * np.exp(-5 * (t % 0.5))
+clean = 0.25 * pluck * sum(np.sin(k * phase) / k for k in range(1, 9))
 rng = np.random.default_rng(0)
 
 for epoch in range(5):
@@ -57,4 +63,4 @@ run.finish()
 
 **Expected result**
 
-![An audio card with the waveform player](../assets/api/audio.png)
+![An audio card with the waveform player: the waveform of a plucked arpeggio above its spectrogram, where each note shows as a stack of harmonics](../assets/api/audio.png)
