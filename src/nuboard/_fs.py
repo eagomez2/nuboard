@@ -13,6 +13,12 @@ from typing import Any
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"  # lowercase only: no case collisions
 
+RUN_INTERNAL = re.compile(
+    r"^(run\.json|annotations\.json|data\.parquet|events\.r\d+\.s\d+\.log"
+    r"|media\.r\d+(\.s\d+)?\.pack|jobs/[^/]+\.json)$"
+)
+"""Files NuBoard writes itself, by path inside a run folder (with `/` separators)."""
+
 
 def sanitize(name: str, fallback: str = "run") -> str:
     """Make `name` safe as a path component on every OS (no colons, no spaces).

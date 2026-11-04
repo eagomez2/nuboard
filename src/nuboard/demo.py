@@ -615,6 +615,7 @@ def _vit_runs(root: Path, base: float) -> None:
 
     for i, (aug, seed) in enumerate((a, s) for a in gains for s in (0, 1)):
         rng = random.Random(f"{aug}{seed}")
+        trng = random.Random(f"timing-{aug}{seed}")  # its own, so the curves stay as before
         started = base - 20 * 3600 + i * 1800
         config = {
             "model": "vit-s16",
@@ -650,7 +651,7 @@ def _vit_runs(root: Path, base: float) -> None:
 
         for epoch in range(101):
             t = started + epoch * 60
-            _vit_timing(run, ranks, epoch, t, rng, slow_data=aug == "randaug")
+            _vit_timing(run, ranks, epoch, t, trng, slow_data=aug == "randaug")
             acc = 0.62 + gains[aug] + 0.18 * (1 - math.exp(-epoch / 25)) + rng.gauss(0, 0.004)
             run.add_scalar(
                 {

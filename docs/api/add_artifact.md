@@ -72,6 +72,16 @@ data = run.use_artifact("datasets/fineweb-edu:v2")
 train_set = MyDataset(data.files / "train")
 ```
 
+A version also reads like a mapping from each listed file's path inside it to
+the file: `list(art)` gives the paths, `"best.pt" in art` checks for one,
+`art["ckpt/best.pt"]` returns its `Path` (a `KeyError` if the version does not
+list it) and `len(art)` counts them.
+
+```python
+ckpt = run.use_artifact("model:latest")
+model.load_state_dict(torch.load(ckpt["best.pt"]))
+```
+
 ## `nb.add_artifact`
 
 ```python

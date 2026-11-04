@@ -379,9 +379,12 @@ resume added a session) they read the logs. No coordination is needed.
 
 ## Artifacts
 
-`artifacts/<name>/v<N>/` is created by copying into a staging folder and
-renaming it into place, so a version is either complete or absent.
-`manifest.json`:
+`artifacts/<name>/v<N>/` is created by copying into a staging folder
+(`artifacts/<name>/.staging-<rand>/`) and renaming it into place, so a version
+is either complete or absent. A staging folder left by a killed process is
+ignored by readers, and removed once nothing in it changed for 6 hours. A
+version's source can never be inside an `artifacts/` folder or contain one,
+so no version lists another version's files. `manifest.json`:
 
 ```json
 {
@@ -410,7 +413,9 @@ manifest records where the files are and a fingerprint of each one:
 
 | Key | Meaning |
 | --- | --- |
-| `reference` | Path of the file or folder that was referenced: absolute, or starting with an environment variable, as in `${NUBOARD_DATA_DIR}/fineweb-edu/2026-10`, which readers expand with their own environment. |
+| `reference` | Path of the file or folder that was referenced: absolute, or starting with an environment variable, as in `${NUBOARD_DATA_DIR}/fineweb-edu/2026-10`, which readers expand with their own environment, or relative to the project folder when `reference_base` is `"project"`. |
+| `reference_base` | `"project"` when the referenced path is inside the version's own project, such as a run's files (`runs/<run>/files/best.pt`): `reference` and `root` are then relative to the project folder, with `/` separators, so they keep working when the project is copied or moved. Absent otherwise. Since 0.24. |
+| `source` | Where the files came from, for a version made from a run's files: `{"run": <run id>, "path": <path inside the run folder>}`, by copy or by reference. Absent otherwise. Since 0.24. |
 | `root` | The folder `files[].path` is relative to: `reference` for a folder, its parent for a file. |
 | `files[].mtime_ns` | Modification time in nanoseconds, for information. Readers compare `size` to detect changes, since copies on other machines have their own times. |
 | `files[].sha256` | Present for every copied file, and for referenced files only with `checksum=True`. |
@@ -426,6 +431,11 @@ folder to that project's folder, which is what the viewer resolves:
 ```json
 {"artifact": "fineweb-edu", "version": 2, "project": "datasets", "project_path": "../datasets"}
 ```
+
+A version made from a run's files by reference depends on that run folder
+being in the project: the dependency goes from the project's `artifacts/`
+into one of its own runs, never from a run outward, so a run folder stays
+self-contained. `nuboard rm` keeps such a run unless forced.
 
 A project may hold only artifacts and no runs, such as a `datasets` project.
 A run folder copied alone keeps its record of which artifact versions it used

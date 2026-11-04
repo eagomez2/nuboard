@@ -10,5 +10,5 @@ export const COPYRIGHT = 'Copyright © 2026 Esteban Gómez';
 /** The license the software is released under. */
 export const LICENSE = 'MIT License';
 
-/** Where the documentation lives. A placeholder until the docs are published. */
-export const DOCS_URL = 'https://example.com/nuboard/docs';
+/** Where the documentation lives. */
+export const DOCS_URL = 'https://eagomez2.github.io/nuboard/';

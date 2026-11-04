@@ -147,6 +147,31 @@ out: `run.use_artifact("model:v1")`.
 To find a version without recording it, such as in a notebook, use
 `nb.get_artifact("datasets/fineweb-edu:v2")`.
 
+### Reading a version's files
+
+A version is a set of files, even when it holds one, so `files` is always a
+folder: the one the files are stored under. The version itself reads like a
+mapping from each file's path inside it (as the manifest lists it, with `/`
+separators) to the file on this machine:
+
+```python
+model = run.use_artifact("model:latest")
+list(model)               # ["best.pt"]: what the version holds
+"best.pt" in model        # True
+model["best.pt"]          # Path to the file, for a copy or a reference
+len(model)                # 1
+
+data = run.use_artifact("datasets/fineweb-edu:v2")
+data["train/shard-000.bin"]  # files in subfolders too
+```
+
+Only the files the version listed when it was made are keys. For a
+reference to one file, `files` is the folder that file sits in, which may hold
+other files; they are not part of the version, and `model["other.pt"]` raises
+a `KeyError` naming the files it does list. A file added to a referenced
+folder later is not part of the version either. Prefer the mapping to
+listing `files` yourself.
+
 ## Data on several machines
 
 When the data has a copy on each machine, such as on a laptop for evaluation
@@ -182,6 +207,42 @@ modification times. If a variable is not set where the artifact is used,
 | Fingerprint | SHA-256 | size and modification time, SHA-256 with `checksum=True`; checked by size |
 | On another machine | the same files | that machine's copy, through `$NUBOARD_DATA_DIR` |
 | Good for | checkpoints, reports, small datasets | datasets on shared storage |
+
+## From a run's files
+
+A checkpoint or an evaluation output saved into a run's folder can become an
+artifact version afterwards, without changing the run:
+
+- **Copy** (the default) copies the file or folder into the version and
+  hashes it. The version stays the same whatever happens to the run.
+- **Reference** copies nothing. Because the files are inside the project, the
+  manifest stores their path relative to the project
+  (`runs/<run>/files/best.pt`), not an absolute path, so the project can be
+  copied, rsynced, zipped or merged and the version still finds them. A run
+  still running cannot be referenced, since its files may change.
+
+Either way the run is the version's producer (`producer_run`), and the
+version's `source` records the run and the path. `nuboard rm` keeps a run
+whose files a linked version references, and says which versions; unlink
+them first, or pass `--force` (the versions then report their files as
+missing).
+
+From the viewer, use **New artifact version** in the run's Files tab (with
+`--edit-artifacts`). From the command line, `nuboard artifact add` with a path
+inside a run of the same project does the same:
+
+```bash
+nuboard artifact add llm-pretrain/best \
+    experiments/llm-pretrain/runs/20261103T1504-90c3affc/files/best.safetensors --copy
+```
+
+From Python, `promote_run_path` takes the run folder and the path inside it:
+
+```python
+from nuboard.artifacts import promote_run_path
+
+promote_run_path(run_dir, "files/checkpoints/step_06000", "best", copy=False, type="checkpoint")
+```
 
 ## Recommendations
 
@@ -251,12 +312,27 @@ The Artifacts page is read-only unless the viewer was started with
   metadata (text, number, yes/no or JSON) and, if you want, SHA-256 checksums,
   then review and add. Nothing is copied, and the viewer cannot upload files;
   use `nuboard artifact add --copy` or `nb.add_artifact` for a copy.
+  A path inside a project's `artifacts/` folder, or one that contains it (such
+  as the project itself), is refused, since the version would list other
+  versions.
+- If the files are the same as the artifact's latest version (same paths and
+  sizes, and the same SHA-256 or modification time), the form says so and
+  offers **Add anyway** instead of silently adding an identical version.
+- **New artifact version** in a run's **Files** tab makes a version from a
+  file of that run (the button next to **Download**), or from a folder (the
+  artifact icon on the folder's row). It opens the same form, with the
+  project fixed to the run's, the source filled in, and a choice of how to
+  store it (see [From a run's files](#from-a-runs-files)). The run is
+  recorded as the version's producer; its folder is never changed.
 - **Unlink version** (or **Unlink all versions**) asks for confirmation, then
   moves the version folder to `artifacts/.unlinked/` in the project. No files
   are deleted, and a referenced dataset is never touched. The version leaves
   the list and `use_artifact`, and runs that used or produced it show it as
   "(unlinked)". Its number is not reused.
 - **Show unlinked** lists unlinked versions; **Restore** puts one back.
+
+Without `--edit-artifacts`, **New version**, **New artifact version** and
+**Unlink** are not shown.
 
 The command line does the same without the viewer:
 

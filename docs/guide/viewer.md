@@ -218,9 +218,11 @@ For a single run there are more tabs:
   fastest to the slowest rank) or a single rank. Kept in the URL as `trank`
   and `tstep`.
 
-**Charts**, **Sweeps** and **Media** after the tabs open those pages with
-only the run (or the compared runs), as the selection bar does, without
-ticking checkboxes.
+The first five tabs show in the row; the rest are in the **⋮** menu at its
+end (the open tab always shows), so the row and the settings filter stay on
+one line on a laptop screen. The same menu has **Charts**, **Sweeps** and
+**Media**, which open those pages with only the run (or the compared runs), as
+the selection bar does, without ticking checkboxes.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run

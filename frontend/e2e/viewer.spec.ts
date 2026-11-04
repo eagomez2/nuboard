@@ -1377,6 +1377,13 @@ test('files are pinned as tabs for every run of the project, by path or by patte
   await boxes.nth(2).check();
   await page.getByRole('button', { name: 'Compare' }).click();
   const tabs = page.locator('.tabs .tab');
+  // a tab past the fifth is in the ⋮ menu
+  const openTab = async (text: string) => {
+    const tab = tabs.filter({ hasText: text });
+    if (await tab.count()) return tab.click();
+    await page.getByRole('button', { name: 'More tabs' }).click();
+    await page.getByRole('menuitem', { name: text }).click();
+  };
   await expect(tabs.filter({ hasText: 'config.yaml' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Files', exact: true }).click();
 
@@ -1388,19 +1395,23 @@ test('files are pinned as tabs for every run of the project, by path or by patte
   await expect(page.locator('.files .diff .line.del').first()).toBeVisible();
   await expect(page.getByRole('tree', { name: 'Run files' })).toHaveCount(0);
 
-  // shared through the project folder: a fresh page shows the same pin on another run
+  // shared through the project folder: a fresh page shows the same pin on another run; one
+  // run has more than five tabs, so the pin is in the ⋮ menu until opened
   await page.goto('/#/runs?project=vit-ablations');
   await page.locator('.body .row .name').nth(1).click();
+  await page.getByRole('button', { name: 'More tabs' }).click();
+  await page.getByRole('menuitem', { name: /config\.yaml/ }).click();
   await expect(tabs.filter({ hasText: 'config.yaml' })).toBeVisible();
+  await expect(page).toHaveURL(/tab=pin(%3A|:)files/);
 
   await page.getByRole('button', { name: 'Files', exact: true }).click();
   await page.getByLabel('Filter files').fill('files/*.yaml');
   await page.getByRole('button', { name: 'Pin pattern' }).click();
-  await tabs.filter({ hasText: '*.yaml' }).click();
+  await openTab('*.yaml');
   await expect(page.locator('.files .file')).toContainText(':');
 
   for (const pin of ['files/*.yaml', 'files/config.yaml']) {
-    await tabs.filter({ hasText: pin.split('/')[1] }).click();
+    await openTab(pin.split('/')[1]);
     await page.getByRole('button', { name: 'Unpin' }).first().click();
   }
   await expect(tabs.filter({ hasText: 'yaml' })).toHaveCount(0);
@@ -1912,18 +1923,22 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await page.locator('.body .row input[type=checkbox]').nth(0).check();
   await page.getByRole('button', { name: 'Details' }).click();
   await page.locator('.selbar').getByRole('button', { name: 'Clear selection' }).click();
-  const jump = page.getByRole('group', { name: 'Open this run in' });
-  await jump.getByRole('button', { name: 'Charts' }).click();
+  // in the ⋮ menu of the tab row
+  const jump = async (name: string) => {
+    await page.getByRole('button', { name: 'More tabs' }).click();
+    await page.getByRole('menuitem', { name }).click();
+  };
+  await jump('Charts');
   await expect(page).toHaveURL(/#\/charts\?.*sel=/);
   await expect(page).not.toHaveURL(/cmp=/);
   await expect(page.getByRole('status').filter({ hasText: 'selected run' })).toContainText('Showing 1 selected run');
   await expect(page.locator('.legend-chip')).toHaveCount(1);
 
   await page.goBack();
-  await jump.getByRole('button', { name: 'Media' }).click();
+  await jump('Media');
   await expect(page).toHaveURL(/#\/media\?.*sel=/);
   await page.goBack();
-  await jump.getByRole('button', { name: 'Sweeps' }).click();
+  await jump('Sweeps');
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
 });
 

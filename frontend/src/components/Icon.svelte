@@ -50,6 +50,12 @@
     table: 'M3 5h18v14H3zM3 10h18M3 15h18M9 5v14M15 5v14',
     undo: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
     redo: 'M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+    notes: 'M12 3H5v18h14v-7M9 9h4M9 13h3M14 16l1-4 6-6-3-3-6 6-1 4z',
+    sliders: 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4',
+    terminal: 'M3 5h18v14H3zM7 10l3 2-3 2M12 15h4',
+    stopwatch: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 1.5M10 2h4M18.5 5.5l1.5 1.5',
+    external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+    more: 'M12.45 5a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0zM12.45 12a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0zM12.45 19a.45.45 0 1 1-.9 0a.45.45 0 1 1 .9 0z',
   };
   let { name, size = 18, filled = false }: { name: string; size?: number; filled?: boolean } = $props();
 </script>

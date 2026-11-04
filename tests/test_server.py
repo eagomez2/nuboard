@@ -685,6 +685,7 @@ def test_artifacts_are_added_unlinked_and_restored_only_when_allowed(tmp_path):
                 "path": "data/corpus",
                 "type": "dataset",
                 "metadata": {"rows": 1},
+                "allow_duplicate": True,  # the same files as v1, added on purpose
             },
         ).json()
         assert new == {"project": "datasets", "name": "corpus", "version": 2}
@@ -703,7 +704,8 @@ def test_artifacts_are_added_unlinked_and_restored_only_when_allowed(tmp_path):
 
         # numbers stay taken while unlinked
         again = c.post(
-            "/api/artifacts/add", json={"project": "datasets", "name": "corpus", "path": str(data)}
+            "/api/artifacts/add",
+            json={"project": "datasets", "name": "corpus", "path": str(data), "allow_duplicate": 1},
         ).json()
         assert again["version"] == 3
 

@@ -240,7 +240,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--edit-artifacts",
         action="store_true",
-        help="allow adding artifact versions (references to paths here) and unlinking them",
+        help="allow adding artifact versions (references to paths here, or a run's files) and "
+        "unlinking them",
     )
     p.add_argument(
         "--read-only-reports",
@@ -345,6 +346,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--dry-run", action="store_true", help="list the runs and exit")
     p.add_argument("-y", "--yes", action="store_true", help="delete without asking")
     p.add_argument("--include-running", action="store_true", help="also delete runs still logging")
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="also delete runs whose files artifact versions reference (those versions lose them)",
+    )
 
     from . import _artifact_cli
 
@@ -378,6 +384,7 @@ def main(argv: list[str] | None = None) -> None:
                 query=args.query,
                 runs=args.runs,
                 include_running=args.include_running,
+                force=args.force,
                 dry_run=args.dry_run,
                 yes=args.yes,
             )

@@ -3,6 +3,8 @@
   import { FullScreen } from '../lib/fullscreen.svelte';
   import Icon from './Icon.svelte';
   import Terminal from './Terminal.svelte';
+  import ArtifactForm from './ArtifactForm.svelte';
+  import { app } from '../lib/state.svelte';
   import { isTerminalText, stripAnsi } from '../lib/ansi';
   import { api, type RunDetail, type RunFile, type RunTree, type TensorEntry, type TensorInfo } from '../lib/api';
   import { sideBySide } from '../lib/diff';
@@ -38,6 +40,17 @@
   const projects = $derived([...new Set(details.map((d) => d.run.project))]);
   const pinned = $derived(pins.of(projects));
   let showInternal = $state(false);
+  // The file or folder being made into an artifact version (with `--edit-artifacts`)
+  let promote = $state<{ path: string; kind: 'file' | 'folder'; files: number; size: number } | null>(null);
+  const canEdit = $derived(!!app.info?.edit_artifacts);
+  let artNames = $state(new Map<string, string[]>());
+  $effect(() => {
+    if (!promote) return;
+    const p = details[0]?.run.project;
+    api.artifacts(p).then((r) => {
+      artNames = new Map([[p, [...new Set(r.artifacts.filter((a) => a.project === p).map((a) => a.name))]]]);
+    });
+  });
   let find = $state('');
   // Folders opened or closed by hand; `files/` and the picked file's folders start open
   let toggled = $state(new Set<string>());
@@ -454,6 +467,28 @@
   );
 </script>
 
+{#if promote && details[0]}
+  <ArtifactForm
+    projects={[details[0].run.project]}
+    project={details[0].run.project}
+    names={artNames}
+    source={{
+      runKey: details[0].run.key,
+      runName: details[0].run.name,
+      folder: details[0].run.path.replace(/\/+$/, '').split('/').pop() ?? details[0].run.id,
+      path: promote.path.replace(/\/$/, ''),
+      kind: promote.kind,
+      files: promote.files,
+      size: promote.size,
+      running: details[0].run.status === 'running',
+    }}
+    onclose={() => (promote = null)}
+    onadded={(p, n, v) => {
+      promote = null;
+      router.go('artifacts', { art: `${p}|${n}|${v}`, cmp: null, tab: null, file: null, pair: null });
+    }}
+  />
+{/if}
 <div class="files">
   {#if !pin}
     <div class="tree">
@@ -516,6 +551,22 @@
               <span class="chev" class:shut={!isOpen(r.path) && !find}><Icon name="chevron" size={13} /></span>
               <span class="nm">{r.name}/</span>
               <span class="meta">{r.count} · {fmtBytes(r.size)}</span>
+              {#if canEdit && !multi}<span
+                  class="pinbtn artbtn"
+                  role="button"
+                  tabindex="-1"
+                  aria-label="New artifact version from {r.path}/"
+                  title="New artifact version from this folder"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    promote = { path: r.path + '/', kind: 'folder', files: r.count, size: r.size };
+                  }}
+                  onkeydown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.stopPropagation();
+                    promote = { path: r.path + '/', kind: 'folder', files: r.count, size: r.size };
+                  }}><Icon name="artifact" size={13} /></span
+                >{/if}
             </button>
           {:else}
             {@const f = r.files.find(Boolean)!}
@@ -656,6 +707,14 @@
                 download
                 title="Download {details[i].run.name}'s copy"><Icon name="download" size={14} /> Download</a
               >
+              {#if canEdit && !multi && !f.internal}
+                <button
+                  class="btn btn-ghost sm artnew"
+                  title="New artifact version from this file, by copy or by reference"
+                  onclick={() => (promote = { path: f.path, kind: 'file', files: 1, size: f.size })}
+                  ><Icon name="artifact" size={14} /> New artifact version</button
+                >
+              {/if}
             {:else}<span class="faint">Not in {details[i].run.name}</span>{/if}
           </span>
         {/each}
@@ -942,6 +1001,9 @@
   }
   .pinbtn.on {
     color: var(--accent);
+  }
+  .artnew {
+    color: var(--text);
   }
   .meta {
     margin-left: auto;

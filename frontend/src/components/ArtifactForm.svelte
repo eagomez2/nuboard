@@ -4,14 +4,29 @@
 
   // A new artifact version that references a path on the machine running the viewer,
   // as `nuboard artifact add --ref` does: checked as it is typed, reviewed, then added.
+  // With `source`, the version is made from a file or folder of a run instead (the Files
+  // tab), copied or referenced inside the project; the rest of the form is the same.
   let {
     projects,
     project: startProject,
     name: startName = '',
     names,
+    source = null,
     onclose,
     onadded,
   }: {
+    /** A file or folder of a run to make the version from, by copy or by reference. */
+    source?: {
+      runKey: string;
+      runName: string;
+      /** The run's folder name, under `<project>/runs/`. */
+      folder: string;
+      path: string;
+      kind: 'file' | 'folder';
+      files: number;
+      size: number;
+      running: boolean;
+    } | null;
     projects: string[];
     project: string;
     name?: string;
@@ -42,6 +57,29 @@
   let type = $state('');
   let description = $state('');
   let checksum = $state(false);
+  // From a run: copy (the default) or reference, a name from the file and a type from its suffix
+  let stored = $state<'copy' | 'reference'>('copy');
+  // svelte-ignore state_referenced_locally (the starting values only)
+  if (source) {
+    const base = source.path.split('/').filter(Boolean).pop() ?? '';
+    if (!name) name = source.kind === 'file' ? base.replace(/\.[^.]+$/, '') : base;
+    if (/\.(safetensors|pt|pth|ckpt|bin|npz|h5|keras|onnx)$/i.test(source.path) || /checkpoint/i.test(source.path))
+      type = 'checkpoint';
+  }
+  // The source as a path check: where a reference points, relative to the project
+  const fromRun = $derived<Check | null>(
+    source
+      ? {
+          resolved: `runs/${source.folder}/${source.path}`,
+          exists: true,
+          kind: source.kind,
+          files: source.files,
+          size: source.size,
+          partial: false,
+        }
+      : null,
+  );
+  const hashed = $derived(checksum || (!!source && stored === 'copy'));
   let meta = $state<{ key: string; type: MetaType; value: string }[]>([]);
   let check = $state<Check | null>(null);
   let checking = $state(false);
@@ -66,7 +104,7 @@
   $effect(() => {
     const p = path.trim();
     check = null;
-    if (!p) return;
+    if (source || !p) return;
     checking = true;
     const t = setTimeout(async () => {
       const res = await api.editArtifacts<Check>('check', { path: p }).catch((e) => ({ error: String(e) }) as Check);
@@ -109,15 +147,17 @@
       ? 'Choose a project.'
       : !cleanName
         ? 'Enter a name.'
-        : !path.trim()
-          ? 'Enter a path.'
-          : checking || !check
-            ? 'Checking the path…'
-            : check.error
-              ? check.error
-              : !check.exists
-                ? 'Nothing exists at that path.'
-                : metaError,
+        : source
+          ? metaError
+          : !path.trim()
+            ? 'Enter a path.'
+            : checking || !check
+              ? 'Checking the path…'
+              : check.error
+                ? check.error
+                : !check.exists
+                  ? 'Nothing exists at that path.'
+                  : metaError,
   );
 
   // Above this many files the form suggests referencing shards or an index file instead
@@ -135,23 +175,32 @@
     return `${what}${files} · ${c.partial ? 'at least ' : ''}${fmtBytes(c.size ?? 0)}`;
   }
 
-  async function add() {
+  // set when the files match the latest version: the form offers to add them anyway
+  let duplicateOf = $state<number | null>(null);
+
+  type Added = { project: string; name: string; version: number; duplicate_of?: number };
+
+  async function add(allowDuplicate = false) {
     busy = true;
     error = '';
-    const res = await api
-      .editArtifacts<{ project: string; name: string; version: number }>('add', {
-        project,
-        name: cleanName,
-        path: path.trim(),
-        type: type || null,
-        description: description.trim(),
-        metadata: Object.fromEntries(meta.map((m) => [m.key.trim(), metaValue(m)])),
-        checksum,
-      })
-      .catch((e) => ({ error: String(e) }) as { error: string; project: string; name: string; version: number });
+    duplicateOf = null;
+    const common = {
+      name: cleanName,
+      type: type || null,
+      description: description.trim(),
+      metadata: Object.fromEntries(meta.map((m) => [m.key.trim(), metaValue(m)])),
+      checksum,
+      allow_duplicate: allowDuplicate,
+    };
+    const res = await (
+      source
+        ? api.editArtifacts<Added>('promote', { ...common, run: source.runKey, path: source.path, store: stored })
+        : api.editArtifacts<Added>('add', { ...common, project, path: path.trim() })
+    ).catch((e) => ({ error: String(e) }) as Added & { error: string });
     busy = false;
     if (res.error) {
       error = res.error;
+      duplicateOf = typeof res.duplicate_of === 'number' ? res.duplicate_of : null;
       return;
     }
     onadded(res.project, res.name, res.version);
@@ -175,16 +224,31 @@
       else review = true;
     }}
   >
-    <h2 id="art-form-title">{review ? 'Review the new version' : 'New artifact version'}</h2>
+    <h2 id="art-form-title">
+      {review ? 'Review the new version' : source ? 'New artifact version from this run' : 'New artifact version'}
+    </h2>
     {#if !review}
-      <p class="msg">
-        The version references files on the machine running the viewer. Nothing is copied, and NuBoard never changes
-        them.
-      </p>
+      {#if source}
+        <p class="msg">
+          The version is made from a {source.kind} of the run <b>{source.runName}</b>, which is recorded as its
+          producer. The run's folder is never changed.
+        </p>
+      {:else}
+        <p class="msg">
+          The version references files on the machine running the viewer. Nothing is copied, and NuBoard never changes
+          them.
+        </p>
+      {/if}
       <div class="two">
         <div class="field">
           <label class="label" for="art-project">Project</label>
-          <select id="art-project" class="input" bind:value={project}>
+          <select
+            id="art-project"
+            class="input"
+            bind:value={project}
+            disabled={!!source}
+            title={source ? "A version made from a run belongs to the run's project" : undefined}
+          >
             {#each projects as p (p)}<option value={p}>{p}</option>{/each}
           </select>
         </div>
@@ -211,37 +275,80 @@
             : `Creates the artifact ${cleanName}.`}</span
         >
       {/if}
-      <div class="field">
-        <label class="label" for="art-path">Path</label>
-        <input
-          id="art-path"
-          class="input mono"
-          bind:value={path}
-          placeholder="/data/fineweb-edu, ~/models/best.pt, $DATA/corpus or a path relative to the served folder"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <span class="hint check" class:bad={check && (check.error || !check.exists)} aria-live="polite">
-          {#if !path.trim()}
-            Absolute, ~/…, $VARIABLE/… or relative to the folder the viewer serves.
-          {:else if checking || !check}
-            Checking…
-          {:else if check.error}
-            {check.error}
-          {:else if !check.exists}
-            Nothing exists at <span class="mono">{check.resolved}</span>.
-          {:else}
-            <span class="mono path">{check.resolved}</span> · {summary(check)}
+      {#if source && fromRun}
+        <div class="field">
+          <label class="label" for="art-path">Source</label>
+          <input id="art-path" class="input mono" value={source.path} readonly />
+          <span class="hint check"><span class="mono path">{fromRun.resolved}</span> · {summary(fromRun)}</span>
+        </div>
+        <div class="field">
+          <span class="label">Store as</span>
+          <div class="choices" role="radiogroup" aria-label="Store as">
+            <button
+              type="button"
+              class="choice"
+              role="radio"
+              aria-checked={stored === 'copy'}
+              onclick={() => (stored = 'copy')}
+            >
+              <span class="ct"><span class="dot"></span>Copy</span>
+              <span class="cd"
+                >Copies {fmtBytes(source.size)} into the artifact. It stays the same whatever happens to the run.</span
+              >
+            </button>
+            <button
+              type="button"
+              class="choice"
+              role="radio"
+              aria-checked={stored === 'reference'}
+              disabled={source.running}
+              onclick={() => (stored = 'reference')}
+            >
+              <span class="ct"><span class="dot"></span>Reference</span>
+              <span class="cd"
+                >{source.running
+                  ? 'Not while the run is running: its files may still change.'
+                  : "Copies nothing. The run can't be deleted while this version uses it."}</span
+              >
+            </button>
+          </div>
+          {#if stored === 'reference'}
+            <span class="hint">Stored relative to the project, so it can still be copied, rsynced or merged.</span>
           {/if}
-        </span>
-        {#if large}
-          <span class="hint warn" role="note">
-            That is a lot of files: the manifest lists every one, so adding it takes a while and each
-            <span class="mono">use_artifact</span> checks them all. Consider referencing the shards (tar or Parquet files)
-            or an index file instead; the artifacts guide has recommendations.
+        </div>
+      {:else}
+        <div class="field">
+          <label class="label" for="art-path">Path</label>
+          <input
+            id="art-path"
+            class="input mono"
+            bind:value={path}
+            placeholder="/data/fineweb-edu, ~/models/best.pt, $DATA/corpus or a path relative to the served folder"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="hint check" class:bad={check && (check.error || !check.exists)} aria-live="polite">
+            {#if !path.trim()}
+              Absolute, ~/…, $VARIABLE/… or relative to the folder the viewer serves.
+            {:else if checking || !check}
+              Checking…
+            {:else if check.error}
+              {check.error}
+            {:else if !check.exists}
+              Nothing exists at <span class="mono">{check.resolved}</span>.
+            {:else}
+              <span class="mono path">{check.resolved}</span> · {summary(check)}
+            {/if}
           </span>
-        {/if}
-      </div>
+          {#if large}
+            <span class="hint warn" role="note">
+              That is a lot of files: the manifest lists every one, so adding it takes a while and each
+              <span class="mono">use_artifact</span> checks them all. Consider referencing the shards (tar or Parquet files)
+              or an index file instead; the artifacts guide has recommendations.
+            </span>
+          {/if}
+        </div>
+      {/if}
       <div class="two">
         <div class="field">
           <label class="label" for="art-type">Type</label>
@@ -310,12 +417,17 @@
           type="button"
           class="switch"
           role="switch"
-          aria-checked={checksum}
+          aria-checked={hashed}
+          disabled={!!source && stored === 'copy'}
           aria-label="Checksum"
           onclick={() => (checksum = !checksum)}
         ></button>
         <span>Checksum</span>
-        <span class="hint">Also hash every file (SHA-256). This reads all of the data.</span>
+        <span class="hint"
+          >{source && stored === 'copy'
+            ? 'Copies are always hashed (SHA-256).'
+            : 'Also hash every file (SHA-256). This reads all of the data.'}</span
+        >
       </label>
     {:else}
       <dl class="review">
@@ -324,10 +436,19 @@
           {project}/{cleanName}
           <span class="faint">({existing.includes(cleanName) ? 'next version' : 'new artifact'})</span>
         </dd>
-        <dt>References</dt>
-        <dd class="mono path">{check?.resolved}</dd>
-        <dt>Contains</dt>
-        <dd>{check ? summary(check) : ''}</dd>
+        {#if source && fromRun}
+          <dt>From run</dt>
+          <dd>{source.runName} <span class="faint mono">({source.folder})</span></dd>
+          <dt>{stored === 'copy' ? 'Copies' : 'References'}</dt>
+          <dd class="mono path">{stored === 'copy' ? source.path : fromRun.resolved}</dd>
+          <dt>Contains</dt>
+          <dd>{summary(fromRun)}</dd>
+        {:else}
+          <dt>References</dt>
+          <dd class="mono path">{check?.resolved}</dd>
+          <dt>Contains</dt>
+          <dd>{check ? summary(check) : ''}</dd>
+        {/if}
         {#if type}<dt>Type</dt>
           <dd>{type}</dd>{/if}
         {#if description.trim()}<dt>Description</dt>
@@ -335,10 +456,17 @@
         {#each meta as m (m.key)}<dt class="mono">{m.key}</dt>
           <dd class="mono">{m.value}</dd>{/each}
         <dt>Checksum</dt>
-        <dd>{checksum ? 'Yes, every file is hashed' : 'No, files are checked by size'}</dd>
+        <dd>{hashed ? 'Yes, every file is hashed' : 'No, files are checked by size'}</dd>
       </dl>
     {/if}
-    {#if error}<p class="err" role="alert">{error}</p>{/if}
+    {#if error}<p class="err" role="alert">
+        {error}{#if duplicateOf !== null}. <button
+            type="button"
+            class="btn btn-ghost sm"
+            disabled={busy}
+            onclick={() => add(true)}>Add anyway</button
+          >{/if}
+      </p>{/if}
     <div class="actions">
       {#if review}
         <button type="button" class="btn" disabled={busy} onclick={() => (review = false)}>Back</button>
@@ -347,7 +475,15 @@
       {/if}
       <span class="faint why">{review ? '' : metaError}</span>
       <button type="submit" class="btn btn-primary" disabled={!!problem || busy}
-        >{busy ? (checksum ? 'Hashing files…' : 'Adding…') : review ? 'Add version' : 'Review'}</button
+        >{busy
+          ? source && stored === 'copy'
+            ? 'Copying…'
+            : checksum
+              ? 'Hashing files…'
+              : 'Adding…'
+          : review
+            ? 'Add version'
+            : 'Review'}</button
       >
     </div>
   </form>
@@ -444,6 +580,55 @@
   }
   .faint {
     color: var(--faint);
+  }
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .choice {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .choice[aria-checked='true'] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+  .choice:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .ct {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--faint);
+    flex: none;
+  }
+  .choice[aria-checked='true'] .dot {
+    border: 4px solid var(--accent);
+  }
+  .cd {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.4;
   }
   .err {
     margin: 0;

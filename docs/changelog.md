@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.24.0
+
+Artifact versions can be made from a run's files in the viewer, and an
+artifact's files are read by their path inside the version. Artifacts can no
+longer contain other versions, and the Artifacts page no longer hangs on a
+bad version. No breaking changes; the viewer now asks before adding files
+identical to the latest version.
+
+- **Reading an artifact's files**: an `Artifact` reads like a mapping from
+  each listed file's path inside the version to the file, so
+  `art["best.pt"]`, `"best.pt" in art`, `list(art)` and `len(art)` work for
+  copies and references alike. Only the files the manifest lists are keys,
+  which matters for a reference to one file, whose `files` folder may hold
+  others.
+- **Artifact versions can no longer contain other versions**: a source inside
+  a project's `artifacts/` folder, or one that contains it or another
+  project's versions, is refused. Before, referencing the project folder made
+  each new version list the previous versions' manifests.
+- **The viewer asks before adding identical files again**: adding or
+  promoting files that are the same as the artifact's latest version shows
+  "the same as v1" with **Add anyway** (`allow_duplicate` in the API) instead
+  of adding a duplicate version.
+- **The Artifacts page cannot hang on loading**: a version with a missing,
+  unreadable or malformed manifest is listed with the problem instead of
+  breaking the list, and a list that fails or takes over 20 seconds shows an
+  error with **Retry**. A copy that is interrupted removes its staging
+  folder, and staging folders abandoned for 6 hours are removed when a
+  version of that artifact is added or the viewer starts with
+  `--edit-artifacts`.
+- **Artifact versions from a run's files**: with `nuboard up --edit-artifacts`,
+  the Files tab has **New artifact version** next to Download, and an artifact
+  icon on folder rows. It opens the same form as **New version** on the
+  Artifacts page, with the source filled in and a choice of **Copy** (the
+  default) or **Reference**. A reference to files inside the project is stored
+  relative to the project (`reference_base: "project"`), so it survives
+  copying, rsyncing and merging; a running run can only be copied. The run is
+  recorded as the producer and the run folder is never changed. Without the
+  flag the buttons are hidden. `nuboard artifact add` with a path inside a run
+  does the same, `promote_run_path` does it from Python, and `nuboard rm`
+  keeps a run that a referenced version needs unless `--force`.
+- **Run details tabs** have icons, and only the first five show in the row: the
+  rest, and the Charts, Sweeps and Media shortcuts, are in a **⋮** menu, so
+  the settings filter stays on the same line on a laptop screen.
+- **Timing tab**: the dot marking the shown step on each per-step line is
+  round (it was stretched with the line), and a timer's full chart marks the
+  shown step and follows the cursor with a dot.
+
 ## 0.23.0
 
 Timers measure where training time goes, with a new Timing tab in the run

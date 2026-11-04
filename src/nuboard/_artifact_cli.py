@@ -27,6 +27,7 @@ from .artifacts import (
     find_artifact_projects,
     list_artifacts,
     list_unlinked,
+    promote_run_path,
     resolve_artifact,
     restore_artifact,
     split_ref,
@@ -48,6 +49,20 @@ BACK = "<"
 
 class Invalid(ValueError):
     """A value that does not pass its check; the message says why and what to enter."""
+
+
+def _in_run(pdir: Path, path: str) -> tuple[Path | None, str]:
+    """Return the run folder of `pdir` that `path` lies in and the path inside it, if any."""
+
+    try:
+        rel = _expand(path).resolve().relative_to((pdir / "runs").resolve())
+    except (ValueError, OSError):
+        return None, ""
+
+    if len(rel.parts) < 2 or not (pdir / "runs" / rel.parts[0] / "run.json").is_file():
+        return None, ""
+
+    return pdir / "runs" / rel.parts[0], "/".join(rel.parts[1:])
 
 
 # -- checks, shared by flags and prompts ---------------------------------------------
@@ -748,17 +763,36 @@ def _add(
         say("Nothing written (--dry-run).")
         return 0
 
-    art = add_artifact(
-        project or "",
-        name,
-        draft.path or "",
-        type=draft.type,
-        metadata=draft.metadata,
-        reference=draft.store == "reference",
-        checksum=bool(draft.checksum),
-        description=draft.description,
-        dir=root,
-    )
+    run_dir, rel = _in_run(project_dir(project or "", root), draft.path or "")
+
+    try:
+        if run_dir is not None:  # a run's own files: the run is recorded as the producer
+            art = promote_run_path(
+                run_dir,
+                rel,
+                name,
+                copy=draft.store == "copy",
+                type=draft.type,
+                metadata=draft.metadata,
+                checksum=bool(draft.checksum),
+                description=draft.description,
+            )
+        else:
+            art = add_artifact(
+                project or "",
+                name,
+                draft.path or "",
+                type=draft.type,
+                metadata=draft.metadata,
+                reference=draft.store == "reference",
+                checksum=bool(draft.checksum),
+                description=draft.description,
+                dir=root,
+            )
+    except ValueError as exc:
+        say(f"error: {exc}")
+        return 2
+
     say(f"Added {project}/{art.ref} ({draft.store}, {files:,} files, {fmt_bytes(size)})")
 
     if art.manifest.get("reference"):
