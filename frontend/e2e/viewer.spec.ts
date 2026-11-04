@@ -2239,7 +2239,7 @@ test('sweeps rank by min, max or last, in the direction of the direction arrow',
   expect(lows).toEqual([...lows].sort((a, b) => a - b));
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(page.locator('.pc .metricaxis .sub')).toHaveText('last · lowest on top');
-  await expect(page.getByText(/Lowest last first/)).toBeVisible();
+  await expect(page.getByText(/Each run's last value, lowest ranked first/)).toBeVisible();
   const lasts = await read();
   expect(lasts).toEqual([...lasts].sort((a, b) => a - b));
   // flipping the arrow changes this view only: the highest rank first, nothing saved yet

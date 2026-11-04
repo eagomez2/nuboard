@@ -353,7 +353,9 @@
       >
     </div>
     <span class="muted" title="The arrow next to the scalar says which way is better, and so which runs rank first."
-      >{lower ? 'Lowest' : 'Highest'} {stat} first · {kept.length} of {runs.length} runs</span
+      >Each run's {stat === 'min' ? 'lowest' : stat === 'max' ? 'highest' : 'last'} value, {lower
+        ? 'lowest'
+        : 'highest'} ranked first · {kept.length} of {runs.length} runs</span
     >
     <span class="grow"></span>
     {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}
