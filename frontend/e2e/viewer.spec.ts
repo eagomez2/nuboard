@@ -2190,6 +2190,16 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.goto('/#/hypotheses');
   await expect(page.getByRole('heading', { name: 'Augmentations on ViT-S/16' })).toBeVisible();
   await expect(page.locator('.hcard')).toHaveCount(5);
+  // each card marks its top run's number; with Last, flipping the arrow moves the marks
+  const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
+  await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
+  await page.getByRole('combobox', { name: 'Summary' }).selectOption('last');
+  const highest = await tops();
+  await page.getByRole('button', { name: /^Direction of val\/acc/ }).click();
+  await expect.poll(tops).not.toBe(highest);
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await expect.poll(tops).toBe(highest);
+  await page.getByRole('combobox', { name: 'Summary' }).selectOption('max');
   await page.locator('.chiprow', { hasText: 'cutmix-s0' }).click();
   await expect(page.locator('aside textarea')).toHaveValue('Best run of the study.');
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Timeline' }).click();

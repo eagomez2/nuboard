@@ -58,7 +58,10 @@ objective. Some notes:
   **Min** or **Max** it reached at any step, or its **Last** value (`stat` in
   the URL). The arrow next to the scalar says which way is better, **↓** lower
   or **↑** higher, and so which runs rank first and go on top of the
-  objective axis. It starts as a guess from the name (faint and dashed); a
+  objective axis. Max of a lower-is-better scalar (or Min of a
+  higher-is-better one) ranks by each run's worst, the smallest loss spike or
+  the shallowest accuracy dip, and the label says "(its worst)". The arrow
+  starts as a guess from the name (faint and dashed); a
   click changes your view and **Save for everyone** keeps it in the project;
   see
   [Which way is better](viewer.md#which-way-is-better). Hover any of these

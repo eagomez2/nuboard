@@ -51,11 +51,13 @@ appear on several boards.
 - **Star** runs and cards that matter. **Starred only** keeps just the paths
   through them.
 - **The number on each run** is one metric, picked under **Number** in the
-  toolbar: its **Min**, **Max** or **Last** value. With Last, the arrow next
-  to it says whether lower or higher is better, which decides the top run each
-  card marks; it is the metric's direction in the project, read live (see
-  [Which way is better](viewer.md#which-way-is-better)). A metric starts on
-  Min when its name reads as a loss or error, else on Max.
+  toolbar: its **Min**, **Max** or **Last** value. Each card marks its top
+  run's number (▲, in the accent color): the lowest for Min, the highest for
+  Max, and for Last the end the arrow next to it says is better, the metric's
+  direction in the project, read live (see
+  [Which way is better](viewer.md#which-way-is-better)). Flipping the arrow
+  moves the marks. A metric starts on Min when its name reads as a loss or
+  error, else on Max.
   A card can pick its own under
   **Number on this card**; its header then names that metric. Hover a number
   to see which metric and value it is.

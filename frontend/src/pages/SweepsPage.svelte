@@ -57,6 +57,12 @@
   const top = $derived(direction.direction ?? 'max');
   const lower = $derived(top === 'min');
   const stat = $derived(statFor('sweeps', metric, router.get('stat'), true, direction.direction ?? undefined));
+  // Max of a lower-is-better scalar (or Min of a higher-is-better one) ranks by each run's worst:
+  // the smallest loss spike, the shallowest accuracy dip. Said so in the label.
+  const worstCase = $derived(stat !== 'last' && stat !== top);
+  const rankText = $derived(
+    `Each run's ${stat === 'min' ? 'lowest' : stat === 'max' ? 'highest' : 'last'} value${worstCase ? ' (its worst)' : ''}, ${lower ? 'lowest' : 'highest'} ranked first`,
+  );
   function setStat(v: Stat) {
     rememberStat('sweeps', metric, v);
     router.set({ stat: v });
@@ -352,10 +358,12 @@
         onclick={() => setStat('last')}>Last</button
       >
     </div>
-    <span class="muted" title="The arrow next to the scalar says which way is better, and so which runs rank first."
-      >Each run's {stat === 'min' ? 'lowest' : stat === 'max' ? 'highest' : 'last'} value, {lower
-        ? 'lowest'
-        : 'highest'} ranked first · {kept.length} of {runs.length} runs</span
+    <span
+      class="muted"
+      title={worstCase
+        ? `Ranks by each run's worst ${metric}: ${stat === 'max' ? 'the highest it reached, where lower is better' : 'the lowest it fell to, where higher is better'}. Useful for stability: the smallest spike or dip ranks first.`
+        : 'Min, Max or Last picks the number of each run; the arrow next to the scalar says which way is better, and so which runs rank first.'}
+      >{rankText} · {kept.length} of {runs.length} runs</span
     >
     <span class="grow"></span>
     {#if Object.keys(brushes).length}<button class="btn" onclick={() => (brushes = {})}>Clear filters</button>{/if}

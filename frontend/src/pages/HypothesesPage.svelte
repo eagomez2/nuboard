@@ -17,7 +17,9 @@
     SIZE,
     cardChoice,
     cardFor,
+    cardTop,
     cardValue,
+    bestRun,
     chipY,
     colorVar,
     edges,
@@ -377,6 +379,26 @@
     return v === null ? '—' : fmtNum(v);
   };
   const STAT = { last: 'Last', min: 'Min', max: 'Max' } as const;
+  // Each card's top run by its number: the end its direction says is better (the arrow next to
+  // Number for Last; Min and Max their own end). Marked only when a card has two or more numbers.
+  const topRuns = $derived.by(() => {
+    const out = new Map<string, string>();
+    const d = data;
+    if (!d || !opts) return out;
+    for (const h of d.hypotheses) {
+      const card = h.card ?? d.board.card;
+      if (!card || h.runs.filter((r) => cardValue(d.runs[r.id], card) !== null).length < 2) continue;
+      const best = bestRun(h, d.runs, card, opts.dirOf);
+      if (best) out.set(h.id, best);
+    }
+    return out;
+  });
+  const topTitle = (h: Hypothesis) => {
+    const card = h.card ?? data?.board.card;
+    if (!card) return '';
+    const end = cardTop(card, opts?.dirOf) === 'min' ? 'lowest' : 'highest';
+    return `Top on this card: the ${end} ${card.metric} (${STAT[card.stat]})`;
+  };
   /** What the chip number is, such as "val/acc (Max)". */
   const numberName = (h: Hypothesis) => {
     const card = h.card ?? data?.board.card;
@@ -756,8 +778,11 @@
                         <span class="n">{runName(r.id)}</span>
                         {#if r.star}<span class="star">★</span>{/if}
                         {#if run?.status === 'running'}<span class="live">live</span>{/if}
-                        {#if !run}<span class="nf">not found</span>{:else}<span class="m" title={numberName(p.hyp)}
-                            >{chipNumber(p.hyp, r)}</span
+                        {#if !run}<span class="nf">not found</span>{:else}{@const isTop =
+                            topRuns.get(p.hyp.id) === r.id}<span
+                            class="m"
+                            class:top={isTop}
+                            title={isTop ? topTitle(p.hyp) : numberName(p.hyp)}>{chipNumber(p.hyp, r)}</span
                           >{/if}
                       </button>
                     {/each}
@@ -1413,6 +1438,16 @@
     font-size: 12px;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
+  }
+  /* the card's top run by its number */
+  .chiprow .m.top {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .chiprow .m.top::before {
+    content: '▲ ';
+    font-size: 9px;
+    vertical-align: 1px;
   }
   .chiprow.dead .n,
   .tlrow.dead .n {
