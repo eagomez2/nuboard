@@ -564,42 +564,62 @@
   </div>
 
   {#if selected.length}
-    <div class="selbar">
+    <!-- floats at the bottom of the window, so ticking a box never pushes the table down -->
+    <div class="selbar" role="toolbar" aria-label="Selected runs">
       <span class="count">{selected.length} selected</span>
+      <span class="sep" aria-hidden="true"></span>
       <button
-        class="btn"
+        class="btn btn-ghost icon"
+        title="Star"
+        aria-label="Star"
         onclick={() => annotate(selected, { starred: !selected.every((k) => app.runByKey(k)?.starred) })}
       >
-        <Icon name="star" size={15} /> Star
-      </button>
-      <button class="btn" onclick={() => annotate(selected, { archived: !selectedArchived })}>
-        <Icon name="archive" size={15} />
-        {selectedArchived ? 'Unarchive' : 'Archive'}
+        <Icon name="star" size={16} />
       </button>
       <button
-        class="btn"
+        class="btn btn-ghost icon"
+        title={selectedArchived ? 'Unarchive' : 'Archive'}
+        aria-label={selectedArchived ? 'Unarchive' : 'Archive'}
+        onclick={() => annotate(selected, { archived: !selectedArchived })}
+      >
+        <Icon name="archive" size={16} />
+      </button>
+      <button
+        class="btn btn-ghost icon"
+        title="Mark reviewed"
+        aria-label="Mark reviewed"
         onclick={() => annotate(selected, { reviewed: !selected.every((k) => app.runByKey(k)?.reviewed) })}
       >
-        <Icon name="check" size={15} /> Mark reviewed
+        <Icon name="check" size={16} />
       </button>
-      <button class="btn" onclick={tagSelected}><Icon name="tag" size={15} /> Tags</button>
-      <button class="btn" title="Set a property on the selected runs" onclick={setPropertyOnSelected}
-        ><Icon name="list-bullet" size={15} /> Properties</button
+      <button class="btn btn-ghost icon" title="Tags" aria-label="Tags" onclick={tagSelected}
+        ><Icon name="tag" size={16} /></button
       >
-      <button class="btn" title="Add the selected runs to a collection" onclick={addToCollection}>
-        <Icon name="collection" size={15} /> Collection
-      </button>
-      <button class="btn" title="Charts of the selected runs" onclick={() => openSelected('charts')}>
+      <button
+        class="btn btn-ghost icon"
+        title="Set a property on the selected runs"
+        aria-label="Properties"
+        onclick={setPropertyOnSelected}><Icon name="list-bullet" size={16} /></button
+      >
+      <button
+        class="btn btn-ghost icon"
+        title="Add the selected runs to a collection"
+        aria-label="Collection"
+        onclick={addToCollection}><Icon name="collection" size={16} /></button
+      >
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn btn-ghost" title="Charts of the selected runs" onclick={() => openSelected('charts')}>
         <Icon name="charts" size={15} /> Charts
       </button>
-      <button class="btn" title="Sweeps of the selected runs" onclick={() => openSelected('sweeps')}>
+      <button class="btn btn-ghost" title="Sweeps of the selected runs" onclick={() => openSelected('sweeps')}>
         <Icon name="sweep" size={15} /> Sweeps
       </button>
-      <button class="btn" title="Media of the selected runs" onclick={() => openSelected('media')}>
+      <button class="btn btn-ghost" title="Media of the selected runs" onclick={() => openSelected('media')}>
         <Icon name="media" size={15} /> Media
       </button>
+      <span class="sep" aria-hidden="true"></span>
       <button
-        class="btn"
+        class="btn btn-primary"
         disabled={selected.length > MAX_COMPARE}
         title={selected.length > MAX_COMPARE
           ? `Compare up to ${MAX_COMPARE} runs at a time`
@@ -612,11 +632,13 @@
         {#if selected.length === 1}<Icon name="info" size={15} /> Details{:else}<Icon name="compare" size={15} /> Compare{/if}
       </button>
       <button
-        class="btn btn-ghost"
+        class="btn btn-ghost icon"
+        title="Clear selection"
+        aria-label="Clear selection"
         onclick={() => {
           app.selected.clear();
           router.set({ sel: null });
-        }}>Clear selection</button
+        }}><Icon name="x" size={16} /></button
       >
     </div>
   {/if}
@@ -815,6 +837,7 @@
     </div>
   </div>
 </div>
+{#if selected.length}<div class="selpad" aria-hidden="true"></div>{/if}
 
 <style>
   .panel {
@@ -849,18 +872,60 @@
     font-size: 13.5px;
   }
   .selbar {
+    position: fixed;
+    /* centred on the page area, right of the 64px rail */
+    left: calc(50% + 32px);
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 40;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+    gap: 2px;
+    max-width: calc(100vw - 64px - 32px);
+    overflow-x: auto;
+    padding: 6px 8px 6px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow:
+      0 18px 48px rgb(0 0 0 / 0.22),
+      0 2px 6px rgb(0 0 0 / 0.08);
+    white-space: nowrap;
   }
   .selbar .count {
     color: var(--accent);
     font-weight: 600;
-    margin-right: 8px;
+    font-size: 13.5px;
+    margin-right: 6px;
+  }
+  .selbar .sep {
+    flex: none;
+    width: 1px;
+    height: 22px;
+    margin: 0 6px;
+    background: var(--border);
+  }
+  .selbar .btn {
+    flex: none;
+  }
+  .selbar .icon {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+  .selbar .btn-primary {
+    margin-left: 4px;
+  }
+  /* room under the last row, so the floating bar never hides it */
+  .selpad {
+    height: 72px;
+  }
+  @media (max-width: 720px) {
+    .selbar {
+      left: 50%;
+      bottom: 12px;
+      max-width: calc(100vw - 24px);
+    }
   }
   /* display is set here because Tailwind's `table` utility (display: table) also
      matches this class, and a CSS table ignores overflow, so it never scrolled */
