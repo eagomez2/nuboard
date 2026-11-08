@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.1
+
+A small viewer fix: ticking a run on Runs no longer pushes the table down.
+No breaking changes.
+
+- **Floating selection bar on Runs**: the actions for ticked runs now sit in
+  one row in a bar that floats at the bottom of the window, instead of a blue
+  bar above the table that moved it down. Star, Archive, Mark reviewed, Tags,
+  Properties and Collection are icons, named when you hover them; Charts,
+  Sweeps, Media and Compare (or Details, with one run ticked) keep their
+  labels, and the × clears the selection.
+
 ## 0.25.0
 
 A log x axis for Charts, a frequency axis switch for spectrograms, and
