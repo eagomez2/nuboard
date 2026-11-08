@@ -54,8 +54,9 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   edit their **Tags**, **Properties** or **Collection**, open them in
   **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
   (the button reads **Details** with one run ticked, and opens its details).
-  These actions sit in the blue selection bar, which appears once a run is
-  ticked. Charts, Sweeps, Media and
+  These actions sit in a bar that floats at the bottom of the window once a
+  run is ticked, so the table never moves; the first six are icons, named
+  when you hover them, and the × clears the selection. Charts, Sweeps, Media and
   Timeline then show a **Showing N selected runs** banner with buttons to the
   other pages, which keep the selection, and **Show all**, which goes back to
   the query result; **Clear selection** ends it too.
