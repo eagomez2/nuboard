@@ -4,6 +4,7 @@
   import Icon from './Icon.svelte';
   import NotesEditor from './NotesEditor.svelte';
   import PropertiesEditor from './PropertiesEditor.svelte';
+  import RunPicker from './RunPicker.svelte';
   import JobChips from './JobChips.svelte';
   import Status from './Status.svelte';
   import TagEditor from './TagEditor.svelte';
@@ -311,9 +312,13 @@
   const cols = $derived(`minmax(180px, 1fr) repeat(${details.length}, minmax(170px, 1.6fr))`);
   const rowWidth = $derived(`${180 + details.length * 182}px`);
 
-  function setPair(side: 0 | 1, e: Event) {
+  // the compared runs as the run picker lists them, so runs with the same name can be told apart
+  const pickRuns = $derived(details.map((d) => d.run));
+  function setPair(side: 0 | 1, id: string) {
+    const at = details.findIndex((d) => d.run.id === id);
+    if (at < 0) return;
     const next = [...pairIdx];
-    next[side] = Number((e.currentTarget as HTMLSelectElement).value);
+    next[side] = at;
     if (next[0] === next[1]) next[1 - side] = pairIdx[side];
     router.set({ pair: next.join(',') });
   }
@@ -323,6 +328,21 @@
 
   const errorText = $derived(details.map((d) => d.run.error).find(Boolean));
 </script>
+
+{#snippet pairs()}
+  Diff {@render pairPick(0)} against {@render pairPick(1)}
+{/snippet}
+
+{#snippet pairPick(side: 0 | 1)}
+  <span class="pairpick"
+    ><RunPicker
+      runs={pickRuns}
+      value={details[pairIdx[side]]?.run.id ?? ''}
+      label={side ? 'Right run' : 'Left run'}
+      onpick={(id) => setPair(side, id)}
+    /></span
+  >
+{/snippet}
 
 <svelte:window onkeydown={onWindowKey} onclick={() => (moreOpen = false)} />
 
@@ -464,16 +484,7 @@
     <TimingView detail={details[0]} />
   {:else if tab === 'filetree' || pinOf(tab)}
     {#if multi && details.length > 2}
-      <p class="muted small">
-        Diff
-        <select class="input sm mono" aria-label="Left run" value={pairIdx[0]} onchange={(e) => setPair(0, e)}>
-          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
-        </select>
-        against
-        <select class="input sm mono" aria-label="Right run" value={pairIdx[1]} onchange={(e) => setPair(1, e)}>
-          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
-        </select>
-      </p>
+      <div class="muted small pairrow">{@render pairs()}</div>
     {/if}
     <FilesView {details} {trees} {pairIdx} {onlyChanges} colors={COLORS} pin={pinOf(tab)} />
   {:else if tab === 'settings'}
@@ -510,20 +521,11 @@
   {:else if loadingFile}
     <p class="muted">Loading…</p>
   {:else if multi}
-    <p class="muted small">
+    <div class="muted small pairrow">
       <span class="mono">files/{tab}</span> · {changed} changed line{changed === 1 ? '' : 's'} · saved by init into each run
       folder
-      {#if details.length > 2}
-        · Diff
-        <select class="input sm mono" aria-label="Left run" value={pairIdx[0]} onchange={(e) => setPair(0, e)}>
-          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
-        </select>
-        against
-        <select class="input sm mono" aria-label="Right run" value={pairIdx[1]} onchange={(e) => setPair(1, e)}>
-          {#each details as d, i (d.run.key)}<option value={i}>{d.run.name}</option>{/each}
-        </select>
-      {/if}
-    </p>
+    </div>
+    {#if details.length > 2}<div class="muted small pairrow">{@render pairs()}</div>{/if}
     <div class="diff mono">
       <div class="dh"><b>{pair[0].run.name}</b><span>{pair[0].run.path}/files/{tab}</span></div>
       <div class="dh"><b>{pair[1].run.name}</b><span>{pair[1].run.path}/files/{tab}</span></div>
@@ -862,5 +864,16 @@
     max-height: 160px;
     overflow: auto;
     white-space: pre-wrap;
+  }
+  .pairpick {
+    display: inline-block;
+    width: 240px;
+  }
+  .pairrow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
   }
 </style>

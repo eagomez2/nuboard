@@ -258,7 +258,10 @@ the selection bar does, without ticking checkboxes.
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
 differs. **Files** and pinned tabs show a line diff between two of the
-runs. With more than two, pick which two from the **Diff … against …** menus. **Only changes** hides
+runs. With more than two, pick which two from the **Diff … against …** run
+pickers, which show the end of each run's id, its status, start time and tags,
+so runs with the same name can be told apart, and filter like every
+[filter box](#filter-boxes). **Only changes** hides
 identical rows and lines.
 
 The filter box above **All settings** narrows its rows by key, together with

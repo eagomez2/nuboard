@@ -23,6 +23,10 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **Compare picks the two runs to diff with the run picker.** With three to
+  eight runs, the **Diff … against …** menus on Files and file tabs become
+  run pickers that show the end of each run's id, its status, start time and
+  tags, so runs with the same name can be told apart. Links keep `pair=`.
 - **One X axis control in Charts.** The X axis group gets a fifth choice,
   **Scalar…**, which opens the searchable scalar list and then shows the
   picked scalar's name; the separate "X by scalar…" menu is gone. Links keep

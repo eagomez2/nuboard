@@ -33,7 +33,8 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await expect(page.getByRole('heading', { name: /Compare 4 runs/ })).toBeInViewport();
   await expect(page.locator('.srow.head .run')).toHaveCount(4);
   await page.getByRole('button', { name: 'Files', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Right run' }).selectOption({ index: 3 });
+  await page.getByRole('button', { name: 'Right run' }).click();
+  await page.getByRole('listbox', { name: 'Right run' }).getByRole('option').nth(3).click();
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
 
