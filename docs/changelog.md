@@ -19,6 +19,10 @@ Small fixes and conveniences in the viewer. No breaking changes.
   an empty Artifacts page no longer looks faded.
 - **Hypotheses: Not on the board** adds a run to the new hypothesis with one
   click, like **Add a run…**, instead of opening buttons under it.
+- **One searchable scalar picker.** Wherever a scalar is picked for Min /
+  Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
+  list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
+  on the current scalar.
 - **Media: text diffs.** A text card's **Show changes** button compares its
   text with the step before or with another run's text at the same step,
   line by line with the changed words highlighted.

@@ -3,6 +3,7 @@
   import { fade } from 'svelte/transition';
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
+  import ScalarPicker from '../components/ScalarPicker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
   import { chartZone } from '../lib/chartzone';
   import { LOCAL, timeZone } from '../lib/timezone.svelte';
@@ -482,44 +483,6 @@
       }
     return [...keys.entries()].filter(([, s]) => s.size > 1 && s.size < runs.length).map(([k]) => `config.${k}`);
   });
-  // ---- metric picker for the focus chart: every scalar, searchable ----
-  let pickOpen = $state(false);
-  let pickFind = $state('');
-  let pickIndex = $state(0);
-  let pickEl = $state<HTMLElement>();
-  let pickInput = $state<HTMLInputElement>();
-  $effect(() => {
-    if (pickOpen) pickInput?.focus();
-  });
-  const pickList = $derived.by(() => {
-    const q = pickFind.trim().toLowerCase();
-    return (q ? metrics.filter((m) => m.toLowerCase().includes(q)) : metrics).slice(0, 300);
-  });
-  function pick(m: string) {
-    router.set({ metric: m, zoom: null, cstat: null });
-    pickOpen = false;
-    pickFind = '';
-  }
-  function pickKey(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const n = pickList.length;
-      if (n) pickIndex = (pickIndex + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
-      pickEl?.querySelector(`[data-i="${pickIndex}"]`)?.scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'Enter' && pickList[pickIndex]) pick(pickList[pickIndex]);
-    else if (e.key === 'Escape') {
-      e.stopPropagation();
-      pickOpen = false;
-    }
-  }
-  $effect(() => {
-    if (!pickOpen) return;
-    const close = (e: PointerEvent) => {
-      if (!pickEl?.contains(e.target as Node)) pickOpen = false;
-    };
-    window.addEventListener('pointerdown', close, true);
-    return () => window.removeEventListener('pointerdown', close, true);
-  });
 
   // ---- legend: with many series, a filter and only the first few chips until expanded ----
   const LEGEND_MAX = 12;
@@ -865,47 +828,13 @@
           {/each}
         </div>
         {#if metrics.length > tabs.length}
-          <div class="picker" bind:this={pickEl}>
-            <button
-              class="btn btn-ghost sm"
-              aria-expanded={pickOpen}
-              title="Pick any of the {metrics.length} scalars"
-              onclick={() => {
-                pickOpen = !pickOpen;
-                pickIndex = 0;
-              }}><Icon name="search" size={14} /> All {metrics.length}</button
-            >
-            {#if pickOpen}
-              <div class="card pickpop" role="dialog" aria-label="Pick a scalar">
-                <input
-                  class="input sm mono"
-                  placeholder="Search scalars"
-                  aria-label="Search scalars"
-                  bind:this={pickInput}
-                  bind:value={pickFind}
-                  oninput={() => (pickIndex = 0)}
-                  onkeydown={pickKey}
-                />
-                <div class="picklist" role="listbox" aria-label="Scalars">
-                  {#each pickList as m, i (m)}
-                    <button
-                      class="pickopt mono"
-                      role="option"
-                      data-i={i}
-                      aria-selected={i === pickIndex}
-                      class:on={m === focus}
-                      title={m}
-                      onmouseenter={() => (pickIndex = i)}
-                      onclick={() => pick(m)}>{m}</button
-                    >
-                  {:else}
-                    <p class="faint small">No scalar matches “{pickFind}”.</p>
-                  {/each}
-                </div>
-                {#if pickList.length === 300}<p class="faint small">Showing the first 300; type to narrow.</p>{/if}
-              </div>
-            {/if}
-          </div>
+          <ScalarPicker
+            {metrics}
+            value={focus}
+            label="All {metrics.length}"
+            title="Pick any of the {metrics.length} scalars"
+            onpick={(m) => router.set({ metric: m, zoom: null, cstat: null })}
+          />
         {/if}
         <span class="note"
           >{groupBy
@@ -1395,48 +1324,6 @@
   }
   .legendmore {
     align-self: center;
-  }
-  .picker {
-    position: relative;
-  }
-  .pickpop {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 20;
-    width: 360px;
-    max-width: calc(100vw - 32px);
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    box-shadow: var(--lift);
-  }
-  .picklist {
-    max-height: 320px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-  .pickopt {
-    border: 0;
-    background: none;
-    text-align: left;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: none;
-  }
-  .pickopt[aria-selected='true'] {
-    background: var(--panel-2);
-  }
-  .pickopt.on {
-    color: var(--accent);
-    font-weight: 600;
   }
   .legend-chip.off {
     opacity: 0.4;

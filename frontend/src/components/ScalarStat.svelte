@@ -1,5 +1,6 @@
 <script lang="ts">
   import DirectionButton from './DirectionButton.svelte';
+  import ScalarPicker from './ScalarPicker.svelte';
   import type { Stat } from '../lib/stat';
 
   /**
@@ -43,18 +44,7 @@
 </script>
 
 <span class="scalarstat" class:small={size === 'sm'}>
-  <select
-    class="input mono metric"
-    class:sm={size === 'sm'}
-    value={metric}
-    {disabled}
-    aria-label="Scalar"
-    onchange={(e) => onmetric(e.currentTarget.value)}
-  >
-    {#if none !== undefined}<option value="">{none}</option>{/if}
-    {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
-    {#if metric && !metrics.includes(metric)}<option value={metric}>{metric}</option>{/if}
-  </select>
+  <ScalarPicker {metrics} value={metric} onpick={onmetric} {none} {disabled} {size} />
   {#if projects && metric}<DirectionButton {projects} name={metric} />{/if}
   {#if metric}
     <span class="seg" role="group" aria-label="Statistic">
@@ -73,13 +63,6 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-  }
-  .metric {
-    max-width: 240px;
-    font-size: 12.5px;
-  }
-  .small .metric {
-    max-width: 200px;
   }
   .small .seg button {
     padding: 2px 8px;

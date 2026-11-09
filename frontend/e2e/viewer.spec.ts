@@ -2341,7 +2341,11 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
     .locator('.hcard')
     .first()
     .click({ position: { x: 20, y: 12 } });
-  await page.locator('aside').getByRole('combobox', { name: 'Scalar' }).selectOption('val/acc');
+  await page
+    .locator('aside')
+    .getByRole('button', { name: /^Scalar:/ })
+    .click();
+  await page.getByRole('listbox', { name: 'Scalars' }).getByRole('option', { name: 'val/acc', exact: true }).click();
   const stat = page.locator('aside').getByRole('group', { name: 'Statistic' });
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
