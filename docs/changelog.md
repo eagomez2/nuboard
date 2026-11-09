@@ -23,6 +23,10 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **One X axis control in Charts.** The X axis group gets a fifth choice,
+  **Scalar…**, which opens the searchable scalar list and then shows the
+  picked scalar's name; the separate "X by scalar…" menu is gone. Links keep
+  `x=metric:<name>`.
 - **One rule for every filter box.** The Runs filter, the run pickers, the
   scalar pickers, Charts' **Filter scalars** and legend filter, and Media's
   **Filter keys** now all take words that must all match, `/regex/`, and

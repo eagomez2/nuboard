@@ -674,6 +674,15 @@
               >{label}</button
             >
           {/each}
+          <ScalarPicker
+            metrics={xCandidates}
+            value={xMetric ?? ''}
+            label={xMetric ?? 'Scalar…'}
+            pressed={xMetric !== null}
+            ariaLabel="X axis scalar"
+            title="Plot against another scalar, matched by step"
+            onpick={(m) => router.set({ x: `metric:${m}`, zoom: null })}
+          />
         </div>
         {#if xKind === 'time' && timeZone.pref !== LOCAL}
           <span
@@ -685,20 +694,6 @@
             >Axis: {axisZone.kit.name}{axisZone.note ? ` · ${axisZone.note}` : ''}</span
           >
         {/if}
-        <select
-          class="input sm mono xmetric"
-          class:on={xMetric !== null}
-          value={xMetric ?? ''}
-          onchange={(e) => {
-            const v = (e.currentTarget as HTMLSelectElement).value;
-            router.set({ x: v ? `metric:${v}` : null, zoom: null });
-          }}
-          aria-label="X axis scalar"
-          title="Plot against another scalar, matched by step"
-        >
-          <option value="">X by scalar…</option>
-          {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
-        </select>
       </div>
       <div class="knobs">
         <label class="smooth"
@@ -1146,14 +1141,6 @@
   }
   .groupsel {
     max-width: 260px;
-  }
-  .xmetric {
-    max-width: 210px;
-    font-size: 12.5px;
-  }
-  .xmetric.on {
-    border-color: var(--accent);
-    color: var(--accent);
   }
   .alerts {
     display: flex;

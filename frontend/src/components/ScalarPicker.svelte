@@ -6,7 +6,8 @@
    * Pick one scalar out of many: a button that opens a searchable list (type to narrow, ↑ ↓ and
    * Enter to pick, Esc to close). Every screen that picks a scalar uses it, so hundreds of scalars
    * stay easy to find. Without `label` the button shows the picked scalar, like a menu; with it,
-   * the button shows that text (such as "All 24").
+   * the button shows that text (such as "All 24"). With `pressed` too, the button is one choice of
+   * a `.seg` group, on while `pressed` is true (as Charts' X axis "Scalar…").
    */
   let {
     metrics,
@@ -18,6 +19,7 @@
     size = 'md',
     ariaLabel = 'Scalar',
     title,
+    pressed,
   }: {
     metrics: string[];
     value: string;
@@ -30,6 +32,8 @@
     size?: 'sm' | 'md';
     ariaLabel?: string;
     title?: string;
+    /** Draw the button as a `.seg` choice that is on while this is true. */
+    pressed?: boolean;
   } = $props();
 
   const LIMIT = 300;
@@ -89,7 +93,18 @@
 </script>
 
 <span class="picker" class:small={size === 'sm'} bind:this={el}>
-  {#if label}
+  {#if label && pressed !== undefined}
+    <button
+      class="segpick"
+      aria-pressed={pressed}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      aria-label="{ariaLabel}: {value || 'none'}"
+      title={title ?? value}
+      {disabled}
+      onclick={toggle}><span class="val" class:mono={pressed}>{label}</span><Icon name="chevron" size={12} /></button
+    >
+  {:else if label}
     <button class="btn btn-ghost sm" aria-expanded={open} aria-haspopup="dialog" {title} {disabled} onclick={toggle}
       ><Icon name="search" size={14} /> {label}</button
     >
@@ -154,6 +169,12 @@
     font-size: 12.5px;
     text-align: left;
     cursor: pointer;
+  }
+  .segpick {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
   }
   .small .trigger {
     width: 200px;

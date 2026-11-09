@@ -316,9 +316,11 @@ bar) or, if none are selected, every run matching the query.
   you can start from None and click the few you want. Each series has a color
   and a marker shape, so series stay distinguishable without color.
 - **X axis**: step, wall time, relative time since the run started, or active
-  time (relative time with pauses longer than five minutes removed). The
-  **X by scalar** menu plots against any other scalar instead, such as
-  `train/tokens` or `epoch`; counter-like scalars are listed first. The x
+  time (relative time with pauses longer than five minutes removed).
+  **Scalar…**, the last choice of the same group, opens the searchable scalar
+  list to plot against any other scalar instead, such as `train/tokens` or
+  `epoch`; counter-like scalars are listed first, and the button then shows
+  the scalar's name. The x
   scalar is matched to each point by step (interpolated when the two were
   logged at different steps), and zooming works as usual when the x scalar
   only grows. The choice is kept in the URL as `x=metric:<name>`.

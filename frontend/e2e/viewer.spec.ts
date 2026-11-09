@@ -430,9 +430,16 @@ test('a shared dataset is a reference used from other projects', async ({ page }
 
 test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
-  await page.locator('select.xmetric').selectOption('train/tokens');
+  const axis = page.getByRole('group', { name: 'X axis' });
+  await axis.getByRole('button', { name: /^X axis scalar/ }).click();
+  await page.getByLabel('Search scalars').fill('tokens');
+  await page.getByRole('option', { name: 'train/tokens' }).click();
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
-  await expect(page.locator('select.xmetric')).toHaveClass(/\bon\b/);
+  await expect(axis.getByRole('button', { name: 'X axis scalar: train/tokens' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(axis.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.u-over').first()).toBeVisible();
 });
 
