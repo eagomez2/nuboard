@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Copyright in `nuboard version`**: it now prints
+  `NuBoard x.y.z Copyright © 2026 Esteban Gómez (MIT License)`, with the years
+  becoming a range such as `2026–2027` from next year on. Consoles that can't
+  show `©` or `ó` get `(c)` and `Gomez` instead of an error.
+
 ## 0.26.0
 
 Two ways to compare media side by side on the Media page, and a pill for a

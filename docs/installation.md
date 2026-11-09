@@ -108,7 +108,7 @@ for you when `src/nuboard/static/` is missing.
 
 ```console
 $ nuboard version
-nuboard 0.26.0
+NuBoard 0.26.0 Copyright © 2026 Esteban Gómez (MIT License)
 $ python -c "import nuboard; print(nuboard.__version__)"
 0.26.0
 ```

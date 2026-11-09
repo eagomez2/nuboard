@@ -499,8 +499,9 @@ def main(argv: list[str] | None = None) -> None:
         _import_tensorboard(args.logdir, args.project, args.dir, args.tags)
     elif args.cmd == "version":
         from . import __version__
+        from ._meta import copyright_line, printable
 
-        print(f"{NAME} {__version__}")
+        print(printable(copyright_line(__version__), sys.stdout.encoding))
 
 
 if __name__ == "__main__":  # pragma: no cover
