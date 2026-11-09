@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import { keyFilter } from '../lib/keyfilter';
 
   /**
    * Pick one scalar out of many: a button that opens a searchable list (type to narrow, ↑ ↓ and
@@ -47,10 +48,10 @@
 
   // the empty choice (when offered) stays first while nothing is typed
   const list = $derived.by((): string[] => {
-    const q = find.trim().toLowerCase();
+    const f = keyFilter(find);
     const all = value && !metrics.includes(value) ? [value, ...metrics] : metrics;
-    const hits = (q ? all.filter((m) => m.toLowerCase().includes(q)) : all).slice(0, LIMIT);
-    return none !== undefined && !q ? ['', ...hits] : hits;
+    const hits = (f.empty ? all : all.filter((m) => f.test(m))).slice(0, LIMIT);
+    return none !== undefined && f.empty ? ['', ...hits] : hits;
   });
 
   function toggle() {
@@ -108,7 +109,7 @@
     <div class="card pop" role="dialog" aria-label="Pick a scalar">
       <input
         class="input sm mono"
-        placeholder="Search {metrics.length} scalars"
+        placeholder="Filter {metrics.length} scalars (/regex/, !exclude)"
         aria-label="Search scalars"
         bind:this={input}
         bind:value={find}

@@ -47,7 +47,8 @@ appear on several boards.
   (**Add a run**, **Comes from**, **Add a dashed link**) shows
   each run with its status, start time, tags and the end of its id
   (`c44aa583`), so runs with the same name can be told apart, and filters by
-  name, id, status or tag. With nothing selected, **Not on the board** lists
+  name, id, status, tag or notes, with the same rule as every filter box
+  (`!crashed` leaves runs out; see [Filter boxes](viewer.md#filter-boxes)). With nothing selected, **Not on the board** lists
   the five newest runs that are on no card (**Show all** or the filter reaches
   the rest); click one to add it to the new hypothesis's runs.
 - **Follow up**: click a run, write the next hypothesis under **Follow up**

@@ -30,6 +30,31 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 - **About** (the small ⓘ at the bottom of the side bar): the version, the
   copyright, the license and a link to this documentation.
 
+## Filter boxes
+
+Every box that narrows a list by text follows the same rule, so the same text
+means the same thing on every page:
+
+- Plain text matches part of the text, ignoring case: `loss`, `lr3e-4`.
+- Words separated by spaces must all match: `val loss`.
+- A leading `!` leaves out what matches: `acc !per_class`, `#sweep !crashed`.
+- Text in slashes is a regular expression: `/^train\//`, `/(min|max)$/`. Text
+  in slashes as a whole is one expression, spaces included.
+
+| Box | Matches | Also |
+| --- | --- | --- |
+| Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, and **All N** on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Charts **Filter scalars** | the scalar's name | each word is a regular expression |
+| Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
+| Media **Filter keys** | the media key | each word is a regular expression |
+| Compare **All settings**, Sweeps **Parameters** | the setting's key | in Compare, **.\*** and **Values** buttons (see [Run details and compare](#run-details-and-compare)) |
+
+In **Filter scalars** and **Filter keys** each word is already a regular
+expression without slashes, as in TensorBoard: `^train/`, `loss|acc`,
+`confusion|per_class !eval`. While the text is not a valid expression yet, it
+matches as plain text, so typing never empties the page.
+
 ## Runs page
 
 - **Workspace** (left): every project found under the folder, with run counts,
@@ -49,7 +74,9 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   with the best runs. Click a column
   header to sort. The list is virtualized, so thousands of runs scroll
   smoothly.
-- **Filter box**: quick text filter on name, id, project, tags and notes.
+- **Filter box**: narrows the runs by name, id, status, project, tags and
+  notes, such as `#sweep !crashed` (see [Filter boxes](#filter-boxes); kept in
+  the URL as `find`).
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
   edit their **Tags**, **Properties** or **Collection**, open them in
   **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
@@ -235,7 +262,8 @@ runs. With more than two, pick which two from the **Diff … against …** menus
 identical rows and lines.
 
 The filter box above **All settings** narrows its rows by key, together with
-**Only changes**, and shows how many keys are left (`12 of 340 keys`):
+**Only changes**, and shows how many keys are left (`12 of 340 keys`). It follows
+the [shared rule](#filter-boxes):
 
 - Plain text matches part of a key, ignoring case: `edge.min`, `lr`.
 - Text in slashes is a regular expression: `/^config\.generator\..*\.(min|max)$/`.
@@ -345,9 +373,10 @@ bar) or, if none are selected, every run matching the query.
   off (`names=0`). **Grid** sets the charts per row (fit to width, or 1
   to 6) and the rows per section (1 to 6, or all); a section with more charts
   gets a pager. Both are remembered and kept in the URL (`ccols`, `crows`).
-  **Filter scalars** takes a regular expression (as in TensorBoard, case
-  insensitive; `loss|acc`, `^train/`) and shows only the matching charts; it
-  is kept in the URL as `cfind`. The run's own scalars come last and start
+  **Filter scalars** takes regular expressions (as in TensorBoard, case
+  insensitive; `loss|acc`, `^train/`), and `!word` leaves scalars out
+  (`acc !per_class`; see [Filter boxes](#filter-boxes)). It shows only the
+  matching charts and is kept in the URL as `cfind`. The run's own scalars come last and start
   folded: **system** (system metrics) and then **timing** ([timers](../api/timer.md),
   drawn with durations such as `1.2 s` or `3m 05s` on the y axis and in the
   inspector, lower being better). Runs that renamed these prefixes with
@@ -476,8 +505,9 @@ be scrolled through its steps while the others stay put.
 - **Kinds**: the chips below (Images, Audio, Video, Figures, Tables, Point clouds, HTML, Text) show or
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.
-- **Filter keys**: a regular expression on the keys, such as `^eval/` or
-  `confusion|per_class`. While it is set, the count next to it shows how many
+- **Filter keys**: regular expressions on the keys, such as `^eval/` or
+  `confusion|per_class`, and `!word` to leave keys out (`eval !pr`; see
+  [Filter boxes](#filter-boxes)). While it is set, the count next to it shows how many
   keys match, and keys that do not match are hidden.
 - **By key / by run / by regex**: a section per key with a card per run
   (default), a section per run with a card per key, or a section per text that
@@ -528,8 +558,8 @@ text in them. Type the regex in the box that appears next to the button. For
 each key, the text it matches (or its first group in parentheses, if it has
 one) names the key's section, so keys with the same text share a section. The
 sections are sorted in natural order (`sample_2` before `sample_10`), and keys
-the regex does not match go in a last **Unmatched** section. An invalid regex
-turns the box red.
+the regex does not match go in a last **Unmatched** section. The regex ignores
+case, like the key filter. An invalid regex turns the box red.
 
 Inside a section, each run gets a row of its own, with that run's keys in key
 order. A card's title is only the part of its key that differs from the other

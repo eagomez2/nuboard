@@ -8,6 +8,7 @@
   import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue } from '../lib/format';
   import { rememberStat, statFor, type Stat } from '../lib/stat';
   import { directionOf } from '../lib/directions.svelte';
+  import { pickMatches } from '../lib/runlabel';
   import ScalarStat from './ScalarStat.svelte';
   import { router } from '../lib/router.svelte';
   import { ask, notice } from '../lib/dialog.svelte';
@@ -73,7 +74,7 @@
   }
   const errText = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^\d+ /, '');
 
-  const find = $derived(router.get('find').toLowerCase());
+  const find = $derived(router.get('find'));
   const showArchived = $derived(router.get('archived') === '1');
   const metrics = $derived(app.runs?.metrics ?? []);
   const metric = $derived.by(() => {
@@ -99,11 +100,7 @@
 
   const sortedRows = $derived.by(() => {
     let list = (app.runs?.runs ?? []).filter((r) => showArchived || !r.archived);
-    if (find) {
-      list = list.filter((r) =>
-        [r.name, r.id, r.project, r.notes, ...r.tags].some((s) => s?.toLowerCase().includes(find)),
-      );
-    }
+    if (find) list = list.filter((r) => pickMatches(r, find));
     const sort = router.get('sort');
     if (sort) {
       const dir = router.get('desc') ? -1 : 1;
@@ -469,7 +466,7 @@
     <span class="muted">{rows.length} runs{selected.length ? ` · ${selected.length} selected` : ''}</span>
     <input
       class="input find"
-      placeholder="Filter by name, tag or note"
+      placeholder="Filter runs (name, id, tag, note; /regex/, !exclude)"
       value={router.get('find')}
       oninput={(e) => router.set({ find: (e.currentTarget as HTMLInputElement).value || null })}
     />

@@ -2,6 +2,7 @@
   // The side panel of the Hypotheses page: what is selected (a hypothesis, a run, or several runs
   // picked with Shift), or how to start when nothing is. Every change goes through `onsave` with an
   // edited copy, so the page stays the only writer. Runs and reports that are gone show greyed.
+  import { keyFilter } from '../lib/keyfilter';
   import ScalarStat from './ScalarStat.svelte';
   import { untrack } from 'svelte';
   import type { SvelteSet } from 'svelte/reactivity';
@@ -198,9 +199,7 @@
   );
   // chosen ones first, in their order, then the rest of the project's metrics
   const chooserList = $derived(
-    [...chosen, ...metrics.filter((m) => !chosen.includes(m))].filter((m) =>
-      m.toLowerCase().includes(metricFind.trim().toLowerCase()),
-    ),
+    [...chosen, ...metrics.filter((m) => !chosen.includes(m))].filter((m) => keyFilter(metricFind).test(m)),
   );
   // drag a row (in the list or among the chosen ones in the chooser) to reorder; the drop goes
   // above or below the row under the pointer, by which half it is over
@@ -843,7 +842,7 @@
             <input
               class="input sm"
               bind:value={unfiledFind}
-              placeholder="Filter by name, id, status or tag…"
+              placeholder="Filter runs (name, id, tag, note; /regex/, !exclude)"
               aria-label="Filter runs not on the board"
             />
           {/if}

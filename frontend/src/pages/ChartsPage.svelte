@@ -3,6 +3,7 @@
   import { fade } from 'svelte/transition';
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
+  import { keyFilter, regexFilter } from '../lib/keyfilter';
   import ScalarPicker from '../components/ScalarPicker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
   import { chartZone } from '../lib/chartzone';
@@ -368,17 +369,11 @@
   const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 14) / (330 + 14))));
   let gridPages = $state<Record<string, number>>({});
 
-  // Regex filter of the All scalars grid (as in TensorBoard); an invalid pattern matches as plain text.
+  // Regex filter of the All scalars grid (as in TensorBoard), with the shared rule: several terms,
+  // `!exclude`; an invalid pattern matches as plain text.
   const metricFind = $derived(router.get('cfind'));
-  const metricRe = $derived.by(() => {
-    if (!metricFind) return null;
-    try {
-      return new RegExp(metricFind, 'i');
-    } catch {
-      return new RegExp(metricFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    }
-  });
-  const shownMetrics = $derived(metricRe ? metrics.filter((m) => metricRe.test(m)) : metrics);
+  const metricFilter = $derived(regexFilter(metricFind));
+  const shownMetrics = $derived(metricFilter.empty ? metrics : metrics.filter((m) => metricFilter.test(m)));
   // Sections fold like on the Media page; the choice is kept in localStorage per prefix.
   // Unset, all are open when there are few, else the first three; a filter opens every match.
   let folded = $state<Record<string, boolean>>(prefs.get('chartFolds', {}));
@@ -506,10 +501,8 @@
       }),
     );
   });
-  const legendMatch = (label: string) => {
-    const q = legendFind.trim().toLowerCase();
-    return !q || (seriesText.get(label) ?? label.toLowerCase()).includes(q);
-  };
+  const legendFilter = $derived(keyFilter(legendFind));
+  const legendMatch = (label: string) => legendFilter.test(seriesText.get(label) ?? label);
   const legendItems = $derived.by(() => {
     const all = (focusData?.series ?? []).map((s, i) => ({ s, i }));
     if (all.length <= LEGEND_MAX) return all;
@@ -993,7 +986,7 @@
       <h3>All scalars <span class="faint">Click one to bring it into focus</span></h3>
       <input
         class="input sm mono cfind"
-        placeholder="Filter scalars (regex)"
+        placeholder="Filter scalars (regex, !exclude)"
         aria-label="Filter scalars"
         value={metricFind}
         oninput={(e) => router.set({ cfind: e.currentTarget.value || null })}

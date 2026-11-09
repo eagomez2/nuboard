@@ -23,6 +23,14 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **One rule for every filter box.** The Runs filter, the run pickers, the
+  scalar pickers, Charts' **Filter scalars** and legend filter, and Media's
+  **Filter keys** now all take words that must all match, `/regex/`, and
+  `!word` to leave things out (`acc !per_class`, `#sweep !crashed`), like the
+  Compare settings filter already did. Charts and Media still read each word
+  as a regular expression. The Runs filter also matches a run's status, and
+  Media's **By regex** ignores case. See
+  [Filter boxes](guide/viewer.md#filter-boxes).
 - **Media: text diffs.** A text card's **Show changes** button compares its
   text with the step before or with another run's text at the same step,
   line by line with the changed words highlighted.

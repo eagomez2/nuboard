@@ -94,3 +94,12 @@ export function splitMarked(text: string, ranges: [number, number][]): { text: s
   if (at < text.length) parts.push({ text: text.slice(at), mark: false });
   return parts;
 }
+
+/**
+ * The filter of a box whose text is a regular expression (`regex` mode), as the Charts and Media
+ * filters have always been: while the text is not a valid regex yet, it matches as plain text.
+ */
+export function regexFilter(text: string): KeyFilter {
+  const f = keyFilter(text, { regex: true });
+  return f.error ? keyFilter(text) : f;
+}

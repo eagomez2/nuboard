@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { regexFilter } from '../lib/keyfilter';
   import ScalarStat from '../components/ScalarStat.svelte';
   import HistChart from '../components/HistChart.svelte';
   import Icon from '../components/Icon.svelte';
@@ -93,13 +94,7 @@
     router.set({ mkinds: kinds.length === 1 && kinds[0] === k ? null : k });
   }
   const find = $derived(router.get('mfind'));
-  const findRe = $derived.by(() => {
-    try {
-      return find ? new RegExp(find, 'i') : null;
-    } catch {
-      return null;
-    }
-  });
+  const findFilter = $derived(regexFilter(find));
 
   // Keys of the chosen kinds before the filter, for the "N of M" count
   const keyTotal = $derived.by(() => {
@@ -115,7 +110,7 @@
       for (const it of items[r.key] ?? []) {
         const kind = kindOf(it);
         if (!kinds.includes(kind)) continue;
-        if (find && !(findRe ? findRe.test(it.key) : it.key.toLowerCase().includes(find.toLowerCase()))) continue;
+        if (!findFilter.test(it.key)) continue;
         if (!map.has(it.key)) map.set(it.key, { kind, runs: new Map() });
         const per = map.get(it.key)!.runs;
         if (!per.has(r.key)) per.set(r.key, []);
@@ -135,7 +130,7 @@
   const rx = $derived(router.get('mrx'));
   const rxRe = $derived.by(() => {
     try {
-      return rx ? new RegExp(rx) : null;
+      return rx ? new RegExp(rx, 'i') : null;
     } catch {
       return null;
     }
@@ -647,7 +642,7 @@
       </div>
       <input
         class="input sm find mono"
-        placeholder="Filter keys (regex)"
+        placeholder="Filter keys (regex, !exclude)"
         aria-label="Filter keys"
         value={find}
         oninput={(e) => router.set({ mfind: e.currentTarget.value })}
