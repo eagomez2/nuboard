@@ -2217,6 +2217,61 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
 });
 
+test('media by regex puts the keys a regex matches the same way side by side, one row per run', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F&mby=regex');
+  await expect(page.getByText('Type a regex next to')).toBeVisible();
+  const box = page.getByRole('textbox', { name: 'Group by regex' });
+  await box.fill('(');
+  await expect(box).toHaveAttribute('aria-invalid', 'true');
+  // the part before the "/" is the same in every key: one group, the rest of each key titles its card
+  await box.fill('^[^/]+');
+  await expect(page).toHaveURL(/mrx=/);
+  const section = page.locator('section.section');
+  await expect(section).toHaveCount(1);
+  await expect(section.locator('.stitle')).toHaveText('audio');
+  await expect(section.locator('.name').first()).toHaveText(/^(clean|enhanced|noisy)$/);
+  // a group the regex takes from the key: one section per key, in natural order
+  await box.fill('/(\\w+)$');
+  await expect(section.first().locator('.stitle')).toHaveText('clean');
+  await page.getByRole('group', { name: 'Arrange by' }).getByRole('button', { name: 'By key' }).click();
+  await expect(page).not.toHaveURL(/mby=/);
+});
+
+test('pinned media cards stay on top, whatever the filter and the arrangement', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F&mby=run');
+  await expect(page.locator('section.pinned')).toHaveCount(0);
+  const first = page.locator('section.section:not(.pinned)').first();
+  await first.getByRole('button', { name: 'Pin audio/clean' }).click();
+  await first.getByRole('button', { name: 'Pin audio/noisy' }).click();
+  const pinned = page.locator('section.pinned');
+  await expect(pinned.locator('.name')).toHaveText(['clean', 'noisy']);
+  await expect(first.getByRole('button', { name: 'Unpin audio/clean' })).toHaveAttribute('aria-pressed', 'true');
+  // the filter and the arrangement leave the pins alone; the URL keeps them
+  await page.getByRole('textbox', { name: 'Filter keys' }).fill('enhanced');
+  await page.getByRole('group', { name: 'Arrange by' }).getByRole('button', { name: 'By key' }).click();
+  await page.reload();
+  await expect(pinned.locator('.name')).toHaveText(['clean', 'noisy']);
+  await pinned.getByRole('button', { name: 'Unpin clean' }).click();
+  await expect(pinned.locator('.name')).toHaveText(['audio/noisy']);
+  await pinned.getByRole('button', { name: 'Unpin all' }).click();
+  await expect(pinned).toHaveCount(0);
+});
+
+test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({ page }) => {
+  await page.goto('/#/hypotheses?hproject=vit-ablations&hboard=augmentations');
+  await page
+    .locator('.hcard')
+    .first()
+    .click({ position: { x: 20, y: 12 } });
+  await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
+  const stat = page.getByRole('group', { name: 'Summary' });
+  await stat.getByRole('button', { name: 'Last' }).click();
+  await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');
+  await stat.getByRole('button', { name: 'Min' }).click();
+  await expect(stat.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('runs show each result as its min, max or last value', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
   const result = page.getByRole('group', { name: 'Result' });

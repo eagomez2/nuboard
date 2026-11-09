@@ -12,6 +12,7 @@
     target,
     nearest = false,
     title,
+    tip = '',
     color,
     player,
     audioOptions,
@@ -20,12 +21,15 @@
     selecting = false,
     isSelected = () => false,
     onselect = () => {},
+    pinned = false,
+    onpin,
   }: {
     run: RunBrief;
     items: MediaItem[];
     target: number | null; // null: the latest step
     nearest?: boolean; // closest step to `target` (best-step mode) instead of the last one before it
     title: string;
+    tip?: string; // the full key, when the title shows only part of it
     color: string;
     player: string;
     audioOptions: AudioOptions;
@@ -34,6 +38,8 @@
     selecting?: boolean; // show a checkbox to pick the shown item for a report
     isSelected?: (it: MediaItem) => boolean;
     onselect?: (it: MediaItem, on: boolean) => void;
+    pinned?: boolean;
+    onpin?: () => void; // shows the pin button
   } = $props();
 
   // A step picked on this card's own slider; cleared whenever the page-wide step changes.
@@ -74,8 +80,18 @@
       />
     {/if}
     <i class="dot" style="background:{color}"></i>
-    <span class="mono name" title="{run.name}&#10;{run.path}">{title}</span>
+    <span class="mono name" title="{tip ? `${tip}\n` : ''}{run.name}&#10;{run.path}">{title}</span>
     {#if it}<span class="faint mono step">Step {it.step.toLocaleString()}</span>{/if}
+    {#if onpin}
+      <button
+        class="icon pin"
+        class:on={pinned}
+        aria-pressed={pinned}
+        title={pinned ? 'Unpin' : 'Pin to the top, to compare it with other pinned items'}
+        aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
+        onclick={onpin}><Icon name="pin" size={14} /></button
+      >
+    {/if}
     {#if it}
       <span class="acts">
         {#if zoomable}
@@ -181,6 +197,13 @@
   .icon:hover {
     background: var(--panel-2);
     color: var(--accent);
+  }
+  .pin {
+    flex: none;
+  }
+  .pin.on {
+    color: var(--accent);
+    background: var(--accent-soft);
   }
   .faint {
     color: var(--faint);
