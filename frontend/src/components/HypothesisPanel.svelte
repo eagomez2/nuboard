@@ -591,7 +591,7 @@
           <span class="label">Number on this card</span>
           <div class="row">
             <select
-              class="input metric"
+              class="input"
               value={hyp.card?.metric ?? ''}
               aria-label="Metric"
               onchange={(e) => setOwnCard(hyp, e.currentTarget.value)}
@@ -861,11 +861,6 @@
   }
   .kv .num {
     text-align: right;
-  }
-  .metric {
-    flex: 1 1 140px;
-    width: auto;
-    min-width: 0;
   }
   .stat {
     flex: none;
