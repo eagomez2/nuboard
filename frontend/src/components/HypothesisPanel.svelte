@@ -591,7 +591,7 @@
           <span class="label">Number on this card</span>
           <div class="row">
             <select
-              class="input"
+              class="input metric"
               value={hyp.card?.metric ?? ''}
               aria-label="Metric"
               onchange={(e) => setOwnCard(hyp, e.currentTarget.value)}
@@ -603,14 +603,14 @@
                 >{/if}
             </select>
             {#if hyp.card}
-              <select
-                class="input stat"
-                value={cardChoice(hyp.card)}
-                aria-label="Summary"
-                onchange={(e) => setOwnCard(hyp, hyp.card!.metric, e.currentTarget.value as CardChoice)}
-              >
-                {#each CARD_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
-              </select>
+              <div class="seg stat" role="group" aria-label="Summary">
+                {#each CARD_CHOICES as c (c.value)}
+                  <button
+                    aria-pressed={cardChoice(hyp.card) === c.value}
+                    onclick={() => setOwnCard(hyp, hyp.card!.metric, c.value)}>{c.label}</button
+                  >
+                {/each}
+              </div>
             {/if}
           </div>
         </section>
@@ -862,8 +862,13 @@
   .kv .num {
     text-align: right;
   }
+  .metric {
+    flex: 1 1 140px;
+    width: auto;
+    min-width: 0;
+  }
   .stat {
-    width: 90px;
+    flex: none;
   }
   @media (max-width: 900px) {
     .side {
