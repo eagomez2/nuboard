@@ -10,6 +10,7 @@
     star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z',
     x: 'M6 6l12 12M18 6L6 18',
     check: 'M5 12l5 5L20 7',
+    copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
     file: 'M14 3H6v18h12V7zM14 3v4h4',
     collection: 'M4 6h16M4 12h10M4 18h7M17 15v6M14 18h6',
     archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',

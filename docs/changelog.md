@@ -17,6 +17,9 @@ Small fixes and conveniences in the viewer. No breaking changes.
   screen. A focused button outside full screen keeps its own Space.
 - **Primary buttons** have the same text color everywhere; **New version** on
   an empty Artifacts page no longer looks faded.
+- **Artifacts: copy buttons.** A file's SHA-256 shows whole when there is
+  room (a narrow window cuts its end) and has a button that copies it, as does
+  the `run.use_artifact(...)` line of a version.
 
 ## 0.27.0
 

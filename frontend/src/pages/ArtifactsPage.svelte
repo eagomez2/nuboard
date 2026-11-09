@@ -60,6 +60,17 @@
   }
 
   const edit = $derived(!!app.info?.edit_artifacts);
+  // what was just copied (a file's path for its SHA-256, or "snippet"), for a moment
+  let copied = $state('');
+  async function copy(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = key;
+      setTimeout(() => copied === key && (copied = ''), 1500);
+    } catch {
+      copied = '';
+    }
+  }
   const showUnlinked = $derived(router.get('unlinked') === '1');
   const unlinkedCount = $derived(all.filter((a) => a.unlinked).length);
   const artifacts = $derived(showUnlinked ? all : all.filter((a) => !a.unlinked));
@@ -200,6 +211,9 @@
   let filesError = $state('');
   let fileFind = $state('');
   let filesFor = ''; // the version and filter `files` belongs to; later answers win
+  const snippet = $derived(
+    selected ? `run.use_artifact("${selected.project}/${selected.name}:v${selected.version}")` : '',
+  );
   const selectedKey = $derived(selected ? `${id(selected)}|${selected.unlinked ? 'u' : ''}` : '');
 
   async function loadFiles(a: ArtifactVersion, find: string, more: boolean) {
@@ -411,7 +425,16 @@ run.use_artifact("dataset:latest")</pre>
             </div>
             <div><span class="label">Used by</span><span class="mono">{selected.consumers.length} runs</span></div>
           </div>
-          <pre class="mono snippet">run.use_artifact("{selected.project}/{selected.name}:v{selected.version}")</pre>
+          <div class="snippet">
+            <pre class="mono">{snippet}</pre>
+            <button
+              class="btn btn-ghost sm"
+              title={copied === 'snippet' ? 'Copied' : 'Copy the code'}
+              aria-label="Copy the code"
+              onclick={() => copy('snippet', snippet)}
+              ><Icon name={copied === 'snippet' ? 'check' : 'copy'} size={14} /></button
+            >
+          </div>
         </div>
 
         <div class="card lineage">
@@ -498,16 +521,27 @@ run.use_artifact("dataset:latest")</pre>
               />
             {/if}
           </div>
-          <table>
-            <thead><tr><th>Path</th><th class="right">Size</th><th>SHA-256</th></tr></thead>
+          <table class="files">
+            <thead><tr><th>Path</th><th class="right size">Size</th><th class="sha">SHA-256</th></tr></thead>
             <tbody>
               {#each files as f (f.path)}
                 <tr>
                   <td class="mono path">{f.path}</td>
                   <td class="mono right keep">{fmtBytes(f.size)}</td>
-                  <td class="mono faint" title={f.sha256 ?? 'Not hashed: checked by size'}
-                    >{f.sha256 ? `${f.sha256.slice(0, 12)}…` : '—'}</td
-                  >
+                  <td class="sha">
+                    {#if f.sha256}
+                      <div class="hash">
+                        <span class="mono faint" title={f.sha256}>{f.sha256}</span>
+                        <button
+                          class="btn btn-ghost sm"
+                          title={copied === f.path ? 'Copied' : 'Copy the SHA-256'}
+                          aria-label="Copy the SHA-256 of {f.path}"
+                          onclick={() => copy(f.path, f.sha256!)}
+                          ><Icon name={copied === f.path ? 'check' : 'copy'} size={14} /></button
+                        >
+                      </div>
+                    {:else}<span class="mono faint" title="Not hashed: checked by size">—</span>{/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -665,6 +699,32 @@ run.use_artifact("dataset:latest")</pre>
   .path {
     overflow-wrap: anywhere;
   }
+  /* the whole hash when there is room (560px); a narrow window cuts its end, and the button copies it */
+  .files {
+    table-layout: fixed;
+  }
+  .files .size {
+    width: 92px;
+  }
+  .files .sha {
+    width: 560px;
+  }
+  @media (max-width: 1280px) {
+    .files .sha {
+      width: 46%;
+    }
+  }
+  .hash {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .hash > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .faint {
     color: var(--faint);
   }
@@ -718,13 +778,22 @@ run.use_artifact("dataset:latest")</pre>
     gap: 2px;
   }
   .snippet {
-    margin: 0;
-    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 4px 4px 12px;
     background: var(--panel-2);
     border-radius: 8px;
+  }
+  .snippet pre {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 0;
     font-size: 12.5px;
     overflow-x: auto;
   }
+  .snippet button,
   .lineage {
     padding: 14px;
   }
