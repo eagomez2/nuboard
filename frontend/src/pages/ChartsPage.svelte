@@ -767,9 +767,7 @@
           ></button>Raw</label
         >
         {#if hasRanges}
-          <label
-            class="tg"
-            title="Shade the range around each curve: the group's band, logged low/high bounds or the min–max across ranks"
+          <label class="tg" title="Shade the range around each curve: the group's band or the logged low/high bounds"
             ><button
               class="switch"
               role="switch"

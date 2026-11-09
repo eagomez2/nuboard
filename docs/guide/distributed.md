@@ -53,9 +53,10 @@ hung the job when only rank 0 called `init` (issue #24).
 
 ## Viewing ranks
 
-The viewer and `RunReader` show rank 0 by default; `RunReader.scalars(...,
-rank=k)` reads another rank. Only one rank is plotted at a time (see
-[Known limitations](../reference/limitations.md)).
+The viewer shows rank 0, as TensorBoard does. Other ranks' logs (timers
+created with `all_ranks=True`, and each machine's system scalars) are read
+from Python with `RunReader.scalars(..., rank=k)`, and timers of every rank
+are compared in the run's **Timing** tab.
 
 ## Resume after preemption
 
@@ -75,7 +76,8 @@ gives a clean curve.
 The process with `LOCAL_RANK` 0 on each machine samples that machine's CPU,
 memory and GPUs every 30 seconds and logs them under `system/`, in its own
 rank's event log. A job on 4 machines with 8 GPUs each logs 4 sets, each with
-8 GPUs. Pick a rank in the viewer to see another machine's. See
+8 GPUs. The viewer charts rank 0's machine; read another machine's with
+`RunReader.scalars(..., rank=k)`. See
 [System scalars](../api/init.md#system-scalars) for what is logged and how to
 turn groups off.
 
