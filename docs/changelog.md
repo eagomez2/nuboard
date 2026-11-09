@@ -19,6 +19,10 @@ Small fixes and conveniences in the viewer. No breaking changes.
   an empty Artifacts page no longer looks faded.
 - **Hypotheses: Not on the board** adds a run to the new hypothesis with one
   click, like **Add a run…**, instead of opening buttons under it.
+- **Charts redraw faster with "Ignore outliers" on.** The y-axis range is
+  worked out with one sort of the points instead of four, in a typed array,
+  so zooming and resetting a chart of many runs blocks the page for much less
+  time (about 19x faster for 50 runs of 2,000 points). The range is the same.
 - **Media: select and download many items.** **Select for report** is now
   **Select items**, highlighted while it is on; its bar adds **Select all shown** (the item of every card
   your filters leave) and **Download N as .zip**, built in the browser with a
