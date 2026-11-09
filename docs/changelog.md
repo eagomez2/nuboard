@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.26.0
 
 Two ways to compare media side by side on the Media page, and a pill for a
 hypothesis card's number. No breaking changes.
