@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.28.0
+
+Small fixes and conveniences in the viewer. No breaking changes.
+
+- **Hypotheses: New hypothesis takes several runs.** The form lists the runs
+  you add with an × to take each off, like a card's **Runs**, and choosing a
+  run no longer creates the card before you press **Create**. Runs on a card
+  show the end of their id, so runs with the same name can be told apart.
+- **Hypotheses: Timeline metric names** use the room they have and are only
+  shortened, keeping their end, when the window is too narrow. The number
+  column widens for a card's own metric.
+- **Space plays audio once you click it**: in the audio player (waveform and
+  spectrogram) and in waveform figures, in the viewer and in exported
+  reports, Space plays and pauses after a click on the plot, not only in full
+  screen. A focused button outside full screen keeps its own Space.
+- **Primary buttons** have the same text color everywhere; **New version** on
+  an empty Artifacts page no longer looks faded.
+
 ## 0.27.0
 
 A round of refinements to the Hypotheses page, and a copyright line in

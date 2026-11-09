@@ -589,8 +589,9 @@ section, then loop it, zoom to it or add a **Note**; notes show in a lane above
 the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (next to **Fit**) spreads the figure over the
-window with a taller plot, in the viewer and in exported reports alike; there
-Space plays and pauses, and Esc puts it back. The play button plays the clip, or the selection, from where you
+window with a taller plot, in the viewer and in exported reports alike, and Esc
+puts it back. Space plays and pauses once you have clicked the plot or the
+overview, and in full screen. The play button plays the clip, or the selection, from where you
 click. The download button next to it saves the **Audio (.wav)** as logged or
 the **Data (.zip)**: the audio, one `.npy` per signal and a `metadata.json`
 ([details](../api/add_figure.md#downloading-the-audio-and-signals)). Other
@@ -681,7 +682,8 @@ remembered):
 - **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
-  and full screen (`F`), where Space plays and pauses. The spectrogram is computed in the browser (Hann
+  and full screen (`F`). Space plays and pauses once you have clicked the
+  player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
   follow each other's zoom, scroll, cursor and selection, and starting one

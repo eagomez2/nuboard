@@ -1,5 +1,8 @@
 /* The waveform figure, as the viewer draws it and as an HTML export draws it (lib/waveplot.ts): the
    same rules in both, so what you see is what the exported file shows. */
+.nbwf:focus:not(:focus-visible) {
+  outline: none;
+}
 .nbwf {
   --nbwf-accent: var(--accent, var(--link, #0072b2));
   --nbwf-mono: var(--mono, ui-monospace, Menlo, Consolas, monospace);

@@ -9,7 +9,7 @@
   import HypothesisCategories from '../components/HypothesisCategories.svelte';
   import { api, type RunBrief } from '../lib/api';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
-  import { fmtDate, fmtNum, tailName } from '../lib/format';
+  import { fmtDate, fmtNum } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
   import {
     CARD_CHOICES,
@@ -826,19 +826,28 @@
             {:else if tl}
               {@const LANE = 18}
               {@const ROW = 52}
-              {@const NUMW = 150}
+              {@const ownLen = Math.max(
+                0,
+                ...tl.rows.map((r) =>
+                  r.hyp.card &&
+                  (r.hyp.card.metric !== data?.board.card?.metric || r.hyp.card.stat !== data?.board.card?.stat)
+                    ? r.hyp.card.metric.length
+                    : 0,
+                ),
+              )}
+              {@const NUMW = `max(150px, min(${Math.round(ownLen * 6.4 + 48)}px, 32%))`}
               {@const gw = 18 + tl.lanes.length * LANE}
               {@const laneOf = new Map(tl.lanes.map((l) => [l.hyp.id, l]))}
               {@const rowOf = new Map(tl.rows.map((row, i) => [row.run.id, i]))}
               {@const bc = data.board.card}
-              <div class="tlhead" style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}px">
+              <div class="tlhead" style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}">
                 <span></span>
                 <span>Started</span>
                 <span class="span"
                   ><span>Run · hypothesis</span><span
                     class="right"
                     title={bc ? `The board's number: ${bc.metric} (${STAT[bc.stat]})` : ''}
-                    >{#if bc}<span class="mono">{tailName(bc.metric, 26)}</span>
+                    >{#if bc}<span class="mono tail"><span dir="ltr">{bc.metric}</span></span>
                       <span class="st">{STAT[bc.stat]}</span>{:else}Number{/if}</span
                   ></span
                 >
@@ -897,7 +906,7 @@
                     class:picked={picked.has(row.run.id)}
                     class:dead={isDead(row.run)}
                     class:missing={!run}
-                    style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}px"
+                    style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}"
                     onclick={(e) => clickRun(e, row.hyp, row.run)}
                   >
                     <span></span>
@@ -917,7 +926,9 @@
                       ><span class="d mono">{run ? chipNumber(row.hyp, row.run) : 'not found'}</span
                       >{#if row.hyp.card && (row.hyp.card.metric !== bc?.metric || row.hyp.card.stat !== bc?.stat)}<span
                           class="own mono"
-                          >{tailName(row.hyp.card.metric, 14)}<span class="st">· {STAT[row.hyp.card.stat]}</span></span
+                          ><span class="tail"><span dir="ltr">{row.hyp.card.metric}</span></span><span class="st"
+                            >· {STAT[row.hyp.card.stat]}</span
+                          ></span
                         >{/if}</span
                     >
                   </button>
@@ -1630,7 +1641,7 @@
     min-width: 0;
   }
   .tlhead .span > :first-child {
-    flex: 0 1 auto;
+    flex: none;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1659,7 +1670,11 @@
   }
   .tlhead .st,
   .tlrow .own .st {
+    flex: none;
     margin-left: 4px;
+  }
+  .tlrow .own .tail {
+    min-width: 0;
   }
   .tlrow .num {
     display: flex;
@@ -1667,7 +1682,15 @@
     align-items: flex-end;
     min-width: 0;
   }
+  .tail {
+    /* clip from the start, so the end of a long metric name stays readable */
+    direction: rtl;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .tlrow .num .own {
+    display: flex;
     max-width: 100%;
     white-space: nowrap;
     font-size: 10.5px;

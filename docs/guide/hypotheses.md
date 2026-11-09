@@ -38,12 +38,13 @@ appear on several boards.
 
 - **Start**: press **+** at the start of the bar at the bottom of the board
   (or click the empty canvas to clear the selection) and fill in the form in the side panel: the
-  question and, if you like, the first run that tests it. A board can have
+  question and, if you like, the runs that test it: **Add a run…** lists
+  each one with an × to take it off again, as on a card. A board can have
   several starting points; a hypothesis with nothing under **Comes from** is
   one.
 - **Add runs**: open a card and use **Add a run…**. The list offers the
   project's runs that are not on the board yet. Every run picker on the page
-  (**Add a run**, **First run**, **Comes from**, **Add a dashed link**) shows
+  (**Add a run**, **Comes from**, **Add a dashed link**) shows
   each run with its status, start time, tags and the end of its id
   (`c44aa583`), so runs with the same name can be told apart, and filters by
   name, id, status or tag. With nothing selected, **Not on the board** lists
@@ -98,8 +99,9 @@ appear on several boards.
 **Timeline** (next to **Board** in the toolbar) lists the runs of the board in the order they started, with one
 lane per hypothesis and a curve where a hypothesis grew out of an earlier run.
 Its header names the board's number (such as `val/acc MAX`); a run whose card
-has its own number names that metric under the value. Long names keep their
-end (`…/EarlyStopping.on_val_end`); hover for the whole name.
+has its own number names that metric under the value, and the column widens
+to fit it. Names show whole when there is room; on a narrow window they keep
+their end (`…/EarlyStopping.on_val_end`); hover for the whole name.
 
 ## Missing runs and reports
 

@@ -139,6 +139,14 @@ export function mountWaveform(
   root.append(bar, form, notesLane, plotEl);
   if (tracks.length) root.append(lanes);
   root.append(overview, cap, audio);
+  // clicking the plot or the overview gives the figure the focus, so Space then plays it (see onKey)
+  root.tabIndex = -1;
+  const focusFigure = (e: PointerEvent) => {
+    if (!(e.target instanceof Element && e.target.closest('button, input, textarea, select, a')))
+      root.focus({ preventScroll: true });
+  };
+  plotEl.addEventListener('pointerdown', focusFigure);
+  overview.addEventListener('pointerdown', focusFigure);
   box.replaceChildren(root);
 
   const css = (name: string) => getComputedStyle(root).getPropertyValue(name).trim();
@@ -833,13 +841,14 @@ export function mountWaveform(
     if (full) requestAnimationFrame(fitHeight);
     else fitHeight();
   };
-  // In full screen only, a plain Space (no modifier, not typing) plays and pauses, as in the audio
-  // player (audio/player.js). It is held back on key up too, or a focused button would be pressed.
+  // A plain Space (no modifier, not typing) plays and pauses once the figure has the focus (it was
+  // clicked), and in full screen, as in the audio player (audio/player.js). It is held back on key up
+  // too, or a focused button would be pressed.
   const typing = (t: EventTarget | null) =>
     t instanceof HTMLElement && (t.isContentEditable || !!t.closest('input, textarea, select'));
   const onKey = (e: KeyboardEvent) => {
-    if (!full) return;
-    if (e.type === 'keydown' && e.key === 'Escape') {
+    if (!full && document.activeElement !== root) return;
+    if (full && e.type === 'keydown' && e.key === 'Escape') {
       e.stopPropagation();
       setFull(false);
     } else if (e.key === ' ' && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) && !typing(e.target)) {

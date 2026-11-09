@@ -1019,10 +1019,16 @@ test('a pinned point stays on its point when the chart zooms', async ({ page }) 
   await expect(dot).toBeVisible();
 });
 
-test('Space plays and pauses a waveform figure in full screen only', async ({ page }) => {
+test('Space plays and pauses a waveform figure once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
+  await page.keyboard.press(' ');
+  await expect(fig).not.toHaveClass(/playing/);
+  // a click on the plot sets the playhead and gives the figure the focus: Space plays from there
+  await fig.locator('.u-over').click({ position: { x: 40, y: 20 } });
+  await page.keyboard.press(' ');
+  await expect(fig).toHaveClass(/playing/);
   await page.keyboard.press(' ');
   await expect(fig).not.toHaveClass(/playing/);
   // the focused full screen button is not pressed by Space: the figure stays in full screen
@@ -1038,12 +1044,18 @@ test('Space plays and pauses a waveform figure in full screen only', async ({ pa
   await expect(fig).not.toHaveClass(/nbwf-full/);
 });
 
-test('Space plays and pauses the audio player in full screen only', async ({ page }) => {
+test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const player = page.frameLocator('iframe[src="./audio.html"]').first();
   const root = player.locator('#player');
   await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
-  await root.click({ position: { x: 5, y: 5 } }); // focus the frame without playing
+  // the page has the focus: Space is the page's
+  await page.keyboard.press(' ');
+  await expect(root).not.toHaveClass(/playing/);
+  // a click on the waveform gives the player the focus: Space plays and pauses
+  await player.locator('#waveform').click({ position: { x: 40, y: 30 } });
+  await page.keyboard.press(' ');
+  await expect(root).toHaveClass(/playing/);
   await page.keyboard.press(' ');
   await expect(root).not.toHaveClass(/playing/);
   await player.locator('#fullscreen').click();

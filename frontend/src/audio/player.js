@@ -1354,18 +1354,21 @@
     { passive: false },
   );
 
-  // In full screen only, a plain Space (no modifier, not typing) plays and
-  // pauses, as in waveform figures (lib/waveplot.ts). It is held back on key
-  // up too, or a focused button would be pressed.
-  function fullscreenSpace(e) {
+  // A plain Space (no modifier, not typing) plays and pauses, as in waveform
+  // figures (lib/waveplot.ts). Keys reach this frame only once it has the
+  // focus, such as after a click on the waveform or spectrogram. Outside full
+  // screen a focused button keeps its own Space; in full screen it is held back
+  // on key up too, or the button would be pressed.
+  function spaceToPlay(e) {
     const t = e.target;
     const typing = t instanceof HTMLElement && (t.isContentEditable || !!t.closest('input, textarea, select'));
+    const onButton = t instanceof HTMLElement && !!t.closest('button, a, [role="menuitem"]');
     const plain = !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey);
-    return fullscreen && e.key === ' ' && plain && !typing;
+    return e.key === ' ' && plain && !typing && (fullscreen || !onButton);
   }
 
   document.addEventListener('keyup', (e) => {
-    if (fullscreenSpace(e)) e.preventDefault();
+    if (spaceToPlay(e)) e.preventDefault();
   });
 
   document.addEventListener('keydown', (e) => {
@@ -1376,7 +1379,7 @@
 
     switch (e.key) {
       case ' ':
-        if (!fullscreenSpace(e)) break;
+        if (!spaceToPlay(e)) break;
 
         e.preventDefault();
 

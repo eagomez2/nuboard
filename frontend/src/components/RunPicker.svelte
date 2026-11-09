@@ -79,6 +79,7 @@
 
 <div class="rp" bind:this={root}>
   <button
+    type="button"
     class="input trigger"
     {disabled}
     aria-label={label}
@@ -105,12 +106,18 @@
       />
       <div class="list" role="listbox" aria-label={label} bind:this={list}>
         {#if offset}
-          <button class="opt" class:on={active === 0} role="option" aria-selected={active === 0} onclick={() => pick(0)}
-            ><span class="ph">{none}</span></button
+          <button
+            type="button"
+            class="opt"
+            class:on={active === 0}
+            role="option"
+            aria-selected={active === 0}
+            onclick={() => pick(0)}><span class="ph">{none}</span></button
           >
         {/if}
         {#each shown as r, i (r.id)}
           <button
+            type="button"
             class="opt"
             class:on={active === i + offset}
             role="option"

@@ -88,12 +88,14 @@
   const UNFILED_SHOWN = 5;
   let unfiledFind = $state('');
   let unfiledAll = $state(false);
+  // runs already picked for the New hypothesis form are left out of the list
+  const unfiledLeft = $derived(unfiled.filter((r) => !newRuns.includes(r.id)));
   const unfiledShown = $derived(
     unfiledFind.trim()
-      ? unfiled.filter((r) => pickMatches(r, unfiledFind))
+      ? unfiledLeft.filter((r) => pickMatches(r, unfiledFind))
       : unfiledAll
-        ? unfiled
-        : unfiled.slice(0, UNFILED_SHOWN),
+        ? unfiledLeft
+        : unfiledLeft.slice(0, UNFILED_SHOWN),
   );
   const nameOf = (id: string) => data.runs[id]?.name ?? projectRuns.find((r) => r.id === id)?.name ?? id;
   const keyOf = (id: string) => data.runs[id]?.key ?? projectRuns.find((r) => r.id === id)?.key;
@@ -129,7 +131,8 @@
     untrack(() => side.folded && side.toggle());
     requestAnimationFrame(() => newInput?.focus());
   });
-  let newRun = $state('');
+  // the runs the new hypothesis starts with, listed like a card's Runs
+  let newRuns = $state<string[]>([]);
   let followTitle = $state('');
   let followReason = $state('');
   let editingNote = $state(false);
@@ -150,10 +153,9 @@
     e.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
-    onsave(
-      newHypothesis({ title, runs: newRun ? [{ id: newRun, outcome: 'open', conclusion: '', star: false }] : [] }),
-    );
-    newTitle = newRun = '';
+    onsave(newHypothesis({ title, runs: newRuns.map((id) => ({ id, outcome: 'open', conclusion: '', star: false })) }));
+    newTitle = '';
+    newRuns = [];
   }
   function followUp(e: SubmitEvent) {
     e.preventDefault();
@@ -686,7 +688,9 @@
             <span class="dot" style="background:{data.runs[r.id] ? colorVar(o?.color ?? 'gray') : 'transparent'}"
             ></span>
             <button class="link mono grow" onclick={() => onselect(hyp.id, r.id)}>{nameOf(r.id)}</button>
-            {#if !data.runs[r.id]}<span class="nf">not found</span>{/if}
+            {#if !data.runs[r.id]}<span class="nf">not found</span>{:else}<span class="mono sfx" title="Run id {r.id}"
+                >{idSuffix(r.id)}</span
+              >{/if}
             {#if !ro}
               <button
                 class="btn btn-ghost icon sm"
@@ -820,16 +824,38 @@
             placeholder="What are you testing?"
             aria-label="Title"
           />
-          <RunPicker runs={unfiled} value={newRun} label="First run" none="No run yet" onpick={(id) => (newRun = id)} />
+          <span class="label">Runs</span>
+          {#each newRuns as id (id)}
+            <div class="line">
+              <span class="dot" style="background:{colorVar(outcomeOf(data.board, 'open')?.color ?? 'gray')}"></span>
+              <span class="mono grow">{nameOf(id)}</span>
+              <span class="mono sfx" title="Run id {id}">{idSuffix(id)}</span>
+              <button
+                type="button"
+                class="btn btn-ghost icon sm"
+                title="Remove"
+                aria-label="Remove {nameOf(id)}"
+                onclick={() => (newRuns = newRuns.filter((x) => x !== id))}><Icon name="x" size={13} /></button
+              >
+            </div>
+          {/each}
+          {#if unfiled.some((r) => !newRuns.includes(r.id))}
+            <RunPicker
+              runs={unfiled.filter((r) => !newRuns.includes(r.id))}
+              label="Add a run"
+              placeholder="Add a run…"
+              onpick={(id) => id && (newRuns = [...newRuns, id])}
+            />
+          {/if}
           <button class="btn btn-primary sm" type="submit" disabled={!newTitle.trim()}
             ><Icon name="plus" size={14} /> Create</button
           >
         </form>
       {/if}
-      {#if unfiled.length}
+      {#if unfiledLeft.length}
         <section>
-          <span class="label">Not on the board ({unfiled.length})</span>
-          {#if unfiled.length > UNFILED_SHOWN}
+          <span class="label">Not on the board ({unfiledLeft.length})</span>
+          {#if unfiledLeft.length > UNFILED_SHOWN}
             <input
               class="input sm"
               bind:value={unfiledFind}
@@ -851,7 +877,7 @@
                       <button
                         class="btn btn-primary sm"
                         onclick={() => {
-                          newRun = r.id;
+                          if (!newRuns.includes(r.id)) newRuns = [...newRuns, r.id];
                           openUnfiled = '';
                           requestAnimationFrame(() => newInput?.focus());
                         }}><Icon name="plus" size={14} /> Start a hypothesis</button
@@ -868,9 +894,9 @@
               </div>
             {/each}
           </div>
-          {#if !unfiledFind.trim() && unfiled.length > UNFILED_SHOWN}
+          {#if !unfiledFind.trim() && unfiledLeft.length > UNFILED_SHOWN}
             <button class="btn btn-ghost sm more-btn" onclick={() => (unfiledAll = !unfiledAll)}
-              >{unfiledAll ? 'Show the newest only' : `Show all ${unfiled.length}`}</button
+              >{unfiledAll ? 'Show the newest only' : `Show all ${unfiledLeft.length}`}</button
             >
           {:else if unfiledFind.trim() && !unfiledShown.length}
             <p class="help">No run matches.</p>
@@ -1190,6 +1216,11 @@
   .idcopy:hover {
     color: var(--text);
     border-color: var(--accent);
+  }
+  .sfx {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--faint);
   }
   .more-btn {
     align-self: flex-start;
