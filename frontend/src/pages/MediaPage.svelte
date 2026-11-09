@@ -841,7 +841,7 @@
     >
     <span class="spacer"></span>
     <button
-      class="btn btn-ghost sm"
+      class="btn btn-ghost sm toggle"
       aria-pressed={selecting}
       onclick={() => (selecting ? stopSelecting() : (selecting = true))}
       title="Tick items to add them to a report or download them"><Icon name="check" size={14} /> Select items</button
@@ -1211,6 +1211,11 @@
     padding: 0 12px;
     font-size: 13px;
     cursor: pointer;
+  }
+  .toggle[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .kind[aria-pressed='true'] {
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);

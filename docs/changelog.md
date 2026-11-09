@@ -20,7 +20,7 @@ Small fixes and conveniences in the viewer. No breaking changes.
 - **Hypotheses: Not on the board** adds a run to the new hypothesis with one
   click, like **Add a run…**, instead of opening buttons under it.
 - **Media: select and download many items.** **Select for report** is now
-  **Select items**; its bar adds **Select all shown** (the item of every card
+  **Select items**, highlighted while it is on; its bar adds **Select all shown** (the item of every card
   your filters leave) and **Download N as .zip**, built in the browser with a
   progress bar and **Cancel**, and stopping past 1 GB. "All runs on one chart"
   overlays can be ticked too: they go in a report live, and in the zip as PNG.
