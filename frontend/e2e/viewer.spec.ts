@@ -155,6 +155,27 @@ test('the Runs workspace folds into a thin bar', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Hide the workspace' })).toBeVisible();
 });
 
+test('a text card shows what changed from the step before or from another run', async ({ page }) => {
+  await page.goto('/#/media?project=llm-pretrain&mkinds=text');
+  const card = page.locator('.grid').first().locator('figure').first();
+  await card.getByRole('button', { name: 'Show changes' }).click();
+  const diff = card.locator('pre.diff');
+  await expect(diff).toHaveAttribute('aria-label', /^Changes from step \d/);
+  await expect(diff.locator('.dl.add').first()).toBeVisible();
+  await expect(diff.locator('.dl.del').first()).toBeVisible();
+  // another run's text at the same step
+  const other = card.getByLabel('Compare with');
+  const name = (await other.locator('option').nth(1).innerText()).trim();
+  await other.selectOption({ index: 1 });
+  await expect(diff).toHaveAttribute(
+    'aria-label',
+    new RegExp(`^Changes from ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · step`),
+  );
+  await card.getByRole('button', { name: 'Show changes' }).click();
+  await expect(card.locator('pre.diff')).toHaveCount(0);
+  await expect(card.locator('pre.text')).toBeVisible();
+});
+
 test('media page shows logged images', async ({ page }) => {
   await page.goto('/#/media?project=vit-ablations&mfind=%5Esamples%2Faugmented%24');
   await expect(page.locator('figure img').first()).toBeVisible();

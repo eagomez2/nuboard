@@ -501,6 +501,13 @@ on each: the file as logged (its own format, such as WAV, FLAC or PNG), and
 for some kinds a second one: a table also as **CSV**, a PR curve or
 distribution also as a **PNG** of the chart.
 
+A text card (`add_text`) also has **Show changes**: the text becomes a diff
+against **the step before** or, from the **Changes from** menu, the same key of
+another run in the section (its item at the same step). Removed lines are
+tinted like in Compare's config diff and added lines in blue, the words that
+differ inside a changed line are highlighted, and a `+N −N` count says how many
+lines changed. The step slider keeps working while it is on.
+
 **Select items** adds a checkbox to every card, and to every "All runs on one
 chart" overlay. The bar at the bottom then works on what you ticked:
 **Select all shown** ticks the item every card shows in the sections your

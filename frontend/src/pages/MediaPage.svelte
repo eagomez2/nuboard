@@ -1034,6 +1034,7 @@
           <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
             {#each cards.slice(page * size, page * size + size) as c (c.id)}
               <MediaCard
+                peers={cards.filter((o) => o.run.key !== c.run.key && o.items[0]?.key === c.items[0]?.key)}
                 run={c.run}
                 items={c.items}
                 target={targetFor(c.run.key)}

@@ -82,3 +82,41 @@ export function flatten(obj: unknown, prefix = '', out: Record<string, unknown> 
   }
   return out;
 }
+
+/** A run of text in a changed line, `changed` when it is not in the other line. */
+export type WordPart = { text: string; changed: boolean };
+
+/**
+ * Word diff of two lines (LCS over words and the spaces between them): the parts of `a` and of
+ * `b`, with the words only one side has marked as changed. Lines too long to compare word by word
+ * come back whole and changed.
+ */
+export function wordDiff(a: string, b: string): [WordPart[], WordPart[]] {
+  const A = a.split(/(\s+)/).filter((t) => t !== '');
+  const B = b.split(/(\s+)/).filter((t) => t !== '');
+  const n = A.length;
+  const m = B.length;
+  if (n * m > 1_000_000) return [[{ text: a, changed: true }], [{ text: b, changed: true }]];
+  const W = m + 1;
+  const dp = new Uint32Array((n + 1) * W);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i * W + j] = A[i] === B[j] ? dp[(i + 1) * W + j + 1] + 1 : Math.max(dp[(i + 1) * W + j], dp[i * W + j + 1]);
+  const left: WordPart[] = [];
+  const right: WordPart[] = [];
+  const push = (out: WordPart[], text: string, changed: boolean) => {
+    const last = out[out.length - 1];
+    if (last && last.changed === changed) last.text += text;
+    else out.push({ text, changed });
+  };
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[i] === B[j]) {
+      push(left, A[i++], false);
+      push(right, B[j++], false);
+    } else if (j < m && (i === n || dp[i * W + j + 1] >= dp[(i + 1) * W + j])) push(right, B[j++], true);
+    else push(left, A[i++], true);
+  }
+  return [left, right];
+}
