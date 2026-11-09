@@ -23,5 +23,5 @@ def test_versions_agree():
     package = json.loads((ROOT / "frontend" / "package.json").read_text("utf-8"))
     assert package["version"] == version
     assert "pip install nuboard\n" in (ROOT / "README.md").read_text("utf-8")
-    assert f"nuboard {version}" in (ROOT / "docs" / "installation.md").read_text("utf-8")
+    assert f"NuBoard {version} Copyright" in (ROOT / "docs" / "installation.md").read_text("utf-8")
     assert f"## {version}" in (ROOT / "docs" / "changelog.md").read_text("utf-8")

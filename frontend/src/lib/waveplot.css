@@ -1,5 +1,8 @@
 /* The waveform figure, as the viewer draws it and as an HTML export draws it (lib/waveplot.ts): the
    same rules in both, so what you see is what the exported file shows. */
+.nbwf:focus:not(:focus-visible) {
+  outline: none;
+}
 .nbwf {
   --nbwf-accent: var(--accent, var(--link, #0072b2));
   --nbwf-mono: var(--mono, ui-monospace, Menlo, Consolas, monospace);
@@ -153,6 +156,19 @@
   border-color: transparent;
   text-align: left;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-weight: 550;
+}
+.nbwf-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--faint, #888);
 }
 .nbwf-full-btn svg,
 .nbwf-icon-btn svg {

@@ -335,7 +335,7 @@ export function waveformKit() {
     return { zip, metadata };
   }
 
-  return { parseWaveform, Pyramid, decimate, signalFiles, npyBytes, waveformBundle };
+  return { parseWaveform, Pyramid, decimate, signalFiles, npyBytes, waveformBundle, zipStored };
 }
 
 export const { parseWaveform, Pyramid, decimate, signalFiles, npyBytes, waveformBundle } = waveformKit();

@@ -192,4 +192,7 @@ version without deleting anything and `restore` brings it back. See
 nuboard version
 ```
 
-Print the installed version.
+Print the installed version and copyright, e.g.
+`NuBoard 0.26.0 Copyright © 2026 Esteban Gómez (MIT License)`. From 2027 the
+years read as a range (`2026–2027`). A console whose encoding lacks `©` or `ó`
+(some Windows code pages) gets `(c)` and `Gomez` instead.

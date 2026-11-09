@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.28.0
+
+Small fixes and conveniences in the viewer. No breaking changes.
+
+- **Hypotheses: New hypothesis takes several runs.** The form lists the runs
+  you add with an × to take each off, like a card's **Runs**, and choosing a
+  run no longer creates the card before you press **Create**. Runs on a card
+  show the end of their id, so runs with the same name can be told apart.
+- **Hypotheses: Timeline metric names** use the room they have and are only
+  shortened, keeping their end, when the window is too narrow. The number
+  column widens for a card's own metric.
+- **Space plays audio once you click it**: in the audio player (waveform and
+  spectrogram) and in waveform figures, in the viewer and in exported
+  reports, Space plays and pauses after a click on the plot, not only in full
+  screen. A focused button outside full screen keeps its own Space.
+- **Primary buttons** have the same text color everywhere; **New version** on
+  an empty Artifacts page no longer looks faded.
+- **Hypotheses: Not on the board** adds a run to the new hypothesis with one
+  click, like **Add a run…**, instead of opening buttons under it.
+- **Media: select and download many items.** **Select for report** is now
+  **Select items**, highlighted while it is on; its bar adds **Select all shown** (the item of every card
+  your filters leave) and **Download N as .zip**, built in the browser with a
+  progress bar and **Cancel**, and stopping past 1 GB. "All runs on one chart"
+  overlays can be ticked too: they go in a report live, and in the zip as PNG.
+- **Media: download formats.** A card's download button lists the formats it
+  saves as, with a word on each: the file as logged, a table also as CSV, and a
+  PR curve or distribution also as a PNG of the chart. A waveform figure's menu
+  reads **WAV** and **ZIP with signals** (before: Audio (.wav), Data (.zip)).
+- **Artifacts: copy buttons.** A file's SHA-256 shows whole when there is
+  room (a narrow window cuts its end) and has a button that copies it, as does
+  the `run.use_artifact(...)` line of a version.
+
+## 0.27.0
+
+A round of refinements to the Hypotheses page, and a copyright line in
+`nuboard version`. Boards gain two optional fields (`panel_metrics`,
+`card_width`) and hypotheses one (`width`); older boards read as before. No
+breaking changes.
+
+- **Hypotheses: Save / Cancel** for a run's conclusion and an arrow's Why,
+  with Ctrl/Cmd+Enter and Esc. Unsaved drafts are kept while you look at other
+  runs, and leaving the page with one asks first.
+- **Hypotheses: choose a run's metrics.** The side panel lists the card's
+  metric first, without system metrics and timers, by default; the pencil
+  next to **Metrics** picks them for the whole board (`panel_metrics` in
+  `board.json`), and rows reorder by drag or Alt+↑/↓.
+- **Hypotheses: the Timeline names its number** in a header row, and under
+  the value for cards with their own metric. Long metric names keep their
+  end.
+- **Hypotheses: card sizes** S, M, L and XL, for the board (`card_width`) and
+  per card (`width`). Columns of the tree follow their widest card.
+- **Hypotheses: telling runs apart.** Every run picker (Add a run, First run,
+  Comes from, Add a dashed link) is now a filterable list showing each run's
+  status, start time, tags and id ending. **Not on the board** shows the five
+  newest runs with a filter and **Show all**, and a run there starts a
+  hypothesis or opens its charts.
+- **Hypotheses: run header** with status, start time, tags and a button that
+  copies the run id.
+- **Hypotheses: Min / Max / Last pill** for the board's **Number** in the
+  toolbar, like a card's. The direction arrow is gone from this page: Last
+  ranks by the metric's direction in the project, set on Runs or Sweeps.
+- **Hypotheses: "Changed from"** keeps config keys whole and wraps long values
+  inside their column.
+- **Copyright in `nuboard version`**: it now prints
+  `NuBoard x.y.z Copyright © 2026 Esteban Gómez (MIT License)`, with the years
+  becoming a range such as `2026–2027` from next year on. Consoles that can't
+  show `©` or `ó` get `(c)` and `Gomez` instead of an error.
+
 ## 0.26.0
 
 Two ways to compare media side by side on the Media page, and a pill for a

@@ -189,6 +189,11 @@ textarea {
 button {
   cursor: pointer;
 }
+/* The reset above is outside the components layer, so it wins over `.btn-primary` there: a primary
+   button took its parent's color, which looked wrong under muted text (the Artifacts empty state). */
+button.btn-primary {
+  color: var(--text);
+}
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -231,16 +236,7 @@ button {
   .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
     font-weight: 550;
-  }
-  :root[data-theme='dark'] .btn-primary {
-    color: #06121c;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) .btn-primary {
-      color: #06121c;
-    }
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--accent);

@@ -43,7 +43,7 @@ path.
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
     directions.json                            which way is better per scalar or table column
-    hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number
+    hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number, panel
     hypotheses/<board>/<id>.json          one hypothesis of that board
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
 ```
@@ -315,7 +315,7 @@ bytes after the last indexed entry (from a crash) are harmless.
 
 ### Waveform bundles
 
-A waveform figure downloads (**Data (.zip)** in the viewer and in exported
+A waveform figure downloads (**ZIP with signals** in the viewer and in exported
 HTML) and goes into a report's .zip export as a bundle, a zip with every
 member stored uncompressed:
 
@@ -473,7 +473,8 @@ atomically by the viewer and is safe to commit to git.
 {"title": "Augmentations on ViT-S/16", "description": "Which augmentation …",
  "verdicts": [{"id": "supported", "label": "Supported", "color": "s4", "icon": "check"}, "…"],
  "outcomes": [{"id": "dropped", "label": "Dropped", "color": "gray", "dead_end": true}, "…"],
- "card": {"metric": "val/acc", "stat": "max", "top": "max"}}
+ "card": {"metric": "val/acc", "stat": "max", "top": "max"},
+ "panel_metrics": ["val/acc", "val/loss", "train/loss"], "card_width": "m"}
 ```
 
 - `verdicts` and `outcomes` hold 1 to 8 categories each. `color` is one of
@@ -487,6 +488,12 @@ atomically by the viewer and is safe to commit to git.
   unless that is `last`. `null` shows none. Boards written before this had
   `stat: "best"` and a `higher` flag; they are read as `max` when `higher`
   is true and `min` otherwise.
+- `panel_metrics` (optional) lists the metrics the side panel shows for a run,
+  in order, up to 50. Empty or missing: the card's metric, then the run's
+  first metrics in the order it logged them, without system metrics and
+  timers.
+- `card_width` (optional) is how wide cards are: `s`, `m` (the default), `l`
+  or `xl` (220, 260, 340 and 420 pixels).
 
 `<id>.json`, one hypothesis (the file name is its id):
 
@@ -496,7 +503,7 @@ atomically by the viewer and is safe to commit to git.
  "also": [{"run": "20261101T1837-9b0d71aa", "reason": "the bar to beat"}],
  "runs": [{"id": "20261101T2037-5f2a9e10", "outcome": "continued", "conclusion": "Best run.", "star": true}],
  "verdict": "supported", "star": true, "reports": ["augmentation-findings"],
- "position": {"dx": 0, "dy": 0}, "folded": null, "card": null,
+ "position": {"dx": 0, "dy": 0}, "folded": null, "card": null, "width": null,
  "created": 1791980000.0, "updated": 1791981000.0}
 ```
 
@@ -509,7 +516,8 @@ atomically by the viewer and is safe to commit to git.
   the first category).
 - `reports` are report names of the project. `position` is how far the card
   was dragged from its automatic place; `folded` is `null` for automatic
-  (folded above five runs); `card` overrides the board's number.
+  (folded above five runs); `card` overrides the board's number and `width`
+  (`s`, `m`, `l`, `xl`, or `null` to follow the board) its `card_width`.
 
 Runs and reports that no longer exist show as "not found". A parent link that
 would make a loop is refused on save and drawn as a starting point if it is

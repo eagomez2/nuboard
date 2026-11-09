@@ -5,28 +5,36 @@
   import { untrack } from 'svelte';
   import type { SvelteSet } from 'svelte/reactivity';
   import Icon from './Icon.svelte';
+  import DraftField from './DraftField.svelte';
+  import RunLine from './RunLine.svelte';
+  import TagPills from './TagPills.svelte';
+  import RunPicker from './RunPicker.svelte';
   import Markdown from './Markdown.svelte';
   import VerdictIcon from './VerdictIcon.svelte';
-  import type { RunBrief } from '../lib/api';
+  import { num, type RunBrief } from '../lib/api';
   import { confirmAction } from '../lib/dialog.svelte';
   import { Fold } from '../lib/fold.svelte';
-  import { fmtNum, fmtValue } from '../lib/format';
+  import { cap, fmtDate, fmtNum, fmtValue } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
   import {
     CARD_CHOICES,
+    CARD_WIDTHS,
     cardChoice,
     cardFor,
     colorVar,
     newHypothesis,
     outcomeOf,
     ownerOf,
+    panelMetrics,
     verdictOf,
+    type Board,
     type BoardData,
     type CardChoice,
     type HRun,
     type Hypothesis,
   } from '../lib/hypotheses';
   import { router } from '../lib/router.svelte';
+  import { idSuffix, pickMatches, type PickRun } from '../lib/runlabel';
 
   let {
     data,
@@ -40,6 +48,7 @@
     ondelete,
     onselect,
     oncategories,
+    onsaveboard,
     askNew = 0,
   }: {
     data: BoardData;
@@ -53,6 +62,7 @@
     ondelete: (h: Hypothesis) => void;
     onselect: (hyp?: string | null, run?: string | null) => void;
     oncategories: () => void;
+    onsaveboard: (patch: Partial<Board>) => void;
     /** Bumped to show the New hypothesis form and focus it. */
     askNew?: number;
   } = $props();
@@ -70,6 +80,22 @@
     projectRuns
       .filter((r) => !owner.has(r.id))
       .sort((a, b) => (b.started ?? b.created ?? 0) - (a.started ?? a.created ?? 0)),
+  );
+  /** A board run for a picker: its catalog record, or a stand-in when it is gone. */
+  const pickRun = (id: string): PickRun =>
+    projectRuns.find((r) => r.id === id) ?? { id, name: data.runs[id]?.name ?? id, status: 'not found' };
+  // "Not on the board" shows the newest few; the filter or "Show all" reach the rest
+  const UNFILED_SHOWN = 5;
+  let unfiledFind = $state('');
+  let unfiledAll = $state(false);
+  // runs already picked for the New hypothesis form are left out of the list
+  const unfiledLeft = $derived(unfiled.filter((r) => !newRuns.includes(r.id)));
+  const unfiledShown = $derived(
+    unfiledFind.trim()
+      ? unfiledLeft.filter((r) => pickMatches(r, unfiledFind))
+      : unfiledAll
+        ? unfiledLeft
+        : unfiledLeft.slice(0, UNFILED_SHOWN),
   );
   const nameOf = (id: string) => data.runs[id]?.name ?? projectRuns.find((r) => r.id === id)?.name ?? id;
   const keyOf = (id: string) => data.runs[id]?.key ?? projectRuns.find((r) => r.id === id)?.key;
@@ -105,20 +131,30 @@
     untrack(() => side.folded && side.toggle());
     requestAnimationFrame(() => newInput?.focus());
   });
-  let newRun = $state('');
+  // the runs the new hypothesis starts with, listed like a card's Runs
+  let newRuns = $state<string[]>([]);
   let followTitle = $state('');
   let followReason = $state('');
   let editingNote = $state(false);
+  let copied = $state('');
+  async function copyId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      copied = id;
+      setTimeout(() => copied === id && (copied = ''), 1500);
+    } catch {
+      copied = '';
+    }
+  }
   let noteText = $state('');
 
   function create(e: SubmitEvent) {
     e.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
-    onsave(
-      newHypothesis({ title, runs: newRun ? [{ id: newRun, outcome: 'open', conclusion: '', star: false }] : [] }),
-    );
-    newTitle = newRun = '';
+    onsave(newHypothesis({ title, runs: newRuns.map((id) => ({ id, outcome: 'open', conclusion: '', star: false })) }));
+    newTitle = '';
+    newRuns = [];
   }
   function followUp(e: SubmitEvent) {
     e.preventDefault();
@@ -149,6 +185,71 @@
   });
 
   const metrics = $derived([...new Set(projectRuns.flatMap((r) => Object.keys(r.summary ?? {})))].sort());
+
+  // -- the run's Metrics list: chosen for the board, or the default ---------------------------------
+  const STAT = { last: 'Last', min: 'Min', max: 'Max' } as const;
+  let choosing = $state(false);
+  let metricFind = $state('');
+  const chosen = $derived(data.board.panel_metrics ?? []);
+  const runCard = $derived(hyp?.card ?? data.board.card);
+  const shownMetrics = $derived(
+    run && hrun
+      ? panelMetrics(data.board, run.summary, runCard, projectRuns.find((r) => r.id === hrun.id)?.prefixes)
+      : [],
+  );
+  // chosen ones first, in their order, then the rest of the project's metrics
+  const chooserList = $derived(
+    [...chosen, ...metrics.filter((m) => !chosen.includes(m))].filter((m) =>
+      m.toLowerCase().includes(metricFind.trim().toLowerCase()),
+    ),
+  );
+  // drag a row (in the list or among the chosen ones in the chooser) to reorder; the drop goes
+  // above or below the row under the pointer, by which half it is over
+  let dragMetric = $state<string | null>(null);
+  let dropAt = $state<{ m: string; before: boolean } | null>(null);
+  function startDrag(e: DragEvent, m: string) {
+    dragMetric = m;
+    e.dataTransfer?.setData('text/plain', m);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+  function overDrag(e: DragEvent, m: string) {
+    if (!dragMetric) return;
+    e.preventDefault();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dropAt = { m, before: e.clientY < r.top + r.height / 2 };
+  }
+  function moveMetric(m: string, target: string, before: boolean) {
+    const base = chosen.length ? chosen : shownMetrics;
+    if (m === target || !base.includes(m)) return;
+    const rest = base.filter((x) => x !== m);
+    const i = rest.indexOf(target);
+    if (i < 0) return;
+    rest.splice(before ? i : i + 1, 0, m);
+    if (rest.join('\n') !== base.join('\n') || !chosen.length) onsaveboard({ panel_metrics: rest });
+  }
+  function endDrop(e: DragEvent) {
+    e.preventDefault();
+    if (dragMetric && dropAt) moveMetric(dragMetric, dropAt.m, dropAt.before);
+    dragMetric = dropAt = null;
+  }
+  function keyMove(e: KeyboardEvent, m: string) {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const list = shownMetrics;
+    const i = list.indexOf(m);
+    const j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    moveMetric(m, list[j], e.key === 'ArrowUp');
+    // keep the focus on the moved row once the list redraws
+    requestAnimationFrame(() =>
+      (document.querySelector(`tr[data-metric="${CSS.escape(m)}"]`) as HTMLElement | null)?.focus(),
+    );
+  }
+  function toggleMetric(m: string) {
+    // the first pick starts from what is shown now, so ticking one more does not empty the list
+    const base = chosen.length ? chosen : shownMetrics;
+    onsaveboard({ panel_metrics: base.includes(m) ? base.filter((x) => x !== m) : [...base, m] });
+  }
   function setOwnCard(h: Hypothesis, metric: string, choice?: CardChoice) {
     edit(h, (c) => {
       const keepLast = !choice && c.card?.stat === 'last';
@@ -208,6 +309,19 @@
           onclick={() => editRun(hyp, hrun.id, (r) => (r.star = !r.star))}><Icon name="star" size={15} /></button
         >
       </div>
+      {@const brief = projectRuns.find((r) => r.id === hrun.id)}
+      {#if brief}
+        <div class="runmeta">
+          <span class="st {brief.status}"><i></i>{cap(brief.status)}</span>
+          <span class="faint">{fmtDate(brief.started ?? brief.created)}</span>
+          <button
+            class="idcopy mono"
+            title="Copy the run id ({brief.id}), for nuboard.load or the command line"
+            onclick={() => copyId(brief.id)}>{copied === brief.id ? 'Copied' : idSuffix(brief.id)}</button
+          >
+        </div>
+        {#if brief.tags?.length}<TagPills tags={brief.tags} />{/if}
+      {/if}
       <button class="back" onclick={() => onselect(hyp.id, null)}>← {hyp.title}</button>
 
       {#if !run}
@@ -247,18 +361,15 @@
 
       <section>
         <span class="label">Conclusion</span>
-        {#key hrun.id}
-          <textarea
-            class="input"
-            rows="3"
-            placeholder="What did this run show?"
-            value={hrun.conclusion}
-            disabled={ro}
-            onchange={(e) => {
-              const v = e.currentTarget.value;
-              editRun(hyp, hrun.id, (r) => (r.conclusion = v));
-            }}></textarea>
-        {/key}
+        <DraftField
+          id="conclusion:{hyp.id}:{hrun.id}"
+          value={hrun.conclusion}
+          multiline
+          placeholder="What did this run show?"
+          label="Conclusion"
+          disabled={ro}
+          onsave={(v) => editRun(hyp, hrun.id, (r) => (r.conclusion = v))}
+        />
       </section>
 
       {#if run}
@@ -270,30 +381,114 @@
           <button class="btn sm" onclick={() => openCompare([hrun.id])}><Icon name="info" size={14} /> Details</button>
         </div>
 
-        {#if Object.keys(run.summary).length}
-          <section>
+        <section>
+          <div class="sec-head">
             <span class="label">Metrics</span>
+            {#if !ro}
+              <button
+                class="btn btn-ghost icon sm"
+                class:on={choosing}
+                title="Choose the metrics listed here (for the whole board)"
+                aria-label="Choose metrics"
+                aria-pressed={choosing}
+                onclick={() => {
+                  choosing = !choosing;
+                  metricFind = '';
+                }}><Icon name="edit" size={13} /></button
+              >
+            {/if}
+          </div>
+          {#if choosing}
+            <div class="chooser">
+              <input
+                class="input sm"
+                bind:value={metricFind}
+                placeholder="Filter metrics"
+                aria-label="Filter metrics"
+              />
+              <div class="opts">
+                {#each chooserList as m (m)}
+                  {@const on = chosen.includes(m)}
+                  <label
+                    class="opt"
+                    class:dragging={dragMetric === m}
+                    class:drop-before={dropAt?.m === m && dropAt.before}
+                    class:drop-after={dropAt?.m === m && !dropAt.before}
+                    draggable={on ? 'true' : undefined}
+                    ondragstart={(e) => on && startDrag(e, m)}
+                    ondragover={(e) => on && overDrag(e, m)}
+                    ondrop={(e) => endDrop(e)}
+                    ondragend={() => (dragMetric = dropAt = null)}
+                    ><input type="checkbox" checked={on} onchange={() => toggleMetric(m)} /><span class="mono grow"
+                      >{m}</span
+                    >{#if on}<span class="grip" aria-hidden="true">⋮⋮</span>{/if}</label
+                  >
+                {:else}
+                  <p class="help">No metric matches.</p>
+                {/each}
+              </div>
+              <div class="row">
+                <button class="btn btn-primary sm" onclick={() => (choosing = false)}>Done</button>
+                <button
+                  class="btn sm"
+                  disabled={!chosen.length}
+                  title="The card's metric first, then the run's first metrics, without system metrics and timers"
+                  onclick={() => onsaveboard({ panel_metrics: [] })}>Use default</button
+                >
+                <span class="hint"
+                  >{chosen.length ? `${chosen.length} chosen, for the whole board` : 'Default list'}</span
+                >
+              </div>
+            </div>
+          {/if}
+          {#if shownMetrics.length}
             <table class="kv">
               <tbody>
-                {#each Object.entries(run.summary).slice(0, 12) as [m, s] (m)}
+                {#each shownMetrics as m (m)}
+                  {@const s = run.summary[m]}
+                  {@const stat = m === runCard?.metric ? runCard.stat : 'last'}
                   <tr
+                    class:missing={!s}
+                    class:dragging={dragMetric === m}
+                    class:drop-before={dropAt?.m === m && dropAt.before}
+                    class:drop-after={dropAt?.m === m && !dropAt.before}
+                    draggable={ro ? undefined : 'true'}
+                    tabindex={ro ? undefined : 0}
+                    data-metric={m}
+                    ondragstart={(e) => startDrag(e, m)}
+                    ondragover={(e) => overDrag(e, m)}
+                    ondragleave={() => dropAt?.m === m && (dropAt = null)}
+                    ondrop={(e) => endDrop(e)}
+                    ondragend={() => (dragMetric = dropAt = null)}
+                    onkeydown={(e) => keyMove(e, m)}
+                    title={s
+                      ? `${m}\nlast ${fmtNum(num(s.last))} · min ${fmtNum(s.min)} · max ${fmtNum(s.max)} · step ${s.step}${ro ? '' : '\nDrag (or Alt+↑/↓) to reorder'}`
+                      : `${m}: not logged by this run`}
                     ><td class="mono">{m}</td><td class="mono num"
-                      >{fmtNum(typeof s.last === 'number' ? s.last : null)}</td
+                      >{#if stat !== 'last'}<span class="st">{STAT[stat]}</span>{/if}{s
+                        ? fmtNum(stat === 'last' ? num(s.last) : s[stat])
+                        : '—'}</td
                     ></tr
                   >
                 {/each}
               </tbody>
             </table>
-          </section>
-        {/if}
+          {:else}
+            <p class="help">This run has no scalars yet.</p>
+          {/if}
+        </section>
 
         {#if diff.length}
           <section>
             <span class="label">Changed from {parentRun?.name}</span>
-            <table class="kv">
+            <table class="kv diff">
               <tbody>
                 {#each diff as d (d.k)}
-                  <tr><td class="mono">{d.k}</td><td class="mono faint">{d.a}</td><td class="mono">{d.b}</td></tr>
+                  <tr
+                    ><td class="mono" title={d.k}
+                      >{#each d.k.split(/(?<=[._/])/) as part, i (i)}{part}<wbr />{/each}</td
+                    ><td class="mono faint">{d.a}</td><td class="mono">{d.b}</td></tr
+                  >
                 {/each}
               </tbody>
             </table>
@@ -319,6 +514,7 @@
       <!-- one hypothesis -->
       {@const v = verdictOf(data.board, hyp.verdict)}
       {@const others = data.hypotheses.flatMap((h) => (h.id === hyp.id ? [] : h.runs.map((r) => ({ id: r.id, h }))))}
+      {@const context = new Map(others.map((o) => [o.id, o.h.title]))}
       <div class="title-row">
         {#key hyp.id}
           <input
@@ -373,38 +569,24 @@
 
       <section>
         <span class="label">Comes from</span>
-        <select
-          class="input"
+        <RunPicker
+          runs={others.map((o) => pickRun(o.id))}
+          {context}
           value={hyp.parent_run ?? ''}
+          label="Parent run"
+          none="Nothing (a starting point)"
           disabled={ro}
-          aria-label="Parent run"
-          onchange={(e) => {
-            const p = e.currentTarget.value || null;
-            edit(hyp, (c) => (c.parent_run = p));
-          }}
-        >
-          <option value="">Nothing (a starting point)</option>
-          {#each others as o (o.id)}
-            <option value={o.id}>{nameOf(o.id)} · {o.h.title}</option>
-          {/each}
-          {#if hyp.parent_run && !others.some((o) => o.id === hyp.parent_run)}
-            <option value={hyp.parent_run}>{hyp.parent_run} (not found)</option>
-          {/if}
-        </select>
+          onpick={(id) => edit(hyp, (c) => (c.parent_run = id || null))}
+        />
         {#if hyp.parent_run}
-          {#key hyp.id}
-            <input
-              class="input"
-              value={hyp.reason}
-              disabled={ro}
-              placeholder="Why? (text on the arrow)"
-              aria-label="Why"
-              onchange={(e) => {
-                const r = e.currentTarget.value.trim();
-                edit(hyp, (c) => (c.reason = r));
-              }}
-            />
-          {/key}
+          <DraftField
+            id="reason:{hyp.id}"
+            value={hyp.reason}
+            placeholder="Why? (text on the arrow)"
+            label="Why"
+            disabled={ro}
+            onsave={(v) => edit(hyp, (c) => (c.reason = v.trim()))}
+          />
           <label class="tg"
             ><button
               class="switch"
@@ -505,7 +687,9 @@
             <span class="dot" style="background:{data.runs[r.id] ? colorVar(o?.color ?? 'gray') : 'transparent'}"
             ></span>
             <button class="link mono grow" onclick={() => onselect(hyp.id, r.id)}>{nameOf(r.id)}</button>
-            {#if !data.runs[r.id]}<span class="nf">not found</span>{/if}
+            {#if !data.runs[r.id]}<span class="nf">not found</span>{:else}<span class="mono sfx" title="Run id {r.id}"
+                >{idSuffix(r.id)}</span
+              >{/if}
             {#if !ro}
               <button
                 class="btn btn-ghost icon sm"
@@ -519,18 +703,12 @@
         {/each}
         {#if !ro}
           {#if unfiled.length}
-            <select
-              class="input"
-              value=""
-              aria-label="Add a run"
-              onchange={(e) => {
-                const id = e.currentTarget.value;
-                if (id) edit(hyp, (c) => c.runs.push({ id, outcome: 'open', conclusion: '', star: false }));
-              }}
-            >
-              <option value="">Add a run…</option>
-              {#each unfiled as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
-            </select>
+            <RunPicker
+              runs={unfiled}
+              label="Add a run"
+              placeholder="Add a run…"
+              onpick={(id) => id && edit(hyp, (c) => c.runs.push({ id, outcome: 'open', conclusion: '', star: false }))}
+            />
           {:else}
             <p class="help">Every run of the project is on the board.</p>
           {/if}
@@ -569,20 +747,15 @@
           </div>
         {/each}
         {#if !ro}
-          <select
-            class="input"
-            value=""
-            aria-label="Add a dashed link"
-            onchange={(e) => {
-              const id = e.currentTarget.value;
-              if (id) edit(hyp, (c) => c.also.push({ run: id, reason: '' }));
-            }}
-          >
-            <option value="">Add a dashed link from a run…</option>
-            {#each others.filter((o) => o.id !== hyp.parent_run && !hyp.also.some((a) => a.run === o.id)) as o (o.id)}
-              <option value={o.id}>{nameOf(o.id)} · {o.h.title}</option>
-            {/each}
-          </select>
+          <RunPicker
+            runs={others
+              .filter((o) => o.id !== hyp.parent_run && !hyp.also.some((a) => a.run === o.id))
+              .map((o) => pickRun(o.id))}
+            {context}
+            label="Add a dashed link"
+            placeholder="Add a dashed link from a run…"
+            onpick={(id) => id && edit(hyp, (c) => c.also.push({ run: id, reason: '' }))}
+          />
         {/if}
       </section>
 
@@ -614,6 +787,25 @@
             {/if}
           </div>
         </section>
+
+        <section>
+          <span class="label">Card size</span>
+          <div class="seg sizes" role="group" aria-label="Card size">
+            <button
+              aria-pressed={!hyp.width}
+              title="Follow the board's size"
+              onclick={() => edit(hyp, (c) => (c.width = null))}
+              >Board ({CARD_WIDTHS.find((w) => w.value === data.board.card_width)?.label ?? 'M'})</button
+            >
+            {#each CARD_WIDTHS as w (w.value)}
+              <button
+                aria-pressed={hyp.width === w.value}
+                title="{w.px} px wide"
+                onclick={() => edit(hyp, (c) => (c.width = w.value))}>{w.label}</button
+              >
+            {/each}
+          </div>
+        </section>
       {/if}
     {:else}
       <!-- nothing selected -->
@@ -631,22 +823,69 @@
             placeholder="What are you testing?"
             aria-label="Title"
           />
-          <select class="input" bind:value={newRun} aria-label="First run">
-            <option value="">No run yet</option>
-            {#each unfiled as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
-          </select>
+          <span class="label">Runs</span>
+          {#each newRuns as id (id)}
+            <div class="line">
+              <span class="dot" style="background:{colorVar(outcomeOf(data.board, 'open')?.color ?? 'gray')}"></span>
+              <span class="mono grow">{nameOf(id)}</span>
+              <span class="mono sfx" title="Run id {id}">{idSuffix(id)}</span>
+              <button
+                type="button"
+                class="btn btn-ghost icon sm"
+                title="Remove"
+                aria-label="Remove {nameOf(id)}"
+                onclick={() => (newRuns = newRuns.filter((x) => x !== id))}><Icon name="x" size={13} /></button
+              >
+            </div>
+          {/each}
+          {#if unfiled.some((r) => !newRuns.includes(r.id))}
+            <RunPicker
+              runs={unfiled.filter((r) => !newRuns.includes(r.id))}
+              label="Add a run"
+              placeholder="Add a run…"
+              onpick={(id) => id && (newRuns = [...newRuns, id])}
+            />
+          {/if}
           <button class="btn btn-primary sm" type="submit" disabled={!newTitle.trim()}
             ><Icon name="plus" size={14} /> Create</button
           >
         </form>
       {/if}
-      {#if unfiled.length}
+      {#if unfiledLeft.length}
         <section>
-          <span class="label">Not on the board ({unfiled.length})</span>
-          <ul class="plain">
-            {#each unfiled.slice(0, 12) as r (r.id)}<li class="mono">{r.name}</li>{/each}
-          </ul>
-          {#if unfiled.length > 12}<p class="help">and {unfiled.length - 12} more</p>{/if}
+          <span class="label">Not on the board ({unfiledLeft.length})</span>
+          {#if unfiledLeft.length > UNFILED_SHOWN}
+            <input
+              class="input sm"
+              bind:value={unfiledFind}
+              placeholder="Filter by name, id, status or tag…"
+              aria-label="Filter runs not on the board"
+            />
+          {/if}
+          <div class="unfiled">
+            {#each unfiledShown as r (r.id)}
+              {#if ro}
+                <div class="uf"><div class="uf-row"><RunLine run={r} /></div></div>
+              {:else}
+                <div class="uf">
+                  <button
+                    class="uf-row"
+                    title="Add to the new hypothesis"
+                    onclick={() => {
+                      if (!newRuns.includes(r.id)) newRuns = [...newRuns, r.id];
+                    }}><RunLine run={r} /></button
+                  >
+                </div>
+              {/if}
+            {/each}
+          </div>
+          {#if !unfiledFind.trim() && unfiledLeft.length > UNFILED_SHOWN}
+            <button class="btn btn-ghost sm more-btn" onclick={() => (unfiledAll = !unfiledAll)}
+              >{unfiledAll ? 'Show the newest only' : `Show all ${unfiledLeft.length}`}</button
+            >
+          {:else if unfiledFind.trim() && !unfiledShown.length}
+            <p class="help">No run matches.</p>
+          {/if}
         </section>
       {/if}
     {/if}
@@ -861,9 +1100,168 @@
   }
   .kv .num {
     text-align: right;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  .kv .st {
+    margin-right: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+  .kv tr[draggable='true'] {
+    cursor: grab;
+  }
+  .kv tr:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .dragging {
+    opacity: 0.4;
+  }
+  .kv tr.drop-before td,
+  .opt.drop-before {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .kv tr.drop-after td,
+  .opt.drop-after {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .chooser .grip {
+    color: var(--faint);
+    cursor: grab;
+    letter-spacing: -2px;
+    padding: 0 4px;
+  }
+  /* "Changed from": keep config keys whole, breaking only at their dots and underscores */
+  /* fixed columns, so a long value wraps (at spaces first) instead of widening the panel */
+  .kv.diff {
+    table-layout: fixed;
+  }
+  .kv.diff td {
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
+  .kv.diff td:first-child {
+    width: 30%;
+  }
+  .kv tr.missing td {
+    color: var(--faint);
+  }
+  .unfiled {
+    display: flex;
+    flex-direction: column;
+    max-height: 420px;
+    overflow: auto;
+    margin: 0 -6px;
+  }
+  .runmeta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .runmeta .st i {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 5px;
+    background: var(--faint);
+  }
+  .runmeta .st.finished i {
+    background: var(--s4, var(--ok));
+  }
+  .runmeta .st.running {
+    color: var(--accent);
+  }
+  .runmeta .st.running i {
+    background: var(--accent);
+  }
+  .runmeta .st.crashed,
+  .runmeta .st.killed {
+    color: var(--err);
+  }
+  .runmeta .st.crashed i,
+  .runmeta .st.killed i {
+    background: var(--err);
+  }
+  .idcopy {
+    margin-left: auto;
+    border: 1px solid var(--border);
+    background: none;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: copy;
+  }
+  .idcopy:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .sfx {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--faint);
+  }
+  .more-btn {
+    align-self: flex-start;
+  }
+  .uf {
+    border-radius: 8px;
+  }
+  .uf-row {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: none;
+    padding: 6px;
+    border-radius: 8px;
+    text-align: left;
+  }
+  button.uf-row {
+    cursor: pointer;
+  }
+  button.uf-row:hover {
+    background: var(--panel-2);
+  }
+  .chooser {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+  }
+  .chooser .opts {
+    max-height: 220px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .chooser .opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px;
+    font-size: 12px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+  .chooser .hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--faint);
   }
   .stat {
     flex: none;
+  }
+  .seg.sizes {
+    align-self: flex-start;
   }
   @media (max-width: 900px) {
     .side {

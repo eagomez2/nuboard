@@ -517,7 +517,7 @@ test('a waveform figure downloads its audio as .wav and its data as a .zip bundl
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
-  const save = async (item: string) => {
+  const save = async (item: RegExp) => {
     const download = page.waitForEvent('download');
     await fig.getByRole('button', { name: 'Download' }).click();
     await fig.getByRole('menuitem', { name: item }).click();
@@ -526,13 +526,13 @@ test('a waveform figure downloads its audio as .wav and its data as a .zip bundl
     await file.saveAs(path);
     return { name: file.suggestedFilename(), path };
   };
-  const wav = await save('Audio (.wav)');
+  const wav = await save(/^WAV/);
   expect(wav.name).toMatch(/-vad_enhanced-0\.wav$/);
   expect(readFileSync(wav.path).subarray(0, 4).toString()).toBe('RIFF');
   await expect(fig.getByRole('menu')).toBeHidden();
 
   // the bundle, read back with the Python loader: the same audio, one signal per name, the metadata
-  const zip = await save('Data (.zip)');
+  const zip = await save(/^ZIP with signals/);
   expect(zip.name).toMatch(/-vad_enhanced-0\.zip$/);
   const python = process.env.PYTHON ?? '../.venv/bin/python';
   const script = [
@@ -905,9 +905,47 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   expect(doc).toContain('rel="icon"');
 });
 
+test('Select all shown ticks only what the filter shows, and Download saves it as one .zip', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F');
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected media' });
+  await expect(bar).toContainText('Tick items to add them to a report or download them');
+  // three keys under audio/, one card per run
+  await bar.getByRole('button', { name: /Select all shown \(9\)/ }).click();
+  await expect(bar).toContainText('9 selected');
+  const download = page.waitForEvent('download');
+  await bar.getByRole('button', { name: 'Download 9 as .zip' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('speech-denoise-media-9.zip');
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const zip = readFileSync(path);
+  expect(zip.subarray(0, 2).toString()).toBe('PK');
+  for (const name of ['-audio_clean-0.wav', '-audio_noisy-0.wav', '-audio_enhanced-'])
+    expect(zip.includes(name)).toBe(true);
+  await bar.getByRole('button', { name: 'Clear' }).click();
+  await expect(bar).toContainText('Tick items');
+});
+
+test('a card downloads in each of its formats, such as a table as CSV', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eeval%2Fsamples%24');
+  const card = page.locator('figure.cell').first();
+  await card.getByRole('button', { name: 'Download', exact: true }).click();
+  const menu = card.getByRole('menu', { name: 'Download as' });
+  await expect(menu.getByRole('menuitem')).toHaveText(['JSONThe columns and rows', 'CSVFor spreadsheets']);
+  const download = page.waitForEvent('download');
+  await menu.getByRole('menuitem', { name: /^CSV/ }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/-eval_samples-\d+\.csv$/);
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  expect(readFileSync(path, 'utf8').split('\r\n')[0]).toBe('file,noise,snr_in,pesq,si_sdr,stoi,enhanced');
+  await expect(menu).toBeHidden();
+});
+
 test('several media items go to a report together and export without a network', async ({ page, browser }) => {
   await page.goto('/#/media?project=vit-ablations&mkinds=figure&mcols=2&mrows=1&mfind=confusion%7Cper_class');
-  await page.getByRole('button', { name: 'Select for report' }).click();
+  await page.getByRole('button', { name: 'Select items' }).click();
   const boxes = page.getByRole('checkbox');
   await boxes.nth(0).check();
   await boxes.nth(2).check(); // the first card of the next key
@@ -1019,10 +1057,16 @@ test('a pinned point stays on its point when the chart zooms', async ({ page }) 
   await expect(dot).toBeVisible();
 });
 
-test('Space plays and pauses a waveform figure in full screen only', async ({ page }) => {
+test('Space plays and pauses a waveform figure once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
+  await page.keyboard.press(' ');
+  await expect(fig).not.toHaveClass(/playing/);
+  // a click on the plot sets the playhead and gives the figure the focus: Space plays from there
+  await fig.locator('.u-over').click({ position: { x: 40, y: 20 } });
+  await page.keyboard.press(' ');
+  await expect(fig).toHaveClass(/playing/);
   await page.keyboard.press(' ');
   await expect(fig).not.toHaveClass(/playing/);
   // the focused full screen button is not pressed by Space: the figure stays in full screen
@@ -1038,12 +1082,18 @@ test('Space plays and pauses a waveform figure in full screen only', async ({ pa
   await expect(fig).not.toHaveClass(/nbwf-full/);
 });
 
-test('Space plays and pauses the audio player in full screen only', async ({ page }) => {
+test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const player = page.frameLocator('iframe[src="./audio.html"]').first();
   const root = player.locator('#player');
   await expect(player.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
-  await root.click({ position: { x: 5, y: 5 } }); // focus the frame without playing
+  // the page has the focus: Space is the page's
+  await page.keyboard.press(' ');
+  await expect(root).not.toHaveClass(/playing/);
+  // a click on the waveform gives the player the focus: Space plays and pauses
+  await player.locator('#waveform').click({ position: { x: 40, y: 30 } });
+  await page.keyboard.press(' ');
+  await expect(root).toHaveClass(/playing/);
   await page.keyboard.press(' ');
   await expect(root).not.toHaveClass(/playing/);
   await player.locator('#fullscreen').click();
@@ -1271,7 +1321,10 @@ test('a report with a table and audio notes exports them, with either audio play
   // the Download menu works offline too: the data bundle carries the figure's note
   const bundle = off.waitForEvent('download');
   await off.locator('.nbwavefig').getByRole('button', { name: 'Download' }).click();
-  await off.locator('.nbwavefig').getByRole('menuitem', { name: 'Data (.zip)' }).click();
+  await off
+    .locator('.nbwavefig')
+    .getByRole('menuitem', { name: /^ZIP with signals/ })
+    .click();
   const zipPath = test.info().outputPath('exported-bundle.zip');
   await (await bundle).saveAs(zipPath);
   const zipped = readFileSync(zipPath);
@@ -2190,16 +2243,20 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.goto('/#/hypotheses');
   await expect(page.getByRole('heading', { name: 'Augmentations on ViT-S/16' })).toBeVisible();
   await expect(page.locator('.hcard')).toHaveCount(5);
-  // each card marks its top run's number; with Last, flipping the arrow moves the marks
+  // each card marks its top run's number; Last ranks by val/acc's direction (higher, from its name)
   const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
   await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
-  await page.getByRole('combobox', { name: 'Summary' }).selectOption('last');
-  const highest = await tops();
-  await page.getByRole('button', { name: /^Direction of val\/acc/ }).click();
+  const summary = page.getByRole('group', { name: 'Summary' }).first();
+  const highest = await tops(); // the demo board starts on Max
+  await summary.getByRole('button', { name: 'Min' }).click();
   await expect.poll(tops).not.toBe(highest);
-  await page.getByRole('button', { name: 'Reset' }).click();
-  await expect.poll(tops).toBe(highest);
-  await page.getByRole('combobox', { name: 'Summary' }).selectOption('max');
+  await summary.getByRole('button', { name: 'Last' }).click();
+  await expect(page.locator('.chiprow .m.top').first()).toHaveAttribute(
+    'title',
+    'Top on this card: the highest val/acc (Last, higher is better)',
+  );
+  await expect(page.getByRole('button', { name: /^Direction of/ })).toHaveCount(0);
+  await summary.getByRole('button', { name: 'Max' }).click();
   await page.locator('.chiprow', { hasText: 'cutmix-s0' }).click();
   await expect(page.locator('aside textarea')).toHaveValue('Best run of the study.');
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Timeline' }).click();
@@ -2264,7 +2321,7 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
     .first()
     .click({ position: { x: 20, y: 12 } });
   await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
-  const stat = page.getByRole('group', { name: 'Summary' });
+  const stat = page.locator('aside').getByRole('group', { name: 'Summary' });
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
   await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');
