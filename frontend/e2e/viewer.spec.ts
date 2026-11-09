@@ -2246,7 +2246,7 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   // each card marks its top run's number; Last ranks by val/acc's direction (higher, from its name)
   const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
   await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
-  const summary = page.getByRole('group', { name: 'Summary' }).first();
+  const summary = page.getByRole('group', { name: 'Statistic' }).first();
   const highest = await tops(); // the demo board starts on Max
   await summary.getByRole('button', { name: 'Min' }).click();
   await expect.poll(tops).not.toBe(highest);
@@ -2320,8 +2320,8 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
     .locator('.hcard')
     .first()
     .click({ position: { x: 20, y: 12 } });
-  await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
-  const stat = page.locator('aside').getByRole('group', { name: 'Summary' });
+  await page.locator('aside').getByRole('combobox', { name: 'Scalar' }).selectOption('val/acc');
+  const stat = page.locator('aside').getByRole('group', { name: 'Statistic' });
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
   await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');
@@ -2331,7 +2331,7 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
 
 test('runs show each result as its min, max or last value', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
-  const result = page.getByRole('group', { name: 'Result' });
+  const result = page.getByRole('group', { name: 'Statistic' });
   // train/loss reads as a loss: Min is where it starts
   await expect(result.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.result .mname').first()).toHaveText('train/loss · min');
@@ -2394,13 +2394,15 @@ test('sweeps rank by min, max or last, in the direction of the direction arrow',
   await expect(page.getByRole('button', { name: 'Save for everyone' })).toHaveCount(0);
 });
 
-test('the Charts summary card shows the lowest or highest last value', async ({ page }) => {
+test('the Charts summary card shows the best last value, lower or higher', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
   const card = page.locator('.stat').first();
-  // val/acc does not read as a loss: Max is where it starts
-  await expect(card).toContainText('Highest val/acc');
-  await card.getByRole('button', { name: 'Min' }).click();
-  await expect(card).toContainText('Lowest val/acc');
+  // val/acc does not read as a loss: higher is better where it starts
+  await expect(card).toContainText('Best val/acc');
+  const better = card.getByRole('button', { name: 'Higher is better' });
+  await expect(better).toHaveText('↑');
+  await better.click();
+  await expect(card.getByRole('button', { name: 'Lower is better' })).toHaveText('↓');
   await expect(page).toHaveURL(/cstat=min/);
   await expect(page.locator('.inspector .im')).toContainText('Lowest first');
 });

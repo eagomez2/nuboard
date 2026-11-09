@@ -578,14 +578,16 @@
   <section class="stats">
     <div class="card stat">
       <div class="label lrow">
-        <span class="trunc" title="{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}"
-          >{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}</span
-        >
+        <span class="trunc" title="Best {focus || 'scalar'}">Best {focus || 'scalar'}</span>
         <span class="faint keep">(last value)</span>
-        <div class="seg mini" role="group" aria-label="Lowest or highest">
-          <button aria-pressed={cardStat === 'min'} onclick={() => setCardStat('min')}>Min</button>
-          <button aria-pressed={cardStat === 'max'} onclick={() => setCardStat('max')}>Max</button>
-        </div>
+        <button
+          class="btn better"
+          aria-label={lower ? 'Lower is better' : 'Higher is better'}
+          title="{lower
+            ? '↓ Lower is better: shows the run with the lowest last value'
+            : '↑ Higher is better: shows the run with the highest last value'}. Click to flip."
+          onclick={() => setCardStat(lower ? 'max' : 'min')}>{lower ? '↓' : '↑'}</button
+        >
       </div>
       <div class="big mono">{best ? fmtV(best.last) : '—'}</div>
       {#if best}
@@ -1317,17 +1319,14 @@
     align-items: baseline;
     min-width: 0;
   }
-  .seg.mini {
+  .better {
     margin-left: auto;
-    padding: 2px;
-    border-radius: 8px;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-  .seg.mini button {
-    padding: 1px 7px;
-    font-size: 11.5px;
-    border-radius: 6px;
+    align-self: center;
+    height: 22px;
+    padding: 0 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
   }
   .stat .label .faint {
     text-transform: none;

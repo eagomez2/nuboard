@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ScalarStat from '../components/ScalarStat.svelte';
   import HistChart from '../components/HistChart.svelte';
   import Icon from '../components/Icon.svelte';
   import MediaCard from '../components/MediaCard.svelte';
@@ -694,18 +695,15 @@
           <span class="mono">Step {pickedStep.toLocaleString()}</span>
         </label>
       {:else if mode === 'best'}
-        <select
-          class="input sm mono metric"
-          aria-label="Scalar"
-          value={bestMetric}
-          onchange={(e) => router.set({ mmetric: e.currentTarget.value, mdir: null })}
-        >
-          {#each metricNames as m (m)}<option value={m}>{m}</option>{/each}
-        </select>
-        <div class="seg" role="group" aria-label="Statistic">
-          <button aria-pressed={bestDir === 'min'} onclick={() => setBestDir('min')}>Min</button>
-          <button aria-pressed={bestDir === 'max'} onclick={() => setBestDir('max')}>Max</button>
-        </div>
+        <ScalarStat
+          metrics={metricNames}
+          metric={bestMetric}
+          stat={bestDir}
+          allowLast={false}
+          size="sm"
+          onmetric={(m) => router.set({ mmetric: m, mdir: null })}
+          onstat={(s) => setBestDir(s as Extreme)}
+        />
         <span class="faint small">each run shows the item logged closest to the step of its {bestDir}</span>
       {/if}
       <span class="spacer"></span>
@@ -1249,9 +1247,6 @@
   }
   .sm {
     height: 30px;
-  }
-  .metric {
-    max-width: 260px;
   }
   .slider {
     display: flex;

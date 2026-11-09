@@ -257,9 +257,9 @@ shared.
 The Charts page plots the selected runs (from **Charts** in the selection
 bar) or, if none are selected, every run matching the query.
 
-- **Summary cards**: the lowest or highest last value of the focused scalar
-  (the **Min** / **Max** switch on the card, `cstat` in the URL, starting as
-  on the Runs page and remembered per scalar), running runs and last
+- **Summary cards**: the best last value of the focused scalar, **Best**
+  with a ↓ / ↑ button for whether lower or higher is better (`cstat` in the
+  URL, starting as on the Runs page and remembered per scalar), running runs and last
   heartbeat, runs with NaN/Inf values, and how many runs are shown.
 - **Grouping**: `group by config.optim.lr` in the query (or the **Group by**
   menu) draws one line per group with a band: mean ± std (default), mean ± sem,
@@ -324,7 +324,7 @@ bar) or, if none are selected, every run matching the query.
   does not restart at the edge; the view stays where you left it while it
   loads. Double-click, or **Reset zoom**, to reset.
 - **Inspector**: hover a chart to see every series' value at that step,
-  sorted lowest or highest first as the summary card's Min / Max says, with
+  sorted lowest or highest first as the summary card's ↓ / ↑ says, with
   ± std for grouped series. Click to pin the step.
   Without hovering it shows the latest values of the series shown (in the
   zoomed range).

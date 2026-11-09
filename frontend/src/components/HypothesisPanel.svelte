@@ -2,6 +2,7 @@
   // The side panel of the Hypotheses page: what is selected (a hypothesis, a run, or several runs
   // picked with Shift), or how to start when nothing is. Every change goes through `onsave` with an
   // edited copy, so the page stays the only writer. Runs and reports that are gone show greyed.
+  import ScalarStat from './ScalarStat.svelte';
   import { untrack } from 'svelte';
   import type { SvelteSet } from 'svelte/reactivity';
   import Icon from './Icon.svelte';
@@ -17,9 +18,7 @@
   import { cap, fmtDate, fmtNum, fmtValue } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
   import {
-    CARD_CHOICES,
     CARD_WIDTHS,
-    cardChoice,
     cardFor,
     colorVar,
     newHypothesis,
@@ -763,28 +762,14 @@
         <section>
           <span class="label">Number on this card</span>
           <div class="row">
-            <select
-              class="input"
-              value={hyp.card?.metric ?? ''}
-              aria-label="Metric"
-              onchange={(e) => setOwnCard(hyp, e.currentTarget.value)}
-            >
-              <option value="">Board setting{data.board.card ? ` (${data.board.card.metric})` : ''}</option>
-              {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
-              {#if hyp.card && !metrics.includes(hyp.card.metric)}<option value={hyp.card.metric}
-                  >{hyp.card.metric}</option
-                >{/if}
-            </select>
-            {#if hyp.card}
-              <div class="seg stat" role="group" aria-label="Summary">
-                {#each CARD_CHOICES as c (c.value)}
-                  <button
-                    aria-pressed={cardChoice(hyp.card) === c.value}
-                    onclick={() => setOwnCard(hyp, hyp.card!.metric, c.value)}>{c.label}</button
-                  >
-                {/each}
-              </div>
-            {/if}
+            <ScalarStat
+              {metrics}
+              metric={hyp.card?.metric ?? ''}
+              stat={hyp.card?.stat ?? 'max'}
+              none="Board setting{data.board.card ? ` (${data.board.card.metric})` : ''}"
+              onmetric={(m) => setOwnCard(hyp, m)}
+              onstat={(c) => setOwnCard(hyp, hyp.card!.metric, c)}
+            />
           </div>
         </section>
 

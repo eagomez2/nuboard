@@ -19,6 +19,13 @@ Small fixes and conveniences in the viewer. No breaking changes.
   an empty Artifacts page no longer looks faded.
 - **Hypotheses: Not on the board** adds a run to the new hypothesis with one
   click, like **Add a run…**, instead of opening buttons under it.
+- **One control for "which scalar, summarized how".** Runs, Sweeps, Media and
+  Hypotheses (the board and a card's own number) use the same scalar picker
+  and Min / Max / Last pills, with the same tooltips; the direction arrow
+  stays on Runs and Sweeps, where it ranks the runs. The Charts summary card
+  now reads **Best** with a ↓ / ↑ button instead of Min / Max, so Min and Max
+  always mean a run's lowest and highest value. URL keys and remembered
+  choices are unchanged.
 - **Charts redraw faster with "Ignore outliers" on.** The y-axis range is
   worked out with one sort of the points instead of four, in a typed array,
   so zooming and resetting a chart of many runs blocks the page for much less
