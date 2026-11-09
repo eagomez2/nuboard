@@ -517,7 +517,7 @@ test('a waveform figure downloads its audio as .wav and its data as a .zip bundl
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
-  const save = async (item: string) => {
+  const save = async (item: RegExp) => {
     const download = page.waitForEvent('download');
     await fig.getByRole('button', { name: 'Download' }).click();
     await fig.getByRole('menuitem', { name: item }).click();
@@ -526,13 +526,13 @@ test('a waveform figure downloads its audio as .wav and its data as a .zip bundl
     await file.saveAs(path);
     return { name: file.suggestedFilename(), path };
   };
-  const wav = await save('Audio (.wav)');
+  const wav = await save(/^WAV/);
   expect(wav.name).toMatch(/-vad_enhanced-0\.wav$/);
   expect(readFileSync(wav.path).subarray(0, 4).toString()).toBe('RIFF');
   await expect(fig.getByRole('menu')).toBeHidden();
 
   // the bundle, read back with the Python loader: the same audio, one signal per name, the metadata
-  const zip = await save('Data (.zip)');
+  const zip = await save(/^ZIP with signals/);
   expect(zip.name).toMatch(/-vad_enhanced-0\.zip$/);
   const python = process.env.PYTHON ?? '../.venv/bin/python';
   const script = [
@@ -905,9 +905,47 @@ test('timeline goes full screen and into a report, which exports as HTML', async
   expect(doc).toContain('rel="icon"');
 });
 
+test('Select all shown ticks only what the filter shows, and Download saves it as one .zip', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F');
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected media' });
+  await expect(bar).toContainText('Tick items to add them to a report or download them');
+  // three keys under audio/, one card per run
+  await bar.getByRole('button', { name: /Select all shown \(9\)/ }).click();
+  await expect(bar).toContainText('9 selected');
+  const download = page.waitForEvent('download');
+  await bar.getByRole('button', { name: 'Download 9 as .zip' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('speech-denoise-media-9.zip');
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const zip = readFileSync(path);
+  expect(zip.subarray(0, 2).toString()).toBe('PK');
+  for (const name of ['-audio_clean-0.wav', '-audio_noisy-0.wav', '-audio_enhanced-'])
+    expect(zip.includes(name)).toBe(true);
+  await bar.getByRole('button', { name: 'Clear' }).click();
+  await expect(bar).toContainText('Tick items');
+});
+
+test('a card downloads in each of its formats, such as a table as CSV', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eeval%2Fsamples%24');
+  const card = page.locator('figure.cell').first();
+  await card.getByRole('button', { name: 'Download', exact: true }).click();
+  const menu = card.getByRole('menu', { name: 'Download as' });
+  await expect(menu.getByRole('menuitem')).toHaveText(['JSONThe columns and rows', 'CSVFor spreadsheets']);
+  const download = page.waitForEvent('download');
+  await menu.getByRole('menuitem', { name: /^CSV/ }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/-eval_samples-\d+\.csv$/);
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  expect(readFileSync(path, 'utf8').split('\r\n')[0]).toBe('file,noise,snr_in,pesq,si_sdr,stoi,enhanced');
+  await expect(menu).toBeHidden();
+});
+
 test('several media items go to a report together and export without a network', async ({ page, browser }) => {
   await page.goto('/#/media?project=vit-ablations&mkinds=figure&mcols=2&mrows=1&mfind=confusion%7Cper_class');
-  await page.getByRole('button', { name: 'Select for report' }).click();
+  await page.getByRole('button', { name: 'Select items' }).click();
   const boxes = page.getByRole('checkbox');
   await boxes.nth(0).check();
   await boxes.nth(2).check(); // the first card of the next key
@@ -1283,7 +1321,10 @@ test('a report with a table and audio notes exports them, with either audio play
   // the Download menu works offline too: the data bundle carries the figure's note
   const bundle = off.waitForEvent('download');
   await off.locator('.nbwavefig').getByRole('button', { name: 'Download' }).click();
-  await off.locator('.nbwavefig').getByRole('menuitem', { name: 'Data (.zip)' }).click();
+  await off
+    .locator('.nbwavefig')
+    .getByRole('menuitem', { name: /^ZIP with signals/ })
+    .click();
   const zipPath = test.info().outputPath('exported-bundle.zip');
   await (await bundle).saveAs(zipPath);
   const zipped = readFileSync(zipPath);

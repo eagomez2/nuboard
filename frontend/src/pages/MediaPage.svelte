@@ -10,7 +10,18 @@
   import { chartToPng } from '../lib/snapshot';
   import { defaultMetric, fmtNum } from '../lib/format';
   import { rememberStat, statFor, type Extreme } from '../lib/stat';
-  import { HIST_MIME, MEDIA_KINDS, PR_MIME, embedLine, kindOf, mediaRef, type MediaKind } from '../lib/media';
+  import {
+    HIST_MIME,
+    MEDIA_KINDS,
+    PR_MIME,
+    WAVEFORM_MIME,
+    embedLine,
+    extensionOf,
+    kindOf,
+    mediaRef,
+    type MediaKind,
+  } from '../lib/media';
+  import { waveformKit } from '../lib/waveform';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -436,19 +447,150 @@
     const id = pickId(run, it);
     picked = on ? [...picked.filter((p) => p.id !== id), { id, run, item: it }] : picked.filter((p) => p.id !== id);
   }
-  function stopSelecting() {
-    selecting = false;
+  // "All runs on one chart" overlays picked too, each drawn as a PNG when ticked
+  let pickedOv = $state<{ key: string; refs: string[]; png: string }[]>([]);
+  const pickedOvKeys = $derived(new Set(pickedOv.map((o) => o.key)));
+  const nPicked = $derived(picked.length + pickedOv.length);
+  const ovEl = (key: string) => document.querySelector<HTMLElement>(`.prall[data-ov="${CSS.escape(key)}"]`);
+  async function pickOverlay(key: string, refs: string[], on: boolean) {
+    if (!on) return void (pickedOv = pickedOv.filter((o) => o.key !== key));
+    const el = ovEl(key);
+    const png = el ? await chartToPng(el, `${key} · all runs`) : null;
+    if (png && !pickedOvKeys.has(key)) pickedOv = [...pickedOv, { key, refs, png }];
+  }
+  function clearPicked() {
     picked = [];
+    pickedOv = [];
+  }
+  function stopSelecting() {
+    zipAbort?.abort();
+    selecting = false;
+    clearPicked();
+  }
+  // the overlays on screen: open sections by key whose runs all logged PR curves or distributions
+  const shownOverlays = $derived(
+    by !== 'key'
+      ? []
+      : sections.flatMap((s, si) => {
+          const cards = showEmpty ? s.cards : s.cards.filter((c) => c.items.length);
+          const mime = cards[0]?.items[0]?.mime;
+          return isOpen(s, si) && cards.length > 1 && (mime === PR_MIME || mime === HIST_MIME)
+            ? [{ key: s.title, refs: prOverlay(cards).map((c) => c.ref) }]
+            : [];
+        }),
+  );
+  // Select all shown: the item each card of the filtered sections shows (all pages, folded sections too)
+  const shownPicks = $derived(
+    [...(pinned ? [pinned] : []), ...sections].flatMap((s) =>
+      s.cards.flatMap((c) => {
+        const it = shownItem(c.items, targetFor(c.run.key), mode === 'best');
+        return it && it.index !== undefined ? [{ id: pickId(c.run, it), run: c.run, item: it }] : [];
+      }),
+    ),
+  );
+  const shownCount = $derived(shownPicks.length + shownOverlays.length);
+  const allShownPicked = $derived(
+    shownPicks.every((p) => pickedIds.has(p.id)) && shownOverlays.every((o) => pickedOvKeys.has(o.key)),
+  );
+  async function selectShown() {
+    const seen = new Set(picked.map((p) => p.id));
+    picked = [...picked, ...shownPicks.filter((p) => !seen.has(p.id) && seen.add(p.id))];
+    for (const o of shownOverlays) if (!pickedOvKeys.has(o.key)) await pickOverlay(o.key, o.refs, true);
+  }
+
+  // Download the picked items as one .zip, built in the browser. It stops past ZIP_MAX bytes, which
+  // keeps the page's memory in check (the zip is held in memory until it is saved).
+  const ZIP_MAX = 1024 ** 3;
+  let zipping = $state<{ done: number; total: number; bytes: number } | null>(null);
+  let zipError = $state('');
+  let zipAbort: AbortController | null = null;
+  const mb = (n: number) => `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+  async function downloadPicked() {
+    const list = picked.filter((p) => p.item.index !== undefined);
+    const overlays = [...pickedOv];
+    const total = list.length + overlays.length;
+    if (!total || zipping) return;
+    zipError = '';
+    const abort = (zipAbort = new AbortController());
+    zipping = { done: 0, total, bytes: 0 };
+    const files: [string, Uint8Array][] = new Array(list.length);
+    const names = new Set<string>();
+    const nameOf = (p: (typeof list)[number]) => {
+      const wave = p.item.mime === WAVEFORM_MIME;
+      const base = `${p.run.name}-${p.item.key.replaceAll('/', '_')}-${p.item.step}`;
+      const ext = wave ? '.wav' : extensionOf(p.item.mime);
+      let name = base + ext;
+      // runs with the same name: add the end of the run id
+      if (names.has(name)) name = `${base}-${p.run.id.slice(-8)}${ext}`;
+      for (let i = 2; names.has(name); i++) name = `${base}-${i}${ext}`;
+      names.add(name);
+      return name;
+    };
+    const named = list.map((p) => ({ p, name: nameOf(p) }));
+    let next = 0;
+    let bytes = 0;
+    let tooBig = false;
+    const worker = async () => {
+      while (next < named.length && !abort.signal.aborted) {
+        const i = next++;
+        const { p, name } = named[i];
+        const r = await fetch(api.mediaUrl(p.run.key, p.item.index!), { signal: abort.signal });
+        if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+        let data = new Uint8Array(await r.arrayBuffer());
+        if (p.item.mime === WAVEFORM_MIME && p.item.audio_bytes) data = data.slice(0, p.item.audio_bytes);
+        bytes += data.length;
+        if (bytes > ZIP_MAX) {
+          tooBig = true;
+          abort.abort();
+          return;
+        }
+        files[i] = [name, data];
+        zipping = { done: zipping!.done + 1, total, bytes };
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, named.length) }, worker));
+      if (tooBig) zipError = `The files pass ${mb(ZIP_MAX)}: select fewer and download them in parts.`;
+      if (abort.signal.aborted) return;
+      for (const o of overlays) {
+        const data = new Uint8Array(await (await fetch(o.png)).arrayBuffer());
+        let name = `${o.key.replaceAll('/', '_')}-all-runs.png`;
+        for (let i = 2; names.has(name); i++) name = `${o.key.replaceAll('/', '_')}-all-runs-${i}.png`;
+        names.add(name);
+        files.push([name, data]);
+        bytes += data.length;
+        zipping = { done: zipping!.done + 1, total, bytes };
+      }
+      const zip = waveformKit().zipStored(files);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+      a.download = `${list[0]?.run.project ?? router.get('project') ?? 'nuboard'}-media-${total}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (e) {
+      if (tooBig) zipError = `The files pass ${mb(ZIP_MAX)}: select fewer and download them in parts.`;
+      else if (!abort.signal.aborted) zipError = `Could not download: ${e instanceof Error ? e.message : e}`;
+      abort.abort();
+    } finally {
+      zipping = null;
+      zipAbort = null;
+    }
   }
   async function savePicked() {
-    if (!picked.length) return;
-    const project = picked[0].run.project;
-    const n = picked.length;
+    if (!nPicked) return;
+    const project = picked[0]?.run.project ?? router.get('project') ?? runs[0]?.project;
+    if (!project) return;
+    const n = nPicked;
     const res = await askReport(project, null, `Add ${n} item${n === 1 ? '' : 's'}, each with its own caption.`);
     if (!res) return;
     const lines = picked.map((p) =>
       embedLine(p.run.id, p.item.key, p.item.step, `${p.item.key} at step ${p.item.step} of ${p.run.name}`),
     );
+    // an overlay goes in live, with a PNG copy for exports (as its own Add to a report button does)
+    for (const o of pickedOv) {
+      const shot = await api.saveSnapshot(project, res.name, o.png);
+      if (shot.path) lines.push(`![${o.key}, all runs](${shot.path} "overlay:${o.refs.join(' ')}")`);
+    }
     await appendToReport(project, res.name, lines.join('\n\n'));
     stopSelecting();
   }
@@ -702,7 +844,7 @@
       class="btn btn-ghost sm"
       aria-pressed={selecting}
       onclick={() => (selecting ? stopSelecting() : (selecting = true))}
-      ><Icon name="bookmark" size={14} /> Select for report</button
+      title="Tick items to add them to a report or download them"><Icon name="check" size={14} /> Select items</button
     >
     <button class="btn btn-ghost sm" onclick={() => setAll(true)}>Expand all</button>
     <button class="btn btn-ghost sm" onclick={() => setAll(false)}>Collapse all</button>
@@ -790,9 +932,20 @@
           {/if}
         </header>
         {#if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === PR_MIME}
-          <div class="prall">
+          <div class="prall" data-ov={s.title}>
             <span class="prhead"
-              ><span class="faint small">All runs on one chart</span>
+              >{#if selecting}<input
+                  type="checkbox"
+                  class="pick"
+                  aria-label="Select the chart of all runs of {s.title}"
+                  checked={pickedOvKeys.has(s.title)}
+                  onchange={(e) =>
+                    pickOverlay(
+                      s.title,
+                      prOverlay(cards).map((c) => c.ref),
+                      e.currentTarget.checked,
+                    )}
+                />{/if}<span class="faint small">All runs on one chart</span>
               <button
                 class="icon"
                 title="Open large"
@@ -814,9 +967,20 @@
             <PrChart curves={prOverlay(cards)} height={300} label="Precision-recall curves of {s.title} for all runs" />
           </div>
         {:else if open && by === 'key' && cards.length > 1 && cards[0].items[0]?.mime === HIST_MIME}
-          <div class="prall">
+          <div class="prall" data-ov={s.title}>
             <span class="prhead"
-              ><span class="faint small">All runs on one chart</span>
+              >{#if selecting}<input
+                  type="checkbox"
+                  class="pick"
+                  aria-label="Select the chart of all runs of {s.title}"
+                  checked={pickedOvKeys.has(s.title)}
+                  onchange={(e) =>
+                    pickOverlay(
+                      s.title,
+                      prOverlay(cards).map((c) => c.ref),
+                      e.currentTarget.checked,
+                    )}
+                />{/if}<span class="faint small">All runs on one chart</span>
               <button
                 class="icon"
                 title="Open large"
@@ -908,15 +1072,40 @@
 
 {#if selecting}
   <div class="card selbar" role="toolbar" aria-label="Selected media">
-    <span
-      >{picked.length ? `${picked.length} selected` : 'Tick the items to add, then add them to a report together'}</span
-    >
-    <span class="spacer"></span>
-    <button class="btn btn-primary sm" disabled={!picked.length} onclick={savePicked}
-      ><Icon name="bookmark" size={14} /> Add {picked.length || ''} to report</button
-    >
-    <button class="btn btn-ghost sm" onclick={() => (picked = [])} disabled={!picked.length}>Clear</button>
-    <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
+    {#if zipping}
+      <span class="zipnote">Downloading {zipping.done} of {zipping.total} · {mb(zipping.bytes)}</span>
+      <div
+        class="zipbar"
+        role="progressbar"
+        aria-label="Download progress"
+        aria-valuemin={0}
+        aria-valuemax={zipping.total}
+        aria-valuenow={zipping.done}
+      >
+        <span style="width:{(100 * zipping.done) / zipping.total}%"></span>
+      </div>
+      <button class="btn btn-ghost sm" onclick={() => zipAbort?.abort()}>Cancel</button>
+    {:else}
+      <span class:err={!!zipError}
+        >{zipError || (nPicked ? `${nPicked} selected` : 'Tick items to add them to a report or download them')}</span
+      >
+      <span class="spacer"></span>
+      <button
+        class="btn btn-ghost sm"
+        onclick={selectShown}
+        disabled={allShownPicked}
+        title="Tick the item every card shows, in all the sections that match the filter"
+        >Select all shown ({shownCount})</button
+      >
+      <button class="btn btn-ghost sm" onclick={clearPicked} disabled={!nPicked}>Clear</button>
+      <button class="btn sm" disabled={!nPicked} onclick={downloadPicked}
+        ><Icon name="download" size={14} /> Download {nPicked || ''} as .zip</button
+      >
+      <button class="btn btn-primary sm" disabled={!nPicked} onclick={savePicked}
+        ><Icon name="bookmark" size={14} /> Add {nPicked || ''} to report</button
+      >
+      <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
+    {/if}
   </div>
 {/if}
 
@@ -1119,6 +1308,26 @@
     font-size: 13px;
     box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
   }
+  .selbar .err {
+    color: var(--err);
+  }
+  .zipbar {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .zipbar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
+  }
+  .zipnote {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   .sections-head {
     display: flex;
     align-items: center;
@@ -1208,6 +1417,10 @@
     gap: 4px;
     max-width: 760px;
     margin-bottom: 4px;
+  }
+  .prhead .pick {
+    margin: 0 2px 0 0;
+    accent-color: var(--accent);
   }
   .prhead {
     display: flex;

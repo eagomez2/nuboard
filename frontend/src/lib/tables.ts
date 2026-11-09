@@ -169,3 +169,15 @@ export function tableHtml(
   const more = table.rows.length > limit ? `<p class="nbmore">First ${limit} of ${table.rows.length} rows.</p>` : '';
   return `<div class="nbtable"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${more}`;
 }
+
+/** A table as CSV (RFC 4180): a header of column names, then one line per row. Media cells keep their reference. */
+export function tableCsv(t: TableData): string {
+  const field = (v: Cell) => {
+    const text = v === null ? '' : typeof v === 'object' ? v.$cell : String(v);
+    return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  };
+  return (
+    [t.columns.map((c) => field(c.name)), ...t.rows.map((r) => r.map(field))].map((l) => l.join(',')).join('\r\n') +
+    '\r\n'
+  );
+}

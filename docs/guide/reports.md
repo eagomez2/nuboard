@@ -25,9 +25,10 @@ title or file name, ↑/↓ and Enter pick one, and a name that is not in the li
 is offered as **New report "name"**. Every bookmark button (Media, Charts,
 Sweeps, Timeline) and **Add N to report** use the same field.
 
-To add several at once, press **Select for report** above the sections, tick
-the cards whose shown item you want, and press **Add N to report** in the bar
-at the bottom. They are appended in the order you ticked them, each with a
+To add several at once, press **Select items** above the sections on the Media
+page, tick the cards whose shown item you want (or **Select all shown**), and
+press **Add N to report** in the bar at the bottom. An "All runs on one chart"
+overlay can be ticked too; it goes in live, as from its own button. They are appended in the order you ticked them, each with a
 caption naming its key, step and run. **Open report** in the
 notice jumps to it. Use **Best scalar** on the Media page first to save the
 item at a run's best step.

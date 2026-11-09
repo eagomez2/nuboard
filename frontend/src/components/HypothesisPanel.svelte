@@ -136,7 +136,6 @@
   let followTitle = $state('');
   let followReason = $state('');
   let editingNote = $state(false);
-  let openUnfiled = $state('');
   let copied = $state('');
   async function copyId(id: string) {
     try {
@@ -865,33 +864,19 @@
           {/if}
           <div class="unfiled">
             {#each unfiledShown as r (r.id)}
-              <div class="uf" class:open={openUnfiled === r.id}>
-                <button
-                  class="uf-row"
-                  aria-expanded={openUnfiled === r.id}
-                  onclick={() => (openUnfiled = openUnfiled === r.id ? '' : r.id)}><RunLine run={r} /></button
-                >
-                {#if openUnfiled === r.id}
-                  <div class="row uf-acts">
-                    {#if !ro}
-                      <button
-                        class="btn btn-primary sm"
-                        onclick={() => {
-                          if (!newRuns.includes(r.id)) newRuns = [...newRuns, r.id];
-                          openUnfiled = '';
-                          requestAnimationFrame(() => newInput?.focus());
-                        }}><Icon name="plus" size={14} /> Start a hypothesis</button
-                      >
-                    {/if}
-                    <button class="btn sm" onclick={() => openCharts([r.id])}
-                      ><Icon name="charts" size={14} /> Charts</button
-                    >
-                    <button class="btn sm" onclick={() => openCompare([r.id])}
-                      ><Icon name="info" size={14} /> Details</button
-                    >
-                  </div>
-                {/if}
-              </div>
+              {#if ro}
+                <div class="uf"><div class="uf-row"><RunLine run={r} /></div></div>
+              {:else}
+                <div class="uf">
+                  <button
+                    class="uf-row"
+                    title="Add to the new hypothesis"
+                    onclick={() => {
+                      if (!newRuns.includes(r.id)) newRuns = [...newRuns, r.id];
+                    }}><RunLine run={r} /></button
+                  >
+                </div>
+              {/if}
             {/each}
           </div>
           {#if !unfiledFind.trim() && unfiledLeft.length > UNFILED_SHOWN}
@@ -1228,9 +1213,6 @@
   .uf {
     border-radius: 8px;
   }
-  .uf.open {
-    background: var(--panel-2);
-  }
   .uf-row {
     display: block;
     width: 100%;
@@ -1238,13 +1220,13 @@
     background: none;
     padding: 6px;
     border-radius: 8px;
+    text-align: left;
+  }
+  button.uf-row {
     cursor: pointer;
   }
-  .uf-row:hover {
+  button.uf-row:hover {
     background: var(--panel-2);
-  }
-  .uf-acts {
-    padding: 0 6px 8px;
   }
   .chooser {
     display: flex;

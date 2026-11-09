@@ -1,9 +1,12 @@
 <script lang="ts">
+  import DownloadMenu, { type DownloadOption } from './DownloadMenu.svelte';
   import Icon from './Icon.svelte';
   import MediaView from './MediaView.svelte';
   import type { MediaItem, RunBrief } from '../lib/api';
   import { api } from '../lib/api';
-  import { extensionOf, WAVEFORM_MIME, type AudioOptions } from '../lib/media';
+  import { extensionOf, HIST_MIME, PR_MIME, TABLE_MIME, WAVEFORM_MIME, type AudioOptions } from '../lib/media';
+  import { chartToPng } from '../lib/snapshot';
+  import { tableCsv, type TableData } from '../lib/tables';
 
   // One run's items under one key, with its own step slider (as in TensorBoard).
   let {
@@ -65,10 +68,62 @@
     return idx;
   });
   const it = $derived(shownIdx >= 0 ? items[shownIdx] : null);
+  // figures logged as library JSON, named after the library
+  const FORMAT: Record<string, string> = {
+    '.plotly.json': 'Plotly JSON',
+    '.vl.json': 'Vega-Lite JSON',
+    '.bokeh.json': 'Bokeh JSON',
+  };
+  // the formats the shown item downloads as: the file as logged, and for some kinds a second one
+  let fig: HTMLElement;
+  const downloads = $derived.by((): DownloadOption[] => {
+    if (!it || it.index === undefined) return [];
+    const url = api.mediaUrl(run.key, it.index);
+    const base = `${run.name}-${it.key.replaceAll('/', '_')}-${it.step}`;
+    const ext = extensionOf(it.mime);
+    const chart = it.mime === PR_MIME || it.mime === HIST_MIME;
+    const own: DownloadOption = {
+      label: chart ? 'JSON data' : (FORMAT[ext] ?? ext.replace(/^\./, '').toUpperCase()),
+      hint: chart
+        ? 'The points behind the chart'
+        : FORMAT[ext]
+          ? 'To open again in its library'
+          : it.mime === TABLE_MIME
+            ? 'The columns and rows'
+            : 'The file as logged',
+      filename: base + ext,
+      href: url,
+    };
+    if (it.mime === TABLE_MIME)
+      return [
+        own,
+        {
+          label: 'CSV',
+          hint: 'For spreadsheets',
+          filename: `${base}.csv`,
+          make: async () => {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return new Blob([tableCsv((await r.json()) as TableData)], { type: 'text/csv' });
+          },
+        },
+      ];
+    if (chart)
+      return [
+        {
+          label: 'PNG',
+          hint: 'The chart as shown',
+          filename: `${base}.png`,
+          make: async () => (await fetch(await chartToPng(fig, `${it.key} · ${run.name}`))).blob(),
+        },
+        own,
+      ];
+    return [own];
+  });
   const zoomable = $derived(!!it && it.kind !== 'audio' && !it.mime.startsWith('audio/'));
 </script>
 
-<figure class="card cell" class:picked={selecting && !!it && isSelected(it)}>
+<figure bind:this={fig} class="card cell" class:picked={selecting && !!it && isSelected(it)}>
   <figcaption>
     {#if selecting && it}
       <input
@@ -101,14 +156,7 @@
         {/if}
         {#if it.index !== undefined && it.mime !== WAVEFORM_MIME}
           <!-- a waveform figure has its own Download menu: the audio, or the audio with its signals -->
-          <a
-            class="icon"
-            title="Download"
-            aria-label="Download"
-            href={api.mediaUrl(run.key, it.index)}
-            download="{run.name}-{it.key.replaceAll('/', '_')}-{it.step}{extensionOf(it.mime)}"
-            ><Icon name="download" size={14} /></a
-          >
+          <DownloadMenu options={downloads} />
         {/if}
         <button class="icon" title="Add to a report" aria-label="Add to a report" onclick={() => onsave(it)}
           ><Icon name="bookmark" size={14} /></button

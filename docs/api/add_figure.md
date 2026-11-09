@@ -230,7 +230,7 @@ interactive plot, not in the audio player:
 - **Playback.** The play button plays the audio and the playhead follows it.
   Click the plot to start from there.
 - **Download.** The download button next to **Fit** saves the
-  **Audio (.wav)** exactly as logged, or the **Data (.zip)**: everything
+  **WAV** exactly as logged, or the **ZIP with signals**: everything
   needed to rebuild the figure elsewhere (see below).
 
 In a report, the figure embeds like any logged item. An HTML export keeps it
@@ -240,7 +240,7 @@ export writes the figure's data bundle.
 
 ### Downloading the audio and signals
 
-**Data (.zip)** is a bundle named `<run>-<key>-<step>.zip`:
+**ZIP with signals** is a bundle named `<run>-<key>-<step>.zip`:
 
 ```text
 audio.wav              the audio, as logged (16-bit PCM)

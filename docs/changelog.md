@@ -17,6 +17,17 @@ Small fixes and conveniences in the viewer. No breaking changes.
   screen. A focused button outside full screen keeps its own Space.
 - **Primary buttons** have the same text color everywhere; **New version** on
   an empty Artifacts page no longer looks faded.
+- **Hypotheses: Not on the board** adds a run to the new hypothesis with one
+  click, like **Add a run…**, instead of opening buttons under it.
+- **Media: select and download many items.** **Select for report** is now
+  **Select items**; its bar adds **Select all shown** (the item of every card
+  your filters leave) and **Download N as .zip**, built in the browser with a
+  progress bar and **Cancel**, and stopping past 1 GB. "All runs on one chart"
+  overlays can be ticked too: they go in a report live, and in the zip as PNG.
+- **Media: download formats.** A card's download button lists the formats it
+  saves as, with a word on each: the file as logged, a table also as CSV, and a
+  PR curve or distribution also as a PNG of the chart. A waveform figure's menu
+  reads **WAV** and **ZIP with signals** (before: Audio (.wav), Data (.zip)).
 - **Artifacts: copy buttons.** A file's SHA-256 shows whole when there is
   room (a narrow window cuts its end) and has a button that copies it, as does
   the `run.use_artifact(...)` line of a version.

@@ -703,15 +703,17 @@ export function mountWaveform(
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setMenu(false);
     };
-    const item = (text: string, title: string, onclick: () => void) => {
+    // a format, and a few words on what it holds where the format alone does not say it
+    const item = (text: string, hint: string, onclick: () => void) => {
       const b = button(menu, text, text, onclick);
       b.setAttribute('role', 'menuitem');
-      b.title = title;
+      b.removeAttribute('title');
+      if (hint) b.appendChild(el('span', 'nbwf-hint', hint));
     };
-    item('Audio (.wav)', 'The audio as logged', () =>
+    item('WAV', 'The audio as logged', () =>
       saveFile(new Uint8Array(input.buffer, 0, input.offset), 'audio/wav', `${dl.name}.wav`),
     );
-    item('Data (.zip)', 'The audio, one .npy per signal and metadata.json', () => {
+    item('ZIP with signals', 'The audio, one .npy per signal and metadata.json', () => {
       const { zip } = kit.waveformBundle(input.buffer, {
         offset: input.offset,
         names: input.names,

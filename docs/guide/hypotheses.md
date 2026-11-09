@@ -49,7 +49,7 @@ appear on several boards.
   (`c44aa583`), so runs with the same name can be told apart, and filters by
   name, id, status or tag. With nothing selected, **Not on the board** lists
   the five newest runs that are on no card (**Show all** or the filter reaches
-  the rest); click one to start a hypothesis with it or open its charts.
+  the rest); click one to add it to the new hypothesis's runs.
 - **Follow up**: click a run, write the next hypothesis under **Follow up**
   and say why. The new card appears to the right with an arrow from that run.
 - **Write it down**: a card has a Markdown note and can link the project's

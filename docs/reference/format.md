@@ -315,7 +315,7 @@ bytes after the last indexed entry (from a crash) are harmless.
 
 ### Waveform bundles
 
-A waveform figure downloads (**Data (.zip)** in the viewer and in exported
+A waveform figure downloads (**ZIP with signals** in the viewer and in exported
 HTML) and goes into a report's .zip export as a bundle, a zip with every
 member stored uncompressed:
 

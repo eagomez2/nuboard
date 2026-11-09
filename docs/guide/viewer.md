@@ -496,8 +496,21 @@ be scrolled through its steps while the others stay put.
 
 Each card can open its item large, download it, **pin** it (see
 [Pinned items](#pinned-items)), or **add it to a report** (the bookmark
-button). **Select for report** adds a checkbox to every card so several items
-go into a report at once; see [Reports](reports.md). The whole view is kept in
+button). The download button lists the formats the item saves as, with a word
+on each: the file as logged (its own format, such as WAV, FLAC or PNG), and
+for some kinds a second one: a table also as **CSV**, a PR curve or
+distribution also as a **PNG** of the chart.
+
+**Select items** adds a checkbox to every card, and to every "All runs on one
+chart" overlay. The bar at the bottom then works on what you ticked:
+**Select all shown** ticks the item every card shows in the sections your
+filters leave (all pages, folded sections too; overlays only while their
+section is open), **Download N as .zip** saves them as one zip, with a progress
+bar and **Cancel**, and **Add N to report** adds them to a report together
+(see [Reports](reports.md)). The zip is built in the browser and holds each
+item as logged, named `<run>-<key>-<step>`; a waveform figure goes in as its
+WAV and an overlay as a PNG. It stops past 1 GB: select fewer and download them
+in parts. The whole view is kept in
 the URL (`mkinds`, `mfind`, `mby`, `mrx`, `mpin`, `mmode`, `mstep`, `mmetric`,
 `mdir`, `mcols`, `mrows`), so a shared link shows the same grid.
 
@@ -592,11 +605,9 @@ the view. The full screen button (next to **Fit**) spreads the figure over the
 window with a taller plot, in the viewer and in exported reports alike, and Esc
 puts it back. Space plays and pauses once you have clicked the plot or the
 overview, and in full screen. The play button plays the clip, or the selection, from where you
-click. The download button next to it saves the **Audio (.wav)** as logged or
-the **Data (.zip)**: the audio, one `.npy` per signal and a `metadata.json`
-([details](../api/add_figure.md#downloading-the-audio-and-signals)). Other
-items download from their card with an extension that matches their type
-(`.png`, `.wav`, `.json`, ...). It has no spectrogram; [Audio](#audio) has that. See
+click. The download button next to it saves the **WAV**, the audio as logged,
+or a **ZIP with signals**: the audio, one `.npy` per signal and a
+`metadata.json` ([details](../api/add_figure.md#downloading-the-audio-and-signals)). It has no spectrogram; [Audio](#audio) has that. See
 [`add_figure`](../api/add_figure.md#waveforms-with-signals).
 
 ### Tables
