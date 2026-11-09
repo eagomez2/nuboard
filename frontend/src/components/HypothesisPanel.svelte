@@ -603,14 +603,14 @@
                 >{/if}
             </select>
             {#if hyp.card}
-              <select
-                class="input stat"
-                value={cardChoice(hyp.card)}
-                aria-label="Summary"
-                onchange={(e) => setOwnCard(hyp, hyp.card!.metric, e.currentTarget.value as CardChoice)}
-              >
-                {#each CARD_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
-              </select>
+              <div class="seg stat" role="group" aria-label="Summary">
+                {#each CARD_CHOICES as c (c.value)}
+                  <button
+                    aria-pressed={cardChoice(hyp.card) === c.value}
+                    onclick={() => setOwnCard(hyp, hyp.card!.metric, c.value)}>{c.label}</button
+                  >
+                {/each}
+              </div>
             {/if}
           </div>
         </section>
@@ -863,7 +863,7 @@
     text-align: right;
   }
   .stat {
-    width: 90px;
+    flex: none;
   }
   @media (max-width: 900px) {
     .side {

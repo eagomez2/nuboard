@@ -479,8 +479,9 @@ be scrolled through its steps while the others stay put.
 - **Filter keys**: a regular expression on the keys, such as `^eval/` or
   `confusion|per_class`. While it is set, the count next to it shows how many
   keys match, and keys that do not match are hidden.
-- **By key / by run**: a section per key with a card per run (default), or a
-  section per run with a card per key.
+- **By key / by run / by regex**: a section per key with a card per run
+  (default), a section per run with a card per key, or a section per text that
+  a regex finds in the keys (see [By regex](#by-regex)).
 - **Step**: **Latest** shows each run's last item; **Pick step** moves every
   card to the item at or before one step; **At scalar min/max** moves each
   run to the item closest to the step where a scalar of your choice was at
@@ -493,11 +494,67 @@ be scrolled through its steps while the others stay put.
   the first three start open. **Show runs without the key** adds an empty
   card for runs that never logged it.
 
-Each card can open its item large, download it, or **add it to a report**
-(the bookmark button). **Select for report** adds a checkbox to every card
-so several items go into a report at once; see [Reports](reports.md). The whole view is kept in
-the URL (`mkinds`, `mfind`, `mby`, `mmode`, `mstep`, `mmetric`, `mdir`,
-`mcols`, `mrows`), so a shared link shows the same grid.
+Each card can open its item large, download it, **pin** it (see
+[Pinned items](#pinned-items)), or **add it to a report** (the bookmark
+button). **Select for report** adds a checkbox to every card so several items
+go into a report at once; see [Reports](reports.md). The whole view is kept in
+the URL (`mkinds`, `mfind`, `mby`, `mrx`, `mpin`, `mmode`, `mstep`, `mmetric`,
+`mdir`, `mcols`, `mrows`), so a shared link shows the same grid.
+
+### By regex
+
+**By regex** puts keys side by side when a regular expression finds the same
+text in them. Type the regex in the box that appears next to the button. For
+each key, the text it matches (or its first group in parentheses, if it has
+one) names the key's section, so keys with the same text share a section. The
+sections are sorted in natural order (`sample_2` before `sample_10`), and keys
+the regex does not match go in a last **Unmatched** section. An invalid regex
+turns the box red.
+
+Inside a section, each run gets a row of its own, with that run's keys in key
+order. A card's title is only the part of its key that differs from the other
+keys in the section; hover it for the full key. With **Columns** on *Fit*,
+a row holds all of a run's keys in the section (up to 6), so a row is one
+comparison. Pick a number of columns to override that.
+
+For example, with keys such as
+
+```
+AudioSamplesProcessing/Input/Audio/sample_3
+AudioSamplesProcessing/Processed/Audio/sample_3
+AudioSamplesProcessing/Target/Audio/sample_3
+```
+
+the regex `[^/]+$` (everything after the last `/`) gives a section per
+sample, with the cards **Input**, **Processed** and **Target** next to each
+other for every run. Other examples:
+
+| Regex | Groups the keys by |
+| --- | --- |
+| `[^/]+$` | what follows the last `/` |
+| `^[^/]+` | the first part of the path |
+| `sample_\d+` | the sample number, wherever it is in the key |
+| `epoch_(\d+)` | the epoch number (only the group counts) |
+
+The key filter, the step controls, the players and the grid work as with
+By key and By run.
+
+### Pinned items
+
+The pin button on a card puts it in a **Pinned** section above all the
+others, so any items can be compared side by side: the same sample in several
+versions, different samples, or the same key from different runs. The Pinned
+section is shown only while something is pinned, keeps the cards in the order
+they were pinned, and has an **Unpin all** button. Click a pin again (on the
+pinned card or where the card appears below) to unpin it.
+
+A pin is a run and a key. Pinned cards follow the page's **Step** controls
+like every other card, and keep their own step sliders. They stay pinned
+whatever the key filter, the kind chips and By key / by run / by regex say;
+hiding a run hides its pins too. Their titles leave out the parts of the key
+that all the pins share, and add the run name when the pins come from more
+than one run. Pins are kept in the URL (`mpin`), so a reload or a shared link
+shows them again.
 
 Logged HTML runs in a sandboxed iframe (`sandbox="allow-scripts"`, no
 same-origin access) and is served with a matching `Content-Security-Policy`.

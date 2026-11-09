@@ -59,7 +59,8 @@ appear on several boards.
   moves the marks. A metric starts on Min when its name reads as a loss or
   error, else on Max.
   A card can pick its own under
-  **Number on this card**; its header then names that metric. Hover a number
+  **Number on this card** in the side panel: a metric menu, with a
+  **Min / Max / Last** pill under it. Its header then names that metric. Hover a number
   to see which metric and value it is.
 - **Compare**: Shift-click runs, on one card or across cards, to open them
   together in **Charts** or **Compare**. A card's **Open in charts** does the
