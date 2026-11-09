@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-Two ways to compare media side by side on the Media page. No breaking
-changes.
+Two ways to compare media side by side on the Media page, and a pill for a
+hypothesis card's number. No breaking changes.
 
 - **By regex on Media**: next to By key and By run, a regex groups the keys
   in which it finds the same text (or its first group), with one row per run.
@@ -14,6 +14,9 @@ changes.
   section on top, whatever the filter and the arrangement, so any items can be
   compared side by side. Pins are kept in the URL. See
   [Pinned items](guide/viewer.md#pinned-items).
+- **Min / Max / Last pill on hypothesis cards**: in the hypothesis panel,
+  **Number on this card** picks Min, Max or Last with the same pill as Runs
+  and Media instead of a menu, on its own row under the metric menu.
 
 ## 0.25.1
 
