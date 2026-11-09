@@ -2257,6 +2257,21 @@ test('pinned media cards stay on top, whatever the filter and the arrangement', 
   await expect(pinned).toHaveCount(0);
 });
 
+test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({ page }) => {
+  await page.goto('/#/hypotheses?hproject=vit-ablations&hboard=augmentations');
+  await page
+    .locator('.hcard')
+    .first()
+    .click({ position: { x: 20, y: 12 } });
+  await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
+  const stat = page.getByRole('group', { name: 'Summary' });
+  await stat.getByRole('button', { name: 'Last' }).click();
+  await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');
+  await stat.getByRole('button', { name: 'Min' }).click();
+  await expect(stat.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('runs show each result as its min, max or last value', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
   const result = page.getByRole('group', { name: 'Result' });
