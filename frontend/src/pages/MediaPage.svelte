@@ -206,6 +206,46 @@
       };
     });
   });
+  // -- pins: cards (a run and a key) kept together above the sections, whatever the filter and
+  // the arrangement. In the URL as JSON, since keys may hold commas.
+  const pins = $derived.by((): [string, string][] => {
+    try {
+      const v = JSON.parse(router.get('mpin') || '[]');
+      return Array.isArray(v) ? v.filter((p) => Array.isArray(p) && p.length === 2) : [];
+    } catch {
+      return [];
+    }
+  });
+  const pinId = (runKey: string, key: string) => JSON.stringify([runKey, key]);
+  const pinSet = $derived(new Set(pins.map(([r, k]) => pinId(r, k))));
+  function togglePin(runKey: string, key: string) {
+    const next = pinSet.has(pinId(runKey, key))
+      ? pins.filter(([r, k]) => !(r === runKey && k === key))
+      : [...pins, [runKey, key]];
+    router.set({ mpin: next.length ? JSON.stringify(next) : null });
+  }
+  /** Pin a card: by key and by regex, a card is one key; by run, too (its title is the key) */
+  const cardKey = (s: Section, c: Card) => (by === 'run' ? c.id : by === 'key' ? s.id : c.tip!);
+  const pinned = $derived.by((): Section | null => {
+    const runOf = new Map(shownRuns.map((r) => [r.key, r]));
+    const live = pins.filter(([r]) => runOf.has(r));
+    if (!live.length) return null;
+    const names = shortNames([...new Set(live.map(([, k]) => k))]);
+    const manyRuns = new Set(live.map(([r]) => r)).size > 1;
+    const cards = live.map(([r, k]) => {
+      const run = runOf.get(r)!;
+      const short = live.length > 1 ? names.get(k)! : k;
+      return {
+        id: pinId(r, k),
+        run,
+        items: (items[r] ?? []).filter((it) => it.key === k).sort((a, b) => a.step - b.step),
+        title: manyRuns ? `${run.name} · ${short}` : short,
+        tip: k,
+      };
+    });
+    return { id: 'pinned', title: 'Pinned', sub: '', kind: null, cards };
+  });
+
   const sections = $derived.by((): Section[] => {
     if (by === 'regex') return regexSections;
     if (by === 'key')
@@ -678,6 +718,39 @@
     <p class="faint">“{rx}” is not a valid regex.</p>
   {/if}
   <div class="sections" bind:clientWidth={width}>
+    {#if pinned}
+      {@const n = cols || Math.min(pinned.cards.length, colsFor(pinned))}
+      <section class="card section pinned" aria-label="Pinned">
+        <header>
+          <span class="ptitle"><Icon name="pin" size={15} /> <span class="stitle">Pinned</span></span>
+          <span class="faint small">{pinned.cards.length} item{pinned.cards.length === 1 ? '' : 's'}</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost sm" onclick={() => router.set({ mpin: null })}>Unpin all</button>
+        </header>
+        <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
+          {#each pinned.cards as c (c.id)}
+            <MediaCard
+              run={c.run}
+              items={c.items}
+              target={targetFor(c.run.key)}
+              nearest={mode === 'best'}
+              title={c.title}
+              tip={c.tip}
+              color={seriesVar(runIndex.get(c.run.key) ?? 0)}
+              {player}
+              {audioOptions}
+              onsave={(it) => save(c.run, it)}
+              onzoom={(it) => (zoom = { run: c.run, item: it })}
+              {selecting}
+              isSelected={(it) => pickedIds.has(pickId(c.run, it))}
+              onselect={(it, on) => pick(c.run, it, on)}
+              pinned
+              onpin={() => togglePin(c.run.key, c.tip!)}
+            />
+          {/each}
+        </div>
+      </section>
+    {/if}
     {#each sections as s, si (s.id)}
       {@const open = isOpen(s, si)}
       {@const cards = showEmpty || by !== 'key' ? s.cards : s.cards.filter((c) => c.items.length)}
@@ -789,6 +862,8 @@
                   {selecting}
                   isSelected={(it) => pickedIds.has(pickId(c.run, it))}
                   onselect={(it, on) => pick(c.run, it, on)}
+                  pinned={pinSet.has(pinId(c.run.key, cardKey(s, c)))}
+                  onpin={() => togglePin(c.run.key, cardKey(s, c))}
                 />
               {/each}
             </div>
@@ -810,6 +885,8 @@
                 {selecting}
                 isSelected={(it) => pickedIds.has(pickId(c.run, it))}
                 onselect={(it, on) => pick(c.run, it, on)}
+                pinned={pinSet.has(pinId(c.run.key, cardKey(s, c)))}
+                onpin={() => togglePin(c.run.key, cardKey(s, c))}
               />
             {/each}
           </div>
@@ -1060,6 +1137,15 @@
     flex-direction: column;
     gap: 10px;
     min-width: 0;
+  }
+  .pinned {
+    border-color: var(--accent);
+  }
+  .ptitle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
   }
   .section header,
   .big header {
