@@ -2190,16 +2190,20 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.goto('/#/hypotheses');
   await expect(page.getByRole('heading', { name: 'Augmentations on ViT-S/16' })).toBeVisible();
   await expect(page.locator('.hcard')).toHaveCount(5);
-  // each card marks its top run's number; with Last, flipping the arrow moves the marks
+  // each card marks its top run's number; Last ranks by val/acc's direction (higher, from its name)
   const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
   await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
-  await page.getByRole('combobox', { name: 'Summary' }).selectOption('last');
-  const highest = await tops();
-  await page.getByRole('button', { name: /^Direction of val\/acc/ }).click();
+  const summary = page.getByRole('group', { name: 'Summary' }).first();
+  const highest = await tops(); // the demo board starts on Max
+  await summary.getByRole('button', { name: 'Min' }).click();
   await expect.poll(tops).not.toBe(highest);
-  await page.getByRole('button', { name: 'Reset' }).click();
-  await expect.poll(tops).toBe(highest);
-  await page.getByRole('combobox', { name: 'Summary' }).selectOption('max');
+  await summary.getByRole('button', { name: 'Last' }).click();
+  await expect(page.locator('.chiprow .m.top').first()).toHaveAttribute(
+    'title',
+    'Top on this card: the highest val/acc (Last, higher is better)',
+  );
+  await expect(page.getByRole('button', { name: /^Direction of/ })).toHaveCount(0);
+  await summary.getByRole('button', { name: 'Max' }).click();
   await page.locator('.chiprow', { hasText: 'cutmix-s0' }).click();
   await expect(page.locator('aside textarea')).toHaveValue('Best run of the study.');
   await page.getByRole('group', { name: 'View' }).getByRole('button', { name: 'Timeline' }).click();
@@ -2264,7 +2268,7 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
     .first()
     .click({ position: { x: 20, y: 12 } });
   await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
-  const stat = page.getByRole('group', { name: 'Summary' });
+  const stat = page.locator('aside').getByRole('group', { name: 'Summary' });
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
   await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');

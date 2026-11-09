@@ -144,3 +144,14 @@ export function defaultMetric(metrics: string[]): string {
 
 /** The text with its first letter capitalized, for showing a value such as a run status as a label. */
 export const cap = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/**
+ * A metric name cut to `max` characters by dropping its start, since the end tells metrics apart
+ * (`…/acc_cat`, not `per_class/a…`): whole leading segments go first, then characters.
+ */
+export function tailName(name: string, max: number): string {
+  if (name.length <= max) return name;
+  const tail = name.slice(-(max - 1));
+  const cut = tail.indexOf('/');
+  return cut >= 0 && cut < tail.length - 1 ? `…${tail.slice(cut)}` : `…${tail}`;
+}

@@ -66,6 +66,24 @@ export interface Board {
   verdicts: Verdict[];
   outcomes: Outcome[];
   card: CardSetting | null;
+  /** The metrics the run panel lists, in order; empty for the default choice (see `panelMetrics`). */
+  panel_metrics: string[];
+  /** How wide cards are, unless a card sets its own `width`. */
+  card_width: CardWidth;
+}
+
+/** Card widths: M is the width cards always had. */
+export type CardWidth = 's' | 'm' | 'l' | 'xl';
+export const CARD_WIDTHS: { value: CardWidth; label: string; px: number }[] = [
+  { value: 's', label: 'S', px: 220 },
+  { value: 'm', label: 'M', px: 260 },
+  { value: 'l', label: 'L', px: 340 },
+  { value: 'xl', label: 'XL', px: 420 },
+];
+/** A card's width in pixels: its own size, else the board's, else M. */
+export function cardWidth(h: Pick<Hypothesis, 'width'>, board?: Pick<Board, 'card_width'>): number {
+  const w = h.width ?? board?.card_width ?? 'm';
+  return (CARD_WIDTHS.find((c) => c.value === w) ?? CARD_WIDTHS[1]).px;
 }
 
 export interface HRun {
@@ -90,6 +108,8 @@ export interface Hypothesis {
   position: { dx: number; dy: number };
   folded: boolean | null;
   card: CardSetting | null;
+  /** This card's width; null follows the board's `card_width`. */
+  width: CardWidth | null;
   created: number;
   updated: number;
 }
@@ -177,6 +197,27 @@ export function parents(hyps: Hypothesis[]): Map<string, Hypothesis | null> {
     out.set(h.id, loops ? null : (raw.get(h.id) ?? null));
   }
   return out;
+}
+
+/** How many metrics the run panel lists when none are chosen. */
+export const PANEL_DEFAULT = 12;
+
+/**
+ * The metrics the run panel (and a chip's tooltip) lists for a run: the board's choice when it has
+ * one, in its order, even those the run lacks; else the card's metric first, then the run's other
+ * metrics in the order it logged them, leaving out system metrics and timers.
+ */
+export function panelMetrics(
+  board: Pick<Board, 'panel_metrics' | 'card'>,
+  summary: Record<string, unknown> | undefined,
+  card: CardSetting | null = board.card,
+  prefixes: { system: string; timing: string } = { system: 'system', timing: 'timing' },
+): string[] {
+  if (board.panel_metrics?.length) return board.panel_metrics;
+  const skip = [prefixes.system, prefixes.timing].filter(Boolean).map((p) => `${p}/`);
+  const names = Object.keys(summary ?? {}).filter((m) => !skip.some((p) => m.startsWith(p)));
+  const first = card && summary && card.metric in summary ? [card.metric] : [];
+  return [...first, ...names.filter((m) => m !== card?.metric)].slice(0, PANEL_DEFAULT);
 }
 
 /** A run's value for the chip number, or null when the run, metric or value is missing. */
@@ -344,6 +385,8 @@ export interface Placed {
   /** Runs hidden by folding or filters, shown as a footer. */
   hidden: HRun[];
   depth: number;
+  /** The card's width in pixels (see `cardWidth`). */
+  width: number;
 }
 
 /**
@@ -369,7 +412,7 @@ export function layout(hyps: Hypothesis[], o: ViewOptions, size: Size = SIZE): P
     );
     const hidden = [...all.filter((r) => !runs.includes(r)), ...deadHidden];
     const height = size.head + runs.length * size.row + (hidden.length ? size.foot : 0) + 8;
-    const p: Placed = { hyp: h, x: depth * size.pitch, y, height, runs, hidden, depth };
+    const p: Placed = { hyp: h, x: 0, y, height, runs, hidden, depth, width: cardWidth(h, o.board) };
     out.push(p);
     // children follow the order of the run they come from, then creation
     const order = new Map(runs.map((r, i) => [r.id, i]));
@@ -383,8 +426,14 @@ export function layout(hyps: Hypothesis[], o: ViewOptions, size: Size = SIZE): P
   };
   let y = 0;
   for (const h of hyps) if (!par.get(h.id) && shown(h)) y += place(h, 0, y) + size.gap * 2;
+  // each column is as wide as its widest card; the next starts the same gap after it, so arrows
+  // keep an even length whatever the sizes (with every card M, columns are `pitch` apart)
+  const colW: number[] = [];
+  for (const p of out) colW[p.depth] = Math.max(colW[p.depth] ?? 0, p.width);
+  const colX = [0];
+  for (let d = 1; d < colW.length; d++) colX[d] = colX[d - 1] + (colW[d - 1] ?? size.width) + size.pitch - size.width;
   for (const p of out) {
-    p.x = Math.max(0, p.x + (p.hyp.position?.dx ?? 0));
+    p.x = Math.max(0, colX[p.depth] + (p.hyp.position?.dx ?? 0));
     p.y = Math.max(0, p.y + (p.hyp.position?.dy ?? 0));
   }
   return out;
@@ -480,6 +529,7 @@ export function newHypothesis(fields: Partial<Hypothesis>): Hypothesis {
     position: { dx: 0, dy: 0 },
     folded: null,
     card: null,
+    width: null,
     created: now,
     updated: now,
     ...fields,

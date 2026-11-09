@@ -1,7 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.27.0
 
+A round of refinements to the Hypotheses page, and a copyright line in
+`nuboard version`. Boards gain two optional fields (`panel_metrics`,
+`card_width`) and hypotheses one (`width`); older boards read as before. No
+breaking changes.
+
+- **Hypotheses: Save / Cancel** for a run's conclusion and an arrow's Why,
+  with Ctrl/Cmd+Enter and Esc. Unsaved drafts are kept while you look at other
+  runs, and leaving the page with one asks first.
+- **Hypotheses: choose a run's metrics.** The side panel lists the card's
+  metric first, without system metrics and timers, by default; the pencil
+  next to **Metrics** picks them for the whole board (`panel_metrics` in
+  `board.json`), and rows reorder by drag or Alt+↑/↓.
+- **Hypotheses: the Timeline names its number** in a header row, and under
+  the value for cards with their own metric. Long metric names keep their
+  end.
+- **Hypotheses: card sizes** S, M, L and XL, for the board (`card_width`) and
+  per card (`width`). Columns of the tree follow their widest card.
+- **Hypotheses: telling runs apart.** Every run picker (Add a run, First run,
+  Comes from, Add a dashed link) is now a filterable list showing each run's
+  status, start time, tags and id ending. **Not on the board** shows the five
+  newest runs with a filter and **Show all**, and a run there starts a
+  hypothesis or opens its charts.
+- **Hypotheses: run header** with status, start time, tags and a button that
+  copies the run id.
+- **Hypotheses: Min / Max / Last pill** for the board's **Number** in the
+  toolbar, like a card's. The direction arrow is gone from this page: Last
+  ranks by the metric's direction in the project, set on Runs or Sweeps.
+- **Hypotheses: "Changed from"** keeps config keys whole and wraps long values
+  inside their column.
 - **Copyright in `nuboard version`**: it now prints
   `NuBoard x.y.z Copyright © 2026 Esteban Gómez (MIT License)`, with the years
   becoming a range such as `2026–2027` from next year on. Consoles that can't

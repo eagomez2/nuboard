@@ -42,21 +42,37 @@ appear on several boards.
   several starting points; a hypothesis with nothing under **Comes from** is
   one.
 - **Add runs**: open a card and use **Add a run…**. The list offers the
-  project's runs that are not on the board yet.
+  project's runs that are not on the board yet. Every run picker on the page
+  (**Add a run**, **First run**, **Comes from**, **Add a dashed link**) shows
+  each run with its status, start time, tags and the end of its id
+  (`c44aa583`), so runs with the same name can be told apart, and filters by
+  name, id, status or tag. With nothing selected, **Not on the board** lists
+  the five newest runs that are on no card (**Show all** or the filter reaches
+  the rest); click one to start a hypothesis with it or open its charts.
 - **Follow up**: click a run, write the next hypothesis under **Follow up**
   and say why. The new card appears to the right with an arrow from that run.
 - **Write it down**: a card has a Markdown note and can link the project's
   reports. A run has a conclusion. Both show in the side panel on the right,
-  which folds away with its sidebar button.
+  which folds away with its sidebar button. A run's conclusion and the **Why**
+  of an arrow save with **Save** (or Ctrl/Cmd+Enter, Enter for Why), and
+  **Cancel** or Esc puts the saved text back. An unsaved draft stays while you
+  look at other runs, and leaving the page with one asks first.
+- **A run's metrics**: the side panel lists the run's status, start time,
+  tags and id (click the id to copy all of it), then its **Metrics**. By
+  default these are the card's metric (with its Min, Max or Last) and the
+  run's first metrics, without system metrics and timers. The pencil next to
+  **Metrics** picks them for the whole board, so every run shows the same
+  rows; drag a row (or Alt+↑/↓) to reorder, **Use default** to go back.
 - **Star** runs and cards that matter. **Starred only** keeps just the paths
   through them.
 - **The number on each run** is one metric, picked under **Number** in the
-  toolbar: its **Min**, **Max** or **Last** value. Each card marks its top
-  run's number (▲, in the accent color): the lowest for Min, the highest for
-  Max, and for Last the end the arrow next to it says is better, the metric's
-  direction in the project, read live (see
-  [Which way is better](viewer.md#which-way-is-better)). Flipping the arrow
-  moves the marks. A metric starts on Min when its name reads as a loss or
+  toolbar, with a **Min / Max / Last** pill next to it for which value.
+  Each card marks its top run's number (▲, in the accent color): the lowest
+  for Min, the highest for Max, and for Last the end that is better by the
+  metric's direction in the project, the same one Runs and Sweeps use (see
+  [Which way is better](viewer.md#which-way-is-better)). It is set there, not
+  on this page; until it is, it is guessed from the name. Hover a ▲ to see
+  which end it is. A metric starts on Min when its name reads as a loss or
   error, else on Max.
   A card can pick its own under
   **Number on this card** in the side panel: a metric menu, with a
@@ -71,12 +87,19 @@ appear on several boards.
   **N runs ⌄** under the verdict to fold or unfold.
 - **Arrange**: drag a card by its header to move it. The grid button puts
   every card back in its automatic place.
+- **Card size**: **S / M / L / XL** in the toolbar sets how wide cards are,
+  for longer titles and run names; **Card size** in a card's side panel
+  overrides it for that card (**Board** follows the toolbar). Each column of
+  the tree is as wide as its widest card, so arrows keep the same length.
 - **Categories**: the pencil at the end of the legend edits the verdicts
   (name, color, icon) and the outcomes (name, color, dead end) of the board.
   Each list holds up to eight.
 
 **Timeline** (next to **Board** in the toolbar) lists the runs of the board in the order they started, with one
 lane per hypothesis and a curve where a hypothesis grew out of an earlier run.
+Its header names the board's number (such as `val/acc MAX`); a run whose card
+has its own number names that metric under the value. Long names keep their
+end (`…/EarlyStopping.on_val_end`); hover for the whole name.
 
 ## Missing runs and reports
 

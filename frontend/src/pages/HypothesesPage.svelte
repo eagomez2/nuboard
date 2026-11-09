@@ -9,11 +9,11 @@
   import HypothesisCategories from '../components/HypothesisCategories.svelte';
   import { api, type RunBrief } from '../lib/api';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
-  import { fmtDate, fmtNum } from '../lib/format';
+  import { fmtDate, fmtNum, tailName } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
-  import DirectionButton from '../components/DirectionButton.svelte';
   import {
     CARD_CHOICES,
+    CARD_WIDTHS,
     SIZE,
     cardChoice,
     cardFor,
@@ -39,6 +39,8 @@
     type Hypothesis,
     type Placed,
     type ViewOptions,
+    ownerOf,
+    panelMetrics,
   } from '../lib/hypotheses';
   import { Fold } from '../lib/fold.svelte';
   import { onLive } from '../lib/live';
@@ -135,18 +137,16 @@
           showDeadEnds: showDead,
           starredOnly,
           selectedRun: selRun || null,
-          // this view's own choice (the arrow next to the board's metric) applies to that metric
-          dirOf: (m: string) => {
-            const g = directionOf([project], m, true, m === data?.board.card?.metric ? router.get('dir') : null);
-            return g.set ? g.direction : null;
-          },
+          // Last ranks by the metric's direction for the project, as everywhere else (Runs, Sweeps):
+          // the one saved there, else the guess from its name. It is not edited on this page.
+          dirOf: (m: string) => directionOf([project], m).direction,
         }
       : null,
   );
   const placed = $derived(data && opts ? layout(data.hypotheses, opts) : []);
   const lines = $derived(data ? edges(placed, data.hypotheses) : []);
   const focus = $derived(hover && data && !drag ? related(data.hypotheses, hover) : null);
-  const canvasW = $derived(Math.max(0, ...placed.map((p) => p.x + SIZE.width)) + 40);
+  const canvasW = $derived(Math.max(0, ...placed.map((p) => p.x + p.width)) + 40);
   const canvasH = $derived(Math.max(0, ...placed.map((p) => p.y + p.height)) + 70);
   const tl = $derived(data && opts && view === 'timeline' ? timeline(data.hypotheses, opts) : null);
 
@@ -396,8 +396,10 @@
   const topTitle = (h: Hypothesis) => {
     const card = h.card ?? data?.board.card;
     if (!card) return '';
-    const end = cardTop(card, opts?.dirOf) === 'min' ? 'lowest' : 'highest';
-    return `Top on this card: the ${end} ${card.metric} (${STAT[card.stat]})`;
+    const top = cardTop(card, opts?.dirOf);
+    const end = top === 'min' ? 'lowest' : 'highest';
+    const why = card.stat === 'last' ? `, ${top === 'min' ? 'lower' : 'higher'} is better` : '';
+    return `Top on this card: the ${end} ${card.metric} (${STAT[card.stat]}${why})`;
   };
   /** What the chip number is, such as "val/acc (Max)". */
   const numberName = (h: Hypothesis) => {
@@ -407,12 +409,14 @@
   const tip = (r: HRun) => {
     const run = data?.runs[r.id];
     if (!run) return `Run ${r.id} was not found. It may have been moved or deleted.`;
-    const lines = Object.entries(run.summary)
-      .slice(0, 12)
-      .map(
-        ([m, s]) =>
-          `${m}: last ${fmtNum(typeof s.last === 'number' ? s.last : null)}, min ${fmtNum(s.min)}, max ${fmtNum(s.max)}`,
-      );
+    const h = ownerOf(data!.hypotheses).get(r.id);
+    const prefixes = projectRuns.find((p) => p.id === r.id)?.prefixes;
+    const lines = panelMetrics(data!.board, run.summary, h?.card ?? data!.board.card, prefixes).map((m) => {
+      const s = run.summary[m];
+      return s
+        ? `${m}: last ${fmtNum(typeof s.last === 'number' ? s.last : null)}, min ${fmtNum(s.min)}, max ${fmtNum(s.max)}`
+        : `${m}: —`;
+    });
     return [run.name, ...lines].join('\n');
   };
   const dim = (id: string) => !!focus && !focus.has(id);
@@ -549,22 +553,33 @@
               <option value={data.board.card.metric}>{data.board.card.metric}</option>
             {/if}
           </select>
-          {#if data.board.card}
-            <select
-              class="input sm"
-              aria-label="Summary"
-              value={cardChoice(data.board.card)}
-              disabled={ro}
-              onchange={(e) => setCard(data!.board.card!.metric, e.currentTarget.value as CardChoice)}
-            >
-              {#each CARD_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
-            </select>
-          {/if}
         </label>
-        {#if data.board.card?.stat === 'last'}
-          <DirectionButton projects={[project]} name={data.board.card.metric} fallback={data.board.card.top} />
+        {#if data.board.card}
+          <div class="seg stat" role="group" aria-label="Summary">
+            {#each CARD_CHOICES as c (c.value)}
+              <button
+                aria-pressed={cardChoice(data.board.card) === c.value}
+                disabled={ro}
+                onclick={() => setCard(data!.board.card!.metric, c.value)}>{c.label}</button
+              >
+            {/each}
+          </div>
         {/if}
         {#if view === 'tree'}
+          <div
+            class="seg sizes"
+            role="group"
+            aria-label="Card size"
+            title="How wide cards are (a card can set its own)"
+          >
+            {#each CARD_WIDTHS as w (w.value)}
+              <button
+                aria-pressed={data.board.card_width === w.value}
+                disabled={ro}
+                onclick={() => saveBoard({ card_width: w.value })}>{w.label}</button
+              >
+            {/each}
+          </div>
           <button
             class="btn btn-ghost icon"
             title="Auto-arrange cards"
@@ -650,7 +665,7 @@
               <div class="canvas" style="width:{canvasW}px;height:{canvasH}px">
                 <svg width={canvasW} height={canvasH} aria-hidden="true">
                   {#each lines as l (l.to.hyp.id + ':' + l.index)}
-                    {@const x1 = l.from.x + SIZE.width}
+                    {@const x1 = l.from.x + l.from.width}
                     {@const y1 = chipY(l.from, l.run)}
                     {@const x2 = l.to.x}
                     {@const y2 = l.to.y + SIZE.head / 2}
@@ -664,7 +679,7 @@
                   {/each}
                 </svg>
                 {#each lines as l (l.to.hyp.id + ':' + l.index)}
-                  {@const x1 = l.from.x + SIZE.width}
+                  {@const x1 = l.from.x + l.from.width}
                   {@const y1 = chipY(l.from, l.run)}
                   {@const x2 = l.to.x}
                   {@const y2 = l.to.y + SIZE.head / 2}
@@ -714,7 +729,7 @@
                     class:sel={selHyp === p.hyp.id && !selRun}
                     class:starred={p.hyp.star}
                     class:dim={dim(p.hyp.id)}
-                    style="left:{p.x}px;top:{p.y}px;border-top-color:{colorVar(v.color)}"
+                    style="left:{p.x}px;top:{p.y}px;width:{p.width}px;border-top-color:{colorVar(v.color)}"
                   >
                     <div
                       class="hhead"
@@ -811,9 +826,23 @@
             {:else if tl}
               {@const LANE = 18}
               {@const ROW = 52}
+              {@const NUMW = 150}
               {@const gw = 18 + tl.lanes.length * LANE}
               {@const laneOf = new Map(tl.lanes.map((l) => [l.hyp.id, l]))}
               {@const rowOf = new Map(tl.rows.map((row, i) => [row.run.id, i]))}
+              {@const bc = data.board.card}
+              <div class="tlhead" style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}px">
+                <span></span>
+                <span>Started</span>
+                <span class="span"
+                  ><span>Run · hypothesis</span><span
+                    class="right"
+                    title={bc ? `The board's number: ${bc.metric} (${STAT[bc.stat]})` : ''}
+                    >{#if bc}<span class="mono">{tailName(bc.metric, 26)}</span>
+                      <span class="st">{STAT[bc.stat]}</span>{:else}Number{/if}</span
+                  ></span
+                >
+              </div>
               <div class="tl">
                 <svg width={gw} height={tl.rows.length * ROW} aria-hidden="true">
                   {#each tl.lanes as l (l.hyp.id)}
@@ -868,7 +897,7 @@
                     class:picked={picked.has(row.run.id)}
                     class:dead={isDead(row.run)}
                     class:missing={!run}
-                    style="grid-template-columns:{gw}px 150px minmax(0,1fr) 80px"
+                    style="grid-template-columns:{gw}px 150px minmax(0,1fr) {NUMW}px"
                     onclick={(e) => clickRun(e, row.hyp, row.run)}
                   >
                     <span></span>
@@ -884,7 +913,13 @@
                           (run ? (run.status === 'running' ? 'Running' : 'No conclusion yet') : 'Run not found')}</span
                       >
                     </span>
-                    <span class="d mono right">{run ? chipNumber(row.hyp, row.run) : 'not found'}</span>
+                    <span class="num right" title={numberName(row.hyp)}
+                      ><span class="d mono">{run ? chipNumber(row.hyp, row.run) : 'not found'}</span
+                      >{#if row.hyp.card && (row.hyp.card.metric !== bc?.metric || row.hyp.card.stat !== bc?.stat)}<span
+                          class="own mono"
+                          >{tailName(row.hyp.card.metric, 14)}<span class="st">· {STAT[row.hyp.card.stat]}</span></span
+                        >{/if}</span
+                    >
                   </button>
                 {/each}
               </div>
@@ -944,6 +979,7 @@
           ondelete={remove}
           onselect={select}
           oncategories={() => (categories = true)}
+          onsaveboard={saveBoard}
           {askNew}
         />
       </div>
@@ -1118,7 +1154,7 @@
   }
   .input.sm {
     height: 30px;
-    max-width: 220px;
+    max-width: 150px;
   }
   .grow {
     flex: 1;
@@ -1363,6 +1399,11 @@
   .fold.closed svg {
     transform: rotate(-90deg);
   }
+  .seg.stat button,
+  .seg.sizes button {
+    padding: 2px 7px;
+    font-size: 12px;
+  }
   .own {
     max-width: 90px;
     overflow: hidden;
@@ -1566,6 +1607,70 @@
   .tlrow .d {
     white-space: nowrap;
     font-size: 12px;
+    color: var(--faint);
+  }
+  .tlhead {
+    display: grid;
+    align-items: end;
+    gap: 12px;
+    padding: 0 12px 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--faint);
+    min-width: 560px;
+  }
+  .tlhead .span {
+    grid-column: 3 / 5;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+  .tlhead .span > :first-child {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tlhead .right {
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    white-space: nowrap;
+  }
+  .tlhead .right .mono {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tlhead .right .st {
+    flex: none;
+  }
+  .tlhead .mono {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .tlhead .st,
+  .tlrow .own .st {
+    margin-left: 4px;
+  }
+  .tlrow .num {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 0;
+  }
+  .tlrow .num .own {
+    max-width: 100%;
+    white-space: nowrap;
+    font-size: 10.5px;
     color: var(--faint);
   }
   .tlrow .right {

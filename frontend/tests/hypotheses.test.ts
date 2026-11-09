@@ -17,6 +17,8 @@ import {
   visibleRuns,
   type Board,
   type BoardRun,
+  panelMetrics,
+  cardWidth,
   type HRun,
   type Hypothesis,
   type ViewOptions,
@@ -35,6 +37,8 @@ const board: Board = {
     { id: 'dropped', label: 'Dropped', color: 's6', dead_end: true },
   ],
   card: { metric: 'loss', stat: 'min', top: 'min' },
+  panel_metrics: [],
+  card_width: 'm',
 };
 
 const r = (id: string, extra: Partial<HRun> = {}): HRun => ({
@@ -90,6 +94,7 @@ describe('hypotheses', () => {
     const placed = layout(hyps, opts(runs));
     const kid = placed.find((p) => p.hyp.id === 'kid')!;
     expect(kid.x).toBe(SIZE.pitch);
+    expect(kid.width).toBe(SIZE.width);
     const [e] = edges(placed, hyps);
     expect(e.run).toBe('2');
     expect(e.reason).toBe('why');
@@ -157,5 +162,36 @@ describe('hypotheses', () => {
     expect(bestRun(hyps[0], runs, last)).toBe('lo');
     expect(bestRun(hyps[0], runs, last, () => 'max')).toBe('hi');
     expect(bestRun(hyps[0], runs, last, () => null)).toBe('lo');
+  });
+});
+
+describe('panelMetrics', () => {
+  const summary = { 'timing/epoch': 1, acc: 1, 'system/gpu': 1, loss: 1, lr: 1 };
+  it('puts the card metric first and leaves out system metrics and timers', () => {
+    expect(panelMetrics(board, summary)).toEqual(['loss', 'acc', 'lr']);
+    expect(panelMetrics(board, summary, null)).toEqual(['acc', 'loss', 'lr']);
+    expect(panelMetrics(board, { 'sys/x': 1, a: 1 }, null, { system: 'sys', timing: '' })).toEqual(['a']);
+  });
+  it("keeps the board's choice and its order, even metrics the run lacks", () => {
+    expect(panelMetrics({ ...board, panel_metrics: ['lr', 'nope'] }, summary)).toEqual(['lr', 'nope']);
+  });
+});
+
+describe('card widths', () => {
+  it('make a column as wide as its widest card and keep the gap after it', () => {
+    const hyps = [
+      h('root', [r('1'), r('2')]),
+      h('a', [r('3')], '1', { width: 'xl' }),
+      h('b', [r('4')], '2'),
+      h('c', [r('5')], '3'),
+    ];
+    const gap = SIZE.pitch - SIZE.width;
+    const placed = layout(hyps, opts({}));
+    const at = (id: string) => placed.find((p) => p.hyp.id === id)!;
+    expect(at('a').width).toBe(420);
+    expect(at('b').width).toBe(260);
+    expect(at('b').x).toBe(260 + gap);
+    expect(at('c').x).toBe(260 + gap + 420 + gap);
+    expect(cardWidth({ width: null }, { card_width: 'l' })).toBe(340);
   });
 });

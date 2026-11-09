@@ -4,7 +4,8 @@ A project can have several boards, one folder each in
 `<project>/hypotheses/<board>/` (the first one is usually `main`):
 
 - `board.json` holds the board's optional title and description, the verdict
-  and outcome categories and the number shown on run chips;
+  and outcome categories, the number shown on run chips and the metrics the
+  run panel lists;
 - `<id>.json` holds one hypothesis: its title, note, the run that led to it
   and why, the runs that tested it (each with an outcome, a conclusion and a
   star), its verdict, linked reports and where its card sits on the canvas.
@@ -42,8 +43,12 @@ COLORS = ("s4", "s5", "s1", "s2", "s3", "s6", "s7", "gray")
 ICONS = ("check", "x", "circle", "star", "question", "pause")
 #: Summaries a run chip can show for its metric.
 STATS = ("min", "max", "last")
+#: Card widths on the board (S, M, L, XL); M is the width cards always had.
+WIDTHS = ("s", "m", "l", "xl")
 #: Most categories in each list.
 MAX_CATEGORIES = 8
+#: Most metrics the run panel lists when they are chosen by hand.
+MAX_PANEL_METRICS = 50
 
 DEFAULT_VERDICTS: list[dict[str, Any]] = [
     {"id": "supported", "label": "Supported", "color": "s4", "icon": "check"},
@@ -180,6 +185,21 @@ def _card(raw: Any) -> dict[str, Any] | None:
     }
 
 
+def _names(raw: Any, limit: int) -> list[str]:
+    """Clean a list of metric names: strings only, no blanks or repeats, at most `limit`."""
+
+    out: list[str] = []
+
+    for v in raw if isinstance(raw, list) else []:
+        if isinstance(v, str) and v.strip() and v[:200] not in out:
+            out.append(v[:200])
+
+        if len(out) == limit:
+            break
+
+    return out
+
+
 def clean_board(raw: Any) -> dict[str, Any]:
     """Return a board with every field present and valid.
 
@@ -187,8 +207,10 @@ def clean_board(raw: Any) -> dict[str, Any]:
         raw: The board as read or sent; anything that is not a dict counts as empty.
 
     Returns:
-        `title`, `description`, `verdicts`, `outcomes` and `card` (None when
-        run chips show no number).
+        `title`, `description`, `verdicts`, `outcomes`, `card` (None when
+        run chips show no number), `panel_metrics` (the metrics the run
+        panel lists, in order; empty for the default choice) and
+        `card_width` (`s`, `m`, `l` or `xl`; `m` by default).
     """
     raw = raw if isinstance(raw, dict) else {}
     return {
@@ -197,6 +219,8 @@ def clean_board(raw: Any) -> dict[str, Any]:
         "verdicts": _categories(raw.get("verdicts"), DEFAULT_VERDICTS, "verdict"),
         "outcomes": _categories(raw.get("outcomes"), DEFAULT_OUTCOMES, "outcome"),
         "card": _card(raw.get("card")),
+        "panel_metrics": _names(raw.get("panel_metrics"), MAX_PANEL_METRICS),
+        "card_width": raw.get("card_width") if raw.get("card_width") in WIDTHS else "m",
     }
 
 
@@ -267,6 +291,7 @@ def clean_hypothesis(raw: Any, hid: str) -> dict[str, Any]:
         "position": {"dx": _finite(position.get("dx")), "dy": _finite(position.get("dy"))},
         "folded": folded if isinstance(folded, bool) else None,
         "card": _card(raw.get("card")),
+        "width": raw.get("width") if raw.get("width") in WIDTHS else None,
         "created": _finite(raw.get("created")) or now,
         "updated": _finite(raw.get("updated")) or now,
     }
@@ -340,7 +365,8 @@ def save_board(
 
     Args:
         project_dir: The project folder.
-        patch: Any of `title`, `description`, `verdicts`, `outcomes`, `card`.
+        patch: Any of `title`, `description`, `verdicts`, `outcomes`, `card`,
+            `panel_metrics`, `card_width`.
         board: The board name; a new name creates the board.
 
     Returns:
@@ -351,7 +377,7 @@ def save_board(
     """
     path = _folder(project_dir, board) / BOARD_FILE
     current = clean_board(_fs.read_json(path, {}))
-    keys = ("title", "description", "verdicts", "outcomes", "card")
+    keys = ("title", "description", "verdicts", "outcomes", "card", "panel_metrics", "card_width")
     settings = clean_board({**current, **{k: v for k, v in patch.items() if k in keys}})
     path.parent.mkdir(parents=True, exist_ok=True)
     _fs.atomic_write_json(path, settings)

@@ -10,6 +10,7 @@ from nuboard.hypotheses import (
     DEFAULT_OUTCOMES,
     DEFAULT_VERDICTS,
     MAX_CATEGORIES,
+    MAX_PANEL_METRICS,
     HypothesisError,
     clean_board,
     delete_board,
@@ -170,6 +171,27 @@ def test_board_categories_are_cleaned_and_capped(tmp_path):
     assert board["title"] == "My board" and board["description"] == "why"
     assert board["verdicts"] == DEFAULT_VERDICTS
     assert clean_board(None)["outcomes"] == DEFAULT_OUTCOMES
+
+
+def test_board_panel_metrics(tmp_path):
+    assert clean_board(None)["panel_metrics"] == []
+    board = save_board(tmp_path, {"panel_metrics": ["val/acc", "", 3, "val/acc", "train/loss"]})
+    assert board["panel_metrics"] == ["val/acc", "train/loss"]
+    # other updates keep the choice; an empty list goes back to the default
+    assert save_board(tmp_path, {"title": "t"})["panel_metrics"] == ["val/acc", "train/loss"]
+    assert save_board(tmp_path, {"panel_metrics": []})["panel_metrics"] == []
+    many = [f"m{i}" for i in range(MAX_PANEL_METRICS + 5)]
+    assert len(clean_board({"panel_metrics": many})["panel_metrics"]) == MAX_PANEL_METRICS
+    assert clean_board({"panel_metrics": "val/acc"})["panel_metrics"] == []
+
+
+def test_card_widths(tmp_path):
+    assert clean_board(None)["card_width"] == "m"
+    assert save_board(tmp_path, {"card_width": "xl"})["card_width"] == "xl"
+    assert clean_board({"card_width": "huge"})["card_width"] == "m"
+    h = save_hypothesis(tmp_path, {"title": "wide", "width": "l"})
+    assert load_board(tmp_path)["hypotheses"][0]["width"] == "l"
+    assert save_hypothesis(tmp_path, {**h, "width": "nope"})["width"] is None
 
 
 @pytest.fixture
