@@ -2217,6 +2217,26 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
 });
 
+test('media by regex puts the keys a regex matches the same way side by side, one row per run', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F&mby=regex');
+  await expect(page.getByText('Type a regex next to')).toBeVisible();
+  const box = page.getByRole('textbox', { name: 'Group by regex' });
+  await box.fill('(');
+  await expect(box).toHaveAttribute('aria-invalid', 'true');
+  // the part before the "/" is the same in every key: one group, the rest of each key titles its card
+  await box.fill('^[^/]+');
+  await expect(page).toHaveURL(/mrx=/);
+  const section = page.locator('section.section');
+  await expect(section).toHaveCount(1);
+  await expect(section.locator('.stitle')).toHaveText('audio');
+  await expect(section.locator('.name').first()).toHaveText(/^(clean|enhanced|noisy)$/);
+  // a group the regex takes from the key: one section per key, in natural order
+  await box.fill('/(\\w+)$');
+  await expect(section.first().locator('.stitle')).toHaveText('clean');
+  await page.getByRole('group', { name: 'Arrange by' }).getByRole('button', { name: 'By key' }).click();
+  await expect(page).not.toHaveURL(/mby=/);
+});
+
 test('runs show each result as its min, max or last value', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
   const result = page.getByRole('group', { name: 'Result' });

@@ -114,13 +114,26 @@
     return new Map([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
   });
 
-  // Sections: one per key (cards are runs) or one per run (cards are keys)
-  const by = $derived(router.get('mby', 'key') === 'run' ? 'run' : 'key');
+  // Sections: one per key (cards are runs), one per run (cards are keys), or one per text a regex
+  // takes from each key (cards are the keys that give the same text, one row per run)
+  const by = $derived.by(() => {
+    const v = router.get('mby', 'key');
+    return v === 'run' || v === 'regex' ? v : 'key';
+  });
+  const rx = $derived(router.get('mrx'));
+  const rxRe = $derived.by(() => {
+    try {
+      return rx ? new RegExp(rx) : null;
+    } catch {
+      return null;
+    }
+  });
   interface Card {
     id: string;
     run: RunBrief;
     items: MediaItem[];
     title: string;
+    tip?: string;
   }
   interface Section {
     id: string;
@@ -128,8 +141,73 @@
     sub: string;
     kind: MediaKind | null;
     cards: Card[];
+    /** By regex: the cards in one row per run */
+    rows?: { run: RunBrief; cards: Card[] }[];
   }
+  const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  /** What the regex takes from a key: its first group if it has one, else the whole match. */
+  function labelOf(key: string): string | null {
+    const m = rxRe?.exec(key);
+    return m ? (m[1] ?? m[0]) : null;
+  }
+  /** Each key without the path parts that every key of its section shares, such as "Input". */
+  function shortNames(keys: string[]): Map<string, string> {
+    const parts = keys.map((k) => k.split('/'));
+    const shared = (at: (p: string[], i: number) => string | undefined) => {
+      let n = 0;
+      while (parts.every((p) => n < p.length - 1 && at(p, n) === at(parts[0], n))) n++;
+      return n;
+    };
+    const head = keys.length > 1 ? shared((p, i) => p[i]) : 0;
+    const tail = keys.length > 1 ? shared((p, i) => p[p.length - 1 - i]) : 0;
+    return new Map(
+      keys.map((k, i) => {
+        const p = parts[i];
+        const mid = p.slice(head, Math.max(head, p.length - tail)).join('/');
+        return [k, mid || k];
+      }),
+    );
+  }
+  const regexSections = $derived.by((): Section[] => {
+    if (by !== 'regex' || !rxRe) return [];
+    const groups = new Map<string, string[]>();
+    const unmatched: string[] = [];
+    for (const key of byKey.keys()) {
+      const label = labelOf(key);
+      if (label === null || label === '') unmatched.push(key);
+      else groups.set(label, [...(groups.get(label) ?? []), key]);
+    }
+    const out = [...groups.entries()].sort(([a], [b]) => natural(a, b));
+    if (unmatched.length) out.push(['', unmatched]);
+    return out.map(([label, keys]) => {
+      const names = shortNames(keys);
+      const rows = shownRuns
+        .map((r) => ({
+          run: r,
+          cards: keys
+            .filter((k) => byKey.get(k)!.runs.has(r.key))
+            .map((k) => ({
+              id: `${r.key}\u0000${k}`,
+              run: r,
+              items: byKey.get(k)!.runs.get(r.key)!,
+              title: label ? names.get(k)! : k,
+              tip: k,
+            })),
+        }))
+        .filter((row) => row.cards.length);
+      const kinds = new Set(keys.map((k) => byKey.get(k)!.kind));
+      return {
+        id: `rx:${label}`,
+        title: label || 'Unmatched',
+        kind: kinds.size === 1 ? [...kinds][0] : null,
+        sub: `${keys.length} key${keys.length === 1 ? '' : 's'} · ${rows.length} run${rows.length === 1 ? '' : 's'}`,
+        cards: rows.flatMap((row) => row.cards),
+        rows,
+      };
+    });
+  });
   const sections = $derived.by((): Section[] => {
+    if (by === 'regex') return regexSections;
     if (by === 'key')
       return [...byKey.entries()].map(([key, v]) => ({
         id: key,
@@ -235,6 +313,8 @@
     return k === 'table' ? 860 : k === 'audio' && player === 'wave' ? 520 : k === 'image' ? 200 : 380;
   }
   function colsFor(s: Section): number {
+    // By regex, a row holds one run's keys of the group, so a row is one comparison
+    if (!cols && s.rows) return Math.min(6, Math.max(1, ...s.rows.map((r) => r.cards.length)));
     return cols || Math.max(1, Math.floor((width + 14) / (minWidth(s) + 14)));
   }
   let pages = $state<Record<string, number>>({});
@@ -393,7 +473,23 @@
       <div class="seg" role="group" aria-label="Arrange by">
         <button aria-pressed={by === 'key'} onclick={() => router.set({ mby: null })}>By key</button>
         <button aria-pressed={by === 'run'} onclick={() => router.set({ mby: 'run' })}>By run</button>
+        <button
+          aria-pressed={by === 'regex'}
+          title="Group the keys by the text a regex finds in each one"
+          onclick={() => router.set({ mby: 'regex' })}>By regex</button
+        >
       </div>
+      {#if by === 'regex'}
+        <input
+          class="input sm find mono"
+          placeholder="Group by (regex)"
+          aria-label="Group by regex"
+          aria-invalid={!!rx && !rxRe}
+          title="Keys whose match is the same go in one section, side by side. With a group in parentheses, only the group counts."
+          value={rx}
+          oninput={(e) => router.set({ mrx: e.currentTarget.value })}
+        />
+      {/if}
     </div>
 
     <div class="row">
@@ -547,7 +643,7 @@
   <div class="sections-head">
     <span class="faint"
       >{sections.length}
-      {by === 'key' ? 'key' : 'run'}{sections.length === 1 ? '' : 's'}{runs.length === MAX_RUNS
+      {by === 'key' ? 'key' : by === 'run' ? 'run' : 'group'}{sections.length === 1 ? '' : 's'}{runs.length === MAX_RUNS
         ? ` · first ${MAX_RUNS} runs`
         : ''}</span
     >
@@ -573,13 +669,21 @@
   </div>
 
   {#if find && !byKey.size}<p class="faint">No key matches “{find}”.</p>{/if}
+  {#if by === 'regex' && !rx}
+    <p class="faint">
+      Type a regex next to <b>By regex</b>. Keys in which it finds the same text go in one section, side by side, with
+      one row per run. For example, <code>[^/]+$</code> groups the keys by what follows their last “/”.
+    </p>
+  {:else if by === 'regex' && !rxRe}
+    <p class="faint">“{rx}” is not a valid regex.</p>
+  {/if}
   <div class="sections" bind:clientWidth={width}>
     {#each sections as s, si (s.id)}
       {@const open = isOpen(s, si)}
-      {@const cards = showEmpty || by === 'run' ? s.cards : s.cards.filter((c) => c.items.length)}
+      {@const cards = showEmpty || by !== 'key' ? s.cards : s.cards.filter((c) => c.items.length)}
       {@const n = colsFor(s)}
-      {@const size = rows ? n * rows : cards.length}
-      {@const pageCount = Math.max(1, Math.ceil(cards.length / Math.max(1, size)))}
+      {@const size = s.rows ? rows || s.rows.length : rows ? n * rows : cards.length}
+      {@const pageCount = Math.max(1, Math.ceil((s.rows?.length ?? cards.length) / Math.max(1, size)))}
       {@const page = Math.min(pages[s.id] ?? 0, pageCount - 1)}
       <section class="card section">
         <header>
@@ -661,7 +765,35 @@
             <HistChart curves={prOverlay(cards)} height={260} label="Distributions of {s.title} for all runs" />
           </div>
         {/if}
-        {#if open}
+        {#if open && s.rows}
+          {#each s.rows.slice(page * size, page * size + size) as row (row.run.key)}
+            {#if s.rows.length > 1}
+              <div class="rowrun small">
+                <span class="dot" style="background: {seriesVar(runIndex.get(row.run.key) ?? 0)}"></span>{row.run.name}
+              </div>
+            {/if}
+            <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
+              {#each row.cards as c (c.id)}
+                <MediaCard
+                  run={c.run}
+                  items={c.items}
+                  target={targetFor(c.run.key)}
+                  nearest={mode === 'best'}
+                  title={c.title}
+                  tip={c.tip}
+                  color={seriesVar(runIndex.get(c.run.key) ?? 0)}
+                  {player}
+                  {audioOptions}
+                  onsave={(it) => save(c.run, it)}
+                  onzoom={(it) => (zoom = { run: c.run, item: it })}
+                  {selecting}
+                  isSelected={(it) => pickedIds.has(pickId(c.run, it))}
+                  onselect={(it, on) => pick(c.run, it, on)}
+                />
+              {/each}
+            </div>
+          {/each}
+        {:else if open}
           <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
             {#each cards.slice(page * size, page * size + size) as c (c.id)}
               <MediaCard
@@ -828,6 +960,21 @@
   .find {
     width: 220px;
     height: 30px;
+  }
+  .find[aria-invalid='true'] {
+    border-color: var(--err);
+  }
+  .rowrun {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 4px;
+    color: var(--muted);
+  }
+  .rowrun .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
   }
   .sm {
     height: 30px;

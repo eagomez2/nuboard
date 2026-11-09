@@ -12,6 +12,7 @@
     target,
     nearest = false,
     title,
+    tip = '',
     color,
     player,
     audioOptions,
@@ -26,6 +27,7 @@
     target: number | null; // null: the latest step
     nearest?: boolean; // closest step to `target` (best-step mode) instead of the last one before it
     title: string;
+    tip?: string; // the full key, when the title shows only part of it
     color: string;
     player: string;
     audioOptions: AudioOptions;
@@ -74,7 +76,7 @@
       />
     {/if}
     <i class="dot" style="background:{color}"></i>
-    <span class="mono name" title="{run.name}&#10;{run.path}">{title}</span>
+    <span class="mono name" title="{tip ? `${tip}\n` : ''}{run.name}&#10;{run.path}">{title}</span>
     {#if it}<span class="faint mono step">Step {it.step.toLocaleString()}</span>{/if}
     {#if it}
       <span class="acts">
