@@ -294,7 +294,9 @@ list short:
 - **Produced by / Used by**, **Metadata** and **Files** (path, size, hash),
   plus where the files are on disk. Files load 1,000 at a time, with
   **Show more** and a path filter, so a version with many files opens at
-  once. A version added with `nb.add_artifact`
+  once. Each file has a **Download** button, as in a run's Files tab, which
+  saves it from where the version keeps it (its copy, or the referenced
+  folder). A version added with `nb.add_artifact`
   shows "Logged outside a run".
 
 The Timeline page marks each artifact version as a diamond on the run that
