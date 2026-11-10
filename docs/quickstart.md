@@ -16,6 +16,11 @@ keeps logging:
 - **vit-ablations**: an augmentation ablation with images, HTML reports and a
   hypothesis board.
 - **ppo-atari**: PPO on two Atari games.
+- **speech-denoise**: three denoising models with audio samples, waveform
+  figures with speech-presence tracks, and evaluation tables.
+
+The datasets the training projects use are registered as artifacts of a
+fourth folder, `datasets`, which has no runs.
 
 ```bash
 nuboard demo demo-runs --up --open

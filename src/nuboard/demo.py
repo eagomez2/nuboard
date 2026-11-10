@@ -1,4 +1,4 @@
-"""Synthetic demo workspace: four projects, ~26 runs, media, video, artifacts and a live run.
+"""Synthetic demo workspace: four projects, 31 runs, media, video, artifacts and a live run.
 
 Datasets live outside the projects, in `shared-data/`, and are registered as
 reference artifacts of a `datasets` project that the training projects use.

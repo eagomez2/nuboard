@@ -181,7 +181,7 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   embedded too; if it cannot be reached, the figure is left out with a note.
   Before exporting you pick the **Theme** (light, dark, or switchable: it
   follows the reader's system theme and has a button to flip it), edit the
-  **footer** (by default "Exported with NuBoard 0.8.2 from …", naming the
+  **footer** (by default "Exported with NuBoard 0.29.0 from …", naming the
   version that exported it; empty removes it), and choose whether the
   NuBoard **logo** is the browser tab icon. When the report has audio you also
   pick the **audio player**: **Waveform** (the default) embeds the viewer's

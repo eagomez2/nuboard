@@ -124,8 +124,8 @@ Svelte 5 with runes and strict TypeScript, built by Vite into
 - `lib/api.ts`: fetch helpers; Arrow decoding with `apache-arrow`.
 - `components/LineChart.svelte`: uPlot with joined x arrays, bands,
   smoothing, robust y range, NaN markers, drag-to-zoom and cursor sync.
-- `pages/`: Runs, Charts, Media, Sweeps, Timeline, Artifacts. The new pages
-  draw plain SVG; no chart library beyond uPlot is needed. Styling uses Tailwind v4 with the design
+- `pages/`: Runs, Charts, Media, Sweeps, Timeline, Artifacts, Reports and
+  Hypotheses. Sweeps, Timeline and Artifacts draw plain SVG; no chart library beyond uPlot is needed. Styling uses Tailwind v4 with the design
   tokens of the Studio mockup (Okabe–Ito based, light and dark).
 
 ## Performance
@@ -135,13 +135,13 @@ version was built in; a laptop is typically 2–3× faster.
 
 | Target | Measured |
 | --- | --- |
-| `add_scalar()` of a 50-scalar dict well under 50 µs | ~2.5 µs |
+| `add_scalar()` of a 50-scalar dict well under 50 µs | ~1.5 µs |
 | 1M scalar points: under 30 MB live | 28 MB of event log |
-| 1M points: under 0.1 s to read | 0.12–0.15 s (decode 0.04 s, per-scalar split the rest) |
-| one scalar from Parquet under 10 ms | ~7 ms warm, ~60 ms for the first read after opening |
-| run list of 5,000 runs under 200 ms | ~65–100 ms per refresh; ~0.35 s to open the cached catalog at server start |
+| 1M points: under 0.1 s to read | ~0.07 s |
+| one scalar from Parquet under 10 ms | ~5 ms warm, ~13 ms for the first read after opening |
+| run list of 5,000 runs under 200 ms | ~115 ms per refresh; ~0.2 s to open the cached catalog at server start |
 
-The background writer handles roughly 600–700k points per second in this
+The background writer handles roughly a million points per second in this
 container, far above typical logging rates; if a loop logs faster than that
 for a sustained period, the queue grows in memory.
 
