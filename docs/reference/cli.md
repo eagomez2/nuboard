@@ -197,6 +197,6 @@ nuboard version
 ```
 
 Print the installed version and copyright, e.g.
-`NuBoard 0.29.0 Copyright © 2026 Esteban Gómez (MIT License)`. From 2027 the
+`NuBoard 0.29.1 Copyright © 2026 Esteban Gómez (MIT License)`. From 2027 the
 years read as a range (`2026–2027`). A console whose encoding lacks `©` or `ó`
 (some Windows code pages) gets `(c)` and `Gomez` instead.

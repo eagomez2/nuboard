@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.29.1
+
+Two viewer fixes on the Artifacts page and for primary buttons, and docs
+brought up to date with 0.29.0. No breaking changes.
+
+- **Artifacts: download a version's files.** Each file in a version's
+  **Files** list has a **Download** button, as in a run's Files tab. It saves
+  the file from where the version keeps it (its copy, or the referenced
+  folder), and only files the version's manifest lists can be downloaded.
+- **Primary buttons are readable in both themes.** 0.28.0 gave their labels
+  the regular text color, which put dark text on the light theme's blue and
+  light text on the dark theme's blue (**Review** and **Add version** in the
+  new artifact version form, among others). Labels are now white in the light
+  theme and near-black in the dark theme.
+- **Docs: current screenshots and numbers.** Every screenshot shows the
+  current viewer, the TensorBoard benchmark and the measured performance
+  table were rerun with this version, and the Quickstart lists all four demo
+  projects.
+
 ## 0.29.0
 
 One way to do each thing across the viewer, and command-line flags with one
