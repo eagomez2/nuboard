@@ -1,5 +1,6 @@
 <script lang="ts">
   import { regexFilter } from '../lib/keyfilter';
+  import { pickMatches } from '../lib/runlabel';
   import ScalarStat from '../components/ScalarStat.svelte';
   import HistChart from '../components/HistChart.svelte';
   import Icon from '../components/Icon.svelte';
@@ -10,7 +11,7 @@
   import { seriesVar } from '../lib/colors';
   import { addOverlayToReport, appendToReport, askReport } from '../lib/reports.svelte';
   import { chartToPng } from '../lib/snapshot';
-  import { defaultMetric, fmtNum } from '../lib/format';
+  import { defaultMetric, fmtNum, fmtValue } from '../lib/format';
   import { rememberStat, statFor, type Extreme } from '../lib/stat';
   import {
     HIST_MIME,
@@ -32,6 +33,20 @@
   const runIndex = $derived(new Map(runs.map((r, i) => [r.key, i])));
   // Runs hidden with the legend chips (All / None, click to hide, double-click or Alt-click to solo)
   let hiddenRuns = $state(new Set<string>());
+  // Past CHIPS_MAX runs, as in Charts' legend: a filter (name, id, tags, notes or a setting such as
+  // `lr=3e-4`) with "Only these", and the first CHIPS_SHOWN chips until "+N more" or a filter
+  const CHIPS_MAX = 12;
+  const CHIPS_SHOWN = 10;
+  let runFind = $state('');
+  let chipsOpen = $state(false);
+  const settingsText = (r: RunBrief) =>
+    Object.entries(r.config ?? {})
+      .flatMap(([k, v]) => [`${k}=${fmtValue(v)}`, `${k.split('.').slice(-1)[0]}=${fmtValue(v)}`])
+      .join('\n');
+  const runMatching = $derived(runs.filter((r) => pickMatches(r, runFind, settingsText(r))));
+  const chipRuns = $derived(
+    runs.length <= CHIPS_MAX ? runs : runFind.trim() || chipsOpen ? runMatching : runs.slice(0, CHIPS_SHOWN),
+  );
   const shownRuns = $derived(runs.filter((r) => !hiddenRuns.has(r.key)));
   function toggleRun(key: string) {
     const next = new Set(hiddenRuns);
@@ -616,7 +631,27 @@
             onclick={() => (hiddenRuns = new Set(runs.map((r) => r.key)))}>None</button
           >
         </div>
-        {#each runs as r, i (r.key)}
+        {#if runs.length > CHIPS_MAX}
+          <input
+            class="input sm mono runfind"
+            placeholder="Filter runs, e.g. lr=3e-4"
+            aria-label="Filter runs"
+            bind:value={runFind}
+            onkeydown={(e) => e.key === 'Escape' && (runFind = '')}
+          />
+          {#if runFind.trim()}
+            <span class="faint small chipcount">{runMatching.length} of {runs.length}</span>
+            <button
+              class="btn btn-ghost sm"
+              disabled={!runMatching.length}
+              title="Show only the runs that match, hide the rest"
+              onclick={() => (hiddenRuns = new Set(runs.filter((r) => !runMatching.includes(r)).map((r) => r.key)))}
+              >Only these</button
+            >
+          {/if}
+        {/if}
+        {#each chipRuns as r (r.key)}
+          {@const i = runIndex.get(r.key) ?? 0}
           <button
             class="chip run-chip"
             class:off={hiddenRuns.has(r.key)}
@@ -626,6 +661,11 @@
             ><i class="dot" style="background:{seriesVar(i)}"></i><span class="mono rn">{r.name}</span></button
           >
         {/each}
+        {#if runs.length > CHIPS_MAX && !runFind.trim()}
+          <button class="btn btn-ghost sm chipmore" onclick={() => (chipsOpen = !chipsOpen)}
+            >{chipsOpen ? 'Show fewer' : `+${runs.length - CHIPS_SHOWN} more`}</button
+          >
+        {/if}
       </div>
     {/if}
     <div class="row">
@@ -1257,6 +1297,13 @@
   }
   .legend {
     gap: 6px;
+  }
+  .runfind {
+    width: 220px;
+  }
+  .chipcount,
+  .chipmore {
+    align-self: center;
   }
   .run-chip {
     height: 28px;

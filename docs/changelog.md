@@ -23,6 +23,10 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **Media run chips filter like the Charts legend.** With more than 12 runs,
+  the chips fold to the first 10 with **+N more**, and a filter box (name, id,
+  tag, note or a setting such as `lr=3e-4`) with **Only these** shows just the
+  runs that match.
 - **Compare picks the two runs to diff with the run picker.** With three to
   eight runs, the **Diff … against …** menus on Files and file tabs become
   run pickers that show the end of each run's id, its status, start time and

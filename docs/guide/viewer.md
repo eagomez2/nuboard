@@ -317,7 +317,11 @@ bar) or, if none are selected, every run matching the query.
   double-click (or Alt-click) to show only that series; soloing it again shows
   them all. **All** and **None** before the chips show or hide every series, so
   you can start from None and click the few you want. Each series has a color
-  and a marker shape, so series stay distinguishable without color.
+  and a marker shape, so series stay distinguishable without color. With more
+  than 12 series, the first 10 chips show with **+N more**, and a filter box
+  finds series by run name or setting (`lr=3e-4`, `!s3`; see
+  [Filter boxes](#filter-boxes)); **Only these** then hides every series that
+  does not match.
 - **X axis**: step, wall time, relative time since the run started, or active
   time (relative time with pauses longer than five minutes removed).
   **Scalar…**, the last choice of the same group, opens the searchable scalar
@@ -506,7 +510,10 @@ be scrolled through its steps while the others stay put.
 
 - **Runs**: a chip per run, as in the Charts legend. Click one to hide or
   show it, double-click (or Alt-click) to show only that run, and **All** or
-  **None** to show or hide every run.
+  **None** to show or hide every run. With more than 12 runs it works like the
+  Charts legend: the first 10 chips show with **+N more**, and a filter box
+  finds runs by name, id, tag, note or setting (`lr=3e-4`), with **Only these**
+  to hide the runs that do not match.
 - **Kinds**: the chips below (Images, Audio, Video, Figures, Tables, Point clouds, HTML, Text) show or
   hide a kind of media; double-click one to show only that kind. The number
   on each chip counts its keys.

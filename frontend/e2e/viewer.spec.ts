@@ -2303,6 +2303,17 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
 });
 
+test('media run chips fold past 12 runs, filter, and show only the matching runs', async ({ page }) => {
+  await page.goto('/#/media?project=llm-pretrain');
+  const legend = page.locator('.legend').first();
+  await expect(legend.locator('.run-chip')).toHaveCount(10);
+  await legend.getByLabel('Filter runs').fill('lr1e-3');
+  await expect(legend.locator('.run-chip')).toHaveCount(3);
+  await legend.getByRole('button', { name: 'Only these' }).click();
+  await legend.getByLabel('Filter runs').fill('');
+  await expect(legend.locator('.run-chip:not(.off)')).toHaveCount(3);
+});
+
 test('media by regex puts the keys a regex matches the same way side by side, one row per run', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2F&mby=regex');
   await expect(page.getByText('Type a regex next to')).toBeVisible();
