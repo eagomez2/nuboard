@@ -64,7 +64,7 @@ uv run --with tensorboardX --with tensorboard --with torch \
 ```
 
 Each case runs in its own process, and the short ones are repeated three times
-(the median is kept). The results above were measured with nuboard 0.20.1,
+(the median is kept). The results above were measured with nuboard 0.29.0,
 tensorboardX 2.6.5, PyTorch 2.15.0 and tensorboard 2.21.0 on Python 3.13, on a
 4-core Linux machine. The script writes the raw numbers to
 `docs/assets/benchmarks/vs_tensorboard.json`, which these charts read, so a

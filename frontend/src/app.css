@@ -12,6 +12,7 @@
   --faint: #8a93a3;
   --accent: #0072b2;
   --accent-soft: #e2eef7;
+  --on-accent: #ffffff;
   --grid: #e9edf2;
   --rail: #141922;
   --rail-fg: #aab3c2;
@@ -62,6 +63,7 @@
     --faint: #6f7988;
     --accent: #56b4e9;
     --accent-soft: #17293a;
+    --on-accent: #06121c;
     --grid: #1f2631;
     --rail: #090c11;
     --rail-fg: #8792a3;
@@ -109,6 +111,7 @@
   --faint: #6f7988;
   --accent: #56b4e9;
   --accent-soft: #17293a;
+  --on-accent: #06121c;
   --grid: #1f2631;
   --rail: #090c11;
   --rail-fg: #8792a3;
@@ -190,9 +193,11 @@ button {
   cursor: pointer;
 }
 /* The reset above is outside the components layer, so it wins over `.btn-primary` there: a primary
-   button took its parent's color, which looked wrong under muted text (the Artifacts empty state). */
+   button took its parent's color (faded under muted text in the Artifacts empty state). Its text
+   uses --on-accent, white on the light theme's dark blue and near-black on the dark theme's light
+   blue, so the label stays readable on the accent fill in both themes. */
 button.btn-primary {
-  color: var(--text);
+  color: var(--on-accent);
 }
 :focus-visible {
   outline: 2px solid var(--accent);

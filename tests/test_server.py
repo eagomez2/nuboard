@@ -245,6 +245,39 @@ def test_artifact_files_come_a_page_at_a_time(client, tmp_path):
     assert bad.status_code == 400
 
 
+def test_artifact_files_download_like_run_files(client, tmp_path):
+    folder = tmp_path / "ckpt"
+    (folder / "sub").mkdir(parents=True)
+    (folder / "sub" / "best.pt").write_bytes(b"weights")
+    (folder / "plot.png").write_bytes(b"\x89PNG")
+    (tmp_path / "secret.txt").write_text("no")
+    nb.add_artifact("models", "ckpt", folder)  # a copy
+    nb.add_artifact("models", "ref", folder, reference=True)
+    q = {"project": "models", "name": "ckpt", "version": 1}
+
+    for name in ("ckpt", "ref"):
+        res = client.get("/api/artifacts/raw", params={**q, "name": name, "path": "sub/best.pt"})
+        assert res.status_code == 200 and res.content == b"weights"
+        assert res.headers["content-disposition"].startswith("attachment")
+        assert res.headers["content-type"] == "application/octet-stream"
+
+    # an image is shown unless asked to save it, as for run files
+    shown = client.get("/api/artifacts/raw", params={**q, "path": "plot.png"})
+    assert shown.headers["content-type"] == "image/png"
+    assert "attachment" not in shown.headers.get("content-disposition", "")
+    saved = client.get("/api/artifacts/raw", params={**q, "path": "plot.png", "download": 1})
+    assert saved.headers["content-disposition"].startswith("attachment")
+
+    # only files the manifest lists, never a path out of the version
+    for path in ("../secret.txt", "../../../secret.txt", "manifest.json", "nope.bin"):
+        assert client.get("/api/artifacts/raw", params={**q, "path": path}).status_code == 404
+
+    gone = client.get("/api/artifacts/raw", params={**q, "version": 9, "path": "plot.png"})
+    assert gone.status_code == 404
+    bad = client.get("/api/artifacts/raw", params={**q, "name": "../x", "path": "a"})
+    assert bad.status_code == 400
+
+
 def test_x_axis_by_another_metric(client):
     with nb.init("sweep", run_name="tok", capture_env=False) as run:
         for s in range(0, 2000, 2):

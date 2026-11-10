@@ -529,7 +529,14 @@ run.use_artifact("dataset:latest")</pre>
             {/if}
           </div>
           <table class="files">
-            <thead><tr><th>Path</th><th class="right size">Size</th><th class="sha">SHA-256</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th class="right size">Size</th>
+                <th class="sha">SHA-256</th>
+                <th class="dl" aria-label="Download"></th>
+              </tr>
+            </thead>
             <tbody>
               {#each files as f (f.path)}
                 <tr>
@@ -548,6 +555,14 @@ run.use_artifact("dataset:latest")</pre>
                         >
                       </div>
                     {:else}<span class="mono faint" title="Not hashed: checked by size">—</span>{/if}
+                  </td>
+                  <td class="dl">
+                    <a
+                      class="btn btn-ghost sm"
+                      href={api.artifactRawUrl(selected, f.path, true)}
+                      download
+                      title="Download {f.path}"><Icon name="download" size={14} /> Download</a
+                    >
                   </td>
                 </tr>
               {/each}
@@ -715,6 +730,10 @@ run.use_artifact("dataset:latest")</pre>
   }
   .files .sha {
     width: 560px;
+  }
+  .files .dl {
+    width: 112px;
+    text-align: right;
   }
   @media (max-width: 1280px) {
     .files .sha {

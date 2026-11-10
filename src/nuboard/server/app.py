@@ -36,6 +36,7 @@ from .. import __version__, _fs
 from .._meta import FORMAT_VERSION, NAME
 from ..artifacts import (
     UNLINKED,
+    Artifact,
     add_artifact,
     find_artifact_projects,
     promote_run_path,
@@ -678,19 +679,14 @@ def create_app(
             headers={"X-Truncated": "1" if size > TEXT_LIMIT else "0"},
         )
 
-    def run_raw(request: Request) -> Response:
-        """Send a run file as is: images inline, anything else (or with `download=1`) as a download.
+    def send_file(target: Path, download: bool) -> Response:
+        """Send a file as is: images inline, anything else (or with `download`) as a download.
 
         Nothing is ever served as HTML or script, so a logged file cannot run in
         the viewer's origin.
         """
-        target = run_folder_file(request)
-
-        if target is None:
-            return PlainTextResponse("not found", 404)
-
         image = IMAGE_SUFFIXES.get(target.suffix.lower())
-        download = request.query_params.get("download") == "1" or image is None
+        download = download or image is None
         return FileResponse(
             target,
             media_type=image or "application/octet-stream",
@@ -703,6 +699,15 @@ def create_app(
                 "Content-Encoding": "identity",
             },
         )
+
+    def run_raw(request: Request) -> Response:
+        """Send a run file as is; `download=1` saves it even if it is an image."""
+        target = run_folder_file(request)
+
+        if target is None:
+            return PlainTextResponse("not found", 404)
+
+        return send_file(target, request.query_params.get("download") == "1")
 
     async def run_inspect(request: Request) -> Response:
         """Describe the tensors in a checkpoint or array file of a run, without loading them."""
@@ -1254,6 +1259,51 @@ def create_app(
         matched = [f for f in files if find in str(f.get("path", "")).lower()] if find else files
         page = matched[offset : offset + limit]
         return JSON({"files": page, "total": len(files), "matched": len(matched)})
+
+    def artifact_raw(request: Request) -> Response:
+        """Send one file of an artifact version, as `/api/runs/{key}/raw` sends a run file.
+
+        Query parameters: `project`, `name`, `version`, `unlinked` (1 for an
+        unlinked version), `path` (the file's path inside the version, as the
+        manifest lists it) and `download` (1 to save it even if it is an image).
+        Only files the manifest lists are sent; for a version stored by reference
+        they are read from the referenced folder.
+        """
+        q = request.query_params
+        pdir = artifact_project(q.get("project") or "")
+        name = q.get("name") or ""
+
+        try:
+            version = int(q.get("version") or "")
+        except ValueError:
+            return PlainTextResponse("version must be a number", 400)
+
+        if pdir is None or not name or name != _fs.sanitize(name, ""):
+            return PlainTextResponse("unknown project or artifact", 400)
+
+        base = pdir / "artifacts" / (UNLINKED if q.get("unlinked") == "1" else "")
+        vdir = base / name / f"v{version}"
+
+        try:
+            manifest = _fs.read_json(vdir / "manifest.json", None)
+        except (OSError, ValueError):
+            manifest = None
+
+        if not isinstance(manifest, dict):
+            return PlainTextResponse("not found", 404)
+
+        art = Artifact(name=name, version=version, path=vdir, manifest=manifest)
+        rel = q.get("path") or ""
+
+        if rel not in art:
+            return PlainTextResponse("not found", 404)
+
+        target = path_inside(art.files, rel.replace("\\", "/").strip("/"))
+
+        if target is None or not target.is_file():
+            return PlainTextResponse("not found", 404)
+
+        return send_file(target, q.get("download") == "1")
 
     def artifact_source(raw: str) -> tuple[str, Path]:
         """Return what to pass to `add_artifact` for a typed path, and the path it points at.
@@ -2320,6 +2370,7 @@ def create_app(
         Route("/api/sweep-settings", sweep_settings_save, methods=["POST"]),
         Route("/api/artifacts", artifacts),
         Route("/api/artifacts/files", artifact_files),
+        Route("/api/artifacts/raw", artifact_raw),
         Route("/api/artifacts/check", artifact_check, methods=["POST"]),
         Route("/api/artifacts/add", artifact_add, methods=["POST"]),
         Route("/api/artifacts/promote", artifact_promote, methods=["POST"]),

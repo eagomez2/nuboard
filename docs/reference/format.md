@@ -342,7 +342,7 @@ each name to its file.
   "range": [0.0, 1.0],
   "regions": {"target": [[0.42, 1.87, "speech"]], "predicted": [[0.40, 1.95, "speech"]]},
   "notes": [{"id": "...", "start": 0.4, "end": 0.6, "text": "false alarm"}],
-  "exported_with": "nuboard 0.18.0"
+  "exported_with": "nuboard 0.29.0"
 }
 ```
 
