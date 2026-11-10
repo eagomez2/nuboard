@@ -125,7 +125,7 @@ def test_artifact_add_on_a_runs_file_records_the_run(tmp_path):
             "add",
             "proj/best",
             str(run.path / "files/ckpt"),
-            "--ref",
+            "--reference",
             "-t",
             "model",
             "-d",

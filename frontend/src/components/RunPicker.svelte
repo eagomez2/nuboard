@@ -101,7 +101,7 @@
         bind:value={find}
         oninput={() => (active = 0)}
         onkeydown={keydown}
-        placeholder="Filter by name, id, status or tag…"
+        placeholder="Filter runs (name, id, tag, note; /regex/, !exclude)"
         aria-label="Filter runs"
       />
       <div class="list" role="listbox" aria-label={label} bind:this={list}>

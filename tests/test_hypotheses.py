@@ -275,9 +275,15 @@ def test_api_read_only(tmp_path):
     with nb.init("proj", run_name="x", capture_env=False):
         pass
 
-    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_reports=True)
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_hypotheses=True)
 
     with TestClient(app) as c:
         res = c.post("/api/hypotheses", json={"project": "proj", "settings": {"title": "t"}})
-        assert res.status_code == 403
+        assert res.status_code == 403 and "--read-only-hypotheses" in res.json()["error"]
         assert c.get("/api/hypotheses", params={"project": "proj"}).json()["read_only"] is True
+
+    # --read-only-reports leaves the boards editable
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", read_only_reports=True)
+
+    with TestClient(app) as c:
+        assert c.get("/api/hypotheses", params={"project": "proj"}).json()["read_only"] is False

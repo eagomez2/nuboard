@@ -70,7 +70,7 @@ export function directionOf(projects: string[], name: string, guess = true, over
 /** The name a table column's direction is kept under: never the same as a scalar's. */
 export const columnKey = (table: string, column: string) => `${table} › ${column}`;
 
-/** False when the viewer was started with `--lock-directions`. */
+/** False when the viewer was started with `--read-only-directions`. */
 export const canSaveDirections = () => !app.info?.lock_directions;
 
 /**

@@ -96,8 +96,9 @@ form where the token can be pasted.
   need it, not `0.0.0.0/0`.
 - **Read-only viewers.** Artifacts are read-only unless you add
   `--edit-artifacts`. Add `--read-only-reports` so viewers cannot edit
-  reports, upload files into them or change hypothesis boards, and
-  `--lock-directions` so they cannot save which way is better for a metric.
+  reports or upload files into them, `--read-only-hypotheses` so they cannot
+  change hypothesis boards, and `--read-only-directions` so they cannot save
+  which way is better for a scalar.
 - **Scripts** send the token in a header: `Authorization: token VALUE`.
 
 `--no-token` serves the network address without a token. Anyone who can reach
@@ -117,7 +118,8 @@ already true, such as a machine only you can reach.
     browser and the machine (shared Wi-Fi, a hotel network) can read it and
     the data you look at. Anyone with the link has the same access you have:
     they can read every run under the folder you served, and change notes,
-    tags, reports and boards unless you add `--read-only-reports`. A
+    tags, reports and boards unless you add `--read-only-reports` and
+    `--read-only-hypotheses`. A
     forwarded link keeps working until you change the token. Use it on
     networks you trust, limit the port to known addresses, and stop the viewer
     when you are done.
@@ -139,7 +141,7 @@ nuboard.example.com {
 ```
 
 ```console
-gpu-box$ NUBOARD_TOKEN=… nuboard up ~/experiments --read-only-reports
+gpu-box$ NUBOARD_TOKEN=… nuboard up ~/experiments --read-only-reports --read-only-hypotheses
 ```
 
 Open `https://nuboard.example.com/?token=…` once per browser. The proxy also
@@ -155,7 +157,7 @@ response.
     **Security.** HTTPS encrypts the token and the data on the way, which
     fixes the main weakness of the plain token. The viewer is still reachable
     by anyone on the internet who has the link, and the token is the only
-    thing that stands in the way: use a long one, add `--read-only-reports`,
+    thing that stands in the way: use a long one, add the `--read-only-…` flags,
     and stop the viewer when it is no longer needed. For more control (single
     sign-on, a list of allowed users), put an authenticating proxy in front;
     the viewer has no user accounts of its own.

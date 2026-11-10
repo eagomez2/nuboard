@@ -3,6 +3,8 @@
   import { fade } from 'svelte/transition';
   import LineChart, { type CursorValue } from '../components/LineChart.svelte';
   import Marker from '../components/Marker.svelte';
+  import { keyFilter, regexFilter } from '../lib/keyfilter';
+  import ScalarPicker from '../components/ScalarPicker.svelte';
   import SmallChart from '../components/SmallChart.svelte';
   import { chartZone } from '../lib/chartzone';
   import { LOCAL, timeZone } from '../lib/timezone.svelte';
@@ -367,17 +369,11 @@
   const perRow = $derived(gridCols || Math.max(1, Math.floor((gridWidth + 14) / (330 + 14))));
   let gridPages = $state<Record<string, number>>({});
 
-  // Regex filter of the All scalars grid (as in TensorBoard); an invalid pattern matches as plain text.
+  // Regex filter of the All scalars grid (as in TensorBoard), with the shared rule: several terms,
+  // `!exclude`; an invalid pattern matches as plain text.
   const metricFind = $derived(router.get('cfind'));
-  const metricRe = $derived.by(() => {
-    if (!metricFind) return null;
-    try {
-      return new RegExp(metricFind, 'i');
-    } catch {
-      return new RegExp(metricFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    }
-  });
-  const shownMetrics = $derived(metricRe ? metrics.filter((m) => metricRe.test(m)) : metrics);
+  const metricFilter = $derived(regexFilter(metricFind));
+  const shownMetrics = $derived(metricFilter.empty ? metrics : metrics.filter((m) => metricFilter.test(m)));
   // Sections fold like on the Media page; the choice is kept in localStorage per prefix.
   // Unset, all are open when there are few, else the first three; a filter opens every match.
   let folded = $state<Record<string, boolean>>(prefs.get('chartFolds', {}));
@@ -482,44 +478,6 @@
       }
     return [...keys.entries()].filter(([, s]) => s.size > 1 && s.size < runs.length).map(([k]) => `config.${k}`);
   });
-  // ---- metric picker for the focus chart: every scalar, searchable ----
-  let pickOpen = $state(false);
-  let pickFind = $state('');
-  let pickIndex = $state(0);
-  let pickEl = $state<HTMLElement>();
-  let pickInput = $state<HTMLInputElement>();
-  $effect(() => {
-    if (pickOpen) pickInput?.focus();
-  });
-  const pickList = $derived.by(() => {
-    const q = pickFind.trim().toLowerCase();
-    return (q ? metrics.filter((m) => m.toLowerCase().includes(q)) : metrics).slice(0, 300);
-  });
-  function pick(m: string) {
-    router.set({ metric: m, zoom: null, cstat: null });
-    pickOpen = false;
-    pickFind = '';
-  }
-  function pickKey(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const n = pickList.length;
-      if (n) pickIndex = (pickIndex + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
-      pickEl?.querySelector(`[data-i="${pickIndex}"]`)?.scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'Enter' && pickList[pickIndex]) pick(pickList[pickIndex]);
-    else if (e.key === 'Escape') {
-      e.stopPropagation();
-      pickOpen = false;
-    }
-  }
-  $effect(() => {
-    if (!pickOpen) return;
-    const close = (e: PointerEvent) => {
-      if (!pickEl?.contains(e.target as Node)) pickOpen = false;
-    };
-    window.addEventListener('pointerdown', close, true);
-    return () => window.removeEventListener('pointerdown', close, true);
-  });
 
   // ---- legend: with many series, a filter and only the first few chips until expanded ----
   const LEGEND_MAX = 12;
@@ -543,10 +501,8 @@
       }),
     );
   });
-  const legendMatch = (label: string) => {
-    const q = legendFind.trim().toLowerCase();
-    return !q || (seriesText.get(label) ?? label.toLowerCase()).includes(q);
-  };
+  const legendFilter = $derived(keyFilter(legendFind));
+  const legendMatch = (label: string) => legendFilter.test(seriesText.get(label) ?? label);
   const legendItems = $derived.by(() => {
     const all = (focusData?.series ?? []).map((s, i) => ({ s, i }));
     if (all.length <= LEGEND_MAX) return all;
@@ -578,14 +534,16 @@
   <section class="stats">
     <div class="card stat">
       <div class="label lrow">
-        <span class="trunc" title="{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}"
-          >{lower ? 'Lowest' : 'Highest'} {focus || 'metric'}</span
-        >
+        <span class="trunc" title="Best {focus || 'scalar'}">Best {focus || 'scalar'}</span>
         <span class="faint keep">(last value)</span>
-        <div class="seg mini" role="group" aria-label="Lowest or highest">
-          <button aria-pressed={cardStat === 'min'} onclick={() => setCardStat('min')}>Min</button>
-          <button aria-pressed={cardStat === 'max'} onclick={() => setCardStat('max')}>Max</button>
-        </div>
+        <button
+          class="btn better"
+          aria-label={lower ? 'Lower is better' : 'Higher is better'}
+          title="{lower
+            ? '↓ Lower is better: shows the run with the lowest last value'
+            : '↑ Higher is better: shows the run with the highest last value'}. Click to flip."
+          onclick={() => setCardStat(lower ? 'max' : 'min')}>{lower ? '↓' : '↑'}</button
+        >
       </div>
       <div class="big mono">{best ? fmtV(best.last) : '—'}</div>
       {#if best}
@@ -716,6 +674,15 @@
               >{label}</button
             >
           {/each}
+          <ScalarPicker
+            metrics={xCandidates}
+            value={xMetric ?? ''}
+            label={xMetric ?? 'Scalar…'}
+            pressed={xMetric !== null}
+            ariaLabel="X axis scalar"
+            title="Plot against another scalar, matched by step"
+            onpick={(m) => router.set({ x: `metric:${m}`, zoom: null })}
+          />
         </div>
         {#if xKind === 'time' && timeZone.pref !== LOCAL}
           <span
@@ -727,20 +694,6 @@
             >Axis: {axisZone.kit.name}{axisZone.note ? ` · ${axisZone.note}` : ''}</span
           >
         {/if}
-        <select
-          class="input sm mono xmetric"
-          class:on={xMetric !== null}
-          value={xMetric ?? ''}
-          onchange={(e) => {
-            const v = (e.currentTarget as HTMLSelectElement).value;
-            router.set({ x: v ? `metric:${v}` : null, zoom: null });
-          }}
-          aria-label="X axis scalar"
-          title="Plot against another scalar, matched by step"
-        >
-          <option value="">X by scalar…</option>
-          {#each xCandidates as m (m)}<option value={m}>X = {m}</option>{/each}
-        </select>
       </div>
       <div class="knobs">
         <label class="smooth"
@@ -765,9 +718,7 @@
           ></button>Raw</label
         >
         {#if hasRanges}
-          <label
-            class="tg"
-            title="Shade the range around each curve: the group's band, logged low/high bounds or the min–max across ranks"
+          <label class="tg" title="Shade the range around each curve: the group's band or the logged low/high bounds"
             ><button
               class="switch"
               role="switch"
@@ -865,47 +816,13 @@
           {/each}
         </div>
         {#if metrics.length > tabs.length}
-          <div class="picker" bind:this={pickEl}>
-            <button
-              class="btn btn-ghost sm"
-              aria-expanded={pickOpen}
-              title="Pick any of the {metrics.length} scalars"
-              onclick={() => {
-                pickOpen = !pickOpen;
-                pickIndex = 0;
-              }}><Icon name="search" size={14} /> All {metrics.length}</button
-            >
-            {#if pickOpen}
-              <div class="card pickpop" role="dialog" aria-label="Pick a scalar">
-                <input
-                  class="input sm mono"
-                  placeholder="Search scalars"
-                  aria-label="Search scalars"
-                  bind:this={pickInput}
-                  bind:value={pickFind}
-                  oninput={() => (pickIndex = 0)}
-                  onkeydown={pickKey}
-                />
-                <div class="picklist" role="listbox" aria-label="Scalars">
-                  {#each pickList as m, i (m)}
-                    <button
-                      class="pickopt mono"
-                      role="option"
-                      data-i={i}
-                      aria-selected={i === pickIndex}
-                      class:on={m === focus}
-                      title={m}
-                      onmouseenter={() => (pickIndex = i)}
-                      onclick={() => pick(m)}>{m}</button
-                    >
-                  {:else}
-                    <p class="faint small">No scalar matches “{pickFind}”.</p>
-                  {/each}
-                </div>
-                {#if pickList.length === 300}<p class="faint small">Showing the first 300; type to narrow.</p>{/if}
-              </div>
-            {/if}
-          </div>
+          <ScalarPicker
+            {metrics}
+            value={focus}
+            label="All {metrics.length}"
+            title="Pick any of the {metrics.length} scalars"
+            onpick={(m) => router.set({ metric: m, zoom: null, cstat: null })}
+          />
         {/if}
         <span class="note"
           >{groupBy
@@ -1064,7 +981,7 @@
       <h3>All scalars <span class="faint">Click one to bring it into focus</span></h3>
       <input
         class="input sm mono cfind"
-        placeholder="Filter scalars (regex)"
+        placeholder="Filter scalars (regex, !exclude)"
         aria-label="Filter scalars"
         value={metricFind}
         oninput={(e) => router.set({ cfind: e.currentTarget.value || null })}
@@ -1225,14 +1142,6 @@
   .groupsel {
     max-width: 260px;
   }
-  .xmetric {
-    max-width: 210px;
-    font-size: 12.5px;
-  }
-  .xmetric.on {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
   .alerts {
     display: flex;
     flex-wrap: wrap;
@@ -1317,17 +1226,14 @@
     align-items: baseline;
     min-width: 0;
   }
-  .seg.mini {
+  .better {
     margin-left: auto;
-    padding: 2px;
-    border-radius: 8px;
-    text-transform: none;
-    letter-spacing: 0;
-  }
-  .seg.mini button {
-    padding: 1px 7px;
-    font-size: 11.5px;
-    border-radius: 6px;
+    align-self: center;
+    height: 22px;
+    padding: 0 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
   }
   .stat .label .faint {
     text-transform: none;
@@ -1398,48 +1304,6 @@
   }
   .legendmore {
     align-self: center;
-  }
-  .picker {
-    position: relative;
-  }
-  .pickpop {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 20;
-    width: 360px;
-    max-width: calc(100vw - 32px);
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    box-shadow: var(--lift);
-  }
-  .picklist {
-    max-height: 320px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-  .pickopt {
-    border: 0;
-    background: none;
-    text-align: left;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: none;
-  }
-  .pickopt[aria-selected='true'] {
-    background: var(--panel-2);
-  }
-  .pickopt.on {
-    color: var(--accent);
-    font-weight: 600;
   }
   .legend-chip.off {
     opacity: 0.4;

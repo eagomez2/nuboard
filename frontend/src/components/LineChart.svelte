@@ -47,7 +47,7 @@
     data: ChartData | null;
     smoothing?: number;
     showRaw?: boolean;
-    /** Shade the ranges (group bands, logged low/high, rank min–max) around each curve. */
+    /** Shade the ranges (group bands, logged low/high) around each curve. */
     showBands?: boolean;
     robust?: boolean;
     logY?: boolean;

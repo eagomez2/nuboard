@@ -84,6 +84,8 @@
       if (!out.get(a.project)?.includes(a.name)) out.set(a.project, [...(out.get(a.project) ?? []), a.name]);
     return out;
   });
+  // types already given to artifacts, offered next to the built-in ones
+  const usedTypes = $derived([...new Set(all.map((a) => a.manifest.type).filter((t): t is string => !!t))]);
 
   const id = (a: ArtifactVersion) => `${a.project}|${a.name}|${a.version}`;
   const selected = $derived(
@@ -293,6 +295,7 @@
     project={selected?.project ?? (router.get('project') || projects[0] || '')}
     name={selected && !selected.unlinked ? selected.name : ''}
     names={namesByProject}
+    types={usedTypes}
     onclose={() => (formOpen = false)}
     onadded={(p, n, v) => {
       formOpen = false;
@@ -316,7 +319,9 @@
     <pre class="mono">run.add_artifact("dataset", "data/", type="dataset")
 run.use_artifact("dataset:latest")</pre>
     <p class="faint">Each version is a folder under <code>&lt;project&gt;/artifacts/&lt;name&gt;/v&lt;N&gt;/</code>.</p>
-    {#if edit}<button class="btn btn-primary" onclick={() => (formOpen = true)}>New version</button>{/if}
+    {#if edit}<button class="btn btn-primary" onclick={() => (formOpen = true)}
+        ><Icon name="plus" size={15} /> New</button
+      >{/if}
     {#if unlinkedCount}<button class="btn btn-ghost" onclick={() => router.set({ unlinked: '1' })}
         >Show unlinked ({unlinkedCount})</button
       >{/if}
@@ -333,7 +338,9 @@ run.use_artifact("dataset:latest")</pre>
           onclick={() => Object.assign(storageView, { open: true, tab: 'artifacts' })}
           ><Icon name="disk" size={15} /></button
         >
-        {#if edit}<button class="btn btn-ghost sm" onclick={() => (formOpen = true)}>New version</button>{/if}
+        {#if edit}<button class="btn sm" title="Add an artifact, or a version of one" onclick={() => (formOpen = true)}
+            ><Icon name="plus" size={15} /> New</button
+          >{/if}
       </div>
       {#each byName as [k, versions] (k)}
         <div class="aname">

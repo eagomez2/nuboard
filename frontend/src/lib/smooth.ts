@@ -26,14 +26,30 @@ export function ema(values: ArrayLike<number>, weight: number): Float64Array {
 
 /** Quantile of the finite values (linear interpolation); NaN if none. */
 export function quantile(values: ArrayLike<number>[], q: number): number {
-  const all: number[] = [];
-  for (const arr of values) for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i])) all.push(arr[i]);
-  if (!all.length) return NaN;
-  all.sort((a, b) => a - b);
-  const pos = (all.length - 1) * q;
+  return quantileOfSorted(finiteSorted(values), q);
+}
+
+/** The finite values of every array, in one sorted typed array (numeric sort, no boxing). */
+function finiteSorted(values: ArrayLike<number>[]): Float64Array {
+  let n = 0;
+  for (const arr of values) n += arr.length;
+  const all = new Float64Array(n);
+  let k = 0;
+  for (const arr of values)
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (Number.isFinite(v)) all[k++] = v;
+    }
+  return all.subarray(0, k).sort();
+}
+
+/** Quantile of already sorted values (linear interpolation); NaN if empty. */
+function quantileOfSorted(sorted: Float64Array, q: number): number {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * q;
   const lo = Math.floor(pos);
   const hi = Math.ceil(pos);
-  return all[lo] + (all[hi] - all[lo]) * (pos - lo);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
 /**
@@ -42,10 +58,12 @@ export function quantile(values: ArrayLike<number>[], q: number): number {
  * instead of flattening the interesting part of the curve.
  */
 export function robustRange(values: ArrayLike<number>[]): [number, number] | null {
-  const lo = quantile(values, 0.01);
-  const hi = quantile(values, 0.99);
-  const min = quantile(values, 0);
-  const max = quantile(values, 1);
+  // one sort serves all four quantiles (this runs on every zoom and redraw of a chart)
+  const sorted = finiteSorted(values);
+  const lo = quantileOfSorted(sorted, 0.01);
+  const hi = quantileOfSorted(sorted, 0.99);
+  const min = quantileOfSorted(sorted, 0);
+  const max = quantileOfSorted(sorted, 1);
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
   const span = hi - lo || Math.abs(hi) || 1;
   const a = min >= lo - span * 0.25 ? min : lo;

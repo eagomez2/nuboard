@@ -63,7 +63,7 @@ reads all of the data once.
 everything as flags, as in a script or a cluster job:
 
 ```bash
-nuboard artifact add datasets/fineweb-edu ~/data/fineweb-edu/2026-10 --ref \
+nuboard artifact add datasets/fineweb-edu ~/data/fineweb-edu/2026-10 --reference \
     --type dataset --description "FineWeb-Edu, Oct 2026 snapshot, deduplicated" \
     --meta tokens=12B --meta dedup=true --meta rows=1200000
 ```
@@ -82,7 +82,7 @@ Project/name (such as datasets/fineweb-edu): datasets/fineweb-edu
 Path (the file or folder; ~ and $VARS work): ~/data/fineweb-edu/2026-10
   ✓ 1,204 files, 812 GB
 Store (copy, or reference to leave the files where they are) [copy]: reference
-Type (dataset | model | checkpoint | report | other): dataset
+Type (dataset | model | checkpoint | report | other, or any word): dataset
 Description (what this version is): FineWeb-Edu, Oct 2026 snapshot, deduplicated
 Hash every file? (y reads all the data once; n is quick) [n]:
 Metadata (optional)
@@ -116,8 +116,10 @@ Use it with: run.use_artifact("datasets/fineweb-edu:v3")
   Nothing is written until you answer `y`, and `q` or Ctrl-C leaves without
   writing.
 
-Required are the name, the path, `--ref` or `--copy`, the type (`dataset`,
-`model`, `checkpoint`, `report` or `other`) and the description. Without a
+Required are the name, the path, `--reference` or `--copy`, the type and the
+description. The type is any one word, as in Python: `dataset`, `model`,
+`checkpoint`, `report` and `other` are suggested (a prefix such as `ch`
+completes them), and others such as `tokenizer` are kept as typed. Without a
 terminal, or with `--no-input`, a missing value is an error rather than a
 question, and every invalid flag is reported at once. `--meta-file meta.json`
 reads metadata from a JSON object, `--checksum` hashes referenced files, and
@@ -303,12 +305,14 @@ produced it.
 The Artifacts page is read-only unless the viewer was started with
 `nuboard up --edit-artifacts`. With it:
 
-- **New version** opens a form that adds a version as a reference, like
-  `nuboard artifact add --ref`. Pick the project, type a new or existing
+- **+ New** opens a form that adds an artifact, or a version of one, as a reference, like
+  `nuboard artifact add --reference`. Pick the project, type a new or existing
   name, and give the path of a file or folder: absolute, starting with `~` or
   an environment variable such as `$NUBOARD_DATA_DIR/fineweb-edu`, or relative
   to the served folder. The form checks the path as you type and shows what
-  it resolved to, with the file count and size. Add a type, a description,
+  it resolved to, with the file count and size. Add a type (any word; as you
+  type, the built-in ones and those other artifacts already use are suggested,
+  such as Dataset or Checkpoint), a description,
   metadata (text, number, yes/no or JSON) and, if you want, SHA-256 checksums,
   then review and add. Nothing is copied, and the viewer cannot upload files;
   use `nuboard artifact add --copy` or `nb.add_artifact` for a copy.
@@ -331,7 +335,7 @@ The Artifacts page is read-only unless the viewer was started with
   "(unlinked)". Its number is not reused.
 - **Show unlinked** lists unlinked versions; **Restore** puts one back.
 
-Without `--edit-artifacts`, **New version**, **New artifact version** and
+Without `--edit-artifacts`, **+ New**, **New artifact version** and
 **Unlink** are not shown.
 
 The command line does the same without the viewer:

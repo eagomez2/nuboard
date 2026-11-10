@@ -174,7 +174,9 @@ export interface Info {
   edit_artifacts?: boolean;
   /** Started with `--read-only-reports`: reports cannot be changed and nothing can be uploaded. */
   read_only_reports?: boolean;
-  /** Started with `--lock-directions`: directions (which way is better) cannot be saved. */
+  /** Started with `--read-only-hypotheses`: hypothesis boards cannot be changed. */
+  read_only_hypotheses?: boolean;
+  /** Started with `--read-only-directions`: directions (which way is better) cannot be saved. */
   lock_directions?: boolean;
   /** Size limits, in bytes, of files uploaded into a report. */
   upload_limits?: { image: number; text: number; audio?: number };

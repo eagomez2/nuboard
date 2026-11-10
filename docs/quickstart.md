@@ -82,12 +82,13 @@ script of [Get started](get-started.md).
 | --- | --- |
 | `nuboard up [DIR] [--port 6070] [--host 127.0.0.1] [--open]` | Start the viewer on any folder: one run, one project, or a tree of projects. |
 | `nuboard up … [--token VALUE\|--no-token] [--edit-artifacts]` | Set or turn off the access token used off localhost, and allow adding and unlinking artifacts in the viewer. |
-| `nuboard up … [--read-only-reports] [--max-image-mb 20] [--max-audio-mb 50] [--max-text-mb 5]` | Refuse changes to reports (uploads included) and hypothesis boards, or change the size limits of images, audio and text files uploaded into reports. |
+| `nuboard up … [--read-only-reports] [--read-only-hypotheses] [--read-only-directions]` | Refuse changes to reports (uploads included), hypothesis boards, or which way is better for a scalar, as on a shared server. |
+| `nuboard up … [--max-image-mb 20] [--max-audio-mb 50] [--max-text-mb 5]` | Change the size limits of images, audio and text files uploaded into reports. |
 | `nuboard demo [DIR] [--up] [--open]` | Write the demo workspace (default `demo-runs/`). |
 | `nuboard ls [DIR] [-q QUERY]` | List runs, filtered with the [query language](reference/query.md). |
 | `nuboard rm [DIR] -q QUERY` (or `--run ID`) | Delete runs; lists them with their sizes and asks first. See [rm](reference/cli.md#rm). |
-| `nuboard compact DIR [--force]` | Write `data.parquet` and health alerts for ended runs that lack them. |
-| `nuboard artifact add [PROJECT/NAME] [PATH] [--ref\|--copy] [-t TYPE] [-d TEXT] [-m KEY=VALUE]…` | Add an artifact version; asks for what is missing. See [From the command line](guide/artifacts.md#from-the-command-line). |
+| `nuboard compact [DIR] [--include-running]` | Write `data.parquet` and health alerts for ended runs that lack them. |
+| `nuboard artifact add [PROJECT/NAME] [PATH] [--reference\|--copy] [-t TYPE] [-d TEXT] [-m KEY=VALUE]…` | Add an artifact version; asks for what is missing. See [From the command line](guide/artifacts.md#from-the-command-line). |
 | `nuboard artifact ls [PROJECT] [--unlinked]` | List artifact versions, and with `--unlinked` the unlinked ones too. |
 | `nuboard artifact show PROJECT/NAME[:vN]` | Show a version and check that its files still match. |
 | `nuboard artifact unlink PROJECT/NAME:vN` (or `PROJECT/NAME --all`) | Hide a version without deleting anything; `nuboard artifact restore PROJECT/NAME:vN` brings it back. |

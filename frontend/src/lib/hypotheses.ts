@@ -42,11 +42,6 @@ export interface CardSetting {
  * keeps for when the project has none set.
  */
 export type CardChoice = 'min' | 'max' | 'last' | 'last:min' | 'last:max';
-export const CARD_CHOICES: { value: CardChoice; label: string }[] = [
-  { value: 'min', label: 'Min' },
-  { value: 'max', label: 'Max' },
-  { value: 'last', label: 'Last' },
-];
 export const cardChoice = (c: CardSetting): CardChoice => c.stat;
 
 /**

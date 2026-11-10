@@ -1,6 +1,7 @@
 <script lang="ts">
   // The Hypotheses page: a per-project board of hypotheses, the runs that tested them and why each
   // one followed from another, drawn as a tree or a timeline. See docs/guide/hypotheses.md.
+  import ScalarStat from '../components/ScalarStat.svelte';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import Icon from '../components/Icon.svelte';
@@ -12,10 +13,8 @@
   import { fmtDate, fmtNum } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
   import {
-    CARD_CHOICES,
     CARD_WIDTHS,
     SIZE,
-    cardChoice,
     cardFor,
     cardTop,
     cardValue,
@@ -539,32 +538,17 @@
             onclick={() => (starredOnly = !starredOnly)}
           ></button>Starred only</label
         >
-        <label class="tg"
-          >Number
-          <select
-            class="input sm"
-            value={data.board.card?.metric ?? ''}
-            disabled={ro}
-            onchange={(e) => setCard(e.currentTarget.value)}
-          >
-            <option value="">None</option>
-            {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
-            {#if data.board.card && !metrics.includes(data.board.card.metric)}
-              <option value={data.board.card.metric}>{data.board.card.metric}</option>
-            {/if}
-          </select>
-        </label>
-        {#if data.board.card}
-          <div class="seg stat" role="group" aria-label="Summary">
-            {#each CARD_CHOICES as c (c.value)}
-              <button
-                aria-pressed={cardChoice(data.board.card) === c.value}
-                disabled={ro}
-                onclick={() => setCard(data!.board.card!.metric, c.value)}>{c.label}</button
-              >
-            {/each}
-          </div>
-        {/if}
+        <span class="tg">Number</span>
+        <ScalarStat
+          {metrics}
+          metric={data.board.card?.metric ?? ''}
+          stat={data.board.card?.stat ?? 'max'}
+          none="None"
+          size="sm"
+          disabled={ro}
+          onmetric={(m) => setCard(m)}
+          onstat={(c) => setCard(data!.board.card!.metric, c)}
+        />
         {#if view === 'tree'}
           <div
             class="seg sizes"
@@ -1163,10 +1147,6 @@
     font-size: 13px;
     white-space: nowrap;
   }
-  .input.sm {
-    height: 30px;
-    max-width: 150px;
-  }
   .grow {
     flex: 1;
     min-width: 0;
@@ -1410,7 +1390,6 @@
   .fold.closed svg {
     transform: rotate(-90deg);
   }
-  .seg.stat button,
   .seg.sizes button {
     padding: 2px 7px;
     font-size: 12px;

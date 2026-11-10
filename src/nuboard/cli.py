@@ -77,6 +77,7 @@ def up(
     no_token: bool = False,
     edit_artifacts: bool = False,
     read_only_reports: bool = False,
+    read_only_hypotheses: bool = False,
     lock_directions: bool = False,
     max_image_mb: float = 20,
     max_text_mb: float = 5,
@@ -99,6 +100,7 @@ def up(
         no_token: Serve a non-loopback address without a token.
         edit_artifacts: Allow adding, unlinking and restoring artifact versions.
         read_only_reports: Refuse changes to reports, including uploads.
+        read_only_hypotheses: Refuse changes to hypothesis boards.
         lock_directions: Refuse changes to which way is better for each scalar (`directions.json`).
         max_image_mb: Size limit, in MB, of an image uploaded into a report.
         max_text_mb: Size limit, in MB, of a text file uploaded into a report.
@@ -133,6 +135,7 @@ def up(
         token=token,
         edit_artifacts=edit_artifacts,
         read_only_reports=read_only_reports,
+        read_only_hypotheses=read_only_hypotheses,
         lock_directions=lock_directions,
         max_image_bytes=int(max_image_mb * 1024 * 1024),
         max_text_bytes=int(max_text_mb * 1024 * 1024),
@@ -155,6 +158,9 @@ def up(
 
     if read_only_reports:
         print("  Reports are read-only: they cannot be edited and nothing can be uploaded.")
+
+    if read_only_hypotheses:
+        print("  Hypotheses are read-only: boards cannot be changed.")
 
     if lock_directions:
         print("  Directions (which way is better) are locked: views can flip them, not save them.")
@@ -236,8 +242,19 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help=f"folder to view (default: ${ENV_PREFIX}_DIR or ./{DEFAULT_ROOT})",
     )
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=DEFAULT_PORT)
+    p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="address to listen on; 0.0.0.0 serves the network "
+        "(default: 127.0.0.1, this machine only)",
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help="port to listen on; the next free one is used if it is taken "
+        f"(default: {DEFAULT_PORT})",
+    )
     p.add_argument("--open", action="store_true", help="open a browser tab")
     p.add_argument(
         "--token",
@@ -259,10 +276,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--read-only-reports",
         action="store_true",
-        help="refuse changes to reports (uploads included) and hypotheses (for a shared server)",
+        help="refuse changes to reports, uploads included (for a shared server)",
     )
     p.add_argument(
-        "--lock-directions",
+        "--read-only-hypotheses",
+        action="store_true",
+        help="refuse changes to hypothesis boards (for a shared server)",
+    )
+    p.add_argument(
+        "--read-only-directions",
+        dest="lock_directions",
         action="store_true",
         help="refuse saving which way is better for a scalar (directions.json)",
     )
@@ -290,17 +313,37 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("dir", nargs="?", default="demo-runs")
     p.add_argument("--up", action="store_true", help="start the viewer and keep a live run logging")
-    p.add_argument("--port", type=int, default=DEFAULT_PORT)
-    p.add_argument("--open", action="store_true")
+    p.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help=f"as for up (default: {DEFAULT_PORT})"
+    )
+    p.add_argument("--open", action="store_true", help="with --up, open a browser tab")
     p.add_argument("--edit-artifacts", action="store_true", help="as for up")
 
     p = sub.add_parser("compact", help="write data.parquet for finished runs")
-    p.add_argument("dir")
-    p.add_argument("--force", action="store_true", help="also compact runs that look still running")
+    p.add_argument(
+        "dir",
+        nargs="?",
+        default=None,
+        help=f"folder of runs (default: ${ENV_PREFIX}_DIR or ./{DEFAULT_ROOT})",
+    )
+    p.add_argument(
+        "--include-running", action="store_true", help="also compact runs that look still running"
+    )
 
     p = sub.add_parser("ls", help="list runs, optionally filtered by a query")
-    p.add_argument("dir", nargs="?", default=None)
-    p.add_argument("-q", "--query", default="")
+    p.add_argument(
+        "dir",
+        nargs="?",
+        default=None,
+        help=f"folder of runs (default: ${ENV_PREFIX}_DIR or ./{DEFAULT_ROOT})",
+    )
+    p.add_argument(
+        "-q",
+        "--query",
+        default="",
+        help="only runs that match, as in the viewer's query bar: status = finished, "
+        'tags has "sweep", train/loss.min < 2.3',
+    )
 
     p = sub.add_parser(
         "import-tensorboard",
@@ -320,6 +363,7 @@ def main(argv: list[str] | None = None) -> None:
         "--tag",
         action="append",
         dest="tags",
+        metavar="TAG",
         help="tag for the imported runs; repeat for several (default: tensorboard)",
     )
 
@@ -333,7 +377,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("src", help="folder to merge from")
     p.add_argument("dest", help="folder to merge into")
-    p.add_argument("--project", help="only this project (its path inside SRC)")
+    p.add_argument("-p", "--project", help="only this project (its path inside SRC)")
     p.add_argument("--dry-run", action="store_true", help="show the plan and exit (1 if conflicts)")
     p.add_argument("-y", "--yes", action="store_true", help="apply without asking")
     p.add_argument("-v", "--verbose", action="store_true", help="list every item")
@@ -359,7 +403,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("-q", "--query", default="", help="runs to delete, as in ls")
     p.add_argument(
-        "--run", action="append", dest="runs", help="a run id or name; repeat for several"
+        "--run",
+        action="append",
+        dest="runs",
+        metavar="ID",
+        help="a run id or name; repeat for several",
     )
     p.add_argument("--dry-run", action="store_true", help="list the runs and exit")
     p.add_argument("-y", "--yes", action="store_true", help="delete without asking")
@@ -423,6 +471,7 @@ def main(argv: list[str] | None = None) -> None:
             no_token=args.no_token,
             edit_artifacts=args.edit_artifacts,
             read_only_reports=args.read_only_reports,
+            read_only_hypotheses=args.read_only_hypotheses,
             lock_directions=args.lock_directions,
             max_image_mb=args.max_image_mb,
             max_text_mb=args.max_text_mb,
@@ -465,10 +514,10 @@ def main(argv: list[str] | None = None) -> None:
 
         done = 0
 
-        for _, path in find_runs(Path(args.dir)):
+        for _, path in find_runs(Path(args.dir or _default_dir())):
             meta = _fs.read_json(path / "run.json", {})
 
-            if effective_status(meta) == "running" and not args.force:
+            if effective_status(meta) == "running" and not args.include_running:
                 continue
 
             if RunReader(path).parquet is not None:

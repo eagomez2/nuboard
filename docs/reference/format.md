@@ -631,7 +631,7 @@ name where a screen must rank (Sweeps, the Runs result column, hypothesis
 cards) and left neutral in tables. It is the only place a direction is
 stored: hypothesis boards keep only Min / Max / Last. The viewer writes it
 under a lock (`.directions.lock` next to it) and refuses a save when the entry
-changed since it was shown. `nuboard up --lock-directions` refuses every change.
+changed since it was shown. `nuboard up --read-only-directions` refuses every change.
 
 ## The catalog cache
 

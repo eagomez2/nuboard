@@ -33,7 +33,8 @@ test('compare opens on screen and takes more than two runs', async ({ page }) =>
   await expect(page.getByRole('heading', { name: /Compare 4 runs/ })).toBeInViewport();
   await expect(page.locator('.srow.head .run')).toHaveCount(4);
   await page.getByRole('button', { name: 'Files', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Right run' }).selectOption({ index: 3 });
+  await page.getByRole('button', { name: 'Right run' }).click();
+  await page.getByRole('listbox', { name: 'Right run' }).getByRole('option').nth(3).click();
   await expect(page).toHaveURL(/pair=0(,|%2C)3/);
 });
 
@@ -153,6 +154,27 @@ test('the Runs workspace folds into a thin bar', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Show the workspace' })).toBeVisible();
   await page.keyboard.press('[');
   await expect(page.getByRole('button', { name: 'Hide the workspace' })).toBeVisible();
+});
+
+test('a text card shows what changed from the step before or from another run', async ({ page }) => {
+  await page.goto('/#/media?project=llm-pretrain&mkinds=text');
+  const card = page.locator('.grid').first().locator('figure').first();
+  await card.getByRole('button', { name: 'Show changes' }).click();
+  const diff = card.locator('pre.diff');
+  await expect(diff).toHaveAttribute('aria-label', /^Changes from step \d/);
+  await expect(diff.locator('.dl.add').first()).toBeVisible();
+  await expect(diff.locator('.dl.del').first()).toBeVisible();
+  // another run's text at the same step
+  const other = card.getByLabel('Compare with');
+  const name = (await other.locator('option').nth(1).innerText()).trim();
+  await other.selectOption({ index: 1 });
+  await expect(diff).toHaveAttribute(
+    'aria-label',
+    new RegExp(`^Changes from ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · step`),
+  );
+  await card.getByRole('button', { name: 'Show changes' }).click();
+  await expect(card.locator('pre.diff')).toHaveCount(0);
+  await expect(card.locator('pre.text')).toBeVisible();
 });
 
 test('media page shows logged images', async ({ page }) => {
@@ -409,9 +431,16 @@ test('a shared dataset is a reference used from other projects', async ({ page }
 
 test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
-  await page.locator('select.xmetric').selectOption('train/tokens');
+  const axis = page.getByRole('group', { name: 'X axis' });
+  await axis.getByRole('button', { name: /^X axis scalar/ }).click();
+  await page.getByLabel('Search scalars').fill('tokens');
+  await page.getByRole('option', { name: 'train/tokens' }).click();
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
-  await expect(page.locator('select.xmetric')).toHaveClass(/\bon\b/);
+  await expect(axis.getByRole('button', { name: 'X axis scalar: train/tokens' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(axis.getByRole('button', { name: 'Step' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.u-over').first()).toBeVisible();
 });
 
@@ -1651,7 +1680,7 @@ test('scalar baselines are drawn, listed in the inspector and can be turned off'
 
 test('an artifact version is added from a path, unlinked and restored', async ({ page }) => {
   await page.goto('/#/artifacts');
-  await page.getByRole('button', { name: 'New version' }).first().click();
+  await page.getByRole('button', { name: 'New', exact: true }).first().click();
   const form = page.getByRole('dialog', { name: 'New artifact version' });
   await form.getByLabel('Name', { exact: true }).fill('demo-folder');
   await form.getByLabel('Path', { exact: true }).fill('does/not/exist');
@@ -2246,7 +2275,7 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   // each card marks its top run's number; Last ranks by val/acc's direction (higher, from its name)
   const tops = async () => (await page.locator('.chiprow:has(.m.top) .n').allInnerTexts()).join(',');
   await expect(page.locator('.chiprow .m.top').first()).toBeVisible();
-  const summary = page.getByRole('group', { name: 'Summary' }).first();
+  const summary = page.getByRole('group', { name: 'Statistic' }).first();
   const highest = await tops(); // the demo board starts on Max
   await summary.getByRole('button', { name: 'Min' }).click();
   await expect.poll(tops).not.toBe(highest);
@@ -2272,6 +2301,17 @@ test('the hypotheses page shows the demo board, a run panel, the timeline and a 
   await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/hboard=loss-choice/);
   await expect(page.locator('.item.child.on')).toHaveText(/Loss choice/);
+});
+
+test('media run chips fold past 12 runs, filter, and show only the matching runs', async ({ page }) => {
+  await page.goto('/#/media?project=llm-pretrain');
+  const legend = page.locator('.legend').first();
+  await expect(legend.locator('.run-chip')).toHaveCount(10);
+  await legend.getByLabel('Filter runs').fill('lr1e-3');
+  await expect(legend.locator('.run-chip')).toHaveCount(3);
+  await legend.getByRole('button', { name: 'Only these' }).click();
+  await legend.getByLabel('Filter runs').fill('');
+  await expect(legend.locator('.run-chip:not(.off)')).toHaveCount(3);
 });
 
 test('media by regex puts the keys a regex matches the same way side by side, one row per run', async ({ page }) => {
@@ -2320,8 +2360,12 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
     .locator('.hcard')
     .first()
     .click({ position: { x: 20, y: 12 } });
-  await page.locator('aside').getByRole('combobox', { name: 'Metric' }).selectOption('val/acc');
-  const stat = page.locator('aside').getByRole('group', { name: 'Summary' });
+  await page
+    .locator('aside')
+    .getByRole('button', { name: /^Scalar:/ })
+    .click();
+  await page.getByRole('listbox', { name: 'Scalars' }).getByRole('option', { name: 'val/acc', exact: true }).click();
+  const stat = page.locator('aside').getByRole('group', { name: 'Statistic' });
   await stat.getByRole('button', { name: 'Last' }).click();
   await expect(stat.getByRole('button', { name: 'Last' })).toHaveAttribute('aria-pressed', 'true');
   await expect(stat.getByRole('button', { name: 'Max' })).toHaveAttribute('aria-pressed', 'false');
@@ -2331,7 +2375,7 @@ test("a hypothesis card's own number picks Min, Max or Last on a pill", async ({
 
 test('runs show each result as its min, max or last value', async ({ page }) => {
   await page.goto('/#/runs?project=llm-pretrain&metric=train%2Floss');
-  const result = page.getByRole('group', { name: 'Result' });
+  const result = page.getByRole('group', { name: 'Statistic' });
   // train/loss reads as a loss: Min is where it starts
   await expect(result.getByRole('button', { name: 'Min' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.result .mname').first()).toHaveText('train/loss · min');
@@ -2394,13 +2438,15 @@ test('sweeps rank by min, max or last, in the direction of the direction arrow',
   await expect(page.getByRole('button', { name: 'Save for everyone' })).toHaveCount(0);
 });
 
-test('the Charts summary card shows the lowest or highest last value', async ({ page }) => {
+test('the Charts summary card shows the best last value, lower or higher', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc');
   const card = page.locator('.stat').first();
-  // val/acc does not read as a loss: Max is where it starts
-  await expect(card).toContainText('Highest val/acc');
-  await card.getByRole('button', { name: 'Min' }).click();
-  await expect(card).toContainText('Lowest val/acc');
+  // val/acc does not read as a loss: higher is better where it starts
+  await expect(card).toContainText('Best val/acc');
+  const better = card.getByRole('button', { name: 'Higher is better' });
+  await expect(better).toHaveText('↑');
+  await better.click();
+  await expect(card.getByRole('button', { name: 'Lower is better' })).toHaveText('↓');
   await expect(page).toHaveURL(/cstat=min/);
   await expect(page.locator('.inspector .im')).toContainText('Lowest first');
 });

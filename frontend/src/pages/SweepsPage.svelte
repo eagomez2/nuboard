@@ -9,7 +9,7 @@
   import { defaultMetric, fmtAxis, fmtNum, fmtValue } from '../lib/format';
   import { rememberStat, statFor, type Stat } from '../lib/stat';
   import { directionOf } from '../lib/directions.svelte';
-  import DirectionButton from '../components/DirectionButton.svelte';
+  import ScalarStat from '../components/ScalarStat.svelte';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { keyFilter } from '../lib/keyfilter';
@@ -332,32 +332,14 @@
 <div class="card panel" class:full={fs.on} bind:this={fs.el}>
   <div class="toolbar">
     <span class="label">Objective</span>
-    <select
-      class="input mono metric"
-      value={metric}
-      onchange={(e) => router.set({ metric: (e.currentTarget as HTMLSelectElement).value, stat: null, dir: null })}
-      aria-label="Scalar"
-    >
-      {#each metrics as m (m)}<option value={m}>{m}</option>{/each}
-    </select>
-    <DirectionButton projects={shownProjects} name={metric} />
-    <div class="seg" role="group" aria-label="Statistic">
-      <button
-        aria-pressed={stat === 'min'}
-        title="Score each run by the lowest value it reached at any step."
-        onclick={() => setStat('min')}>Min</button
-      >
-      <button
-        aria-pressed={stat === 'max'}
-        title="Score each run by the highest value it reached at any step."
-        onclick={() => setStat('max')}>Max</button
-      >
-      <button
-        aria-pressed={stat === 'last'}
-        title="Score each run by its value at the last logged step, where it ended up."
-        onclick={() => setStat('last')}>Last</button
-      >
-    </div>
+    <ScalarStat
+      {metrics}
+      {metric}
+      {stat}
+      projects={shownProjects}
+      onmetric={(m) => router.set({ metric: m, stat: null, dir: null })}
+      onstat={setStat}
+    />
     <span
       class="muted"
       title={worstCase
@@ -761,10 +743,6 @@
     padding: 12px 14px;
     flex-wrap: wrap;
     border-bottom: 1px solid var(--border);
-  }
-  .metric {
-    max-width: 240px;
-    font-size: 12.5px;
   }
   .grow {
     flex: 1;

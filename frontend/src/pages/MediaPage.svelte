@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { regexFilter } from '../lib/keyfilter';
+  import { pickMatches } from '../lib/runlabel';
+  import ScalarStat from '../components/ScalarStat.svelte';
   import HistChart from '../components/HistChart.svelte';
   import Icon from '../components/Icon.svelte';
   import MediaCard from '../components/MediaCard.svelte';
@@ -8,7 +11,7 @@
   import { seriesVar } from '../lib/colors';
   import { addOverlayToReport, appendToReport, askReport } from '../lib/reports.svelte';
   import { chartToPng } from '../lib/snapshot';
-  import { defaultMetric, fmtNum } from '../lib/format';
+  import { defaultMetric, fmtNum, fmtValue } from '../lib/format';
   import { rememberStat, statFor, type Extreme } from '../lib/stat';
   import {
     HIST_MIME,
@@ -30,6 +33,20 @@
   const runIndex = $derived(new Map(runs.map((r, i) => [r.key, i])));
   // Runs hidden with the legend chips (All / None, click to hide, double-click or Alt-click to solo)
   let hiddenRuns = $state(new Set<string>());
+  // Past CHIPS_MAX runs, as in Charts' legend: a filter (name, id, tags, notes or a setting such as
+  // `lr=3e-4`) with "Only these", and the first CHIPS_SHOWN chips until "+N more" or a filter
+  const CHIPS_MAX = 12;
+  const CHIPS_SHOWN = 10;
+  let runFind = $state('');
+  let chipsOpen = $state(false);
+  const settingsText = (r: RunBrief) =>
+    Object.entries(r.config ?? {})
+      .flatMap(([k, v]) => [`${k}=${fmtValue(v)}`, `${k.split('.').slice(-1)[0]}=${fmtValue(v)}`])
+      .join('\n');
+  const runMatching = $derived(runs.filter((r) => pickMatches(r, runFind, settingsText(r))));
+  const chipRuns = $derived(
+    runs.length <= CHIPS_MAX ? runs : runFind.trim() || chipsOpen ? runMatching : runs.slice(0, CHIPS_SHOWN),
+  );
   const shownRuns = $derived(runs.filter((r) => !hiddenRuns.has(r.key)));
   function toggleRun(key: string) {
     const next = new Set(hiddenRuns);
@@ -92,13 +109,7 @@
     router.set({ mkinds: kinds.length === 1 && kinds[0] === k ? null : k });
   }
   const find = $derived(router.get('mfind'));
-  const findRe = $derived.by(() => {
-    try {
-      return find ? new RegExp(find, 'i') : null;
-    } catch {
-      return null;
-    }
-  });
+  const findFilter = $derived(regexFilter(find));
 
   // Keys of the chosen kinds before the filter, for the "N of M" count
   const keyTotal = $derived.by(() => {
@@ -114,7 +125,7 @@
       for (const it of items[r.key] ?? []) {
         const kind = kindOf(it);
         if (!kinds.includes(kind)) continue;
-        if (find && !(findRe ? findRe.test(it.key) : it.key.toLowerCase().includes(find.toLowerCase()))) continue;
+        if (!findFilter.test(it.key)) continue;
         if (!map.has(it.key)) map.set(it.key, { kind, runs: new Map() });
         const per = map.get(it.key)!.runs;
         if (!per.has(r.key)) per.set(r.key, []);
@@ -134,7 +145,7 @@
   const rx = $derived(router.get('mrx'));
   const rxRe = $derived.by(() => {
     try {
-      return rx ? new RegExp(rx) : null;
+      return rx ? new RegExp(rx, 'i') : null;
     } catch {
       return null;
     }
@@ -620,7 +631,27 @@
             onclick={() => (hiddenRuns = new Set(runs.map((r) => r.key)))}>None</button
           >
         </div>
-        {#each runs as r, i (r.key)}
+        {#if runs.length > CHIPS_MAX}
+          <input
+            class="input sm mono runfind"
+            placeholder="Filter runs, e.g. lr=3e-4"
+            aria-label="Filter runs"
+            bind:value={runFind}
+            onkeydown={(e) => e.key === 'Escape' && (runFind = '')}
+          />
+          {#if runFind.trim()}
+            <span class="faint small chipcount">{runMatching.length} of {runs.length}</span>
+            <button
+              class="btn btn-ghost sm"
+              disabled={!runMatching.length}
+              title="Show only the runs that match, hide the rest"
+              onclick={() => (hiddenRuns = new Set(runs.filter((r) => !runMatching.includes(r)).map((r) => r.key)))}
+              >Only these</button
+            >
+          {/if}
+        {/if}
+        {#each chipRuns as r (r.key)}
+          {@const i = runIndex.get(r.key) ?? 0}
           <button
             class="chip run-chip"
             class:off={hiddenRuns.has(r.key)}
@@ -630,6 +661,11 @@
             ><i class="dot" style="background:{seriesVar(i)}"></i><span class="mono rn">{r.name}</span></button
           >
         {/each}
+        {#if runs.length > CHIPS_MAX && !runFind.trim()}
+          <button class="btn btn-ghost sm chipmore" onclick={() => (chipsOpen = !chipsOpen)}
+            >{chipsOpen ? 'Show fewer' : `+${runs.length - CHIPS_SHOWN} more`}</button
+          >
+        {/if}
       </div>
     {/if}
     <div class="row">
@@ -646,7 +682,7 @@
       </div>
       <input
         class="input sm find mono"
-        placeholder="Filter keys (regex)"
+        placeholder="Filter keys (regex, !exclude)"
         aria-label="Filter keys"
         value={find}
         oninput={(e) => router.set({ mfind: e.currentTarget.value })}
@@ -694,18 +730,15 @@
           <span class="mono">Step {pickedStep.toLocaleString()}</span>
         </label>
       {:else if mode === 'best'}
-        <select
-          class="input sm mono metric"
-          aria-label="Scalar"
-          value={bestMetric}
-          onchange={(e) => router.set({ mmetric: e.currentTarget.value, mdir: null })}
-        >
-          {#each metricNames as m (m)}<option value={m}>{m}</option>{/each}
-        </select>
-        <div class="seg" role="group" aria-label="Statistic">
-          <button aria-pressed={bestDir === 'min'} onclick={() => setBestDir('min')}>Min</button>
-          <button aria-pressed={bestDir === 'max'} onclick={() => setBestDir('max')}>Max</button>
-        </div>
+        <ScalarStat
+          metrics={metricNames}
+          metric={bestMetric}
+          stat={bestDir}
+          allowLast={false}
+          size="sm"
+          onmetric={(m) => router.set({ mmetric: m, mdir: null })}
+          onstat={(s) => setBestDir(s as Extreme)}
+        />
         <span class="faint small">each run shows the item logged closest to the step of its {bestDir}</span>
       {/if}
       <span class="spacer"></span>
@@ -1036,6 +1069,7 @@
           <div class="grid" style="grid-template-columns: repeat({n}, minmax(0, 1fr))">
             {#each cards.slice(page * size, page * size + size) as c (c.id)}
               <MediaCard
+                peers={cards.filter((o) => o.run.key !== c.run.key && o.items[0]?.key === c.items[0]?.key)}
                 run={c.run}
                 items={c.items}
                 target={targetFor(c.run.key)}
@@ -1250,9 +1284,6 @@
   .sm {
     height: 30px;
   }
-  .metric {
-    max-width: 260px;
-  }
   .slider {
     display: flex;
     align-items: center;
@@ -1266,6 +1297,13 @@
   }
   .legend {
     gap: 6px;
+  }
+  .runfind {
+    width: 220px;
+  }
+  .chipcount,
+  .chipmore {
+    align-self: center;
   }
   .run-chip {
     height: 28px;

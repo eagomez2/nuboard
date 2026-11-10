@@ -1,5 +1,73 @@
 # Changelog
 
+## 0.29.0
+
+One way to do each thing across the viewer, and command-line flags with one
+name each. The command-line renames below break scripts that use the old
+names; the Python API, run folders and saved links are unchanged.
+
+- **One searchable scalar picker.** Wherever a scalar is picked for Min /
+  Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
+  list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
+  on the current scalar.
+- **Command line: one name per flag.** These renames break scripts that use
+  the old names, which are not kept:
+  - `nuboard compact --force` is now `--include-running`, as in `rm` and
+    `merge` (where `--force` means something else).
+  - `nuboard up --lock-directions` is now `--read-only-directions`.
+  - `nuboard artifact add --ref` is now `--reference`, like the "copy, or
+    reference" question it asks.
+  - `nuboard up --read-only-reports` now locks only reports; the new
+    `--read-only-hypotheses` locks hypothesis boards.
+- **Command line: smaller fixes.** `nuboard compact`'s folder is optional,
+  as for `up`, `ls` and `rm`; `merge` takes `-p` for `--project`; `ls -q`,
+  `up --host`, `up --port`, `demo --port` and `demo --open` have help text;
+  and the help shows `rm --run ID` and `import-tensorboard --tag TAG`.
+- **Any artifact type in the CLI and the viewer**, as `log_artifact` already
+  allowed. `artifact add --type tokenizer` and the viewer's form keep the type
+  as given; `dataset`, `model`, `checkpoint`, `report` and `other` are still
+  suggested, and the form suggests them as you type (shown as Dataset,
+  Checkpoint, ...), together with the types other artifacts use.
+- **Artifacts: + New** replaces **New version**, matching the other pages.
+- **Media run chips filter like the Charts legend.** With more than 12 runs,
+  the chips fold to the first 10 with **+N more**, and a filter box (name, id,
+  tag, note or a setting such as `lr=3e-4`) with **Only these** shows just the
+  runs that match.
+- **Compare picks the two runs to diff with the run picker.** With three to
+  eight runs, the **Diff … against …** menus on Files and file tabs become
+  run pickers that show the end of each run's id, its status, start time and
+  tags, so runs with the same name can be told apart. Links keep `pair=`.
+- **One X axis control in Charts.** The X axis group gets a fifth choice,
+  **Scalar…**, which opens the searchable scalar list and then shows the
+  picked scalar's name; the separate "X by scalar…" menu is gone. Links keep
+  `x=metric:<name>`.
+- **One rule for every filter box.** The Runs filter, the run pickers, the
+  scalar pickers, Charts' **Filter scalars** and legend filter, and Media's
+  **Filter keys** now all take words that must all match, `/regex/`, and
+  `!word` to leave things out (`acc !per_class`, `#sweep !crashed`), like the
+  Compare settings filter already did. Charts and Media still read each word
+  as a regular expression. The Runs filter also matches a run's status, and
+  Media's **By regex** ignores case. See
+  [Filter boxes](guide/viewer.md#filter-boxes).
+- **Media: text diffs.** A text card's **Show changes** button compares its
+  text with the step before or with another run's text at the same step,
+  line by line with the changed words highlighted.
+- **One control for "which scalar, summarized how".** Runs, Sweeps, Media and
+  Hypotheses (the board and a card's own number) use the same scalar picker
+  and Min / Max / Last pills, with the same tooltips; the direction arrow
+  stays on Runs and Sweeps, where it ranks the runs. The Charts summary card
+  now reads **Best** with a ↓ / ↑ button instead of Min / Max, so Min and Max
+  always mean a run's lowest and highest value. URL keys and remembered
+  choices are unchanged.
+- **Charts redraw faster with "Ignore outliers" on.** The y-axis range is
+  worked out with one sort of the points instead of four, in a typed array,
+  so zooming and resetting a chart of many runs blocks the page for much less
+  time (about 19x faster for 50 runs of 2,000 points). The range is the same.
+- **Docs: rank 0 only, like TensorBoard.** The distributed-training guide and
+  the limitations page say that Charts shows rank 0, and that other ranks are
+  read with `RunReader` or seen on the Timing tab. The Ranges tooltip no
+  longer promises a min–max across ranks.
+
 ## 0.28.0
 
 Small fixes and conveniences in the viewer. No breaking changes.

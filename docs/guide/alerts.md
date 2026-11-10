@@ -43,7 +43,7 @@ milliseconds and a single-step spike still shows through the bucket maximum.
 - For a **running** run, the viewer computes alerts on request from the
   event log and caches them until the log grows.
 - Runs logged before 0.2 have no stored alerts; run
-  `nuboard compact DIR --force` to add them.
+  `nuboard compact DIR --include-running` to add them.
 
 From Python:
 

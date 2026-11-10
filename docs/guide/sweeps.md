@@ -77,7 +77,7 @@ objective. Some notes:
 
 **Parameters** opens a searchable list of every differing key, grouped by
 prefix (`optim.lr` and `optim.wd` under `optim`). The search takes the same
-syntax as the run settings filter: plain text, `/regex/` and `!exclude`. Each
+syntax as every [filter box](viewer.md#filter-boxes): plain text, `/regex/` and `!exclude`. Each
 row shows whether the key is a number or a category, how many distinct values
 it has, and its correlation bar. Rows are marked **many values** (more than 12
 distinct categories), **id-like** (a different value in every run) or **long

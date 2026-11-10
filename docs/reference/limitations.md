@@ -2,7 +2,8 @@
 
 What NuBoard does not do yet, or does with a trade-off.
 
-- Only one rank is plotted at a time (rank 0).
+- Charts plot rank 0 only, as TensorBoard does; other ranks are read from
+  Python, and timers of every rank are compared in the **Timing** tab.
 - Bokeh figures need `cdn.bokeh.org` when viewed; Plotly and Vega-Lite work
   offline.
 - Smoothing is applied to the downsampled series the server sends (about
