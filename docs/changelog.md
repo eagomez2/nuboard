@@ -23,6 +23,12 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **Any artifact type in the CLI and the viewer**, as `log_artifact` already
+  allowed. `artifact add --type tokenizer` and the viewer's form keep the type
+  as given; `dataset`, `model`, `checkpoint`, `report` and `other` are still
+  suggested, and the form suggests them as you type (shown as Dataset,
+  Checkpoint, ...), together with the types other artifacts use.
+- **Artifacts: + New** replaces **New version**, matching the other pages.
 - **Media run chips filter like the Charts legend.** With more than 12 runs,
   the chips fold to the first 10 with **+N more**, and a filter box (name, id,
   tag, note or a setting such as `lr=3e-4`) with **Only these** shows just the

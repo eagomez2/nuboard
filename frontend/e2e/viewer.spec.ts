@@ -1680,7 +1680,7 @@ test('scalar baselines are drawn, listed in the inspector and can be turned off'
 
 test('an artifact version is added from a path, unlinked and restored', async ({ page }) => {
   await page.goto('/#/artifacts');
-  await page.getByRole('button', { name: 'New version' }).first().click();
+  await page.getByRole('button', { name: 'New', exact: true }).first().click();
   const form = page.getByRole('dialog', { name: 'New artifact version' });
   await form.getByLabel('Name', { exact: true }).fill('demo-folder');
   await form.getByLabel('Path', { exact: true }).fill('does/not/exist');

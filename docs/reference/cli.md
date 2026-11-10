@@ -174,7 +174,7 @@ Every `artifact` command takes `--dir DIR`, the root folder for projects.
 | --- | --- |
 | `--ref` | record where the files are |
 | `--copy` | store a copy of the files |
-| `-t`, `--type` | `dataset`, `model`, `checkpoint`, `report` or `other` |
+| `-t`, `--type` | any one word; `dataset`, `model`, `checkpoint`, `report` and `other` are suggested, and a prefix completes them |
 | `-d`, `--description` | what this version is |
 | `-m`, `--meta KEY=VALUE` | metadata; repeat for several; `KEY:int=VALUE` sets the type |
 | `--meta-file` | a JSON object of metadata |

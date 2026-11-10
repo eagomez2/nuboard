@@ -134,18 +134,21 @@ def check_store(text: str) -> str:
 
 
 def check_type(text: str) -> str:
-    """Return one of `TYPES`, accepting a unique prefix.
+    """Return the type: one of `TYPES` (a unique prefix completes it) or any other word.
+
+    Any type is accepted, as `log_artifact` accepts one; `TYPES` are only suggestions.
 
     Raises:
-        Invalid: If the text is not one of them.
+        Invalid: If the text is empty or has spaces.
     """
-    value = text.strip().lower()
-    hits = [t for t in TYPES if value and t.startswith(value)]
+    value = text.strip()
 
-    if len(hits) != 1:
-        raise Invalid(f"enter one of {', '.join(TYPES)}")
+    if not value or any(c.isspace() for c in value):
+        raise Invalid(f"enter one word, such as {', '.join(TYPES)}")
 
-    return hits[0]
+    hits = [t for t in TYPES if t.startswith(value.lower())]
+
+    return hits[0] if len(hits) == 1 else value
 
 
 def check_description(text: str) -> str:
@@ -322,7 +325,7 @@ STEPS = [
     Step("name", "Project/name", check_name, "such as datasets/fineweb-edu"),
     Step("path", "Path", check_path, "the file or folder; ~ and $VARS work"),
     Step("store", "Store", check_store, "copy, or reference to leave the files where they are"),
-    Step("type", "Type", check_type, " | ".join(TYPES)),
+    Step("type", "Type", check_type, " | ".join(TYPES) + ", or any word"),
     Step("description", "Description", check_description, "what this version is"),
     Step("checksum", "Hash every file?", check_yes_no, "y reads all the data once; n is quick"),
 ]
@@ -588,7 +591,7 @@ def add_parser(sub: Any, env_prefix: str, default_root: str) -> None:
     store = a.add_mutually_exclusive_group()
     store.add_argument("--ref", action="store_true", help="record where the files are")
     store.add_argument("--copy", action="store_true", help="store a copy of the files")
-    a.add_argument("-t", "--type", help=" | ".join(TYPES))
+    a.add_argument("-t", "--type", help=" | ".join(TYPES) + ", or any word, such as tokenizer")
     a.add_argument("-d", "--description", help="what this version is")
     a.add_argument(
         "-m",

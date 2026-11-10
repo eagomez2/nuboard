@@ -11,6 +11,7 @@
     project: startProject,
     name: startName = '',
     names,
+    types: usedTypes = [],
     source = null,
     onclose,
     onadded,
@@ -32,11 +33,60 @@
     name?: string;
     /** Existing artifact names per project, to say whether a new version or a new artifact is made. */
     names: Map<string, string[]>;
+    /** Types other artifacts already have, suggested after the built-in ones. */
+    types?: string[];
     onclose: () => void;
     onadded: (project: string, name: string, version: number) => void;
   } = $props();
 
+  // any type can be typed, as in Python; these are suggested
   const TYPES = ['dataset', 'model', 'checkpoint', 'report', 'other'];
+  const typeChoices = $derived([...TYPES, ...usedTypes.filter((t) => !TYPES.includes(t)).sort()]);
+  // suggestions under the Type box, narrowed as it is typed: those starting with the text first
+  let typeOpen = $state(false);
+  let typeAt = $state(-1);
+  let typeBox = $state<HTMLInputElement>();
+  // the list is placed over the dialog (fixed), so the dialog's own scrolling does not cut it off
+  let typePos = $state('');
+  function openTypes() {
+    typeOpen = true;
+    typeAt = -1;
+    const r = typeBox?.getBoundingClientRect();
+    if (r) typePos = `top:${r.bottom + 4}px;left:${r.left}px;width:${r.width}px`;
+  }
+  const typeHits = $derived.by(() => {
+    const q = type.trim().toLowerCase();
+    if (!q) return typeChoices;
+    const hits = typeChoices.filter((t) => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+    return [
+      ...hits.filter((t) => t.toLowerCase().startsWith(q)),
+      ...hits.filter((t) => !t.toLowerCase().startsWith(q)),
+    ];
+  });
+  // shown capitalized (Dataset); kept as the type is known (dataset), or as typed if it is new
+  const typeLabel = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  function pickType(t: string) {
+    type = typeLabel(t);
+    typeOpen = false;
+  }
+  function typeKey(e: KeyboardEvent) {
+    const n = typeHits.length;
+    if (!typeOpen || !n) {
+      if (e.key === 'ArrowDown') openTypes();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      typeAt = (typeAt + (e.key === 'ArrowDown' ? 1 : n - 1 + (typeAt < 0 ? 1 : 0))) % n;
+    } else if ((e.key === 'Enter' || e.key === 'Tab') && typeAt >= 0) {
+      e.preventDefault();
+      pickType(typeHits[typeAt]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      typeOpen = false;
+    }
+  }
   type MetaType = 'text' | 'number' | 'bool' | 'json';
   interface Check {
     resolved?: string;
@@ -55,6 +105,7 @@
   let name = $state(startName);
   let path = $state('');
   let type = $state('');
+  const typeValue = $derived(typeChoices.find((t) => t.toLowerCase() === type.trim().toLowerCase()) ?? type.trim());
   let description = $state('');
   let checksum = $state(false);
   // From a run: copy (the default) or reference, a name from the file and a type from its suffix
@@ -64,7 +115,7 @@
     const base = source.path.split('/').filter(Boolean).pop() ?? '';
     if (!name) name = source.kind === 'file' ? base.replace(/\.[^.]+$/, '') : base;
     if (/\.(safetensors|pt|pth|ckpt|bin|npz|h5|keras|onnx)$/i.test(source.path) || /checkpoint/i.test(source.path))
-      type = 'checkpoint';
+      type = 'Checkpoint';
   }
   // The source as a path check: where a reference points, relative to the project
   const fromRun = $derived<Check | null>(
@@ -186,7 +237,7 @@
     duplicateOf = null;
     const common = {
       name: cleanName,
-      type: type || null,
+      type: typeValue || null,
       description: description.trim(),
       metadata: Object.fromEntries(meta.map((m) => [m.key.trim(), metaValue(m)])),
       checksum,
@@ -350,12 +401,38 @@
         </div>
       {/if}
       <div class="two">
-        <div class="field">
+        <div class="field typefield">
           <label class="label" for="art-type">Type</label>
-          <select id="art-type" class="input" bind:value={type}>
-            <option value="">None</option>
-            {#each TYPES as t (t)}<option value={t}>{t[0].toUpperCase() + t.slice(1)}</option>{/each}
-          </select>
+          <input
+            id="art-type"
+            class="input"
+            bind:value={type}
+            placeholder="Any word, such as tokenizer"
+            autocomplete="off"
+            role="combobox"
+            aria-expanded={typeOpen && typeHits.length > 0}
+            aria-controls="art-types"
+            aria-autocomplete="list"
+            bind:this={typeBox}
+            onfocus={openTypes}
+            oninput={openTypes}
+            onblur={() => (typeOpen = false)}
+            onkeydown={typeKey}
+          />
+          {#if typeOpen && typeHits.length}
+            <div class="typepop card" style={typePos} id="art-types" role="listbox" aria-label="Suggested types">
+              {#each typeHits as t, i (t)}<button
+                  type="button"
+                  class="typeopt"
+                  class:on={i === typeAt}
+                  role="option"
+                  aria-selected={i === typeAt}
+                  tabindex="-1"
+                  onpointerdown={(e) => (e.preventDefault(), pickType(t))}
+                  onpointermove={() => (typeAt = i)}>{typeLabel(t)}</button
+                >{/each}
+            </div>
+          {/if}
         </div>
         <div class="field">
           <label class="label" for="art-desc">Description</label>
@@ -449,8 +526,8 @@
           <dt>Contains</dt>
           <dd>{check ? summary(check) : ''}</dd>
         {/if}
-        {#if type}<dt>Type</dt>
-          <dd>{type}</dd>{/if}
+        {#if typeValue}<dt>Type</dt>
+          <dd>{typeValue}</dd>{/if}
         {#if description.trim()}<dt>Description</dt>
           <dd>{description.trim()}</dd>{/if}
         {#each meta as m (m.key)}<dt class="mono">{m.key}</dt>
@@ -652,5 +729,31 @@
     .mrow {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
+  }
+  .typefield {
+    position: relative;
+  }
+  .typepop {
+    position: fixed;
+    z-index: 20;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: var(--lift);
+  }
+  .typeopt {
+    border: 0;
+    background: none;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .typeopt.on {
+    background: var(--accent-soft);
   }
 </style>

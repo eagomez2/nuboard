@@ -59,6 +59,8 @@ def test_checks_reject_bad_values_with_a_reason(data):
 
     assert cli.check_store("r") == "reference" and cli.check_type("ch") == "checkpoint"
 
+    assert cli.check_type("tokenizer") == "tokenizer" and cli.check_type("Model") == "model"
+
     with pytest.raises(cli.Invalid):
         cli.check_type("data set")
 
@@ -107,7 +109,7 @@ def test_flags_add_a_version_without_asking(data):
 
 def test_every_flag_error_is_reported_and_nothing_is_written(data):
     code, said, _ = _run(
-        ["add", "fw", str(data / "nope"), "--copy", "--checksum", "-t", "x", "-m", "bad"],
+        ["add", "fw", str(data / "nope"), "--copy", "--checksum", "-t", "a b", "-m", "bad"],
         interactive=False,
     )
     assert code == 2 and len(said) == 5  # name, path, type, checksum, meta
