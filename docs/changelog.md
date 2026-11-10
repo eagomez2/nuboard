@@ -1,24 +1,11 @@
 # Changelog
 
-## 0.28.0
+## 0.29.0
 
-Small fixes and conveniences in the viewer. No breaking changes.
+One way to do each thing across the viewer, and command-line flags with one
+name each. The command-line renames below break scripts that use the old
+names; the Python API, run folders and saved links are unchanged.
 
-- **Hypotheses: New hypothesis takes several runs.** The form lists the runs
-  you add with an × to take each off, like a card's **Runs**, and choosing a
-  run no longer creates the card before you press **Create**. Runs on a card
-  show the end of their id, so runs with the same name can be told apart.
-- **Hypotheses: Timeline metric names** use the room they have and are only
-  shortened, keeping their end, when the window is too narrow. The number
-  column widens for a card's own metric.
-- **Space plays audio once you click it**: in the audio player (waveform and
-  spectrogram) and in waveform figures, in the viewer and in exported
-  reports, Space plays and pauses after a click on the plot, not only in full
-  screen. A focused button outside full screen keeps its own Space.
-- **Primary buttons** have the same text color everywhere; **New version** on
-  an empty Artifacts page no longer looks faded.
-- **Hypotheses: Not on the board** adds a run to the new hypothesis with one
-  click, like **Add a run…**, instead of opening buttons under it.
 - **One searchable scalar picker.** Wherever a scalar is picked for Min /
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
@@ -76,6 +63,30 @@ Small fixes and conveniences in the viewer. No breaking changes.
   worked out with one sort of the points instead of four, in a typed array,
   so zooming and resetting a chart of many runs blocks the page for much less
   time (about 19x faster for 50 runs of 2,000 points). The range is the same.
+- **Docs: rank 0 only, like TensorBoard.** The distributed-training guide and
+  the limitations page say that Charts shows rank 0, and that other ranks are
+  read with `RunReader` or seen on the Timing tab. The Ranges tooltip no
+  longer promises a min–max across ranks.
+
+## 0.28.0
+
+Small fixes and conveniences in the viewer. No breaking changes.
+
+- **Hypotheses: New hypothesis takes several runs.** The form lists the runs
+  you add with an × to take each off, like a card's **Runs**, and choosing a
+  run no longer creates the card before you press **Create**. Runs on a card
+  show the end of their id, so runs with the same name can be told apart.
+- **Hypotheses: Timeline metric names** use the room they have and are only
+  shortened, keeping their end, when the window is too narrow. The number
+  column widens for a card's own metric.
+- **Space plays audio once you click it**: in the audio player (waveform and
+  spectrogram) and in waveform figures, in the viewer and in exported
+  reports, Space plays and pauses after a click on the plot, not only in full
+  screen. A focused button outside full screen keeps its own Space.
+- **Primary buttons** have the same text color everywhere; **New version** on
+  an empty Artifacts page no longer looks faded.
+- **Hypotheses: Not on the board** adds a run to the new hypothesis with one
+  click, like **Add a run…**, instead of opening buttons under it.
 - **Media: select and download many items.** **Select for report** is now
   **Select items**, highlighted while it is on; its bar adds **Select all shown** (the item of every card
   your filters leave) and **Download N as .zip**, built in the browser with a
