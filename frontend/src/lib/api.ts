@@ -534,6 +534,16 @@ export const api = {
   alerts: (keys: string[]) =>
     json<{ alerts: Record<string, Alert[]> }>(`/api/alerts?runs=${keys.map(encodeURIComponent).join(',')}`),
   artifacts: (project?: string | null) => json<{ artifacts: ArtifactVersion[] }>(`/api/artifacts?${qs({ project })}`),
+  /** URL of one file of an artifact version as is; with `download`, saved instead of shown. */
+  artifactRawUrl: (a: ArtifactVersion, path: string, download = false) =>
+    `/api/artifacts/raw?${qs({
+      project: a.project,
+      name: a.name,
+      version: a.version,
+      unlinked: a.unlinked ? '1' : null,
+      path,
+      download: download ? '1' : null,
+    })}`,
   /** A page of a version's files; `find` keeps the paths that contain it, ignoring case. */
   artifactFiles: (a: ArtifactVersion, find: string, offset: number, limit = 1000) =>
     json<{ files: ArtifactFile[]; total: number; matched: number }>(
