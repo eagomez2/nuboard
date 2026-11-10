@@ -23,6 +23,19 @@ Small fixes and conveniences in the viewer. No breaking changes.
   Max / Last (Runs, Sweeps, Media, Hypotheses), the menu is now the search
   list Charts' **All N** opens: type to narrow, ↑ ↓ and Enter to pick, opened
   on the current scalar.
+- **Command line: one name per flag.** These renames break scripts that use
+  the old names, which are not kept:
+  - `nuboard compact --force` is now `--include-running`, as in `rm` and
+    `merge` (where `--force` means something else).
+  - `nuboard up --lock-directions` is now `--read-only-directions`.
+  - `nuboard artifact add --ref` is now `--reference`, like the "copy, or
+    reference" question it asks.
+  - `nuboard up --read-only-reports` now locks only reports; the new
+    `--read-only-hypotheses` locks hypothesis boards.
+- **Command line: smaller fixes.** `nuboard compact`'s folder is optional,
+  as for `up`, `ls` and `rm`; `merge` takes `-p` for `--project`; `ls -q`,
+  `up --host`, `up --port`, `demo --port` and `demo --open` have help text;
+  and the help shows `rm --run ID` and `import-tensorboard --tag TAG`.
 - **Any artifact type in the CLI and the viewer**, as `log_artifact` already
   allowed. `artifact add --type tokenizer` and the viewer's form keep the type
   as given; `dataset`, `model`, `checkpoint`, `report` and `other` are still

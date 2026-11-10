@@ -87,7 +87,7 @@ def test_flags_add_a_version_without_asking(data):
             "add",
             "datasets/fw",
             str(data),
-            "--ref",
+            "--reference",
             "-t",
             "dataset",
             "-d",
@@ -114,7 +114,7 @@ def test_every_flag_error_is_reported_and_nothing_is_written(data):
     )
     assert code == 2 and len(said) == 5  # name, path, type, checksum, meta
     code, said, _ = _run(["add", "datasets/fw", str(data)], interactive=False)
-    assert code == 2 and said == ["✗ missing: --ref or --copy, --type, --description"]
+    assert code == 2 and said == ["✗ missing: --reference or --copy, --type, --description"]
     assert not list(data.parent.parent.rglob("manifest.json"))
 
 
@@ -161,7 +161,7 @@ def test_flags_fill_the_prompts_and_quitting_writes_nothing(data):
 
 
 def test_ls_and_show(data, capsys):
-    _run(["add", "datasets/fw", str(data), "--ref", "-t", "dataset", "-d", "two files"])
+    _run(["add", "datasets/fw", str(data), "--reference", "-t", "dataset", "-d", "two files"])
     code, said, _ = _run(["ls"])
     assert code == 0 and said[0].startswith("datasets/fw:v1") and "two files" in said[0]
     code, said, _ = _run(["show", "datasets/fw"])
@@ -175,7 +175,7 @@ def test_ls_and_show(data, capsys):
 
 def test_unlink_and_restore(data):
     for _ in range(2):
-        _run(["add", "datasets/fw", str(data), "--ref", "-t", "dataset", "-d", "two files"])
+        _run(["add", "datasets/fw", str(data), "--reference", "-t", "dataset", "-d", "two files"])
 
     assert _run(["unlink", "datasets/fw"])[0] == 2  # a version or --all is required
     assert _run(["unlink", "datasets/fw:v1", "--all"])[0] == 2

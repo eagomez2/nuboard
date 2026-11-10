@@ -16,7 +16,7 @@
    * "Reset" goes back to it. A faint, dashed arrow is a guess from the name (or `fallback`, a
    * direction the caller kept); ↕ means the projects shown disagree. A save says what the
    * project's direction was when shown, so one changed meanwhile by someone else is not
-   * overwritten: the save is refused and the new direction shown. Started with `--lock-directions`,
+   * overwritten: the save is refused and the new direction shown. Started with `--read-only-directions`,
    * the viewer offers no Save.
    */
   let { projects, name, fallback }: { projects: string[]; name: string; fallback?: Extreme } = $props();

@@ -120,4 +120,4 @@ Each board is a folder of plain JSON in the project,
 `<id>.json` per hypothesis. You can commit it to git with the project, or edit
 it by hand. See [File format](../reference/format.md#hypothesis-boards-hypothesesboard).
 
-`nuboard up --read-only-reports` makes boards read-only too.
+`nuboard up --read-only-hypotheses` makes boards read-only (`--read-only-reports` does the same for reports).

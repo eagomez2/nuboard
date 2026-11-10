@@ -63,7 +63,7 @@ reads all of the data once.
 everything as flags, as in a script or a cluster job:
 
 ```bash
-nuboard artifact add datasets/fineweb-edu ~/data/fineweb-edu/2026-10 --ref \
+nuboard artifact add datasets/fineweb-edu ~/data/fineweb-edu/2026-10 --reference \
     --type dataset --description "FineWeb-Edu, Oct 2026 snapshot, deduplicated" \
     --meta tokens=12B --meta dedup=true --meta rows=1200000
 ```
@@ -116,7 +116,7 @@ Use it with: run.use_artifact("datasets/fineweb-edu:v3")
   Nothing is written until you answer `y`, and `q` or Ctrl-C leaves without
   writing.
 
-Required are the name, the path, `--ref` or `--copy`, the type and the
+Required are the name, the path, `--reference` or `--copy`, the type and the
 description. The type is any one word, as in Python: `dataset`, `model`,
 `checkpoint`, `report` and `other` are suggested (a prefix such as `ch`
 completes them), and others such as `tokenizer` are kept as typed. Without a
@@ -306,7 +306,7 @@ The Artifacts page is read-only unless the viewer was started with
 `nuboard up --edit-artifacts`. With it:
 
 - **+ New** opens a form that adds an artifact, or a version of one, as a reference, like
-  `nuboard artifact add --ref`. Pick the project, type a new or existing
+  `nuboard artifact add --reference`. Pick the project, type a new or existing
   name, and give the path of a file or folder: absolute, starting with `~` or
   an environment variable such as `$NUBOARD_DATA_DIR/fineweb-edu`, or relative
   to the served folder. The form checks the path as you type and shows what

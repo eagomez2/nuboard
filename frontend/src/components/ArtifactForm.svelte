@@ -3,7 +3,7 @@
   import { fmtBytes } from '../lib/format';
 
   // A new artifact version that references a path on the machine running the viewer,
-  // as `nuboard artifact add --ref` does: checked as it is typed, reviewed, then added.
+  // as `nuboard artifact add --reference` does: checked as it is typed, reviewed, then added.
   // With `source`, the version is made from a file or folder of a run instead (the Files
   // tab), copied or referenced inside the project; the rest of the form is the same.
   let {

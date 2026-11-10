@@ -5,6 +5,9 @@ same as `nuboard …`, and `nuboard COMMAND -h` prints the options of a command.
 
 Commands that take a folder default to `$NUBOARD_DIR`, or `./experiments` if
 it is not set. A folder can be a tree of projects, one project or one run.
+Commands about the folder itself (`up`, `demo`, `ls`, `rm`, `compact`) take it
+as their first argument; commands about something inside it
+(`import-tensorboard`, `artifact …`) take it as `--dir`.
 
 | Command | What it does |
 | --- | --- |
@@ -30,13 +33,14 @@ further) is used.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed |
-| `--port` | `6070` | port to listen on |
+| `--port` | `6070` | port to listen on; the next free one is used if it is taken |
 | `--open` | | open a browser tab |
 | `--token VALUE` | `$NUBOARD_TOKEN`, or random off localhost | access token; the printed link signs a browser in |
 | `--no-token` | | serve a non-local `--host` without a token (anyone who reaches it can use it) |
 | `--edit-artifacts` | | allow adding artifact versions (references to paths on the server, or from a run's files by copy or reference) and unlinking them in the viewer |
-| `--read-only-reports` | | refuse every change to reports (uploads included) and hypothesis boards (for a shared server) |
-| `--lock-directions` | | refuse saving which way is better for a scalar or table column (`directions.json`); views can still flip it for themselves |
+| `--read-only-reports` | | refuse every change to reports, uploads included (for a shared server) |
+| `--read-only-hypotheses` | | refuse every change to hypothesis boards (for a shared server) |
+| `--read-only-directions` | | refuse saving which way is better for a scalar or table column (`directions.json`); views can still flip it for themselves |
 | `--max-image-mb` | `20` | size limit of an image uploaded into a report |
 | `--max-text-mb` | `5` | size limit of a text file uploaded into a report |
 | `--max-audio-mb` | `50` | size limit of an audio file uploaded into a report |
@@ -118,12 +122,12 @@ To hide runs without deleting them, select them on the Runs page and press
 ## compact
 
 ```bash
-nuboard compact DIR [--force]
+nuboard compact [DIR] [--include-running]
 ```
 
 Write `data.parquet` and health alerts for ended runs that lack them. Runs are
 compacted when they finish, so this is for runs that were killed or logged by
-an older version. `--force` also compacts runs that look still running.
+an older version. `--include-running` also compacts runs that look still running.
 
 ## merge
 
@@ -138,7 +142,7 @@ overwritten or deleted.
 
 | Option | Meaning |
 | --- | --- |
-| `--project PATH` | only this project (its path inside `SRC`) |
+| `-p`, `--project PATH` | only this project (its path inside `SRC`) |
 | `--dry-run` | show the plan and exit (exit code 1 if it has conflicts) |
 | `-y`, `--yes` | apply without asking |
 | `-v`, `--verbose` | list every item instead of counting identical ones |
@@ -172,13 +176,13 @@ Every `artifact` command takes `--dir DIR`, the root folder for projects.
 
 | Option of `add` | Meaning |
 | --- | --- |
-| `--ref` | record where the files are |
+| `--reference` | record where the files are |
 | `--copy` | store a copy of the files |
 | `-t`, `--type` | any one word; `dataset`, `model`, `checkpoint`, `report` and `other` are suggested, and a prefix completes them |
 | `-d`, `--description` | what this version is |
 | `-m`, `--meta KEY=VALUE` | metadata; repeat for several; `KEY:int=VALUE` sets the type |
 | `--meta-file` | a JSON object of metadata |
-| `--checksum` | with `--ref`, also hash every file |
+| `--checksum` | with `--reference`, also hash every file |
 | `--dry-run` | check and show, but write nothing |
 | `--no-input` | never ask; missing values are errors |
 

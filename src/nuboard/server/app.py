@@ -137,10 +137,10 @@ class JSON(JSONResponse):
         ).encode("utf-8")
 
 
-def _read_only() -> JSONResponse:
-    """The response to a change of a report or hypothesis on a `--read-only-reports` server."""
+def _read_only(what: str = "reports") -> JSONResponse:
+    """The response to a change of `what` (reports or hypotheses) on a server that locks it."""
     return JSON(
-        {"error": "reports and hypotheses are read-only on this server (--read-only-reports)"},
+        {"error": f"{what} are read-only on this server (--read-only-{what})"},
         status_code=403,
     )
 
@@ -361,6 +361,7 @@ def create_app(
     token: str | None = None,
     edit_artifacts: bool = False,
     read_only_reports: bool = False,
+    read_only_hypotheses: bool = False,
     lock_directions: bool = False,
     max_image_bytes: int = MAX_IMAGE_BYTES,
     max_text_bytes: int = MAX_TEXT_BYTES,
@@ -383,6 +384,7 @@ def create_app(
             unlinking and restoring them. Without it those requests are refused.
         read_only_reports: Refuse every change to reports: saving, snapshots
             and uploads, as on a shared server.
+        read_only_hypotheses: Refuse every change to hypothesis boards.
         lock_directions: Refuse changes to which way is better (`directions.json`); views can still
             flip a direction for themselves.
         max_image_bytes: Size limit of an image uploaded into a report.
@@ -460,6 +462,7 @@ def create_app(
                 "catalog_version": catalog.version,
                 "edit_artifacts": edit_artifacts,
                 "read_only_reports": read_only_reports,
+                "read_only_hypotheses": read_only_hypotheses,
                 "lock_directions": lock_directions,
                 "upload_limits": {
                     "image": max_image_bytes,
@@ -1659,7 +1662,7 @@ def create_app(
                 **data,
                 "runs": found,
                 "reports": [r["name"] for r in report_names(pdir)],
-                "read_only": read_only_reports,
+                "read_only": read_only_hypotheses,
             }
         )
 
@@ -1671,11 +1674,11 @@ def create_app(
         replace), `delete` (a hypothesis id to delete), `settings` (fields of
         the board to change; a new board name creates the board) or
         `delete_board: true`. Returns the saved item, or what was deleted.
-        Refused on a server started with `--read-only-reports`.
+        Refused on a server started with `--read-only-hypotheses`.
         """
 
-        if read_only_reports:
-            return _read_only()
+        if read_only_hypotheses:
+            return _read_only("hypotheses")
 
         if not request.headers.get("content-type", "").startswith("application/json"):
             return PlainTextResponse("expected application/json", 415)
@@ -2133,7 +2136,7 @@ def create_app(
         JSON body: `project`, `name`, `direction` (`min`, `max` or null) and `expect`, what the
         viewer last saw for it (`min`, `max` or null). When the file says otherwise, someone
         changed it meanwhile: nothing is written and the answer is 409 with the `current` value.
-        Refused (403) when the viewer was started with `--lock-directions`.
+        Refused (403) when the viewer was started with `--read-only-directions`.
         """
 
         if lock_directions:

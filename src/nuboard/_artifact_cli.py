@@ -589,7 +589,7 @@ def add_parser(sub: Any, env_prefix: str, default_root: str) -> None:
     a.add_argument("name", nargs="?", help="project/name, such as datasets/fineweb-edu")
     a.add_argument("path", nargs="?", help="the file or folder")
     store = a.add_mutually_exclusive_group()
-    store.add_argument("--ref", action="store_true", help="record where the files are")
+    store.add_argument("--reference", action="store_true", help="record where the files are")
     store.add_argument("--copy", action="store_true", help="store a copy of the files")
     a.add_argument("-t", "--type", help=" | ".join(TYPES) + ", or any word, such as tokenizer")
     a.add_argument("-d", "--description", help="what this version is")
@@ -602,7 +602,7 @@ def add_parser(sub: Any, env_prefix: str, default_root: str) -> None:
         help="metadata; repeat for several; KEY:int=VALUE sets the type",
     )
     a.add_argument("--meta-file", help="a JSON object of metadata")
-    a.add_argument("--checksum", action="store_true", help="with --ref, also hash every file")
+    a.add_argument("--checksum", action="store_true", help="with --reference, also hash every file")
     a.add_argument("--dir", default=None, help=root_help)
     a.add_argument("--dry-run", action="store_true", help="check and show, but write nothing")
     a.add_argument("--no-input", action="store_true", help="never ask; missing values are errors")
@@ -687,11 +687,11 @@ def _from_flags(args: argparse.Namespace) -> tuple[Draft, list[str]]:
             except Invalid as exc:
                 errors.append(f"{key}: {exc}")
 
-    draft.store = "reference" if args.ref else "copy" if args.copy else None
+    draft.store = "reference" if args.reference else "copy" if args.copy else None
 
     if args.checksum:
         if args.copy:
-            errors.append("--checksum: copies are always hashed; use it with --ref")
+            errors.append("--checksum: copies are always hashed; use it with --reference")
         else:
             draft.checksum = True
 
@@ -738,7 +738,11 @@ def _add(
 
     if draft.missing():
         if not interactive:
-            flags = {"store": "--ref or --copy", "type": "--type", "description": "--description"}
+            flags = {
+                "store": "--reference or --copy",
+                "type": "--type",
+                "description": "--description",
+            }
             names = [flags.get(f, f.upper()) for f in draft.missing()]
             say(f"✗ missing: {', '.join(names)}")
             return 2

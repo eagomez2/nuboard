@@ -445,7 +445,7 @@ from.
   one project shown.
 - A table column is kept apart from a scalar with the same name (as
   `<table> › <column>`), so the two never share a direction.
-- `nuboard up --lock-directions` locks directions on a shared viewer: views can
+- `nuboard up --read-only-directions` locks directions on a shared viewer: views can
   still flip them, but nothing can be saved.
 
 ## Sweeps page
@@ -906,5 +906,5 @@ tries to make through your browser.
 The token travels in plain HTTP. On an untrusted network, keep the default
 host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
 Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
-edited and take uploads, and hypothesis boards can be edited, unless you add
-`--read-only-reports`.
+edited and take uploads unless you add `--read-only-reports`, and hypothesis
+boards can be edited unless you add `--read-only-hypotheses`.
