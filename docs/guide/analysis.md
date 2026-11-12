@@ -24,7 +24,8 @@ worst = sorted(project.runs()[0].table("eval/samples"), key=lambda r: r["pesq"])
 # notes added to audio in the viewer, by "<media key>@<step>"
 print(project.runs()[0].audio_notes.get("eval/enhanced@30", []))
 
-# write a property value (None removes it); a running viewer picks it up
+# write a property value (None removes it); a running viewer picks it up.
+# It is refused, leaving the file as it was, if annotations.json is broken or locked.
 project.runs("where config.optim.lr = 1e-3")[0].set_field("verdict", "keep")
 
 # one scalar across runs, long format: run_id, name, step, time, value, config.optim.lr

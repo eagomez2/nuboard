@@ -16,6 +16,8 @@ optional field, and run folders are unchanged.
   `/api/runs/annotate` endpoint takes an optional `expect` for this; saves
   without it work as before
   ([#53](https://github.com/eagomez2/nuboard/issues/53)).
+- **Docs: known limitations** list what editing from several places does not
+  cover.
 
 
 ## 0.29.2
