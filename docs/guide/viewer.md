@@ -927,11 +927,24 @@ Some cases are not fully covered:
   per folder and let everyone use it.
 - **Other tools rewriting the file**, such as a hand edit, or a sync tool
   (Dropbox, rsync) restoring an older copy. The last writer wins.
-- **Notes edited in two places at once.** Notes are saved as one text, so the
-  later save replaces the earlier one. Properties, tags and stars are merged
-  per key, so editing different ones is safe.
 
-When a save is refused, the viewer says why and the file is left as it was:
-an `annotations.json` that is not valid JSON (fix or delete it by hand), a file
-locked by another program on Windows, or a file that kept changing while the
-save was retried. Try again once the cause is gone.
+If someone saves a run's notes or a property **after you started editing
+it**, your save is not applied over theirs. The viewer shows what they saved
+and asks what to keep:
+
+- **Notes**: *Both* puts your text under theirs, in the editor, to tidy up
+  before saving again; *Mine* replaces theirs; *Theirs* drops your edit.
+- **A property** (in a run's Properties tab, a table cell, or set on several
+  selected runs): *Theirs* shows their value; *Mine* saves yours over it. With
+  several runs, the ones nobody changed are saved right away.
+
+Only the notes or properties you edit are compared, so changes others make to
+other properties, tags or stars never get in the way. Tags and stars are not
+checked: tags are added and removed one by one, and a star is a toggle.
+Scripts calling the HTTP API, and `Run.set_field` in Python, save without this
+check.
+
+When a save is refused for another reason, the viewer says why and the file
+is left as it was: an `annotations.json` that is not valid JSON (fix or delete
+it by hand), a file locked by another program on Windows, or a file that kept
+changing while the save was retried. Try again once the cause is gone.

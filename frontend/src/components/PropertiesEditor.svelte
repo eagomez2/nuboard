@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Icon from './Icon.svelte';
-  import { api, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
+  import { api, EditConflict, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
+  import { resolveFields } from '../lib/conflicts';
   import { tagStyle } from '../lib/colors';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
@@ -36,6 +37,8 @@
   let drafts = $state<Record<string, string>>({});
   let base: Record<string, string> = {}; // the saved values the drafts started from
   let baseRun = '';
+  // The stored value each property's edit started from: a save is refused if it changed meanwhile
+  let origin: Record<string, FieldValue | null> = {};
   $effect(() => {
     void savedKey;
     untrack(() => {
@@ -45,6 +48,7 @@
         all.map((d) => {
           const mine = drafts[d.name];
           const edited = sameRun && mine !== undefined && mine !== (base[d.name] ?? '');
+          if (!edited) origin[d.name] = run.fields?.[d.name] ?? null;
           return [d.name, edited ? mine : saved[d.name]];
         }),
       );
@@ -63,10 +67,34 @@
     saving = true;
     const patch: Record<string, FieldValue | null> = {};
     for (const d of changed) patch[d.name] = parseFieldValue(drafts[d.name], d.type);
+    const expect = Object.fromEntries(Object.keys(patch).map((k) => [k, origin[k] ?? null]));
     try {
-      await api.annotate([run.key], { fields: patch });
+      await api.annotate([run.key], { fields: patch }, { [run.key]: { fields: expect } });
     } catch (e) {
       saving = false;
+      if (e instanceof EditConflict) {
+        const theirs = e.current[run.key]?.fields ?? {};
+        const differ = Object.fromEntries(
+          Object.keys(patch)
+            .filter((k) => JSON.stringify(theirs[k] ?? null) !== JSON.stringify(expect[k]))
+            .map((k) => [k, { mine: patch[k], theirs: theirs[k] }]),
+        );
+        const mine = await resolveFields(differ);
+        for (const k of Object.keys(patch)) origin[k] = theirs[k] ?? null; // the edit now starts from theirs
+        if (mine) return save();
+        // theirs: show their values, and drop my edits of those properties
+        const next = { ...(run.fields ?? {}) };
+        for (const k of Object.keys(differ)) {
+          const v = theirs[k];
+          if (v === null || v === undefined) delete next[k];
+          else next[k] = v;
+          const d = all.find((x) => x.name === k);
+          drafts[k] = fieldText(v ?? undefined, d?.type ?? 'text');
+        }
+        run.fields = next;
+        app.loadRuns();
+        return;
+      }
       await notice('Not saved', String(e instanceof Error ? e.message : e).replace(/^\d+ /, ''));
       return;
     }

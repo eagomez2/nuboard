@@ -3,7 +3,8 @@
   import JobChips from './JobChips.svelte';
   import Status from './Status.svelte';
   import TagPills from './TagPills.svelte';
-  import { api, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
+  import { api, EditConflict, num, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
+  import { resolveFields } from '../lib/conflicts';
   import { fieldProblem, fieldText, parseFieldValue } from '../lib/fields';
   import { defaultMetric, fmtAgo, fmtDateTime, fmtDuration, fmtNum, fmtValue } from '../lib/format';
   import { rememberStat, statFor, type Stat } from '../lib/stat';
@@ -23,7 +24,8 @@
   let viewport = $state(600);
   let editing = $state<string | null>(null);
   let noteDraft = $state('');
-  let fieldEdit = $state<{ key: string; field: string } | null>(null);
+  // `start` is the stored value the edit began from: the save is refused if it changed meanwhile
+  let fieldEdit = $state<{ key: string; field: string; start: FieldValue | null } | null>(null);
   let fieldDraft = $state('');
   let menu = $state(false);
   let colFind = $state('');
@@ -280,6 +282,8 @@
     )
       ? fieldText(first?.fields?.[def.name], def.type)
       : '';
+    const field = def.name;
+    const starts = Object.fromEntries(keys.map((k) => [k, app.runByKey(k)?.fields?.[field] ?? null]));
     const value = await ask(`Set ${def.name} on ${n} run${n === 1 ? '' : 's'}`, [valueField(def, current)], {
       confirm: 'Set property',
       message: def.description,
@@ -287,10 +291,25 @@
     if (!value) return;
     const problem = fieldProblem(value[0], def);
     if (problem) return notice('Not saved', problem);
-    try {
-      await api.annotate(keys, { fields: { [def.name]: parseFieldValue(value[0], def.type) } });
-    } catch (e) {
-      return notice('Not saved', errText(e));
+    const mine = parseFieldValue(value[0], def.type);
+    let todo = keys;
+    let expect = Object.fromEntries(keys.map((k) => [k, { fields: { [def.name]: starts[k] ?? null } }]));
+    while (todo.length) {
+      try {
+        await api.annotate(todo, { fields: { [def.name]: mine } }, expect);
+        break;
+      } catch (e) {
+        if (!(e instanceof EditConflict)) return notice('Not saved', errText(e));
+        // the other runs are saved; ask about the ones someone changed meanwhile
+        const changed = Object.entries(e.current);
+        const theirs = changed[0]?.[1].fields?.[def.name];
+        const keep = await resolveFields({ [def.name]: { mine, theirs } }, changed.length);
+        if (!keep) break;
+        todo = changed.map(([k]) => k);
+        expect = Object.fromEntries(
+          changed.map(([k, c]) => [k, { fields: { [def.name]: c.fields?.[def.name] ?? null } }]),
+        );
+      }
     }
     showColumn(def.name);
     app.loadRuns();
@@ -309,7 +328,7 @@
     return s ? fmtNum(num(s.last)) : '';
   }
   function startField(r: RunBrief, field: string) {
-    fieldEdit = { key: r.key, field };
+    fieldEdit = { key: r.key, field, start: r.fields?.[field] ?? null };
     fieldDraft = fieldText(r.fields?.[field], defOf(r, field)?.type);
   }
   // numbers and booleans are stored as such so queries like `score > 3` work
@@ -335,11 +354,31 @@
     if (value === null) delete fields[edit.field];
     else fields[edit.field] = value;
     r.fields = fields;
-    try {
-      await api.annotate([r.key], { fields: { [edit.field]: value } });
-    } catch (e) {
-      r.fields = before;
-      notice('Not saved', errText(e));
+    let start = edit.start;
+    for (;;) {
+      try {
+        await api.annotate(
+          [r.key],
+          { fields: { [edit.field]: value } },
+          { [r.key]: { fields: { [edit.field]: start } } },
+        );
+        return;
+      } catch (e) {
+        if (!(e instanceof EditConflict)) {
+          r.fields = before;
+          return notice('Not saved', errText(e));
+        }
+        const theirs = e.current[r.key]?.fields?.[edit.field] ?? null;
+        if (await resolveFields({ [edit.field]: { mine: value, theirs } })) {
+          start = theirs; // keep mine: save again over theirs
+          continue;
+        }
+        const next = { ...before };
+        if (theirs === null) delete next[edit.field];
+        else next[edit.field] = theirs;
+        r.fields = next;
+        return;
+      }
     }
   }
   // Add and remove tags on every selected run

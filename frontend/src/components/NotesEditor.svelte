@@ -1,7 +1,8 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
-  import { api, type RunBrief } from '../lib/api';
+  import { api, EditConflict, type RunBrief } from '../lib/api';
+  import { resolveNotes } from '../lib/conflicts';
   import { notice } from '../lib/dialog.svelte';
   import { app } from '../lib/state.svelte';
 
@@ -11,23 +12,39 @@
   let editing = $state(false);
   let draft = $state('');
   let notes = $derived(run.notes ?? '');
+  // The notes the edit started from: a save is refused if someone saved others meanwhile
+  let start = '';
 
   function edit() {
     draft = notes;
+    start = notes;
     editing = true;
+  }
+  function done(text: string) {
+    notes = text;
+    run.notes = text;
+    editing = false;
+    app.loadRuns();
   }
   async function save() {
     try {
-      await api.annotate([run.key], { notes: draft });
+      await api.annotate([run.key], { notes: draft }, { [run.key]: { notes: start } });
     } catch (e) {
+      if (e instanceof EditConflict) {
+        const theirs = e.current[run.key]?.notes ?? '';
+        const choice = await resolveNotes(theirs);
+        if (!choice) return; // undecided: the editor stays open, and the next save asks again
+        start = theirs; // the edit now starts from their notes
+        if (choice === 'mine') return save();
+        if (choice === 'theirs') return done(theirs);
+        if (theirs.trim()) draft = `${theirs.trimEnd()}\n\n${draft.trim()}\n`;
+        return; // both: the editor stays open to tidy up before saving
+      }
       // the editor stays open with the text, so nothing typed is lost
       await notice('Notes not saved', String(e instanceof Error ? e.message : e).replace(/^\d+ /, ''));
       return;
     }
-    notes = draft;
-    run.notes = draft;
-    editing = false;
-    app.loadRuns();
+    done(draft);
   }
 </script>
 

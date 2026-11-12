@@ -33,7 +33,7 @@ from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .. import __version__, _fs
-from .._annotations import AnnotationsError, update_annotations
+from .._annotations import AnnotationsError, StaleEdit, check_expected, update_annotations
 from .._meta import FORMAT_VERSION, NAME
 from ..artifacts import (
     UNLINKED,
@@ -726,6 +726,11 @@ def create_app(
         `reviewed`, `notes`, `tags` and `fields`. Fields are merged key by key;
         a null or empty value removes a field. Returns the updated keys and
         records.
+
+        An optional `expect` maps run keys to the values the edit started from
+        (`notes`, and `fields` by name). A run whose values changed since is not
+        saved: the reply is a 409 with `conflicts`, its current values by key,
+        and `updated`, the runs that were saved.
         """
 
         if not request.headers.get("content-type", "").startswith("application/json"):
@@ -767,8 +772,11 @@ def create_app(
                         except ValueError as exc:
                             return PlainTextResponse(str(exc), 400)
 
-        def change(ann: dict[str, Any]) -> None:
-            """Apply the patch to one run's annotations."""
+        expect = body.get("expect") if isinstance(body.get("expect"), dict) else {}
+
+        def change(ann: dict[str, Any], expected: Any = None, logged_notes: str = "") -> None:
+            """Apply the patch to one run's annotations, if they are as `expected`."""
+            check_expected(ann, expected, logged_notes)
             ann.update(patch)
 
             if fields_patch:
@@ -782,10 +790,11 @@ def create_app(
 
                 ann["fields"] = fields
 
-        def write() -> tuple[list[str], str | None]:
-            """Apply the patch to each known run; return the updated keys and any refusal."""
+        def write() -> tuple[list[str], str | None, dict[str, Any]]:
+            """Apply the patch to each run; return the updated keys, any refusal and conflicts."""
             done: list[str] = []
             error = None
+            conflicts: dict[str, Any] = {}
 
             try:
                 for key in keys:
@@ -794,7 +803,17 @@ def create_app(
                     if path is None:
                         continue
 
-                    update_annotations(path, change)
+                    expected = expect.get(key)
+                    logged = str((read_meta(path) or {}).get("notes") or "") if expected else ""
+
+                    try:
+                        update_annotations(
+                            path, lambda ann, e=expected, n=logged: change(ann, e, n)
+                        )
+                    except StaleEdit as exc:  # the other runs are still saved
+                        conflicts[key] = exc.current
+                        continue
+
                     done.append(key)
             except AnnotationsError as exc:
                 error = str(exc)
@@ -804,12 +823,23 @@ def create_app(
             finally:
                 catalog.refresh(full=True)
 
-            return done, error
+            return done, error, conflicts
 
-        done, error = await run_in_threadpool(write)
+        done, error, conflicts = await run_in_threadpool(write)
 
         if error:
             return PlainTextResponse(error, 409)
+
+        if conflicts:
+            n = len(conflicts)
+            return JSON(
+                {
+                    "error": f"{'a run' if n == 1 else f'{n} runs'} changed since the edit began",
+                    "conflicts": conflicts,
+                    "updated": done,
+                },
+                status_code=409,
+            )
 
         return JSON({"updated": done, "runs": [catalog.get(k) for k in done]})
 
