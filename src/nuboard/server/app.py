@@ -1767,15 +1767,8 @@ def create_app(
         )
 
     def project_dir(name: str) -> Path | None:
-        """Return the folder of a known project, or None if it is unknown or outside the root."""
-
-        if name == catalog.root.name and any(p["name"] == name for p in catalog.projects()):
-            return catalog.root
-
-        if not any(p["name"] == name for p in catalog.projects()):
-            return None
-
-        return path_inside(catalog.root, name)
+        """Return the folder of a known project, or None if it is unknown."""
+        return catalog.project_dir(name)
 
     def view_item(request: Request) -> Response:
         """Return a saved view of a project (`GET`) or delete it (`DELETE`).

@@ -1170,3 +1170,34 @@ def test_a_port_whose_server_just_stopped_is_reused():
     client.close()
     server.close()
     assert _free_port("127.0.0.1", port) == port
+
+
+@pytest.mark.parametrize("where", ["parent", "project", "runs", "run"])
+def test_project_files_save_from_any_viewer_root(tmp_path, where):
+    with nb.init("proj", capture_env=False) as run:
+        run.add_scalar({"loss": 1.0}, step=0)
+
+    project = (tmp_path / "exp" / "proj").resolve()
+    roots = {
+        "parent": project.parent,
+        "project": project,
+        "runs": project / "runs",
+        "run": run.path,
+    }
+    before = sorted(p for p in project.rglob("*") if p.is_dir())
+    app = create_app(roots[where], cache_dir=tmp_path / "cache")
+    defs = [{"name": "verdict", "type": "text"}]
+
+    with TestClient(app) as c:
+        r = c.post("/api/fields", json={"project": "proj", "fields": defs})
+        assert r.status_code == 200 and r.json()["fields"] == defs
+        assert c.get("/api/fields", params={"project": "proj"}).json()["fields"] == defs
+        view = {"project": "proj", "name": "v", "state": {"page": "charts", "params": {}}}
+        assert c.post("/api/views", json=view).json()["saved"] == "v.json"
+        unknown = c.post("/api/fields", json={"project": "nope", "fields": defs})
+        assert unknown.status_code == 400
+
+    assert json.loads((project / "fields.json").read_text("utf-8"))["fields"] == defs
+    assert (project / "views" / "v.json").is_file()
+    after = sorted(p for p in project.rglob("*") if p.is_dir() and p.parent != project)
+    assert [p for p in after if p not in before] == []

@@ -145,3 +145,26 @@ def test_media_count_is_recorded_and_read_without_opening_packs(tmp_path):
     assert old.get(media.id)["media_count"] == 1
     packs = list(scalars.path.glob("media.r*.pack"))
     assert old.get(scalars.id)["media_count"] == int(bool(packs))
+
+
+def test_project_dir_is_found_from_any_root(tmp_path):
+    nb.init("a", capture_env=False).finish()
+    nb.init("team/b", capture_env=False).finish()
+    root = (tmp_path / "exp").resolve()
+    run_dir = next((root / "a" / "runs").iterdir())
+    roots = {
+        "parent": root,
+        "project": root / "a",
+        "runs": root / "a" / "runs",
+        "run": run_dir,
+    }
+
+    for label, where in roots.items():
+        cat = Catalog(where, cache=tmp_path / f"cache-{label}")
+        cat.refresh()
+        assert cat.project_dir("a") == root / "a", label
+        assert cat.project_dir("missing") is None
+
+    cat = Catalog(root, cache=tmp_path / "cache-nested")
+    cat.refresh()
+    assert cat.project_dir("team/b") == root / "team" / "b"
