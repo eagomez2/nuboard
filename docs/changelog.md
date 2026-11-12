@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.30.0
+
+The viewer asks before saving over notes or properties someone else changed
+while you were editing them. No breaking changes: the HTTP API gains an
+optional field, and run folders are unchanged.
 
 - **Edits made by someone else meanwhile are no longer overwritten
   silently.** If a run's notes or a property were saved after you started
