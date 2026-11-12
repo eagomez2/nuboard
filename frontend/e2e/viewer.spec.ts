@@ -1545,7 +1545,7 @@ test('run table cells are never cut off, and the Columns menu is searchable', as
 
 test('any scalar can be picked for the main chart, and sections fold', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations');
-  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.getByRole('button', { name: /^Chart scalar: / }).click();
   await page.keyboard.type('per_class');
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options.first()).toContainText('per_class');
@@ -1553,6 +1553,17 @@ test('any scalar can be picked for the main chart, and sections fold', async ({ 
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}`));
   await expect(page.getByRole('dialog', { name: 'Pick a scalar' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Chart scalar: / })).toHaveText(name);
+
+  // the arrows step to the neighbouring scalars, and the counter follows
+  const count = page.locator('.focus .count');
+  const at = Number((await count.textContent())!.split(' / ')[0]);
+  await page.getByRole('button', { name: 'Next scalar' }).click();
+  await expect(page).not.toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}(&|$)`));
+  await expect(count).toHaveText(new RegExp(`^${at + 1} / \\d+$`));
+  await page.getByRole('button', { name: 'Previous scalar' }).click();
+  await expect(page).toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}`));
+  await expect(count).toHaveText(new RegExp(`^${at} / \\d+$`));
 
   const sect = page.locator('.sect').filter({ hasText: 'per_class' });
   const fold = sect.locator('.fold');
@@ -1632,7 +1643,7 @@ test('a scalar logged with low and high is drawn with its band', async ({ page }
   await page.goto('/#/charts?project=llm-pretrain&metric=eval%2Floss');
   const row = page.locator('.irow').first();
   await expect(row).toContainText(/\d to \d/);
-  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.getByRole('button', { name: /^Chart scalar: / }).click();
   await page.keyboard.type('eval/loss');
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options).toHaveCount(1);

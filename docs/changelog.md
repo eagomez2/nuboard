@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **One scalar menu instead of a row of tabs on the focused chart.** With
+  many long scalar names, the tabs above the chart were cut off, and the
+  **All N** button could slide under **New data · Update**. The header now
+  holds a single searchable menu showing the full scalar name, ‹ › buttons
+  to step to the previous or next scalar, and a `30 / 54` counter, so the
+  header stays tidy and nothing overlaps. Live updates leave it alone: an
+  open menu keeps its search text and focus, and nothing in the header or
+  the plot moves when new data arrives or the Update button comes and goes.
+
 ## 0.30.0
 
 The viewer asks before saving over notes or properties someone else changed

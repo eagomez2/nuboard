@@ -44,7 +44,7 @@ means the same thing on every page:
 | Box | Matches | Also |
 | --- | --- | --- |
 | Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
-| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, and **All N** on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
 | Charts **Filter scalars** | the scalar's name | each word is a regular expression |
 | Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
 | Media **Filter keys** | the media key | each word is a regular expression |
@@ -288,6 +288,10 @@ shared.
 The Charts page plots the selected runs (from **Charts** in the selection
 bar) or, if none are selected, every run matching the query.
 
+- **Focused chart**: the menu at the top left shows the scalar it plots.
+  Click it and type to search all the scalars (`/regex/` and `!exclude`
+  work), or step through them with the ‹ › buttons next to it; the counter
+  shows where you are (`30 / 54`).
 - **Summary cards**: the best last value of the focused scalar, **Best**
   with a ↓ / ↑ button for whether lower or higher is better (`cstat` in the
   URL, starting as on the Runs page and remembered per scalar), running runs and last

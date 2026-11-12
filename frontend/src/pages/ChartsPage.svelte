@@ -97,12 +97,13 @@
   const focusTiming = $derived(isTiming(focus));
   const fmtV = (v: number | null | undefined, digits?: number) =>
     focusTiming && v != null ? fmtSeconds(v) : fmtNum(v, digits);
-  const tabs = $derived.by(() => {
-    const prefix = focus.split('/')[0];
-    const same = metrics.filter((m) => m.split('/')[0] === prefix || /loss/.test(m));
-    const list = [...new Set([...same, ...metrics])].slice(0, 6);
-    return list.includes(focus) || !focus ? list : [...list.slice(0, 5), focus];
-  });
+  // one metric picker instead of a row of tabs: long names never crowd the header, and the
+  // arrows step through the scalars in the order the picker lists them
+  const focusIndex = $derived(metrics.indexOf(focus));
+  const stepMetric = (d: number) => {
+    const m = metrics[focusIndex + d];
+    if (m) router.set({ metric: m, zoom: null, cstat: null });
+  };
 
   // Colors are stable per label across all charts, assigned in focus-chart order.
   const colorIndex = $derived(new Map((focusData?.series ?? []).map((s, i) => [s.label, i])));
@@ -805,25 +806,30 @@
   <section class="focus" class:full bind:this={focusEl}>
     <div class="card main">
       <div class="tabs">
-        <div class="tabscroll">
-          {#each tabs as m (m)}
-            <button
-              class="mono tab"
-              aria-pressed={m === focus}
-              title={m}
-              onclick={() => router.set({ metric: m, zoom: null, cstat: null })}>{m}</button
-            >
-          {/each}
-        </div>
-        {#if metrics.length > tabs.length}
+        <span class="metricpick">
           <ScalarPicker
             {metrics}
             value={focus}
-            label="All {metrics.length}"
-            title="Pick any of the {metrics.length} scalars"
+            ariaLabel="Chart scalar"
+            title="{focus} · pick any of the {metrics.length} scalars"
             onpick={(m) => router.set({ metric: m, zoom: null, cstat: null })}
           />
-        {/if}
+        </span>
+        <button
+          class="btn btn-ghost sm icon-btn prev"
+          title="Previous scalar"
+          aria-label="Previous scalar"
+          disabled={focusIndex <= 0}
+          onclick={() => stepMetric(-1)}><Icon name="chevron" size={14} /></button
+        >
+        <button
+          class="btn btn-ghost sm icon-btn next"
+          title="Next scalar"
+          aria-label="Next scalar"
+          disabled={focusIndex < 0 || focusIndex >= metrics.length - 1}
+          onclick={() => stepMetric(1)}><Icon name="chevron" size={14} /></button
+        >
+        {#if focusIndex >= 0}<span class="count faint">{focusIndex + 1} / {metrics.length}</span>{/if}
         <span class="note"
           >{groupBy
             ? agg === 'std'
@@ -831,7 +837,7 @@
               : agg
             : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
         >
-        <!-- these take the hint's room in the fixed-height header, so neither the tabs nor the plot move -->
+        <!-- these take the hint's room in the fixed-height header, so neither the picker nor the plot move -->
         <span class="pills">
           {#if stale}<button
               class="btn sm newdata"
@@ -1370,41 +1376,7 @@
     flex-wrap: nowrap;
     margin-bottom: 6px;
   }
-  .tab {
-    border: 0;
-    background: none;
-    padding: 6px 12px;
-    border-radius: 8px;
-    color: var(--muted);
-    font-size: 13.5px;
-    max-width: 280px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tab[aria-pressed='true'] {
-    background: var(--panel-2);
-    color: var(--text);
-    font-weight: 600;
-    box-shadow: inset 0 0 0 1px var(--border);
-  }
-  /* one row whatever happens: tabs that do not fit scroll sideways (and are in All) */
-  .tabscroll {
-    display: flex;
-    gap: 6px;
-    min-width: 0;
-    flex: 0 1 auto;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .tabscroll::-webkit-scrollbar {
-    display: none;
-  }
-  .tabscroll .tab {
-    flex: none;
-  }
-  /* the hint takes whatever room the tabs leave and truncates; the buttons never shrink */
+  /* the hint takes whatever room the metric picker leaves and truncates; the buttons never shrink */
   .note {
     flex: 1 1 0;
     min-width: 0;
@@ -1438,6 +1410,31 @@
     to {
       transform: rotate(360deg);
     }
+  }
+  .metricpick {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+  }
+  .metricpick :global(.picker) {
+    min-width: 0;
+  }
+  .metricpick :global(.trigger) {
+    width: auto;
+    max-width: 560px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .prev :global(svg) {
+    transform: rotate(90deg);
+  }
+  .next :global(svg) {
+    transform: rotate(-90deg);
+  }
+  .count {
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
   .pills {
     flex: none;
