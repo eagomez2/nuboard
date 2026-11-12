@@ -462,17 +462,34 @@ export const api = {
   /** The tensors in a checkpoint or array file, read from its headers. */
   inspect: (key: string, path: string) =>
     json<TensorInfo>(`/api/runs/${encodeURIComponent(key)}/inspect/${encodePath(path)}`),
-  annotate: (
+  /**
+   * Save annotations of runs. With `expect` (the values each run's editor started from), a run
+   * whose values changed since is not saved and an `EditConflict` is thrown.
+   */
+  annotate: async (
     keys: string[],
     patch: Partial<Pick<RunBrief, 'starred' | 'archived' | 'reviewed' | 'notes' | 'tags'>> & {
       fields?: Record<string, FieldValue | null>;
     },
-  ) =>
-    json<{ updated: string[] }>('/api/runs/annotate', {
+    expect?: Record<string, Expected>,
+  ): Promise<{ updated: string[] }> => {
+    const res = await fetch('/api/runs/annotate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys, patch }),
-    }),
+      body: JSON.stringify(expect ? { keys, patch, expect } : { keys, patch }),
+    });
+    if (res.status === 401) location.reload();
+    const text = await res.text();
+    if (res.ok) return JSON.parse(text) as { updated: string[] };
+    let body: { conflicts?: Record<string, Expected>; updated?: string[] } = {};
+    try {
+      body = JSON.parse(text) as typeof body;
+    } catch {
+      /* a plain-text refusal */
+    }
+    if (body.conflicts) throw new EditConflict(body.conflicts, body.updated ?? []);
+    throw new Error(`${res.status} ${text}`);
+  },
   /** Config keys whose value differs between the runs, with each run's value; unlike `RunBrief.config`, not cut to 64 values. */
   /** Which way is better per scalar or column, per project (`<project>/directions.json`). */
   directions: () => json<{ directions: Record<string, Record<string, 'min' | 'max'>> }>('/api/directions'),
@@ -729,6 +746,23 @@ export function num(v: Num | undefined): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === 'number') return v;
   return v === 'nan' ? NaN : v === 'inf' ? Infinity : -Infinity;
+}
+
+/** What an edit started from: the notes text, and properties by name (null when unset). */
+export interface Expected {
+  notes?: string;
+  fields?: Record<string, FieldValue | null>;
+}
+
+/** Runs whose values changed since an edit began; `current` holds them as they are now, by run key. */
+export class EditConflict extends Error {
+  constructor(
+    public current: Record<string, Expected>,
+    public updated: string[],
+  ) {
+    const n = Object.keys(current).length;
+    super(`${n === 1 ? 'it was' : `${n} runs were`} changed by someone else since you started editing`);
+  }
 }
 
 /** A direction changed in the project since the viewer read it; `current` is what it is now. */

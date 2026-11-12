@@ -12,3 +12,9 @@ What NuBoard does not do yet, or does with a trade-off.
   thousands of runs this should become paged.
 - Runs on Windows are covered by design (no colons, atomic replace with
   retries, case-collision check) but were only tested on Linux so far.
+- Edits of a run's stars, tags, notes and properties are safe within one
+  viewer, and stale edits of notes and properties are caught, but two viewers
+  (or a viewer and `Run.set_field`) saving the same run within the same few
+  milliseconds can still lose one edit, and a sync tool restoring an older
+  `annotations.json` wins. See
+  [Editing from several places](../guide/viewer.md#editing-from-several-places).

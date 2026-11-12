@@ -141,3 +141,53 @@ def test_set_field_from_python_is_safe_too(tmp_path):
 
     assert path.read_text("utf-8") == "{oops"
     assert r.audio_notes == {}
+
+
+def test_a_stale_edit_is_refused_with_the_current_values(served):
+    c, key, path = served
+    post = lambda patch, expect=None: c.post(  # noqa: E731
+        "/api/runs/annotate",
+        json={"keys": [key], "patch": patch, **({"expect": expect} if expect else {})},
+    )
+    assert post({"notes": "first"}).status_code == 200
+    # someone else saves new notes after this editor opened with "first"
+    assert post({"notes": "theirs"}, {key: {"notes": "first"}}).status_code == 200
+    r = post({"notes": "mine"}, {key: {"notes": "first"}})
+    assert r.status_code == 409
+    assert r.json()["conflicts"] == {key: {"notes": "theirs"}} and r.json()["updated"] == []
+    assert json.loads(path.read_text("utf-8"))["notes"] == "theirs"
+    # keeping mine on purpose: expect what is there now
+    assert post({"notes": "mine"}, {key: {"notes": "theirs"}}).status_code == 200
+    # without expect, a save behaves as before
+    assert post({"notes": "plain"}).status_code == 200
+
+    # properties: only the expected ones are compared, and empty values are alike
+    assert post({"fields": {"score": 7}}, {key: {"fields": {"score": None}}}).status_code == 200
+    r = post({"fields": {"verdict": "keep"}}, {key: {"fields": {"verdict": ""}}})
+    assert r.status_code == 200
+    r = post({"fields": {"score": 8}}, {key: {"fields": {"score": 6}}})
+    assert r.status_code == 409 and r.json()["conflicts"][key] == {"fields": {"score": 7}}
+    assert post({"fields": {"score": 8}}, {key: {"fields": {"score": 7.0}}}).status_code == 200
+    assert post({"fields": {"ok": True}}, {key: {"fields": {"ok": None}}}).status_code == 200
+    assert post({"fields": {"ok": False}}, {key: {"fields": {"ok": 1}}}).status_code == 409
+
+
+def test_a_stale_edit_of_several_runs_saves_the_others(tmp_path):
+    for i in range(3):
+        with nb.init("proj", run_name=f"r{i}", capture_env=False, notes="logged") as run:
+            run.add_scalar({"loss": 1.0}, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")
+
+    with TestClient(app) as c:
+        keys = sorted(r["key"] for r in c.get("/api/runs").json()["runs"])
+        c.post("/api/runs/annotate", json={"keys": keys[:1], "patch": {"fields": {"s": 1}}})
+        expect = {k: {"fields": {"s": None}} for k in keys}
+        body = {"keys": keys, "patch": {"fields": {"s": 2}}, "expect": expect}
+        r = c.post("/api/runs/annotate", json=body)
+        assert r.status_code == 409
+        assert sorted(r.json()["updated"]) == keys[1:]
+        assert r.json()["conflicts"] == {keys[0]: {"fields": {"s": 1}}}
+        # notes logged with init count as the starting text until edited
+        ok = {"keys": keys[:1], "patch": {"notes": "x"}, "expect": {keys[0]: {"notes": "logged"}}}
+        assert c.post("/api/runs/annotate", json=ok).status_code == 200

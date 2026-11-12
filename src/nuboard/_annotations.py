@@ -36,6 +36,73 @@ class AnnotationsError(Exception):
     """An edit of `annotations.json` that was refused, with a message for the user."""
 
 
+class StaleEdit(AnnotationsError):
+    """An edit started from values that changed since; `current` holds them as they are now."""
+
+    def __init__(self, current: dict[str, Any]) -> None:
+        super().__init__("changed since it was opened; not saved")
+        self.current = current
+
+
+def _empty(v: Any) -> bool:
+    """Return whether `v` means "no value", as a removed property or blank notes do."""
+    return v is None or v == "" or v == []
+
+
+def _same(a: Any, b: Any) -> bool:
+    """Compare two annotation values, treating every empty value alike and `True != 1`."""
+
+    if _empty(a) and _empty(b):
+        return True
+
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+
+    return a == b
+
+
+def check_expected(ann: dict[str, Any], expect: Any, logged_notes: str = "") -> None:
+    """Refuse an edit whose starting values no longer match the annotations.
+
+    `expect` holds what the editor showed when the edit began: `notes` (the text)
+    and `fields` (property name to value, null when unset). Only these keys are
+    compared, so other changes made meanwhile never block a save.
+
+    Args:
+        ann: The annotations as they are now.
+        expect: The expected values; anything but a dict checks nothing.
+        logged_notes: The notes from `run.json`, shown while `annotations.json`
+            has none.
+
+    Raises:
+        StaleEdit: With the current value of every expected key, if any differs.
+    """
+
+    if not isinstance(expect, dict):
+        return
+
+    current: dict[str, Any] = {}
+    stale = False
+
+    if "notes" in expect:
+        notes = ann.get("notes") if ann.get("notes") is not None else logged_notes
+        current["notes"] = notes
+        stale |= not _same(notes, expect["notes"])
+
+    if isinstance(expect.get("fields"), dict):
+        stored = ann.get("fields")
+        fields: dict[str, Any] = stored if isinstance(stored, dict) else {}
+        current["fields"] = {}
+
+        for name, value in expect["fields"].items():
+            now = fields.get(str(name))
+            current["fields"][str(name)] = now
+            stale |= not _same(now, value)
+
+    if stale:
+        raise StaleEdit(current)
+
+
 def update_annotations(
     run_dir: Path,
     change: Callable[[dict[str, Any]], None],

@@ -741,6 +741,81 @@ test('the demo report renders its embedded figures', async ({ page }) => {
   await expect(plotly.locator('.main-svg').first()).toBeVisible({ timeout: 15000 });
 });
 
+test('notes and properties saved by someone else meanwhile are not overwritten silently', async ({ page, request }) => {
+  const runs = (await (await request.get('/api/runs?project=vit-ablations')).json()).runs as {
+    key: string;
+    name: string;
+  }[];
+  const key = runs.find((r) => r.name === 'mixup-s1')!.key;
+  const others = (patch: object) => request.post('/api/runs/annotate', { data: { keys: [key], patch } });
+  await others({ notes: 'start', fields: { gpu_hours: 1 } });
+  await page.goto('/#/runs?project=vit-ablations');
+  await page.getByRole('button', { name: 'mixup-s1', exact: true }).click();
+
+  // notes: someone saves while this tab edits; "Both" keeps their text and mine
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit notes' }).click();
+  await page.getByLabel('Notes (Markdown)').fill('my notes');
+  await others({ notes: 'their notes' });
+  await page.getByRole('button', { name: 'Save notes' }).click();
+  const dlg = page.getByRole('dialog');
+  await expect(dlg).toContainText('These notes changed since you started editing');
+  await expect(dlg).toContainText('their notes');
+  await dlg.getByRole('button', { name: 'Continue' }).click(); // Both is preselected
+  await expect(page.getByLabel('Notes (Markdown)')).toHaveValue('their notes\n\nmy notes\n');
+  await page.getByRole('button', { name: 'Save notes' }).click();
+  await expect(page.getByLabel('Notes (Markdown)')).toBeHidden();
+  const saved = async () => (await (await request.get(`/api/runs/${key}`)).json()).run;
+  expect((await saved()).notes).toBe('their notes\n\nmy notes\n');
+
+  // properties: "Theirs" shows their value, "Mine" saves over it
+  await page.getByRole('button', { name: 'Properties', exact: true }).click();
+  await page.locator('#prop-gpu_hours').fill('2');
+  await others({ fields: { gpu_hours: 3 } });
+  await page.getByRole('button', { name: 'Save 1 change' }).click();
+  await expect(dlg).toContainText('gpu_hours: now 3, yours 2');
+  await dlg.getByRole('button', { name: 'Continue' }).click(); // Theirs is preselected
+  await expect(page.locator('#prop-gpu_hours')).toHaveValue('3');
+  expect((await saved()).fields.gpu_hours).toBe(3);
+  await page.locator('#prop-gpu_hours').fill('4');
+  await others({ fields: { gpu_hours: 5 } });
+  await page.getByRole('button', { name: 'Save 1 change' }).click();
+  await dlg.getByRole('button', { name: 'Mine', exact: true }).click();
+  await dlg.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  expect((await saved()).fields.gpu_hours).toBe(4);
+});
+
+test('a table cell saved by someone else meanwhile asks before overwriting it', async ({ page, request }) => {
+  const runs = (await (await request.get('/api/runs?project=vit-ablations')).json()).runs as {
+    key: string;
+    name: string;
+  }[];
+  const key = runs.find((r) => r.name === 'randaug-s1')!.key;
+  const others = (patch: object) => request.post('/api/runs/annotate', { data: { keys: [key], patch } });
+  await others({ fields: { gpu_hours: 1 } });
+  await page.goto('/#/runs?project=vit-ablations&cols=field:gpu_hours');
+  const row = page.locator('.body .row').filter({ has: page.getByRole('button', { name: 'randaug-s1', exact: true }) });
+  await row.getByTitle('Edit gpu_hours').click();
+  await row.locator('.fieldcell input').fill('2');
+  await others({ fields: { gpu_hours: 3 } });
+  await page.keyboard.press('Enter');
+  const dlg = page.getByRole('dialog');
+  await expect(dlg).toContainText('gpu_hours: now 3, yours 2');
+  await dlg.getByRole('button', { name: 'Continue' }).click(); // Theirs
+  await expect(row.getByTitle('Edit gpu_hours')).toHaveText('3');
+  const saved = async () => (await (await request.get(`/api/runs/${key}`)).json()).run.fields.gpu_hours;
+  expect(await saved()).toBe(3);
+  await row.getByTitle('Edit gpu_hours').click();
+  await row.locator('.fieldcell input').fill('4');
+  await others({ fields: { gpu_hours: 5 } });
+  await page.keyboard.press('Enter');
+  await dlg.getByRole('button', { name: 'Mine', exact: true }).click();
+  await dlg.getByRole('button', { name: 'Continue' }).click();
+  await expect(dlg).toBeHidden();
+  await expect.poll(saved).toBe(4);
+});
+
 test('run details show Markdown notes and typed properties', async ({ page }) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.getByRole('button', { name: 'cutmix-s0', exact: true }).click();

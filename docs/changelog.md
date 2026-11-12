@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.30.0
+
+The viewer asks before saving over notes or properties someone else changed
+while you were editing them. No breaking changes: the HTTP API gains an
+optional field, and run folders are unchanged.
+
+- **Edits made by someone else meanwhile are no longer overwritten
+  silently.** If a run's notes or a property were saved after you started
+  editing them, saving asks what to keep instead of replacing them. For
+  notes: both (yours under theirs, to tidy up), yours, or theirs; for
+  properties in the Properties tab, a table cell or several selected runs:
+  yours or theirs, and runs nobody changed are saved right away. Only what
+  you edit is compared, so other changes never get in the way. The
+  `/api/runs/annotate` endpoint takes an optional `expect` for this; saves
+  without it work as before
+  ([#53](https://github.com/eagomez2/nuboard/issues/53)).
+- **Docs: known limitations** list what editing from several places does not
+  cover.
+
+
 ## 0.29.2
 
 Hotfixes for saving in the viewer. No breaking changes.
