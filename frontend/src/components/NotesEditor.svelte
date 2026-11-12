@@ -2,6 +2,7 @@
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
   import { api, type RunBrief } from '../lib/api';
+  import { notice } from '../lib/dialog.svelte';
   import { app } from '../lib/state.svelte';
 
   // A run's notes, written in Markdown and kept in its annotations.json.
@@ -16,7 +17,13 @@
     editing = true;
   }
   async function save() {
-    await api.annotate([run.key], { notes: draft });
+    try {
+      await api.annotate([run.key], { notes: draft });
+    } catch (e) {
+      // the editor stays open with the text, so nothing typed is lost
+      await notice('Notes not saved', String(e instanceof Error ? e.message : e).replace(/^\d+ /, ''));
+      return;
+    }
     notes = draft;
     run.notes = draft;
     editing = false;

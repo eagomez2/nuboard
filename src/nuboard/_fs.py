@@ -120,7 +120,7 @@ def read_json(path: str | os.PathLike[str], default: Any = None) -> Any:
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, NotADirectoryError, json.JSONDecodeError):
+    except (FileNotFoundError, NotADirectoryError, ValueError):  # bad JSON or UTF-8
         return default
 
 

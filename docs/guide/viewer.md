@@ -908,3 +908,30 @@ host and forward the port with `ssh -L 6070:localhost:6070 gpu-box` instead.
 Artifacts stay read-only unless you add `--edit-artifacts`. Reports can be
 edited and take uploads unless you add `--read-only-reports`, and hypothesis
 boards can be edited unless you add `--read-only-hypotheses`.
+
+### Editing from several places
+
+Stars, tags, notes, properties and audio notes are kept in each run's
+`annotations.json`, and every save reads that file, changes it and writes it
+back atomically. The viewer saves one edit at a time, so people working in
+several tabs or browsers on **one viewer** never lose each other's edits, and
+a crash mid-save leaves the old file intact.
+
+Some cases are not fully covered:
+
+- **Two viewers (or a viewer and a script calling `set_field`) editing the same
+  run in the same instant.** Just before replacing the file, a save checks
+  whether someone else changed it meanwhile and, if so, applies its edit on
+  top. That makes a lost edit very unlikely, but two saves landing within the
+  same few milliseconds can still drop one. For shared editing, run one viewer
+  per folder and let everyone use it.
+- **Other tools rewriting the file**, such as a hand edit, or a sync tool
+  (Dropbox, rsync) restoring an older copy. The last writer wins.
+- **Notes edited in two places at once.** Notes are saved as one text, so the
+  later save replaces the earlier one. Properties, tags and stars are merged
+  per key, so editing different ones is safe.
+
+When a save is refused, the viewer says why and the file is left as it was:
+an `annotations.json` that is not valid JSON (fix or delete it by hand), a file
+locked by another program on Windows, or a file that kept changing while the
+save was retried. Try again once the cause is gone.

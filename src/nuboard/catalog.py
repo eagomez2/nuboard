@@ -196,6 +196,7 @@ def make_record(
     Returns:
         The run record.
     """
+    ann = ann if isinstance(ann, dict) else {}  # a hand-edited file may hold anything
     started = meta.get("started") or meta.get("created")
     ended = meta.get("ended")
     beat = meta.get("heartbeat")
@@ -458,6 +459,26 @@ class Catalog:
             return None
 
         return self.root if state[0] == "." else self.root / state[0]
+
+    def project_dir(self, name: str) -> Path | None:
+        """Return the folder of one project: the folder that holds its `runs/`.
+
+        The folder comes from the project's runs rather than from its name, so it is
+        right whatever folder the catalog was opened on, including a project's `runs/`
+        folder or a single run folder, where the project folder is above the root.
+
+        Args:
+            name: Project name, as `projects` reports it.
+
+        Returns:
+            The absolute project folder, or None if no run belongs to `name`.
+        """
+
+        with self.lock:
+            key = next((k for k, row in self._rows.items() if row["project"] == name), None)
+
+        path = self.path_of(key) if key is not None else None
+        return path.parent.parent if path is not None else None
 
     def projects(self) -> list[dict[str, Any]]:
         """List the projects with their run counts.

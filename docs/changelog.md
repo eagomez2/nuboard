@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.29.2
+
+Hotfixes for saving in the viewer. No breaking changes.
+
+- **Saving run properties works from any folder.** With the viewer started on
+  a project's `runs/` folder or on a single run folder (for example
+  `nuboard up .` from inside one), saving a property failed with
+  `FileNotFoundError: .../.fields.json.<rand>.tmp` and the property never
+  appeared. Saving views, pins, reports and sweeps failed the same way. The
+  viewer now finds the project folder from its runs, so these files go to
+  `<project>/` whatever folder it was started on. Folders that already worked
+  keep using the same files
+  ([#49](https://github.com/eagomez2/nuboard/issues/49)).
+- **Typing a property of a running run is no longer wiped.** The run panel
+  reset every property box to its saved value on each live update (every
+  heartbeat, about 10 s), so text being typed vanished and could not be
+  saved. The boxes now take new saved values only when they change, and never
+  replace a value being edited.
+- **Simultaneous edits of a run are no longer lost.** Two saves to the same
+  run at once (two tabs, or a property and a note) could drop one of them; in
+  a test, one of two simultaneous edits was lost 48 times in 50. Saves of
+  `annotations.json` now take turns, and a change made by another process
+  between the read and the write is kept. `Run.set_field` in Python saves the
+  same way ([#50](https://github.com/eagomez2/nuboard/issues/50)).
+- **A broken `annotations.json` is never overwritten.** A file that is not
+  valid JSON used to be replaced by one holding only the new edit, erasing
+  the run's stars, tags, notes and properties. The save is now refused with a
+  message saying why, and the file is left as it was. Such a file, or one
+  that is not valid UTF-8 or not a JSON object, no longer breaks the run list.
+  A file locked by another program on Windows gives a "try again" message
+  instead of a server error, and a star, tag or notes save that fails now
+  says so instead of looking saved.
+- **Docs: the limits of editing from several places**, in
+  [Using the viewer](guide/viewer.md#editing-from-several-places).
+
 ## 0.29.1
 
 Two viewer fixes on the Artifacts page and for primary buttons, and docs

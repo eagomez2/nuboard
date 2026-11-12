@@ -30,6 +30,11 @@ nuboard up [DIR] [options]
 Start the viewer on `DIR`. If the port is taken, the next free one (up to 19
 further) is used.
 
+`DIR` can be a folder of projects, one project, a project's `runs/` folder or a
+single run folder. Whichever it is, what the viewer saves for a project
+(properties, views, pins, reports, sweeps) goes to the project folder, the one
+that holds `runs/`.
+
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed |
@@ -197,6 +202,6 @@ nuboard version
 ```
 
 Print the installed version and copyright, e.g.
-`NuBoard 0.29.1 Copyright © 2026 Esteban Gómez (MIT License)`. From 2027 the
+`NuBoard 0.29.2 Copyright © 2026 Esteban Gómez (MIT License)`. From 2027 the
 years read as a range (`2026–2027`). A console whose encoding lacks `©` or `ó`
 (some Windows code pages) gets `(c)` and `Gomez` instead.

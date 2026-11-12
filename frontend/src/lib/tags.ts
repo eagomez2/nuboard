@@ -1,4 +1,5 @@
 import { api } from './api';
+import { notice } from './dialog.svelte';
 import { app } from './state.svelte';
 
 /** Every tag used by the listed runs, for suggestions. */
@@ -34,5 +35,10 @@ export async function editTags(keys: string[], add: string[], remove: string[] =
     const id = JSON.stringify(next);
     groups.set(id, [...(groups.get(id) ?? []), k]);
   }
-  for (const [id, group] of groups) await api.annotate(group, { tags: JSON.parse(id) as string[] });
+  try {
+    for (const [id, group] of groups) await api.annotate(group, { tags: JSON.parse(id) as string[] });
+  } catch (e) {
+    app.loadRuns(); // show what was really saved
+    await notice('Tags not saved', String(e instanceof Error ? e.message : e).replace(/^\d+ /, ''));
+  }
 }

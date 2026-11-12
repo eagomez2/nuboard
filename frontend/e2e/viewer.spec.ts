@@ -2126,6 +2126,36 @@ test('live updates of a running run keep the open file and its scroll @live', as
   await expect.poll(() => pre.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 4)).toBe(true);
 });
 
+test('typing a property of a running run survives its live updates, and saves @live', async ({ page, request }) => {
+  const fields = (await (await request.get('/api/fields?project=llm-pretrain')).json()).fields as { name: string }[];
+  if (!fields.some((f) => f.name === 'description'))
+    await request.post('/api/fields', {
+      data: { project: 'llm-pretrain', fields: [...fields, { name: 'description', type: 'text' }] },
+    });
+  await page.goto('/#/runs?project=llm-pretrain');
+  await page
+    .locator('.body .row')
+    .filter({ hasText: 'running' })
+    .locator('button.name', { hasText: /live-s\d+$/ })
+    .click();
+  await page.getByRole('button', { name: 'Properties', exact: true }).click();
+  const box = page.locator('#prop-description');
+  await box.fill('');
+  const text = `typed slowly ${Date.now()}`;
+  await box.pressSequentially(text.slice(0, 6));
+  // the demo's live run sends a heartbeat every 3 s; type across a few of them
+  for (const ch of text.slice(6)) {
+    await page.keyboard.type(ch);
+    await page.waitForTimeout(400);
+  }
+  await expect(box).toHaveValue(text);
+  await expect(box).toBeFocused();
+  await page.getByRole('button', { name: 'Save 1 change' }).click();
+  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  await page.waitForTimeout(3500); // a heartbeat after the save keeps the saved value
+  await expect(box).toHaveValue(text);
+});
+
 test('Full screen shows a long run file on the whole screen, and Esc brings it back @live', async ({ page }) => {
   const pre = await openLiveFile(page, 'progress.log');
   await expect

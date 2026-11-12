@@ -432,7 +432,12 @@
       const r = app.runByKey(k);
       if (r) Object.assign(r, patch);
     }
-    await api.annotate(keys, patch);
+    try {
+      await api.annotate(keys, patch);
+    } catch (e) {
+      app.loadRuns(); // show what was really saved
+      await notice('Not saved', errText(e));
+    }
   }
   function startNote(r: RunBrief) {
     // multi-line (Markdown) notes are edited in the run's details

@@ -11,6 +11,7 @@ import numpy as np
 import pyarrow as pa
 
 from . import _fs
+from ._annotations import update_annotations
 from .catalog import find_runs, make_record
 from .collection import attach
 from .query import parse, resolve
@@ -63,8 +64,9 @@ class RunHandle:
 
         Each note is `{id, start, end, text}`, with times in seconds.
         """
-        ann = _fs.read_json(self.path / "annotations.json", {}) or {}
-        return ann.get("audio_notes") or {}
+        ann = _fs.read_json(self.path / "annotations.json", {})
+        notes = ann.get("audio_notes") if isinstance(ann, dict) else None
+        return notes if isinstance(notes, dict) else {}
 
     def set_field(self, name: str, value: Any) -> None:
         """Set a custom field, as the viewer does.
@@ -78,24 +80,25 @@ class RunHandle:
         Raises:
             ValueError: If the project defines the property and the value does
                 not fit its type or options.
+            AnnotationsError: If `annotations.json` cannot be read, stays locked or
+                keeps changing; the file is left as it was.
         """
 
         for field in read_fields(self.path.parent.parent):
             if field["name"] == name:
                 check_field(field, value)
 
-        path = self.path / "annotations.json"
-        ann = _fs.read_json(path, {}) or {}
-        fields = dict(ann.get("fields") or {})
+        def change(ann: dict[str, Any]) -> None:
+            fields = dict(ann.get("fields") or {})
 
-        if value is None or value == "":
-            fields.pop(name, None)
-        else:
-            fields[name] = value
+            if value is None or value == "":
+                fields.pop(name, None)
+            else:
+                fields[name] = value
 
-        ann["fields"] = fields
-        _fs.atomic_write_json(path, ann)
-        self.record["fields"] = fields
+            ann["fields"] = fields
+
+        self.record["fields"] = update_annotations(self.path, change)["fields"]
 
     @property
     def collections(self) -> list[str]:
