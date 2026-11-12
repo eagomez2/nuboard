@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.29.2
+
+A hotfix for the viewer. No breaking changes.
+
+- **Saving run properties works from any folder.** With the viewer started on
+  a project's `runs/` folder or on a single run folder (for example
+  `nuboard up .` from inside one), saving a property failed with
+  `FileNotFoundError: .../.fields.json.<rand>.tmp` and the property never
+  appeared. Saving views, pins, reports and sweeps failed the same way. The
+  viewer now finds the project folder from its runs, so these files go to
+  `<project>/` whatever folder it was started on. Folders that already worked
+  keep using the same files
+  ([#49](https://github.com/eagomez2/nuboard/issues/49)).
+
 ## 0.29.1
 
 Two viewer fixes on the Artifacts page and for primary buttons, and docs
