@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Icon from './Icon.svelte';
   import { api, type FieldDef, type FieldValue, type RunBrief } from '../lib/api';
   import { tagStyle } from '../lib/colors';
@@ -28,12 +29,30 @@
       .sort()
       .map((name): FieldDef => ({ name, type: 'text' })),
   ]);
-  // eslint-disable-next-line svelte/prefer-writable-derived -- edited key by key through bind:value
+  // The saved text of each property. A live run gets a new copy of `run` on every heartbeat;
+  // only a change of run, definitions or saved values changes `savedKey`.
+  const saved = $derived(Object.fromEntries(all.map((d) => [d.name, fieldText(run.fields?.[d.name], d.type)])));
+  const savedKey = $derived(`${run.key}\n${JSON.stringify(saved)}`);
   let drafts = $state<Record<string, string>>({});
+  let base: Record<string, string> = {}; // the saved values the drafts started from
+  let baseRun = '';
   $effect(() => {
-    drafts = Object.fromEntries(all.map((d) => [d.name, fieldText(run.fields?.[d.name], d.type)]));
+    void savedKey;
+    untrack(() => {
+      // Take the new saved values, but never replace what the user is typing
+      const sameRun = run.key === baseRun;
+      drafts = Object.fromEntries(
+        all.map((d) => {
+          const mine = drafts[d.name];
+          const edited = sameRun && mine !== undefined && mine !== (base[d.name] ?? '');
+          return [d.name, edited ? mine : saved[d.name]];
+        }),
+      );
+      base = saved;
+      baseRun = run.key;
+    });
   });
-  const changed = $derived(all.filter((d) => drafts[d.name] !== fieldText(run.fields?.[d.name], d.type)));
+  const changed = $derived(all.filter((d) => drafts[d.name] !== saved[d.name]));
 
   const problems = $derived(
     Object.fromEntries(all.map((d) => [d.name, fieldProblem(drafts[d.name] ?? '', d)] as const).filter(([, p]) => p)),
