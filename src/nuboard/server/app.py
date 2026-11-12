@@ -33,6 +33,7 @@ from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from .. import __version__, _fs
+from .._annotations import AnnotationsError, update_annotations
 from .._meta import FORMAT_VERSION, NAME
 from ..artifacts import (
     UNLINKED,
@@ -766,37 +767,50 @@ def create_app(
                         except ValueError as exc:
                             return PlainTextResponse(str(exc), 400)
 
-        def write() -> list[str]:
-            """Apply the patch to each known run and return the updated keys."""
-            done = []
+        def change(ann: dict[str, Any]) -> None:
+            """Apply the patch to one run's annotations."""
+            ann.update(patch)
 
-            for key in keys:
-                path = catalog.path_of(key)
+            if fields_patch:
+                fields = dict(ann.get("fields") or {})
 
-                if path is None:
-                    continue
+                for k, v in fields_patch.items():
+                    if v is None or v == "" or v == []:
+                        fields.pop(k, None)
+                    else:
+                        fields[k] = v
 
-                ann = _fs.read_json(path / "annotations.json", {}) or {}
-                ann.update(patch)
+                ann["fields"] = fields
 
-                if fields_patch:
-                    fields = dict(ann.get("fields") or {})
+        def write() -> tuple[list[str], str | None]:
+            """Apply the patch to each known run; return the updated keys and any refusal."""
+            done: list[str] = []
+            error = None
 
-                    for k, v in fields_patch.items():
-                        if v is None or v == "" or v == []:
-                            fields.pop(k, None)
-                        else:
-                            fields[k] = v
+            try:
+                for key in keys:
+                    path = catalog.path_of(key)
 
-                    ann["fields"] = fields
+                    if path is None:
+                        continue
 
-                _fs.atomic_write_json(path / "annotations.json", ann)
-                done.append(key)
+                    update_annotations(path, change)
+                    done.append(key)
+            except AnnotationsError as exc:
+                error = str(exc)
 
-            catalog.refresh(full=True)
-            return done
+                if done:
+                    error += f" ({len(done)} of {len(keys)} runs were saved before it)"
+            finally:
+                catalog.refresh(full=True)
 
-        done = await run_in_threadpool(write)
+            return done, error
+
+        done, error = await run_in_threadpool(write)
+
+        if error:
+            return PlainTextResponse(error, 409)
+
         return JSON({"updated": done, "runs": [catalog.get(k) for k in done]})
 
     def metrics(request: Request) -> Response:
@@ -894,7 +908,7 @@ def create_app(
         """Return a run's audio notes, by `<media key>@<step>`."""
         path = catalog.path_of(key)
         ann = _fs.read_json(path / "annotations.json", {}) if path else {}
-        notes = (ann or {}).get("audio_notes")
+        notes = ann.get("audio_notes") if isinstance(ann, dict) else None
         return notes if isinstance(notes, dict) else {}
 
     def with_notes(item: dict[str, Any], notes: dict[str, Any]) -> dict[str, Any]:
@@ -929,9 +943,8 @@ def create_app(
         except ValueError as exc:
             return PlainTextResponse(str(exc), 400)
 
-        def write() -> None:
-            """Store the notes in the run's annotations.json."""
-            ann = _fs.read_json(path / "annotations.json", {}) or {}
+        def change(ann: dict[str, Any]) -> None:
+            """Store the notes in the run's annotations."""
             per = dict(ann.get("audio_notes") or {})
 
             if notes:
@@ -944,9 +957,11 @@ def create_app(
             else:
                 ann.pop("audio_notes", None)
 
-            _fs.atomic_write_json(path / "annotations.json", ann)
+        try:
+            await run_in_threadpool(update_annotations, path, change)
+        except AnnotationsError as exc:
+            return PlainTextResponse(str(exc), 409)
 
-        await run_in_threadpool(write)
         return JSON({"notes": notes})
 
     def media_list(request: Request) -> Response:

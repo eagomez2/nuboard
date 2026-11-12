@@ -196,6 +196,7 @@ def make_record(
     Returns:
         The run record.
     """
+    ann = ann if isinstance(ann, dict) else {}  # a hand-edited file may hold anything
     started = meta.get("started") or meta.get("created")
     ended = meta.get("ended")
     beat = meta.get("heartbeat")

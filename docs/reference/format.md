@@ -175,6 +175,13 @@ values of `tags` properties), `audio_notes` (object keyed by
 sections of that audio item, times in seconds). Keeping these inside the run
 folder means they travel with the run.
 
+Every change is a read-modify-write of the whole file. A process makes one at a
+time, re-reads the file if it changed between the read and the write, and
+refuses to save over a file that is not a valid JSON object (the file is left
+as it was). Readers treat such a file as empty. See
+[Editing from several places](../guide/viewer.md#editing-from-several-places)
+for what is not covered.
+
 ### `alerts` in `run.json`
 
 Each alert is an object:
