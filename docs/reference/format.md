@@ -105,7 +105,9 @@ is a folder on the same machine.
   work on Windows.
 - In a distributed job with a shared id (`TORCHELASTIC_RUN_ID` or
   `SLURM_JOB_ID`), `<hash8>` is the first 8 hex digits of the SHA-1 of that id
-  so every rank finds the same folder.
+  so every rank finds the same folder. The second and later runs started by
+  one process of the job use the SHA-1 of `<id>#<n>`, where `n` counts that
+  rank's earlier runs (1 for the second), so they get folders of their own.
 
 ## `run.json`
 
@@ -381,6 +383,9 @@ Columns: `metric: string`, `level: int8`, `rank: int32`, `step: int64`,
 - File key/value metadata `row_groups` holds a JSON map
   `{metric: [[row_group_index, rows], ...]}` indexed by level, so reading one
   scalar at one level is one row-group read. `format_version` is also stored.
+- File key/value metadata `metric_ranks` holds `{metric: [ranks]}`, the ranks
+  that logged each scalar. Files written before multi-process runs were
+  compacted lack it; readers then list every scalar for every rank.
 - Level 0 is the raw data (`vmin`/`vmax` equal `value`). Level *k* averages
   consecutive buckets of 8^*k* points: `step`/`time` of the bucket's first
   point, `value` = mean of finite values, `vmin`/`vmax` = min/max. Levels stop

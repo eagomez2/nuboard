@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import sys
 import threading
@@ -54,6 +55,9 @@ def _check_prefix(kind: str, value: Any) -> None:
 
 _active: list[Run] = []
 _hook_installed = False
+_shared_inits: dict[tuple[str, int], int] = {}  # (job id, rank) -> runs started (_new_run_id)
+MAX_RANK_SKEW_S = 600.0
+"""How far apart, in seconds, the ranks of one run may call `init`."""
 
 
 def data_root(dir: str | os.PathLike[str] | None) -> Path:
@@ -179,9 +183,15 @@ def utc_offset(t: float) -> int | None:
     return None if delta is None else int(delta.total_seconds())
 
 
-def _hash_from(shared_id: str) -> str:
-    """Derive the 8 hex digit run id hash from an id shared by every rank."""
-    return hashlib.sha1(shared_id.encode("utf-8")).hexdigest()[:8]
+def _hash_from(shared_id: str, nth: int = 0) -> str:
+    """Derive the 8 hex digit run id hash from an id shared by every rank.
+
+    `nth` counts the runs this process started before from the same job, so a
+    second `init` in one job gets an id of its own; the first keeps the hash of
+    the shared id alone.
+    """
+    seed = shared_id if nth == 0 else f"{shared_id}#{nth}"
+    return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8]
 
 
 def _warn_if_changed(art: Artifact) -> None:
@@ -219,6 +229,49 @@ def _install_excepthook() -> None:
         previous(exc_type, exc, tb)
 
     sys.excepthook = hook
+
+
+_sigterm_installed = False
+
+
+def _install_sigterm() -> None:
+    """Install, once, a SIGTERM handler that finishes active runs as `killed`.
+
+    SLURM (time limit, preemption), Kubernetes and `kill` stop a job with
+    SIGTERM, whose default action skips `atexit`, so the run would stay
+    `running` until it shows as lost. The handler is installed only from the
+    main thread and only while SIGTERM has its default action, so a handler of
+    the script's own (or of a framework) is never replaced. After finishing the
+    runs it restores the default action and sends the signal again, so the
+    process ends exactly as it would have.
+    """
+    global _sigterm_installed
+
+    if _sigterm_installed or threading.current_thread() is not threading.main_thread():
+        return
+
+    try:
+        if signal.getsignal(signal.SIGTERM) is not signal.SIG_DFL:
+            return
+
+        def handler(signum: int, frame: Any) -> None:
+            """Finish every active run as killed, then terminate as SIGTERM would."""
+
+            for run in list(_active):
+                run.finish(
+                    status="killed",
+                    exit_code=128 + signum,
+                    error="terminated by SIGTERM",
+                    _compact=False,  # be done before the job's grace period ends
+                )
+
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        signal.signal(signal.SIGTERM, handler)
+        _sigterm_installed = True
+    except (ValueError, OSError, AttributeError):  # pragma: no cover - no signals here
+        pass
 
 
 def _records(rows: Any) -> list[dict[Any, Any]]:
@@ -521,6 +574,7 @@ class Run:
         _active.append(self)
         atexit.register(self._atexit)
         _install_excepthook()
+        _install_sigterm()
 
         if capture_console and self.dist.is_main:
             base = "output" if self.job is None else f"output.{self.job}"
@@ -546,7 +600,10 @@ class Run:
         """
 
         if self.dist.world_size > 1 and self.dist.shared_id:
-            return _format_run_id(self.started, _hash_from(self.dist.shared_id))
+            counted = (self.dist.shared_id, self.dist.rank)  # every rank counts alike
+            nth = _shared_inits.get(counted, 0)
+            _shared_inits[counted] = nth + 1
+            return _format_run_id(self.started, _hash_from(self.dist.shared_id, nth))
 
         return self._fresh_run_id(runs_dir) if self.dist.is_main else None
 
@@ -563,7 +620,9 @@ class Run:
         """Wait, on a non-zero rank, for rank 0 to create the run folder.
 
         Rank 0 may have started in a different minute, so a folder with the same
-        name and suffix but another timestamp is accepted too.
+        name and suffix but another timestamp is accepted too, once its `run.json`
+        shows it started within `MAX_RANK_SKEW_S` of this process (an older run
+        with that suffix, from an earlier attempt of a requeued job, is not).
 
         Raises:
             TimeoutError: If no folder appears within `timeout` seconds.
@@ -576,12 +635,16 @@ class Run:
             if self.path.exists():
                 return
 
-            matches = glob.glob(pattern)  # rank 0 may have started in a different minute
+            # rank 0 may have started in a different minute
+            for match in sorted(glob.glob(pattern), reverse=True):
+                started = (_fs.read_json(Path(match) / "run.json", {}) or {}).get("started")
 
-            if matches:
-                self.path = Path(sorted(matches)[-1])
-                self.id = self.path.name
-                return
+                if isinstance(started, (int, float)) and abs(started - self.started) < (
+                    MAX_RANK_SKEW_S
+                ):
+                    self.path = Path(match)
+                    self.id = self.path.name
+                    return
 
             time.sleep(0.5)
 
@@ -1834,20 +1897,23 @@ class Run:
         exit_code: int = 0,
         error: str | None = None,
         _ended: float | None = None,
+        _compact: bool = True,
     ) -> None:
         """Flush, close the log and mark the run finished. Safe to call twice.
 
-        Called automatically at interpreter exit and by the context manager. Rank 0
-        records the status, exit code and end time in `run.json`. A single-process
-        run created with `compact=True` is then compacted into Parquet when PyArrow
-        and NumPy are installed; if compaction fails, a warning is issued and the
-        logs are left intact.
+        Called automatically at interpreter exit, on SIGTERM and by the context
+        manager. Rank 0 records the status, exit code and end time in `run.json`.
+        A run created with `compact=True` is then compacted into Parquet by rank 0;
+        in a multi-process run, once the other ranks' logs have ended (waiting up
+        to 10 s). If compaction fails, a warning is issued and the logs are left
+        intact.
 
         Args:
             status: Final status, such as `"finished"`, `"crashed"` or `"killed"`.
             exit_code: Process exit code to record.
             error: Error text (e.g. a traceback) to record.
             _ended: End timestamp override, for tests.
+            _compact: False skips compaction (on SIGTERM, to end quickly).
         """
 
         if self._finished:
@@ -1894,9 +1960,10 @@ class Run:
 
         if (
             self._compact
-            and self.dist.world_size == 1
+            and _compact
             and status != "running"
             and not self._others_running()  # the last job to end compacts
+            and self._other_ranks_ended()
         ):
             try:
                 from .compact import compact_run
@@ -1907,6 +1974,37 @@ class Run:
                 compact_run(self.path)
             except Exception as exc:  # pragma: no cover
                 warnings.warn(f"{NAME}: compaction failed, logs are intact: {exc!r}", stacklevel=2)
+
+    def _other_ranks_ended(self, timeout: float = 10.0) -> bool:
+        """Wait for the newest log of every other rank to end; False if one does not.
+
+        Ranks that logged nothing have no log, so a run where only rank 0 logs
+        (the default) never waits.
+        """
+
+        if self.dist.world_size == 1:
+            return True
+
+        from .reader import RunReader
+
+        reader = RunReader(self.path)
+        deadline = time.monotonic() + timeout
+
+        while True:
+            reader._read_logs()
+            newest: dict[int, Any] = {}
+
+            for lf in reader.iter_logs():
+                if lf.rank != self.dist.rank and lf.session >= newest.get(lf.rank, lf).session:
+                    newest[lf.rank] = lf
+
+            if all(lf.end is not None for lf in newest.values()):
+                return True
+
+            if time.monotonic() >= deadline:
+                return False
+
+            time.sleep(0.2)
 
     def _close_timers(self) -> None:
         """Log what accumulating timers summed; drop timers still running, with a warning."""

@@ -358,10 +358,23 @@ class ParquetData:
         meta = self.file.schema_arrow.metadata or {}
         # {metric: [[row_group, rows], ...] indexed by zoom level}
         self.row_groups: dict[str, list[list[int]]] = json.loads(meta[b"row_groups"])
+        # {metric: [ranks]}; absent in files written before multi-process runs were compacted
+        self.metric_ranks: dict[str, list[int]] | None = (
+            json.loads(meta[b"metric_ranks"]) if b"metric_ranks" in meta else None
+        )
 
-    def metric_names(self) -> list[str]:
-        """Return the names of all metrics in the file, sorted."""
-        return sorted(self.row_groups)
+    def metric_names(self, rank: int | None = None) -> list[str]:
+        """Return the names of the metrics in the file, sorted.
+
+        Args:
+            rank: Only the metrics this rank logged; None (or a file without the
+                per-rank list) returns every metric.
+        """
+
+        if rank is None or self.metric_ranks is None:
+            return sorted(self.row_groups)
+
+        return sorted(m for m in self.row_groups if rank in self.metric_ranks.get(m, ()))
 
     def levels(self, metric: str) -> list[int]:
         """Return the number of rows at each zoom level of a metric.
@@ -559,8 +572,7 @@ class RunReader:
         """Return the keys of the run's scalars, sorted.
 
         Args:
-            rank: Process rank. Ignored when reading from `data.parquet`, which
-                lists scalars across all ranks.
+            rank: Process rank.
             bands: Also return the companion scalars that hold band bounds
                 (see `bounds`).
 
@@ -569,7 +581,7 @@ class RunReader:
         """
 
         if self.parquet is not None:
-            names = self.parquet.metric_names()
+            names = self.parquet.metric_names(rank)
         else:
             found: set[str] = set()
 

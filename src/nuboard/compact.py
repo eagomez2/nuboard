@@ -99,6 +99,9 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     schema = SCHEMA.with_metadata(
         {
             "row_groups": json.dumps(row_groups),
+            "metric_ranks": json.dumps(
+                {m: sorted(rank for rank, _ in ranks) for m, ranks in per_metric.items()}
+            ),
             "format_version": str(FORMAT_VERSION),
         }
     )

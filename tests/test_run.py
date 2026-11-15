@@ -10,6 +10,7 @@ import sys
 import textwrap
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -897,3 +898,84 @@ def test_runs_without_session_offsets_still_load(tmp_path):
     assert "utc_offset" not in sessions[0]
     assert "utc_offset" in sessions[1]
     assert list(RunReader(run.path).scalars("loss")[0]) == [0]
+
+
+def test_second_run_in_one_distributed_job_gets_its_own_id(monkeypatch):
+    import nuboard.run as nbrun
+
+    monkeypatch.setattr(nbrun, "_shared_inits", {})
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("SLURM_JOB_ID", "4242")
+    quiet = {"capture_env": False, "system_metrics": False, "capture_console": False}
+    train = nb.init("dist3", **quiet)
+    train.finish()
+    evaluate = nb.init("dist3", **quiet)  # same job, same minute: used to raise FileExistsError
+    evaluate.finish()
+    assert train.id.endswith(nbrun._hash_from("4242"))  # the first run keeps today's id
+    assert train.id != evaluate.id
+
+
+def test_rank_skips_an_old_folder_with_the_same_suffix(monkeypatch, tmp_path):
+    import nuboard.run as nbrun
+
+    runs = tmp_path / "exp" / "dist4" / "runs"
+    old = runs / f"20200101T0000-{nbrun._hash_from('77')}"
+    old.mkdir(parents=True)
+    (old / "run.json").write_text('{"started": 1577836800}', "utf-8")  # a requeued job's old run
+    monkeypatch.setattr(nbrun, "_shared_inits", {})
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "1")
+    monkeypatch.setenv("SLURM_JOB_ID", "77")
+    run = nbrun.Run.__new__(nbrun.Run)
+    run.dist = nbrun._env.detect_dist()
+    run.started = time.time()
+    run.id = f"20990101T0000-{nbrun._hash_from('77')}"
+    run.path = runs / run.id
+
+    with pytest.raises(TimeoutError):
+        run._wait_for_folder(timeout=1.0)
+
+
+def test_standalone_env_makes_srun_tasks_separate_runs(monkeypatch):
+    from nuboard._env import detect_dist
+
+    monkeypatch.setenv("SLURM_PROCID", "3")
+    monkeypatch.setenv("SLURM_NTASKS", "4")
+    monkeypatch.setenv("NUBOARD_STANDALONE", "1")
+    d = detect_dist()
+    assert (d.rank, d.world_size) == (0, 1)
+
+
+def test_sigterm_finishes_the_run_as_killed(tmp_path):
+    import signal
+    import subprocess
+    import sys
+
+    if not hasattr(signal, "SIGKILL"):  # pragma: no cover - Windows has no POSIX SIGTERM delivery
+        pytest.skip("POSIX signals only")
+
+    script = (
+        "import nuboard as nb, sys, time\n"
+        "run = nb.init('sig', capture_env=False, system_metrics=False)\n"
+        "run.add_scalar('loss', 1.0, step=0)\n"
+        "print(run.path, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    path = proc.stdout.readline().strip()  # type: ignore[union-attr]
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=30) == -signal.SIGTERM
+    meta = json.loads((Path(path) / "run.json").read_text("utf-8"))
+    assert meta["status"] == "killed" and meta["exit"]["code"] == 143
+    assert RunReader(path).scalars("loss")[2].tolist() == [1.0]
+
+
+def test_multi_gpu_run_is_compacted_when_only_rank_0_logged(monkeypatch):
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("SLURM_JOB_ID", "999")
+    run = nb.init("dist5", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    assert (run.path / "data.parquet").exists()

@@ -17,6 +17,8 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import url2pathname
 
+from ._meta import ENV_PREFIX
+
 
 @dataclass(frozen=True)
 class DistInfo:
@@ -61,11 +63,16 @@ def detect_dist() -> DistInfo:
     """Read rank and world size from torchrun, SLURM or Open MPI variables.
 
     Variables are tried in the order torchrun, SLURM, Open MPI, PMI. A process with
-    none of them set is treated as a single-process run.
+    none of them set is treated as a single-process run, and so is one with
+    `<ENV_PREFIX>_STANDALONE=1` (for `srun -n N` tasks that are independent runs).
 
     Returns:
         The detected `DistInfo`.
     """
+
+    if os.environ.get(f"{ENV_PREFIX}_STANDALONE", "") not in ("", "0"):
+        return DistInfo()
+
     rank = _env_int("RANK", "SLURM_PROCID", "OMPI_COMM_WORLD_RANK", "PMI_RANK") or 0
     local = _env_int("LOCAL_RANK", "SLURM_LOCALID", "OMPI_COMM_WORLD_LOCAL_RANK") or 0
     world = _env_int("WORLD_SIZE", "SLURM_NTASKS", "OMPI_COMM_WORLD_SIZE", "PMI_SIZE") or 1

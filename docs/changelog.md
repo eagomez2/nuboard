@@ -36,6 +36,17 @@
   flattened at the call; `add_scalar` still takes a few microseconds.
 - **The media count in `run.json`** no longer drifts low when media are logged
   while a heartbeat is being written.
+- **Several runs in one distributed job get their own folders.** A second
+  `init` in the same SLURM or torchrun job (train, then evaluate) got the same
+  id as the first: it failed with "already exists", or other ranks wrote into
+  the first run. The first run of a job keeps the id it gets today.
+- **SIGTERM finishes runs as killed.** A job stopped by a SLURM time limit,
+  preemption or `kill` stayed "running" until it showed as lost, and lost its
+  last second of data. It is now finished as `killed` with its data written.
+- **Multi-GPU runs are compacted** at finish, once the other ranks' logs
+  ended, so the viewer opens them as fast as single-process runs.
+- **`NUBOARD_STANDALONE=1`** makes `srun -n N` tasks independent runs instead
+  of the N ranks of one run.
 
 ## 0.30.0
 

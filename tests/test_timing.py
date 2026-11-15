@@ -260,9 +260,14 @@ def test_timing_all_ranks_sets_the_default(monkeypatch):
     r0 = _run(timing_all_ranks=True)
     monkeypatch.setenv("RANK", "1")
     r1 = _run(timing_all_ranks=True)
-    assert r1.timer("epoch").all_ranks and not _run().timer("epoch").all_ranks
+    assert r1.timer("epoch").all_ranks
     r1.finish()
     r0.finish()
+    monkeypatch.setenv("TORCHELASTIC_RUN_ID", "job-9")  # another job: one init per rank
+    monkeypatch.setenv("RANK", "0")
+    plain = _run()
+    assert not plain.timer("epoch").all_ranks
+    plain.finish()
 
 
 def test_a_helper_job_times_under_its_own_name():
