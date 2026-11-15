@@ -1,5 +1,4 @@
 import json
-import os
 import shutil
 import time
 
@@ -69,23 +68,22 @@ def test_a_clashing_artifact_version_is_renumbered_and_copied_runs_repointed(tmp
     assert merge.plan(b, a).changes == []  # v1 of b is now known as a's v2
 
 
-def test_a_merge_killed_mid_copy_does_not_block_the_next_one(tmp_path):
+def test_a_merge_killed_mid_copy_does_not_block_the_next_one(tmp_path, monkeypatch):
     a, b = tmp_path / "a", tmp_path / "b"
     (tmp_path / "x.txt").write_text("data")
     run = make_run(b, "prep", data=tmp_path / "x.txt")
 
-    # what merges killed during their copies left in DEST's staging folder, hours ago
+    # what merges killed during their copies left in DEST's staging folder
     tmp = a / "proj" / merge.TMP
-    old = time.time() - 7 * 3600
 
     for name in (run.name, "corpus-v1"):
         (tmp / name / "files").mkdir(parents=True)
         (tmp / name / "run.json").write_text("{")  # a partial copy
 
-        for p in (tmp / name / "run.json", tmp / name / "files", tmp / name):
-            os.utime(p, (old, old))
-
-    merge.apply(merge.plan(b, a))
+    plan = merge.plan(b, a)
+    later = time.time() + 7 * 3600  # the next merge, hours later
+    monkeypatch.setattr("nuboard.artifacts.time.time", lambda: later)
+    merge.apply(plan)
     assert json.loads((a / "proj" / "runs" / run.name / "run.json").read_text())["name"] == "prep"
     assert (a / "proj" / "artifacts" / "corpus" / "v1" / "manifest.json").exists()
     assert not tmp.exists()
@@ -101,6 +99,29 @@ def test_a_merge_leaves_a_copy_another_merge_is_still_making(tmp_path):
     merge.apply(merge.plan(b, a))
     assert (a / "proj" / "runs" / run.name / "run.json").exists()
     assert (busy / "run.json").read_text() == "{"  # untouched
+
+
+def test_a_copy_that_fails_leaves_nothing_in_the_staging_folder(tmp_path, monkeypatch):
+    a, b = tmp_path / "a", tmp_path / "b"
+    run = make_run(b, "prep")
+    copyfile = shutil.copyfile
+    copied = []
+
+    def disk_full(src, dst, **kwargs):
+        if copied:  # the first file is copied, the second finds the disk full
+            raise OSError(28, "No space left on device")
+
+        copied.append(src)
+        return copyfile(src, dst, **kwargs)
+
+    monkeypatch.setattr(shutil, "copyfile", disk_full)
+
+    with pytest.raises(shutil.Error):  # copytree collects the errors of its files
+        merge.apply(merge.plan(b, a))
+
+    assert copied
+    assert not list((a / "proj" / merge.TMP).iterdir())
+    assert not (a / "proj" / "runs" / run.name).exists()
 
 
 def test_identical_artifacts_are_skipped(tmp_path):

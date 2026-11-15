@@ -15,10 +15,12 @@ Projects are matched by their path relative to SRC and DEST, so give two roots
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import time
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -940,17 +942,25 @@ def _repoint(
     return changed
 
 
-def _staging(tmp: Path, name: str) -> Path:
-    """Return a new staging path in `.merge-tmp/`, clearing what killed merges left.
+@contextlib.contextmanager
+def _staging(tmp: Path, name: str) -> Iterator[Path]:
+    """Give a copy a staging folder of its own in `.merge-tmp/`, removed if the copy fails.
 
     Each copy gets a folder of its own, so two merges into the same DEST at
-    once never share one. A folder in which nothing changed for
-    `STALE_STAGING` seconds is a partial copy of a merge that was killed part
-    way, and is deleted; a copy still in progress keeps writing and is left
-    alone.
+    once never share one. If anything fails before the copy is moved into
+    place (a full disk, Ctrl+C), its folder is removed at once. A folder in
+    which nothing changed for `STALE_STAGING` seconds is left from a merge that
+    was killed outright, and is deleted; a copy still in progress keeps
+    writing and is left alone.
     """
     remove_stale_staging(tmp, prefix="")
-    return tmp / f"{name}-{_fs.random_suffix()}"
+    path = tmp / f"{name}-{_fs.random_suffix()}"
+
+    try:
+        yield path
+    except BaseException:
+        shutil.rmtree(path, ignore_errors=True)
+        raise
 
 
 def apply(p: Plan) -> list[Action]:
@@ -988,35 +998,36 @@ def apply(p: Plan) -> list[Action]:
         tmp.mkdir(parents=True, exist_ok=True)
 
         if a.kind == "run":
-            staged = _staging(tmp, src.name)
-            shutil.copytree(src, staged)
-            data = a.data or {}
+            with _staging(tmp, src.name) as staged:
+                shutil.copytree(src, staged)
+                data = a.data or {}
 
-            if data.get("map"):
-                meta = _fs.read_json(staged / "run.json", {}) or {}
+                if data.get("map"):
+                    meta = _fs.read_json(staged / "run.json", {}) or {}
 
-                if _repoint(meta, a.project, src_root, src_root / a.project, data["map"]):
-                    _fs.atomic_write_json(staged / "run.json", meta)
+                    if _repoint(meta, a.project, src_root, src_root / a.project, data["map"]):
+                        _fs.atomic_write_json(staged / "run.json", meta)
 
-            dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.parent.mkdir(parents=True, exist_ok=True)
 
-            if data.get("replace") and dest.exists():
-                keep = project_dir / REPLACED / f"{src.name}-{time.strftime('%Y%m%dT%H%M%S')}"
-                keep.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(dest, keep)
+                if data.get("replace") and dest.exists():
+                    stamp = time.strftime("%Y%m%dT%H%M%S")
+                    keep = project_dir / REPLACED / f"{src.name}-{stamp}"
+                    keep.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(dest, keep)
 
-            os.replace(staged, dest)
+                os.replace(staged, dest)
         elif a.kind == "artifact":
-            staged = _staging(tmp, f"{src.parent.name}-{dest.name}")
-            shutil.copytree(src, staged)
+            with _staging(tmp, f"{src.parent.name}-{dest.name}") as staged:
+                shutil.copytree(src, staged)
 
-            if a.data and "version" in a.data:
-                manifest = _fs.read_json(staged / "manifest.json", {}) or {}
-                manifest["version"] = a.data["version"]
-                _fs.atomic_write_json(staged / "manifest.json", manifest)
+                if a.data and "version" in a.data:
+                    manifest = _fs.read_json(staged / "manifest.json", {}) or {}
+                    manifest["version"] = a.data["version"]
+                    _fs.atomic_write_json(staged / "manifest.json", manifest)
 
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(staged, dest)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(staged, dest)
         elif a.data is not None:
             dest.parent.mkdir(parents=True, exist_ok=True)
             _fs.atomic_write_json(dest, a.data)
