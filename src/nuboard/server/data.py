@@ -97,7 +97,7 @@ class Store:
         """
         grown = set()
 
-        for row in self.catalog.runs():
+        for row in self.catalog.records():
             if row["status"] != "running":
                 continue
 

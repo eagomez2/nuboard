@@ -68,7 +68,7 @@ class AppState {
     const seq = ++this.seq;
     this.loading = true;
     try {
-      const res = await api.runs(router.get('q'), router.get('project') || null);
+      const res = await api.runs(router.get('q'), router.get('project') || null, null, !live);
       if (seq === this.seq) {
         if (live && this.runs && !LIVE_PAGES.has(router.page)) {
           this.pending = signature(res) === signature(this.runs) ? null : res;

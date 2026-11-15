@@ -10,7 +10,7 @@
   import { sideBySide } from '../lib/diff';
   import { fmtBytes, fmtDate, fmtNum } from '../lib/format';
   import { isPattern, patternRegex, pinMatches } from '../lib/pattern';
-  import { onLive } from '../lib/live';
+  import { EVERYTHING, onLive } from '../lib/live';
   import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
 
@@ -244,7 +244,7 @@
     const read = (changed: string[]) => {
       const key = loadKey;
       if (onScreen !== key || Date.now() - lastRead < 1000) return;
-      if (!changed.some((k) => shownKeys.includes(k))) return;
+      if (!changed.some((k) => k === EVERYTHING || shownKeys.includes(k))) return;
       lastRead = Date.now();
       readTexts(key, ++request);
     };

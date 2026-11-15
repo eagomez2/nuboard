@@ -20,7 +20,7 @@ from typing import Any
 
 from . import _fs
 from ._meta import ENV_PREFIX, NAME
-from .collection import attach
+from .collection import memberships
 from .jobs import JOBS, merge_jobs, read_jobs
 
 SCHEMA_VERSION = 9
@@ -174,6 +174,11 @@ def effective_status(meta: dict[str, Any], now: float | None = None) -> str:
             return "lost"
 
     return status
+
+
+def _without_heartbeat(row: dict[str, Any]) -> dict[str, Any]:
+    """Return a run record without the fields every heartbeat changes."""
+    return {k: v for k, v in row.items() if k not in ("heartbeat", "collections")}
 
 
 def make_record(
@@ -404,13 +409,17 @@ class Catalog:
             )
 
         ann = _fs.read_json(ann_json, {}) or {}
+        old_row = self._rows.get(key)
+        row = make_record(key, project, rel, meta, ann)
         self._state[key] = (rel, rm, am)
-        self._rows[key] = make_record(key, project, rel, meta, ann)
+        self._rows[key] = row
         self._db.execute(
             "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?)",
-            (key, rel, project, json.dumps(self._rows[key], default=str), rm, am),
+            (key, rel, project, json.dumps(row, default=str), rm, am),
         )
-        return True
+        # a heartbeat alone (a running run that logged nothing new) is not a change
+        # worth reloading every open run list for
+        return old_row is None or _without_heartbeat(old_row) != _without_heartbeat(row)
 
     # -- access -----------------------------------------------------------------
     def runs(self) -> list[dict[str, Any]]:
@@ -422,16 +431,35 @@ class Catalog:
 
         with self.lock:
             rows = list(self._rows.values())
-            pairs = []
+            folders: dict[str, dict[str, list[str]]] = {}  # runs folder (rel) -> memberships
 
-            for row in rows:
-                path = self.path_of(row["key"])
+            for row in rows:  # strings, not Paths: this runs for every run on every list
+                state = self._state.get(row["key"])
 
-                if path is not None:
-                    pairs.append((row, path))
+                if state is None:
+                    continue
 
-            attach(pairs)
+                rel = state[0]
+                parent = rel.rsplit("/", 1)[0] if "/" in rel else ("." if rel != "." else "..")
+                found = folders.get(parent)
+
+                if found is None:  # the project folder holds the runs folder
+                    path = self.path_of(row["key"])
+                    found = folders[parent] = memberships(path.parent.parent) if path else {}
+
+                row["collections"] = found.get(row["id"], [])
+
             return rows
+
+    def count(self) -> int:
+        """Return the number of runs."""
+        return len(self._rows)
+
+    def records(self) -> list[dict[str, Any]]:
+        """Return every run record as stored, without `collections` (cheaper than `runs`)."""
+
+        with self.lock:
+            return list(self._rows.values())
 
     def get(self, key: str) -> dict[str, Any] | None:
         """Return the record of one run.

@@ -340,6 +340,10 @@ def test_audio_supports_byte_ranges(tmp_path):
         tail = c.get(url, headers={"Range": "bytes=-4"})
         assert tail.content == full.content[-4:]
         assert c.get(url, headers={"Range": "bytes=99999-"}).status_code == 416
+        img = next(i for i in items if i["key"] == "img")
+        png = c.get(f"/api/runs/{key}/media/{img['index']}", headers={"Accept-Encoding": "gzip"})
+        assert png.headers["content-encoding"] == "identity"  # already compressed
+        assert png.content.startswith(b"\x89PNG")
 
 
 def test_audio_notes_are_kept_per_item(tmp_path):

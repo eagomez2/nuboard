@@ -2616,3 +2616,25 @@ test('the spectrogram frequency axis can be turned off', async ({ page }) => {
   await page.getByRole('switch', { name: 'Spectrogram' }).click();
   await expect(freq).toHaveCount(0);
 });
+
+test('a live update refetches only the live run on the small charts @live', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  const small = page.locator('.small').first();
+  await small.scrollIntoViewIfNeeded();
+  await expect(small.locator('canvas')).toBeVisible({ timeout: 15000 });
+  const live = await page.evaluate(async () => {
+    const res = await fetch('/api/runs?q=where%20tags%20has%20live&project=llm-pretrain');
+    return (await res.json()).runs
+      .filter((r: { status: string }) => r.status === 'running')
+      .map((r: { key: string }) => r.key);
+  });
+  expect(live.length).toBe(1);
+  const name = await small.locator('.name').textContent();
+  // the next update of this small chart asks for the live run alone, not every run on the page
+  const req = await page.waitForRequest(
+    (r) => r.url().includes('/api/scalars') && r.url().includes(`metric=${encodeURIComponent(name!.trim())}`),
+    { timeout: 15000 },
+  );
+  expect(new URL(req.url()).searchParams.get('runs')).toBe(live[0]);
+  await expect(small.locator('canvas')).toBeVisible();
+});

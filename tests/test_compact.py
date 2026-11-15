@@ -140,3 +140,27 @@ def test_parquet_reads_leave_no_file_open():
             pass
 
     assert target not in fds
+
+
+def test_zoom_levels_are_cached_until_the_file_changes():
+    from nuboard.reader import _LEVELS
+
+    run = nb.init("cache", capture_env=False, system_metrics=False, capture_console=False)
+
+    for i in range(50):
+        run.add_scalar("loss", float(i), step=i)
+
+    run.finish()
+    data = RunReader(run.path).parquet
+    assert data is not None
+    first = data.read("loss")
+    assert data.read("loss") is first  # decoded once
+    assert not first[2].flags.writeable
+
+    resumed = nb.init("cache", run_id=run.id, resume="must", capture_env=False)
+    resumed.add_scalar("loss", 99.0, step=50)
+    resumed.finish()
+    again = RunReader(run.path).parquet
+    assert again is not None and len(again.read("loss")[0]) == 51
+    assert _LEVELS.size <= _LEVELS.budget
+

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -340,6 +341,54 @@ def align(steps: np.ndarray, at: np.ndarray, values: np.ndarray) -> np.ndarray:
     return out
 
 
+class _LevelCache:
+    """A thread-safe LRU of decoded zoom levels, bounded by their total size in bytes.
+
+    Charts of a compacted run read the same levels again on every refresh and
+    zoom; decoding them once saves the Parquet read and the Arrow conversion.
+    Keys carry the file's mtime and size, so a new compaction never hits an old
+    entry, which then simply ages out.
+    """
+
+    def __init__(self, budget: int) -> None:
+        self.budget = budget
+        self.size = 0
+        self._items: OrderedDict[tuple, tuple[tuple[np.ndarray, ...], int]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple) -> tuple[np.ndarray, ...] | None:
+        with self._lock:
+            item = self._items.get(key)
+
+            if item is None:
+                return None
+
+            self._items.move_to_end(key)
+            return item[0]
+
+    def put(self, key: tuple, value: tuple[np.ndarray, ...], nbytes: int) -> None:
+        if nbytes > self.budget // 4:  # one huge level would flush everything else
+            return
+
+        with self._lock:
+            old = self._items.pop(key, None)
+            self.size -= old[1] if old else 0
+            self._items[key] = (value, nbytes)
+            self.size += nbytes
+
+            while self.size > self.budget:
+                _, (_, n) = self._items.popitem(last=False)
+                self.size -= n
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+            self.size = 0
+
+
+_LEVELS = _LevelCache(256 * 2**20)
+
+
 class ParquetData:
     """Reads `data.parquet` written by `NAME.compact.compact_run`.
 
@@ -355,6 +404,8 @@ class ParquetData:
         import pyarrow.parquet as pq
 
         self.path = path
+        st = path.stat()
+        self._key = (str(path), st.st_mtime_ns, st.st_size)
         self._footer = pq.read_metadata(path)
         meta = self._footer.schema.to_arrow_schema().metadata or {}
         # {metric: [[row_group, rows], ...] indexed by zoom level}
@@ -406,6 +457,11 @@ class ParquetData:
             return (*_EMPTY, np.empty(0, "f8"), np.empty(0, "f8"))
 
         level = min(level, len(groups) - 1)
+        key = (*self._key, metric, level, rank)
+        hit = _LEVELS.get(key)
+
+        if hit is not None:
+            return hit
 
         table = self._read(lambda f: f.read_row_group(groups[level][0], columns=list(_PQ_COLUMNS)))
 
@@ -419,7 +475,12 @@ class ParquetData:
         if not mask.all():
             cols = [c[mask] for c in cols]
 
-        return tuple(cols)
+        for c in cols:  # shared through the cache, so never changed in place
+            c.setflags(write=False)
+
+        out = tuple(cols)
+        _LEVELS.put(key, out, sum(c.nbytes for c in cols))
+        return out
 
     def ranks(self) -> list[int]:
         """Return the ranks present in the file, sorted."""
@@ -685,19 +746,23 @@ class RunReader:
         out = [e for lf in self._logs_for(rank) for e in lf.media if key is None or e.key == key]
         return sorted(out, key=lambda e: e.step)
 
-    def read_media(self, entry: MediaEntry) -> bytes:
+    def read_media(self, entry: MediaEntry, start: int = 0, size: int | None = None) -> bytes:
         """Read the bytes of one media entry from its media pack.
 
         Args:
             entry: An entry returned by `media`.
+            start: Offset of the first byte to read, within the entry.
+            size: Number of bytes to read; to the end of the entry when None.
 
         Returns:
             The stored bytes.
         """
+        start = max(0, min(start, entry.length))
+        size = entry.length - start if size is None else max(0, min(size, entry.length - start))
 
         with open(self.path / (entry.pack or f"media.r{entry.rank}.pack"), "rb") as f:
-            f.seek(entry.offset)
-            return f.read(entry.length)
+            f.seek(entry.offset + start)
+            return f.read(size)
 
     def heartbeat(self) -> float | None:
         """Return the latest heartbeat time across the loaded logs, or None."""

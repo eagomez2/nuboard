@@ -53,6 +53,24 @@
   viewer now opens the file only while it reads it, compaction retries while
   the old file is in use, and `rm` sets aside runs it cannot delete yet and
   removes them later.
+- **A faster viewer with many runs.** The run list no longer rescans the
+  whole folder on every live update (the server has just done it), a running
+  run's heartbeat alone no longer makes every open tab reload the list, and
+  the list's run count and collections are computed once instead of once per
+  run. With 5,000 runs a live reload of `/api/runs` takes about 65 ms instead
+  of 440 ms.
+- **Live charts fetch less.** A live update refetches, on each small chart,
+  only the runs that changed and merges them into what is shown, instead of
+  every run on every chart. Charts of a compacted run keep their decoded zoom
+  levels in memory (256 MB at most), so zooming and live updates no longer
+  read them from disk again.
+- **Media are sent as they are stored.** Images, audio and video skip gzip
+  (they are compressed already), and a seek in an audio or video player reads
+  only the bytes it asks for instead of the whole file.
+  `RunReader.read_media` takes an optional `start` and `size` for the same.
+- **Open tabs catch up after a reconnect.** After the viewer restarted, or
+  a laptop slept, open tabs showed old data until the next change; they now
+  reload the runs and charts once when they reconnect.
 
 ## 0.30.0
 

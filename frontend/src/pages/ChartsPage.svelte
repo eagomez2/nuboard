@@ -14,7 +14,7 @@
   import { defaultMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtSeconds, fmtValue } from '../lib/format';
   import { defaultStat, rememberedStat, rememberStat, type Extreme } from '../lib/stat';
   import { reservedPrefixes, sectionOf } from '../lib/prefixes';
-  import { onLive } from '../lib/live';
+  import { EVERYTHING, onLive } from '../lib/live';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { encodeSpec } from '../lib/chartspec';
@@ -69,6 +69,8 @@
     return () => clearTimeout(t);
   });
   let tick = $state(0);
+  // the runs a live update changed, for the small charts; null after a full update
+  let changed = $state<string[] | null>(null);
   let hidden = $state(new Set<string>());
   let highlight = $state<string | null>(null);
   let cursorX = $state<number | null>(null);
@@ -165,6 +167,7 @@
   }
   function update() {
     stale = false;
+    changed = null;
     tick++;
   }
   $effect(() => {
@@ -174,16 +177,22 @@
   onMount(() => {
     let last = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    return onLive('data', (changed) => {
-      if (!changed.some((k) => runKeys.includes(k))) return;
+    let pending: Set<string> | null = new Set(); // null: everything may have changed
+    return onLive('data', (keys) => {
+      const all = keys.includes(EVERYTHING);
+      if (!all && !keys.some((k) => runKeys.includes(k))) return;
       if (!live || interacting) {
         stale = true;
         return;
       }
+      if (all) pending = null;
+      else keys.forEach((k) => pending?.add(k));
       const wait = Math.max(0, 2000 - (Date.now() - last));
       clearTimeout(timer);
       timer = setTimeout(() => {
         last = Date.now();
+        changed = pending ? [...pending] : null;
+        pending = new Set();
         tick++;
       }, wait);
     });
@@ -1087,6 +1096,7 @@
                 {colorOf}
                 themeVersion={app.themeVersion}
                 {tick}
+                {changed}
                 markers={showDots}
                 pinX={pinned ? cursorX : null}
                 fullName={showNames}

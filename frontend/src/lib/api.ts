@@ -441,8 +441,11 @@ export const api = {
         ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }
         : undefined,
     ),
-  runs: (q: string, project?: string | null, metrics?: string[] | null) =>
-    json<RunsResponse>(`/api/runs?${qs({ q, project, metrics: metrics?.join(',') })}`),
+  /** `rescan: false` skips the server's folder scan (a live update follows one that was just made). */
+  runs: (q: string, project?: string | null, metrics?: string[] | null, rescan = true) =>
+    json<RunsResponse>(
+      `/api/runs?${qs({ q, project, metrics: metrics?.join(','), refresh: rescan ? undefined : '0' })}`,
+    ),
   run: (key: string) => json<RunDetail>(`/api/runs/${encodeURIComponent(key)}`),
   /** A file of the run's `files/` folder as text: its first 2 MB, or its last with `tail`. */
   file: async (key: string, path: string, tail = false) => {

@@ -162,9 +162,12 @@ class JSON(JSONResponse):
         Returns:
             The encoded body.
         """
-        return json.dumps(
-            _safe(content), ensure_ascii=False, separators=(",", ":"), default=str
-        ).encode("utf-8")
+        options: dict[str, Any] = {"ensure_ascii": False, "separators": (",", ":"), "default": str}
+
+        try:  # most content has no NaN: encode it directly, without a walk over every value
+            return json.dumps(content, allow_nan=False, **options).encode("utf-8")
+        except (ValueError, TypeError):  # NaN or infinity, or keys JSON cannot take
+            return json.dumps(_safe(content), **options).encode("utf-8")
 
 
 def _read_only(what: str = "reports") -> JSONResponse:
@@ -551,7 +554,7 @@ def create_app(
         return JSON(
             {
                 "runs": [_brief(r, metrics) for r in rows],
-                "total": len(catalog.runs()),
+                "total": catalog.count(),
                 "query": query.to_json(),
                 "error": error,
                 "metrics": sorted(all_metrics),
@@ -1081,29 +1084,34 @@ def create_app(
         if entry.meta.get("mime") == "text/html":  # rendered only inside a sandboxed iframe
             headers["Content-Security-Policy"] = "sandbox allow-scripts"
 
-        data = reader.read_media(entry)
+        mime = str(entry.meta.get("mime", ""))
 
-        if not str(entry.meta.get("mime", "")).startswith(("audio/", "video/")):
-            return Response(data, media_type=entry.meta.get("mime"), headers=headers)
+        # Already-compressed media skips gzip by declaring its own encoding
+        # (gzip would also break byte ranges); SVG is text and still gains.
+        if mime.startswith(("image/", "audio/", "video/")) and mime != "image/svg+xml":
+            headers["Content-Encoding"] = "identity"
 
-        # Players seek with Range requests. Already-compressed media skips gzip
-        # (which would also break byte ranges) by declaring its own encoding.
-        headers.update({"Accept-Ranges": "bytes", "Content-Encoding": "identity"})
-        span = _byte_range(request.headers.get("range"), len(data))
+        if not mime.startswith(("audio/", "video/")):
+            return Response(reader.read_media(entry), media_type=mime or None, headers=headers)
+
+        # Players seek with Range requests: only the asked-for bytes are read
+        headers["Accept-Ranges"] = "bytes"
+        total = entry.length
+        span = _byte_range(request.headers.get("range"), total)
 
         if span is None:
-            return Response(data, media_type=entry.meta.get("mime"), headers=headers)
+            return Response(reader.read_media(entry), media_type=mime, headers=headers)
 
         if isinstance(span, str):  # "invalid"
-            headers["Content-Range"] = f"bytes */{len(data)}"
+            headers["Content-Range"] = f"bytes */{total}"
             return Response(b"", status_code=416, headers=headers)
 
         start, end = span
-        headers["Content-Range"] = f"bytes {start}-{end}/{len(data)}"
+        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
         return Response(
-            data[start : end + 1],
+            reader.read_media(entry, start, end - start + 1),
             status_code=206,
-            media_type=entry.meta.get("mime"),
+            media_type=mime,
             headers=headers,
         )
 
@@ -2475,7 +2483,10 @@ def create_app(
         routes.append(Mount("/assets", _SharedAssets(directory=STATIC / "assets")))
 
     routes.append(Route("/{path:path}", static_file))
-    middleware = [Middleware(Guard, token=token), Middleware(GZipMiddleware, minimum_size=2048)]
+    middleware = [
+        Middleware(Guard, token=token),
+        Middleware(GZipMiddleware, minimum_size=2048, compresslevel=5),
+    ]
 
     if allowed_hosts:
         middleware.insert(0, Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts))
