@@ -118,6 +118,9 @@ Python API only gains optional arguments.
 - **Finishing a multi-GPU run is faster:** the check that the other ranks
   have ended reads only their own logs, so the run is decoded once, for
   compaction.
+- **Internal:** the viewer's routes moved from one 2,500-line `server/app.py`
+  into one module per area under `server/routes/`. No route, parameter or
+  response changed.
 
 ## 0.30.0
 

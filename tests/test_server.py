@@ -14,7 +14,8 @@ from starlette.testclient import TestClient
 
 import nuboard as nb
 from nuboard.server import create_app
-from nuboard.server.app import Hub, _input_versions
+from nuboard.server.app import Hub
+from nuboard.server.common import _input_versions
 
 
 @pytest.fixture
