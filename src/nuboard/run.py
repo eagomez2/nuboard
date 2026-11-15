@@ -898,7 +898,7 @@ class Run:
 
         from .reader import RunReader  # imported here: it needs NumPy, which `init` does not
 
-        merged = RunReader(parent).all_scalars(0, bands=True)
+        merged = RunReader(parent).all_scalars(0, bands=True, copy=False)
         points = []
 
         for mname, (s, t, v) in merged.items():

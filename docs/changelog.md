@@ -102,6 +102,17 @@ Python API only gains optional arguments.
   now cut back off the file, and logging carries on cleanly. A media item that
   cannot be stored is skipped alone, instead of with every scalar logged in
   the same second.
+- **An idle running run no longer reloads every open run list** on each
+  heartbeat.
+- **Media load faster on runs with many items:** each item is looked up
+  directly instead of by sorting the run's whole media list. Python:
+  `RunReader.media_item(uid)`, and `media()` and `texts()` take
+  `latest=True` to list items the way the viewer does.
+- **Open tabs notice a viewer restart** also when the restarted viewer
+  happens to reach the same catalog version.
+- **`RunReader.scalars()` returns arrays you can change**, also for a
+  compacted run (they were read-only there). `copy=False` returns the
+  reader's own arrays without copying.
 
 ## 0.30.0
 

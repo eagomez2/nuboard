@@ -320,7 +320,7 @@ class Store:
             else:
                 s, t, v, lo, hi = read_level(level)
         else:
-            s, t, v = reader.scalars(metric, rank)
+            s, t, v = reader.scalars(metric, rank, copy=False)
             lo = hi = v
             bounds = reader.bounds(metric, rank)
             band = bounds is not None
@@ -363,7 +363,7 @@ class Store:
         if reader is None:
             return None
 
-        xs, _, xv = reader.scalars(x_metric, rank)
+        xs, _, xv = reader.scalars(x_metric, rank, copy=False)
         ok = np.isfinite(xv)
         xs, xv = xs[ok], xv[ok]
 

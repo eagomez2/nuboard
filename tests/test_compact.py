@@ -190,3 +190,23 @@ def test_bytes_written_while_compacting_are_not_counted_as_covered(monkeypatch):
     reader = RunReader(run.path)
     assert reader.parquet is None  # the logs are longer than what the file covers
     assert list(reader.scalars("late")[2]) == [2.0]
+
+
+def test_scalars_are_yours_to_change_also_when_compacted():
+    run = nb.init("own", capture_env=False, system_metrics=False, capture_console=False)
+
+    for i in range(5):
+        run.add_scalar("loss", float(i), step=i)
+
+    run.flush()
+    live = RunReader(run.path)
+    _, _, v = live.scalars("loss")
+    v *= 2  # from the logs
+    assert list(live.scalars("loss")[2]) == [0.0, 1.0, 2.0, 3.0, 4.0]  # the cache is untouched
+    run.finish()
+    reader = RunReader(run.path)
+    assert reader.parquet is not None
+    _, _, v = reader.scalars("loss")
+    v *= 2  # from data.parquet
+    assert list(reader.scalars("loss")[2]) == [0.0, 1.0, 2.0, 3.0, 4.0]
+    assert not reader.scalars("loss", copy=False)[2].flags.writeable

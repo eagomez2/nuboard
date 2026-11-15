@@ -207,11 +207,11 @@ class RunHandle:
         parts = []
 
         for m in names:
-            s, t, v = reader.scalars(m, rank)
+            s, t, v = reader.scalars(m, rank, copy=False)  # Arrow tables are immutable
             parts.append(
                 pa.table(
                     {
-                        "key": pa.array([m] * len(s), pa.string()),
+                        "key": pa.repeat(pa.scalar(m, pa.string()), len(s)),
                         "step": s,
                         "time": t,
                         "value": v,
@@ -344,7 +344,7 @@ class Project:
         runs: list[tuple[str, str, Any]] = []  # (id, name, group value) per run with data
 
         for h in self.runs(query):
-            s, t, v = h.reader().scalars(key, rank)
+            s, t, v = h.reader().scalars(key, rank, copy=False)
 
             if not len(s):
                 continue

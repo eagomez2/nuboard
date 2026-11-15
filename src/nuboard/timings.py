@@ -77,11 +77,11 @@ class _Timer:
         self.counts: dict[int, np.ndarray] = {}
 
         for rank in ranks:
-            s, t, v = reader.scalars(key, rank)
+            s, t, v = reader.scalars(key, rank, copy=False)
 
             if len(s):
                 self.points[rank] = (s, t, v)
-                _, _, c = reader.scalars(key + COUNT, rank)
+                _, _, c = reader.scalars(key + COUNT, rank, copy=False)
 
                 if len(c) == len(s):
                     self.counts[rank] = c

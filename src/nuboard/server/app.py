@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+import secrets
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
@@ -64,7 +65,7 @@ from ..hypotheses import (
 )
 from ..jobs import read_meta
 from ..query import QueryError, parse
-from ..reader import MediaEntry, RunReader, latest_sessions
+from ..reader import MediaEntry, RunReader
 from ..reports import (
     MAX_AUDIO_BYTES,
     MAX_IMAGE_BYTES,
@@ -122,10 +123,7 @@ def query_int(request: Request, name: str, default: int) -> int:
 def media_entry(reader: RunReader | None, uid: int, rank: int) -> MediaEntry | None:
     """Return the media item of `rank` whose `MediaEntry.uid` is `uid`, or None."""
 
-    if reader is None:
-        return None
-
-    return next((e for e in reader.media(rank=rank) if e.uid == uid), None)
+    return None if reader is None else reader.media_item(uid, rank)
 
 
 def _safe(obj: Any) -> Any:
@@ -428,6 +426,8 @@ def create_app(
         The app. Its `state.store` holds the `Store` it reads runs through.
     """
     catalog = Catalog(root, cache=cache_dir)
+    # names this server process in `hello`: the catalog version restarts from 0 with it
+    server_id = secrets.token_hex(8)
     catalog.refresh()
     store = Store(catalog)
     hub = Hub(store)
@@ -592,13 +592,13 @@ def create_app(
         media_keys: dict[str, dict[str, Any]] = {}
 
         if reader is not None:
-            for entry in latest_sessions(reader.media()):
+            for entry in reader.media(latest=True):
                 info = media_keys.setdefault(
                     entry.key, {"kind": entry.meta.get("kind"), "count": 0}
                 )
                 info["count"] += 1
 
-            for text in latest_sessions(reader.texts()):
+            for text in reader.texts(latest=True):
                 info = media_keys.setdefault(text.key, {"kind": "text", "count": 0})
                 info["count"] += 1
 
@@ -1043,12 +1043,12 @@ def create_app(
         notes = audio_notes_of(key) if rank == 0 else {}
 
         if reader is not None:
-            for e in latest_sessions(reader.media(rank=rank)):
+            for e in reader.media(rank=rank, latest=True):
                 if want is None or e.key == want:
                     item = {"key": e.key, "step": e.step, "time": e.time, "index": e.uid, **e.meta}
                     items.append(with_notes(item, notes))
 
-            for t in latest_sessions(reader.texts(rank=rank)):
+            for t in reader.texts(rank=rank, latest=True):
                 if want is None or t.key == want:
                     items.append(
                         {
@@ -1917,12 +1917,12 @@ def create_app(
 
         found: dict[str, Any] | None = None
 
-        for e in latest_sessions(reader.media()):
+        for e in reader.media(latest=True):
             if e.key == ref.key and e.step == ref.step:
                 found = {"key": e.key, "step": e.step, "time": e.time, "index": e.uid, **e.meta}
                 found = with_notes(found, audio_notes_of(key))
 
-        for t in latest_sessions(reader.texts(ref.key)):
+        for t in reader.texts(ref.key, latest=True):
             if t.step == ref.step:
                 found = {"key": t.key, "step": t.step, "time": t.time, "kind": "text"}
                 found.update({"mime": "text/plain", "text": t.text})
@@ -1945,7 +1945,7 @@ def create_app(
             if reader is None:
                 continue
 
-            steps, _, values = reader.scalars(metric)
+            steps, _, values = reader.scalars(metric, copy=False)
             best: tuple[float, int] | None = None
 
             for st, v in zip(steps.tolist(), values.tolist()):
@@ -2349,7 +2349,7 @@ def create_app(
             """Yield the SSE messages for this client until it disconnects."""
 
             try:
-                hello = json.dumps({"version": catalog.version})
+                hello = json.dumps({"version": catalog.version, "server": server_id})
                 yield f"retry: 3000\nevent: hello\ndata: {hello}\n\n"
 
                 idle = 0.0

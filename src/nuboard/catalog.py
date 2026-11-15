@@ -177,8 +177,17 @@ def effective_status(meta: dict[str, Any], now: float | None = None) -> str:
 
 
 def _without_heartbeat(row: dict[str, Any]) -> dict[str, Any]:
-    """Return a run record without the fields every heartbeat changes."""
-    return {k: v for k, v in row.items() if k not in ("heartbeat", "collections")}
+    """Return a run record without the fields every heartbeat changes.
+
+    A running run's `duration` runs up to the current time, so it differs on
+    every read too.
+    """
+    skip = {"heartbeat", "collections"}
+
+    if row.get("status") == "running":
+        skip.add("duration")
+
+    return {k: v for k, v in row.items() if k not in skip}
 
 
 def make_record(

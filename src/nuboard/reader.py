@@ -599,13 +599,7 @@ class RunReader:
                     changed = True
 
             if self.logs or self.parquet is None:
-                for p in self._log_paths():
-                    log = self.logs.get(p.name)
-
-                    if log is None:
-                        log = self.logs[p.name] = LogFile(p)
-
-                    changed |= log.update()
+                changed |= self._read_logs()
 
             return changed
 
@@ -619,8 +613,12 @@ class RunReader:
             (lf for lf in self.logs.values() if lf.rank == rank), key=lambda lf: lf.session
         )
 
-    def _read_logs(self) -> None:
-        """Decode every event log, also for a compacted run (for its text and media)."""
+    def _read_logs(self) -> bool:
+        """Decode what is new in every event log; return True if anything was.
+
+        Also used for a compacted run, whose logs still hold its text and media.
+        """
+        changed = False
 
         with self.lock:
             for p in self._log_paths():
@@ -629,7 +627,9 @@ class RunReader:
                 if log is None:
                     log = self.logs[p.name] = LogFile(p)
 
-                log.update()
+                changed |= log.update()
+
+        return changed
 
     def ranks(self) -> list[int]:
         """Return the ranks that have event logs, sorted."""
@@ -668,12 +668,15 @@ class RunReader:
         """Return the keys of the run's scalars; the same as `scalar_names`."""
         return self.scalar_names(rank)
 
-    def scalars(self, metric: str, rank: int = 0) -> Series:
+    def scalars(self, metric: str, rank: int = 0, copy: bool = True) -> Series:
         """Return one metric at full resolution.
 
         Args:
             metric: Metric name.
             rank: Process rank.
+            copy: Return arrays of your own, which you may change. False returns
+                the reader's cached arrays without copying: faster, but they must
+                not be changed (they are read-only for a compacted run).
 
         Returns:
             `(steps, times, values)`, sorted by step; empty for an unknown
@@ -682,22 +685,28 @@ class RunReader:
 
         if self.parquet is not None:
             s, t, v, _, _ = self.parquet.read(metric, 0, rank)
-            return s, t, v
+        else:
+            with self.lock:
+                s, t, v = merge_sessions(
+                    [lf.series().get(metric, _EMPTY) for lf in self._logs_for(rank)]
+                )
 
-        with self.lock:
-            return merge_sessions([lf.series().get(metric, _EMPTY) for lf in self._logs_for(rank)])
+        return (s.copy(), t.copy(), v.copy()) if copy else (s, t, v)
 
-    def all_scalars(self, rank: int = 0, bands: bool = False) -> dict[str, Series]:
+    def all_scalars(
+        self, rank: int = 0, bands: bool = False, copy: bool = True
+    ) -> dict[str, Series]:
         """Return every metric at full resolution.
 
         Args:
             rank: Process rank.
             bands: Also return the companion scalars that hold band bounds.
+            copy: As for `scalars`.
 
         Returns:
             `{metric: (steps, times, values)}`.
         """
-        return {m: self.scalars(m, rank) for m in self.scalar_names(rank, bands)}
+        return {m: self.scalars(m, rank, copy) for m in self.scalar_names(rank, bands)}
 
     def bounds(self, metric: str, rank: int = 0) -> tuple[np.ndarray, np.ndarray] | None:
         """Return the band of a metric logged with `low` and `high`, at full resolution.
@@ -710,9 +719,9 @@ class RunReader:
             `(low, high)` aligned with the steps of `scalars(metric)`, NaN at
             steps without bounds; None if the metric has no band.
         """
-        steps = self.scalars(metric, rank)[0]
-        low = self.scalars(metric + fmt.BAND_LOW, rank)
-        high = self.scalars(metric + fmt.BAND_HIGH, rank)
+        steps = self.scalars(metric, rank, copy=False)[0]
+        low = self.scalars(metric + fmt.BAND_LOW, rank, copy=False)
+        high = self.scalars(metric + fmt.BAND_HIGH, rank, copy=False)
 
         if not len(low[0]) and not len(high[0]):
             return None
@@ -720,31 +729,55 @@ class RunReader:
         return align(steps, low[0], low[2]), align(steps, high[0], high[2])
 
     # -- text and media ---------------------------------------------------------
-    def texts(self, key: str | None = None, rank: int = 0) -> list[TextEntry]:
+    def texts(self, key: str | None = None, rank: int = 0, latest: bool = False) -> list[TextEntry]:
         """Return logged text entries, sorted by step.
 
         Args:
             key: Only return entries with this key; None returns all.
             rank: Process rank.
+            latest: Where a later session logged a key again, leave out the earlier
+                sessions' entries from that step on (see `latest_sessions`), as the
+                viewer shows them. False returns every logged entry.
 
         Returns:
             The text entries.
         """
         out = [e for lf in self._logs_for(rank) for e in lf.texts if key is None or e.key == key]
-        return sorted(out, key=lambda e: e.step)
+        return sorted(latest_sessions(out) if latest else out, key=lambda e: e.step)
 
-    def media(self, key: str | None = None, rank: int = 0) -> list[MediaEntry]:
+    def media(
+        self, key: str | None = None, rank: int = 0, latest: bool = False
+    ) -> list[MediaEntry]:
         """Return logged media entries, sorted by step.
 
         Args:
             key: Only return entries with this key; None returns all.
             rank: Process rank.
+            latest: As for `texts`: only what the later sessions did not log again.
 
         Returns:
             The media entries; use `read_media` to get their bytes.
         """
         out = [e for lf in self._logs_for(rank) for e in lf.media if key is None or e.key == key]
-        return sorted(out, key=lambda e: e.step)
+        return sorted(latest_sessions(out) if latest else out, key=lambda e: e.step)
+
+    def media_item(self, uid: int, rank: int = 0) -> MediaEntry | None:
+        """Return the media entry whose `MediaEntry.uid` is `uid`, or None.
+
+        A uid says where the entry is (its session, and its position among that
+        session's media frames), so this is a lookup, not a search.
+
+        Args:
+            uid: The entry's `uid`.
+            rank: Process rank.
+        """
+        session, seq = divmod(uid, MEDIA_UID_SESSION)
+
+        for lf in self._logs_for(rank):
+            if lf.session == session:
+                return lf.media[seq] if 0 <= seq < len(lf.media) else None
+
+        return None
 
     def read_media(self, entry: MediaEntry, start: int = 0, size: int | None = None) -> bytes:
         """Read the bytes of one media entry from its media pack.
