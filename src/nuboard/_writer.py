@@ -65,7 +65,7 @@ def snapshot(
         kind = type(value)
 
         if kind is float or kind is int:
-            out[prefix + key if prefix else key] = value
+            out[f"{prefix}{key}" if prefix or type(key) is not str else key] = value
         elif isinstance(value, Mapping):
             snapshot(value, f"{prefix}{key}/", out)
         else:
@@ -157,11 +157,12 @@ class Writer:
         self._on_heartbeat = on_heartbeat
         self._ids: dict[str, int] = {}
         self._pack = None
-        self._f = open(self.log_path, "ab")
+        # Unbuffered: each `_write` is one batch of whole frames, so a failed one
+        # can be cut back off the file without stale bytes left in a buffer.
+        self._f = open(self.log_path, "ab", buffering=0)
 
-        if self._f.tell() == 0:
-            self._f.write(fmt.MAGIC)
-            self._f.flush()
+        if os.fstat(self._f.fileno()).st_size == 0:
+            self._write(fmt.MAGIC)
 
         # name -> [last, last_step, min, max, count, nonfinite]
         self._summary: dict[str, list[float]] = {}
@@ -289,8 +290,7 @@ class Writer:
         if ids:
             out.append(fmt.scalars_frame(ids, steps, times, values))
 
-        self._f.write(b"".join(out))
-        self._f.flush()
+        self._write(b"".join(out))
 
     def close(self, status: str) -> None:
         """Write everything queued, then an `END` frame, and close the files.
@@ -310,16 +310,19 @@ class Writer:
         self._wake.set()
         self._thread.join(timeout=60)
 
-        if self._thread.is_alive() or self.queue:  # pragma: no cover - shutdown edge
+        if self._thread.is_alive():  # pragma: no cover - stuck encoding a huge item
+            # draining here too would write from two threads at once
+            self._warn_once(
+                "close", f"{NAME}: the writer did not finish in 60 s; {len(self.queue)} items lost"
+            )
+        elif self.queue:  # pragma: no cover - queued after the thread's last drain
             self._drain()
 
-        self._f.write(fmt.end_frame(time.time(), status))
-        self._f.flush()
-
         try:
+            self._write(fmt.end_frame(time.time(), status))
             os.fsync(self._f.fileno())
-        except OSError:  # pragma: no cover
-            pass
+        except OSError as exc:  # pragma: no cover - a full disk at the very end
+            self._warn_once("end", f"{NAME}: could not write the end of the log: {exc!r}")
 
         self._f.close()
 
@@ -349,8 +352,7 @@ class Writer:
         """Write a heartbeat frame and call `on_heartbeat`, warning once on failure."""
 
         try:
-            self._f.write(fmt.heartbeat_frame(time.time()))
-            self._f.flush()
+            self._write(fmt.heartbeat_frame(time.time()))
 
             if self._on_heartbeat is not None:
                 self._on_heartbeat()
@@ -412,7 +414,10 @@ class Writer:
                     if kind == SCALARS or kind == _OWN:
                         _, step, t, data = item
 
-                        for name, raw in _flatten(data):
+                        # add_scalar queues a flat snapshot; the run's own scalars may nest
+                        pairs = data.items() if kind == SCALARS else _flatten(data)
+
+                        for name, raw in pairs:
                             if (
                                 kind == SCALARS
                                 and self.reserved
@@ -453,7 +458,13 @@ class Writer:
                         # Producers return (bytes, mime) or (bytes, mime, extra meta)
                         data_bytes, mime = produced[0], produced[1]
                         extra = produced[2] if len(produced) > 2 else {}
-                        offset = self._append_pack(data_bytes)
+
+                        try:
+                            offset = self._append_pack(data_bytes)
+                        except OSError as exc:  # only this item is lost, not the batch
+                            self._warn_once(key, f"{NAME}: could not store {key!r}: {exc!r}")
+                            continue
+
                         meta = {"mime": mime, **meta, **extra}
                         out.append(
                             fmt.media_frame(
@@ -470,8 +481,7 @@ class Writer:
                 out.append(fmt.scalars_frame(ids, steps, times, values))
 
             if out:
-                self._f.write(b"".join(out))
-                self._f.flush()
+                self._write(b"".join(out))
         except Exception as exc:  # never break training
             # The batch's NAME frames were not written: forget its new ids, so the
             # next batch declares them again instead of using undeclared ids.
@@ -493,6 +503,37 @@ class Writer:
             "it as one of them. Use run.timer() for timings, another name, or other "
             "prefixes with init(timing_prefix=..., system_prefix=...).",
         )
+
+    def _write(self, data: bytes) -> None:
+        """Append whole frames to the log, or nothing: a failed write is cut back off.
+
+        A write cut short (a full disk, a network filesystem hiccup) would leave
+        a torn frame, and readers stop at the first one, so every later frame of
+        the session would be lost. The file is truncated back to its size before
+        the write, and the next write starts on a frame boundary.
+
+        Raises:
+            OSError: If the write fails (after the file was cut back).
+        """
+        fd = self._f.fileno()
+        start = os.fstat(fd).st_size
+        view = memoryview(data)
+
+        try:
+            while view:
+                n = self._f.write(view)
+
+                if not n:  # pragma: no cover - an unbuffered write that wrote nothing
+                    raise OSError("short write")
+
+                view = view[n:]
+        except BaseException:
+            try:
+                os.ftruncate(fd, start)
+            except OSError:  # pragma: no cover - nothing more to do
+                pass
+
+            raise
 
     def _append_pack(self, data: bytes) -> int:
         """Append `data` to the media pack and return its byte offset."""

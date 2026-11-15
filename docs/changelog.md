@@ -96,6 +96,12 @@ Python API only gains optional arguments.
   "scalar", and every filter box says "Filter". The product name in the UI
   comes from one place, and the docs describe when multi-GPU runs are
   compacted, name both media packs, and say the tests run on Windows too.
+- **A write cut short no longer loses the rest of the run.** If the disk
+  filled up in the middle of a write, the partly written bytes stayed in the
+  log, and everything logged after them was unreadable. The failed write is
+  now cut back off the file, and logging carries on cleanly. A media item that
+  cannot be stored is skipped alone, instead of with every scalar logged in
+  the same second.
 
 ## 0.30.0
 
