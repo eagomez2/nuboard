@@ -168,3 +168,20 @@ def test_project_dir_is_found_from_any_root(tmp_path):
     cat = Catalog(root, cache=tmp_path / "cache-nested")
     cat.refresh()
     assert cat.project_dir("team/b") == root / "team" / "b"
+
+
+def test_a_heartbeat_alone_is_not_a_change(tmp_path):
+    run = nb.init("beat", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.flush()
+    run._save_meta()
+    catalog = Catalog(tmp_path / "exp", cache=tmp_path / "cache")
+    catalog.refresh(full=True)
+    time.sleep(0.05)
+    run._save_meta()  # what a heartbeat writes when nothing new was logged
+    assert catalog.refresh(full=False) == set()
+    run.add_scalar("loss", 2.0, step=1)
+    run.flush()
+    run._save_meta()
+    assert catalog.refresh(full=False) == {catalog.records()[0]["key"]}
+    run.finish()

@@ -62,8 +62,9 @@ marks it crashed.
   git repository is recorded. By default the running script's folder, then the
   working directory. Pass it from a notebook, or when the entry point is an
   installed package. See [Reproducibility](../guide/reproducibility.md).
-- **compact** (*bool*): write `data.parquet` at finish, when PyArrow is
-  installed, so the viewer opens the run faster.
+- **compact** (*bool*): write `data.parquet` at finish, so the viewer opens
+  the run faster. In a multi-process run rank 0 does it once the other ranks'
+  logs have ended (see [Distributed training](../guide/distributed.md#stopping-and-compaction)).
 - **flush_interval** (*float*): seconds between background writes.
 - **heartbeat_interval** (*float*): seconds between liveness updates. A run
   whose heartbeat is two minutes old shows as **lost**.

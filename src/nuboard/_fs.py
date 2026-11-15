@@ -77,14 +77,28 @@ def atomic_write_bytes(path: str | os.PathLike[str], data: bytes) -> None:
         f.flush()
         os.fsync(f.fileno())
 
+    replace(tmp, path)
+
+
+def replace(src: str | os.PathLike[str], dest: str | os.PathLike[str]) -> None:
+    """`os.replace` that retries briefly while Windows reports the target in use.
+
+    On Windows `os.replace` fails while another process has `dest` open, so it is
+    retried (20 attempts, 50 ms apart).
+
+    Raises:
+        PermissionError: If the target stays locked for every retry. `src` is
+            removed first.
+    """
+
     for attempt in range(20):
         try:
-            os.replace(tmp, path)
+            os.replace(src, dest)
             return
         except PermissionError:
             if attempt == 19:
                 try:
-                    os.unlink(tmp)
+                    os.unlink(src)
                 finally:
                     raise
 

@@ -14,7 +14,8 @@ from starlette.testclient import TestClient
 
 import nuboard as nb
 from nuboard.server import create_app
-from nuboard.server.app import Hub, _input_versions
+from nuboard.server.app import Hub
+from nuboard.server.common import _input_versions
 
 
 @pytest.fixture
@@ -51,6 +52,21 @@ def test_runs_and_query(client):
     assert res["metrics"] == ["loss"]
     bad = client.get("/api/runs", params={"q": "where ("}).json()
     assert bad["error"] and len(bad["runs"]) == 4
+
+
+def test_runs_of_the_same_name_are_labelled_by_their_id_suffix(tmp_path):
+    for _ in range(2):
+        with nb.init("twins", run_name="base", capture_env=False) as run:
+            run.add_scalar("loss", 1.0, step=0)
+
+    with TestClient(create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")) as c:
+        keys = [r["key"] for r in c.get("/api/runs").json()["runs"]]
+        res = c.get("/api/scalars", params={"runs": ",".join(keys), "metric": "loss"})
+        series = json.loads(pa.ipc.open_stream(res.content).read_all().schema.metadata[b"series"])
+        suffixes = {k: k.rsplit("-", 1)[-1] for k in keys}
+        assert sorted(s["label"] for s in series) == sorted(
+            f"base ({x})" for x in suffixes.values()
+        )
 
 
 def test_scalars_arrow_grouped(client):
@@ -108,6 +124,30 @@ def test_annotations_and_files(client):
     assert path_inside(pathlib.Path("/a/b"), "../c") is None
     media = client.get(f"/api/runs/{key}/media").json()["items"]
     assert media[0]["text"] == "hi"
+
+
+def test_run_files_are_read_only_as_far_as_they_are_sent(client, monkeypatch):
+    key = client.get("/api/runs").json()["runs"][0]["key"]
+    reads: list[int] = []
+    real_open = __import__("pathlib").Path.open
+
+    def counting_open(self, *args, **kwargs):
+        f = real_open(self, *args, **kwargs)
+
+        if self.name == "output.log":
+            read = f.read
+            f.read = lambda n=-1: reads.append(n) or read(n)  # type: ignore[method-assign]
+
+        return f
+
+    monkeypatch.setattr("pathlib.Path.open", counting_open)
+    monkeypatch.setattr("pathlib.Path.read_bytes", lambda self: pytest.fail("read in full"))
+
+    for tail in (0, 1):
+        r = client.get(f"/api/runs/{key}/files/output.log", params={"tail": tail})
+        assert len(r.text) == 2_000_000 and r.headers["x-truncated"] == "1"
+
+    assert reads == [2_000_000, 2_000_000]
 
 
 def test_views_round_trip(client):
@@ -340,6 +380,10 @@ def test_audio_supports_byte_ranges(tmp_path):
         tail = c.get(url, headers={"Range": "bytes=-4"})
         assert tail.content == full.content[-4:]
         assert c.get(url, headers={"Range": "bytes=99999-"}).status_code == 416
+        img = next(i for i in items if i["key"] == "img")
+        png = c.get(f"/api/runs/{key}/media/{img['index']}", headers={"Accept-Encoding": "gzip"})
+        assert png.headers["content-encoding"] == "identity"  # already compressed
+        assert png.content.startswith(b"\x89PNG")
 
 
 def test_audio_notes_are_kept_per_item(tmp_path):

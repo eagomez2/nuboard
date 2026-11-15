@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import _fs
+from ._meta import NAME
 from .catalog import find_runs, make_record
 
 TMP = ".rm-tmp"
@@ -47,6 +48,8 @@ class Plan:
     skipped: list[Target] = field(default_factory=list)
     kept: list[Target] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
+    deferred: list[Target] = field(default_factory=list)  # set aside in .rm-tmp/ by `apply`
+    failed: list[Target] = field(default_factory=list)  # could not even be moved by `apply`
 
     @property
     def bytes(self) -> int:
@@ -195,11 +198,15 @@ def render(p: Plan) -> str:
 
 
 def apply(p: Plan) -> list[Target]:
-    """Delete the runs of `p`; returns the ones deleted.
+    """Delete the runs of `p`; returns the ones deleted (or set aside to delete).
 
     A run already gone is passed over. Each run is moved into its project's
     `.rm-tmp/` folder before it is removed, so a failure part way leaves it
-    there rather than half deleted in `runs/`.
+    there rather than half deleted in `runs/`. On Windows a file that another
+    process has open (a viewer, a sync client) cannot be deleted: the run then
+    stays in `.rm-tmp/`, where no reader looks, and `purge` removes it later.
+    `deferred` on the plan lists those runs, and `failed` the runs that could
+    not even be moved (they stay where they are).
     """
     done = []
 
@@ -207,11 +214,23 @@ def apply(p: Plan) -> list[Target]:
         if not t.path.exists():
             continue
 
-        tmp = t.path.parent.parent / TMP
+        project = t.path.parent.parent
+        purge(project)  # finish deletions an earlier call had to leave
+        tmp = project / TMP
         tmp.mkdir(exist_ok=True)
         moved = tmp / f"{t.path.name}-{time.time_ns()}"
-        os.replace(t.path, moved)
-        shutil.rmtree(moved)
+
+        try:
+            os.replace(t.path, moved)
+        except PermissionError:  # Windows: a file in it is open and the folder cannot move
+            p.failed.append(t)
+            continue
+
+        try:
+            shutil.rmtree(moved)
+        except OSError:
+            p.deferred.append(t)
+
         done.append(t)
 
         try:
@@ -220,6 +239,26 @@ def apply(p: Plan) -> list[Target]:
             pass
 
     return done
+
+
+def purge(project: Path) -> None:
+    """Remove what earlier deletions left in a project's `.rm-tmp/`, as far as possible.
+
+    Args:
+        project: The project folder.
+    """
+    tmp = project / TMP
+
+    if not tmp.is_dir():
+        return
+
+    for leftover in tmp.iterdir():
+        shutil.rmtree(leftover, ignore_errors=True)
+
+    try:
+        tmp.rmdir()
+    except OSError:
+        pass
 
 
 def main(
@@ -269,4 +308,15 @@ def main(
 
     done = apply(p)
     print(f"Deleted {len(done)} run(s).")
+
+    for t in p.failed:
+        print(f"  ! could not delete {t.id}: a file in it is open in another program")
+
+    if p.deferred:
+        print(
+            f"{len(p.deferred)} of them still had files open (on Windows, another program such as "
+            f"a running viewer); they are out of runs/ and are removed by the next `{NAME} rm` "
+            f"or `{NAME} up`."
+        )
+
     return 0

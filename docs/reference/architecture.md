@@ -108,10 +108,15 @@ PyArrow or the server.
   time ranks waited for each other, findings, and the spans of one step for
   the timeline. `server/data.py` caches the summary per run until its logs
   grow (`/api/runs/{key}/timing?rank=` and `/timing/spans?step=`).
-- `server/app.py` has the routes, gzip, a localhost-only host check, and one
-  background task that polls for changes every 1.5 s and fans them out to all
-  open browser tabs over Server-Sent Events (`runs` when metadata changed,
-  `data` when a live run's logs grew).
+- `server/app.py` builds the app: gzip, a localhost-only host check, the
+  static frontend, and one background task that polls for changes every 1.5 s
+  and fans them out to all open browser tabs over Server-Sent Events (`runs`
+  when metadata changed, `data` when a live run's logs grew). The routes live
+  in `server/routes/`, one module per area (`runs`, `media`, `artifacts`,
+  `projects`, `reports`), each with a `routes(ctx)` that returns its list.
+  `ctx` is a `server/context.py` `Context`: the catalog, the store, the
+  settings, and lookups the areas share. Response and parsing helpers are in
+  `server/common.py`.
 
 ## Frontend (`frontend/`)
 

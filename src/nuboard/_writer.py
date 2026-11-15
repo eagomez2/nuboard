@@ -23,7 +23,7 @@ from typing import Any
 from . import _format as fmt
 from ._meta import NAME
 
-_SCALARS, _TEXT, _MEDIA, _OWN = 0, 1, 2, 3  # _OWN: scalars logged by the run itself
+SCALARS, _TEXT, _MEDIA, _OWN, _FLUSH = 0, 1, 2, 3, 4  # _OWN: scalars logged by the run itself
 
 
 def _flatten(data: Mapping[str, Any], prefix: str = "") -> Iterable[tuple[str, Any]]:
@@ -36,6 +36,47 @@ def _flatten(data: Mapping[str, Any], prefix: str = "") -> Iterable[tuple[str, A
             yield from _flatten(value, name + "/")
         else:
             yield name, value
+
+
+def snapshot(
+    data: Mapping[str, Any], prefix: str = "", out: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Return `data` flattened, with values the caller could still change copied.
+
+    Called on the training thread, so it stays cheap: numbers pass through, a
+    tensor is detached and cloned (on its device, without waiting for it, so a
+    later in-place change such as `acc.add_(x)` does not reach the logged
+    value) and a NumPy array is copied. The conversion to float happens later,
+    on the writer thread.
+
+    Args:
+        data: Scalar names to values, possibly nested.
+        prefix: Prepended to every name (used for nested dicts).
+        out: Dict to add to (used for nested dicts).
+
+    Returns:
+        A flat dict of names to values.
+    """
+
+    if out is None:
+        out = {}
+
+    for key, value in data.items():
+        kind = type(value)
+
+        if kind is float or kind is int:
+            out[f"{prefix}{key}" if prefix or type(key) is not str else key] = value
+        elif isinstance(value, Mapping):
+            snapshot(value, f"{prefix}{key}/", out)
+        else:
+            if hasattr(value, "detach") and hasattr(value, "clone"):  # torch tensor
+                value = value.detach().clone()
+            elif hasattr(value, "dtype") and hasattr(value, "copy"):  # NumPy array or scalar
+                value = value.copy()
+
+            out[f"{prefix}{key}"] = value
+
+    return out
 
 
 def _to_float(value: Any) -> float:
@@ -76,7 +117,8 @@ class Writer:
     """Owns one `events.r<rank>.s<session>.log` file and its media pack.
 
     The `put_*` methods only append to `queue` and are cheap enough to call
-    from the training loop; a daemon thread encodes and writes the items.
+    from the training loop (`add_scalar` appends `(SCALARS, step, time, data)`
+    itself, to save a call); a daemon thread encodes and writes the items.
     Creating a writer opens (or appends to) the log and starts that thread.
 
     Args:
@@ -89,7 +131,7 @@ class Writer:
         own_pack: Write media to `media.r<rank>.s<session>.pack` instead of the
             rank's shared pack, for a helper job that runs alongside the main one.
         reserved: Name prefixes (such as `"timing/"`) kept for scalars the run
-            logs itself; a scalar logged with `put_scalars` under one of them
+            logs itself; a scalar from `add_scalar` under one of them
             gets a one-time warning, from the writer thread.
     """
 
@@ -115,11 +157,12 @@ class Writer:
         self._on_heartbeat = on_heartbeat
         self._ids: dict[str, int] = {}
         self._pack = None
-        self._f = open(self.log_path, "ab")
+        # Unbuffered: each `_write` is one batch of whole frames, so a failed one
+        # can be cut back off the file without stale bytes left in a buffer.
+        self._f = open(self.log_path, "ab", buffering=0)
 
-        if self._f.tell() == 0:
-            self._f.write(fmt.MAGIC)
-            self._f.flush()
+        if os.fstat(self._f.fileno()).st_size == 0:
+            self._write(fmt.MAGIC)
 
         # name -> [last, last_step, min, max, count, nonfinite]
         self._summary: dict[str, list[float]] = {}
@@ -132,24 +175,11 @@ class Writer:
         self._thread.start()
 
     # -- called from the training thread ------------------------------------
-    def put_scalars(self, step: int, t: float, data: Mapping[str, Any]) -> None:
-        """Queue scalar values for one step.
-
-        Nested mappings are flattened into `a/b` names. Values that cannot be
-        converted to float are skipped with a one-time warning per name.
-
-        Args:
-            step: Training step.
-            t: Unix time.
-            data: Metric names to numbers, possibly nested.
-        """
-        self.queue.append((_SCALARS, step, t, data))
-
     def put_own_scalars(self, step: int, t: float, data: Mapping[str, Any]) -> None:
         """Queue scalars the run logs itself (timers, system metrics).
 
-        Like `put_scalars`, but names under a reserved prefix are expected and
-        not warned about.
+        Like scalars from `add_scalar`, but names under a reserved prefix are
+        expected and not warned about.
 
         Args:
             step: Training step.
@@ -200,14 +230,17 @@ class Writer:
         Args:
             timeout: Maximum seconds to wait.
         """
-        deadline = time.monotonic() + timeout
+        # A marker behind everything queued so far: the writer sets it once the
+        # batch holding it is written (an empty queue alone is not enough, since
+        # the writer takes items off the queue before it writes them).
+        done = threading.Event()
+        self.queue.append((_FLUSH, done))
         self._wake.set()
+        deadline = time.monotonic() + timeout
 
-        while self.queue and time.monotonic() < deadline and self._thread.is_alive():
-            time.sleep(0.005)
-            self._wake.set()
-
-        time.sleep(0)  # let the writer finish the batch it popped
+        while not done.wait(0.05):
+            if time.monotonic() >= deadline or not self._thread.is_alive():
+                break
 
     def summary(self) -> dict[str, dict[str, Any]]:
         """Summarize every scalar written so far.
@@ -257,8 +290,7 @@ class Writer:
         if ids:
             out.append(fmt.scalars_frame(ids, steps, times, values))
 
-        self._f.write(b"".join(out))
-        self._f.flush()
+        self._write(b"".join(out))
 
     def close(self, status: str) -> None:
         """Write everything queued, then an `END` frame, and close the files.
@@ -278,16 +310,19 @@ class Writer:
         self._wake.set()
         self._thread.join(timeout=60)
 
-        if self._thread.is_alive() or self.queue:  # pragma: no cover - shutdown edge
+        if self._thread.is_alive():  # pragma: no cover - stuck encoding a huge item
+            # draining here too would write from two threads at once
+            self._warn_once(
+                "close", f"{NAME}: the writer did not finish in 60 s; {len(self.queue)} items lost"
+            )
+        elif self.queue:  # pragma: no cover - queued after the thread's last drain
             self._drain()
 
-        self._f.write(fmt.end_frame(time.time(), status))
-        self._f.flush()
-
         try:
+            self._write(fmt.end_frame(time.time(), status))
             os.fsync(self._f.fileno())
-        except OSError:  # pragma: no cover
-            pass
+        except OSError as exc:  # pragma: no cover - a full disk at the very end
+            self._warn_once("end", f"{NAME}: could not write the end of the log: {exc!r}")
 
         self._f.close()
 
@@ -317,8 +352,7 @@ class Writer:
         """Write a heartbeat frame and call `on_heartbeat`, warning once on failure."""
 
         try:
-            self._f.write(fmt.heartbeat_frame(time.time()))
-            self._f.flush()
+            self._write(fmt.heartbeat_frame(time.time()))
 
             if self._on_heartbeat is not None:
                 self._on_heartbeat()
@@ -364,6 +398,8 @@ class Writer:
 
         ids, steps, times, values = array("I"), array("q"), array("d"), array("d")
         out: list[bytes] = []
+        known = dict(self._ids)  # restored if the batch cannot be written
+        markers: list[threading.Event] = []
 
         try:
             with self.summary_lock:
@@ -371,12 +407,19 @@ class Writer:
                     item = q.popleft()
                     kind = item[0]
 
-                    if kind == _SCALARS or kind == _OWN:
+                    if kind == _FLUSH:
+                        markers.append(item[1])
+                        continue
+
+                    if kind == SCALARS or kind == _OWN:
                         _, step, t, data = item
 
-                        for name, raw in _flatten(data):
+                        # add_scalar queues a flat snapshot; the run's own scalars may nest
+                        pairs = data.items() if kind == SCALARS else _flatten(data)
+
+                        for name, raw in pairs:
                             if (
-                                kind == _SCALARS
+                                kind == SCALARS
                                 and self.reserved
                                 and name not in self._ids
                                 and name.startswith(self.reserved)
@@ -415,7 +458,13 @@ class Writer:
                         # Producers return (bytes, mime) or (bytes, mime, extra meta)
                         data_bytes, mime = produced[0], produced[1]
                         extra = produced[2] if len(produced) > 2 else {}
-                        offset = self._append_pack(data_bytes)
+
+                        try:
+                            offset = self._append_pack(data_bytes)
+                        except OSError as exc:  # only this item is lost, not the batch
+                            self._warn_once(key, f"{NAME}: could not store {key!r}: {exc!r}")
+                            continue
+
                         meta = {"mime": mime, **meta, **extra}
                         out.append(
                             fmt.media_frame(
@@ -432,10 +481,17 @@ class Writer:
                 out.append(fmt.scalars_frame(ids, steps, times, values))
 
             if out:
-                self._f.write(b"".join(out))
-                self._f.flush()
-        except Exception as exc:  # pragma: no cover - never break training
+                self._write(b"".join(out))
+        except Exception as exc:  # never break training
+            # The batch's NAME frames were not written: forget its new ids, so the
+            # next batch declares them again instead of using undeclared ids.
+            with self.summary_lock:
+                self._ids = known
+
             self._warn_once("drain", f"{NAME}: failed to write a batch: {exc!r}")
+        finally:
+            for done in markers:
+                done.set()
 
     def _warn_reserved(self, name: str) -> None:
         """Warn once that a hand-logged scalar uses a prefix the run keeps for itself."""
@@ -447,6 +503,37 @@ class Writer:
             "it as one of them. Use run.timer() for timings, another name, or other "
             "prefixes with init(timing_prefix=..., system_prefix=...).",
         )
+
+    def _write(self, data: bytes) -> None:
+        """Append whole frames to the log, or nothing: a failed write is cut back off.
+
+        A write cut short (a full disk, a network filesystem hiccup) would leave
+        a torn frame, and readers stop at the first one, so every later frame of
+        the session would be lost. The file is truncated back to its size before
+        the write, and the next write starts on a frame boundary.
+
+        Raises:
+            OSError: If the write fails (after the file was cut back).
+        """
+        fd = self._f.fileno()
+        start = os.fstat(fd).st_size
+        view = memoryview(data)
+
+        try:
+            while view:
+                n = self._f.write(view)
+
+                if not n:  # pragma: no cover - an unbuffered write that wrote nothing
+                    raise OSError("short write")
+
+                view = view[n:]
+        except BaseException:
+            try:
+                os.ftruncate(fd, start)
+            except OSError:  # pragma: no cover - nothing more to do
+                pass
+
+            raise
 
     def _append_pack(self, data: bytes) -> int:
         """Append `data` to the media pack and return its byte offset."""

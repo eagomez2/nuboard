@@ -6,6 +6,14 @@
 falling back to `SLURM_PROCID` / `SLURM_LOCALID` / `SLURM_NTASKS` and
 `OMPI_COMM_WORLD_RANK` / `OMPI_COMM_WORLD_SIZE`.
 
+Tasks started with `srun -n N` count as the N ranks of one run. When they are
+independent experiments instead (`srun -n 4 python train.py --seed
+$SLURM_PROCID`), set `NUBOARD_STANDALONE=1` so each one is a run of its own:
+
+```bash
+NUBOARD_STANDALONE=1 srun -n 4 python train.py --seed $SLURM_PROCID
+```
+
 **Only rank 0 logs.** You can call `init` on every rank with the same
 arguments; on other ranks `add_scalar()`, `add_text()` and the media calls
 return immediately, so the same script runs unchanged on every rank:
@@ -41,7 +49,13 @@ All ranks must agree on the run folder. In order of preference:
 1. With a shared job id, `TORCHELASTIC_RUN_ID` (set by torchrun with
    `--rdzv-id`) or `SLURM_JOB_ID`, the run id's random suffix is derived from
    it, and non-zero ranks wait (up to two minutes) for rank 0 to create the
-   folder. Rank 0 never waits.
+   folder. Rank 0 never waits. A script that starts several runs in one job
+   (train, then evaluate) gets a different id for each: every rank counts its
+   `init` calls, and the count goes into the suffix from the second run on.
+   So call `init` the same number of times on every rank, or only on rank 0:
+   an extra `init` on rank 0 alone (`if rank == 0: nb.init(...)` followed by
+   an `init` on every rank) puts the counts out of step, and the other ranks
+   time out waiting for a folder that never appears.
 2. Without one, rank 0 picks a random id on its own and logs normally, and
    the other ranks do nothing: `run.id` is empty there. On one machine nothing
    is lost, since only rank 0 writes. On several machines, local rank 0 of each
@@ -50,6 +64,20 @@ All ranks must agree on the run folder. In order of preference:
 
 Earlier versions broadcast rank 0's id through `torch.distributed`, which
 hung the job when only rank 0 called `init` (issue #24).
+
+## Stopping and compaction
+
+A job stopped with SIGTERM (a SLURM time limit or preemption, Kubernetes,
+`kill`) is finished as **killed** on every rank that called `init`: queued
+data is written and the exit is recorded, without compacting, so it ends
+quickly. The handler is installed only while SIGTERM has its default action,
+so one your script or framework sets is left alone.
+
+At `finish`, rank 0 compacts the run into `data.parquet` once the newest log
+of every other rank has ended, waiting up to 10 seconds. Ranks that logged
+nothing have no log, so with only rank 0 logging it compacts right away. If
+another rank is still writing, the run is left uncompacted; run
+`nuboard compact` later.
 
 ## Viewing ranks
 

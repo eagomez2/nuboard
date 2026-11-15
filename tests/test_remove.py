@@ -97,3 +97,52 @@ def test_cli_asks_first_and_dry_run_deletes_nothing(tmp_path, capsys):
         main(["rm", str(tmp_path)])
 
     assert exc.value.code == 2
+
+
+def test_a_run_with_open_files_is_set_aside_then_purged(tmp_path, monkeypatch):
+    run = make_run(tmp_path, "locked")
+    real = remove.shutil.rmtree
+
+    def locked(path, *a, **kw):  # what Windows does while a viewer has a file open
+        if not kw.get("ignore_errors"):
+            raise PermissionError("in use")
+
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(remove.shutil, "rmtree", locked)
+    p = remove.plan(tmp_path, "", [run.name])
+    assert [t.path for t in remove.apply(p)] == [run]
+    assert [t.path for t in p.deferred] == [run]
+    assert not run.exists()  # out of runs/, so no reader lists it
+    assert any((tmp_path / "proj" / remove.TMP).iterdir())
+
+    monkeypatch.setattr(remove.shutil, "rmtree", real)
+    remove.purge(tmp_path / "proj")
+    assert not (tmp_path / "proj" / remove.TMP).exists()
+
+
+def test_a_run_that_cannot_move_is_reported_and_kept(tmp_path, monkeypatch):
+    run = make_run(tmp_path, "pinned")
+
+    def refuse(src, dest):
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(remove.os, "replace", refuse)
+    p = remove.plan(tmp_path, "", [run.name])
+    assert remove.apply(p) == [] and [t.path for t in p.failed] == [run]
+    assert run.exists()
+
+
+def test_ls_and_rm_report_a_bad_query_the_same_way(tmp_path, capsys):
+    make_run(tmp_path, "r")
+    capsys.readouterr()
+
+    for cmd in ("ls", "rm"):
+        with pytest.raises(SystemExit) as exc:
+            main([cmd, str(tmp_path), "-q", "bogus(("])
+
+        assert exc.value.code == 2
+        assert capsys.readouterr().out == "error: expected a comparison after 'bogus'\n"
+
+    main(["ls", str(tmp_path), "-q", "name = r"])
+    assert capsys.readouterr().out.split()[0] == "finished"

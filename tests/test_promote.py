@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import time
 
 import pytest
 from starlette.testclient import TestClient
@@ -244,7 +245,7 @@ def test_same_as_latest_matches_unchanged_files_only(tmp_path):
     assert same_as_latest(project, "ref", src) is None
 
 
-def test_stale_staging_folders_are_removed_and_fresh_ones_kept(tmp_path):
+def test_stale_staging_folders_are_removed_and_fresh_ones_kept(tmp_path, monkeypatch):
     from nuboard.artifacts import remove_stale_staging
 
     adir = tmp_path / "artifacts" / "model"
@@ -254,11 +255,32 @@ def test_stale_staging_folders_are_removed_and_fresh_ones_kept(tmp_path):
         (d / "files").mkdir(parents=True)
         (d / "files" / "x.bin").write_bytes(b"x")
 
-    for p in (old, old / "files", old / "files" / "x.bin"):
-        os.utime(p, (0, 0))
+    # 7 hours on: `old` was last written then; `fresh` is still being written to
+    later = time.time() + 7 * 3600
+    monkeypatch.setattr("nuboard.artifacts.time.time", lambda: later)
+    os.utime(fresh / "files" / "x.bin", (later, later))
 
     assert remove_stale_staging(adir) == [old]
     assert fresh.exists() and not old.exists()
+
+
+def test_a_copy_of_old_files_that_just_finished_is_not_stale(tmp_path):
+    from nuboard.artifacts import remove_stale_staging
+
+    src = tmp_path / "src"
+    (src / "sub").mkdir(parents=True)
+    (src / "sub" / "x.bin").write_bytes(b"x")
+    month_ago = time.time() - 30 * 86400
+
+    for p in (src / "sub" / "x.bin", src / "sub", src):
+        os.utime(p, (month_ago, month_ago))
+
+    adir = tmp_path / "artifacts" / "model"
+    adir.mkdir(parents=True)
+    shutil.copytree(src, adir / ".staging-abc")  # copy2 keeps the month-old times
+
+    assert remove_stale_staging(adir) == []
+    assert (adir / ".staging-abc" / "sub" / "x.bin").exists()
 
 
 def test_the_viewer_asks_before_adding_the_same_files_again(tmp_path):

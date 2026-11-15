@@ -1,4 +1,4 @@
-"""Analysis API: `NAME.load(project)` returns Arrow tables."""
+"""Analysis API: `nb.load(project)` returns Arrow tables."""
 
 from __future__ import annotations
 
@@ -207,11 +207,11 @@ class RunHandle:
         parts = []
 
         for m in names:
-            s, t, v = reader.scalars(m, rank)
+            s, t, v = reader.scalars(m, rank, copy=False)  # Arrow tables are immutable
             parts.append(
                 pa.table(
                     {
-                        "key": pa.array([m] * len(s), pa.string()),
+                        "key": pa.repeat(pa.scalar(m, pa.string()), len(s)),
                         "step": s,
                         "time": t,
                         "value": v,
@@ -340,23 +340,19 @@ class Project:
             A table with columns `run_id`, `name`, `step`, `time` and `value`, plus
             `group_by` when given. Runs without the scalar are skipped.
         """
-        cols: dict[str, list[Any]] = {"run_id": [], "name": [], "step": [], "time": [], "value": []}
-        groups: list[Any] = []
+        cols: dict[str, list[Any]] = {"step": [], "time": [], "value": []}
+        runs: list[tuple[str, str, Any]] = []  # (id, name, group value) per run with data
 
         for h in self.runs(query):
-            s, t, v = h.reader().scalars(key, rank)
+            s, t, v = h.reader().scalars(key, rank, copy=False)
 
             if not len(s):
                 continue
 
-            cols["run_id"].append(np.full(len(s), h.id, dtype=object))
-            cols["name"].append(np.full(len(s), h.name, dtype=object))
+            runs.append((h.id, h.name, resolve(h.record, group_by) if group_by else None))
             cols["step"].append(s)
             cols["time"].append(t)
             cols["value"].append(v)
-
-            if group_by:
-                groups.append(np.full(len(s), resolve(h.record, group_by), dtype=object))
 
         if not cols["step"]:
             data: dict[str, Any] = {
@@ -372,16 +368,32 @@ class Project:
 
             return pa.table(data)
 
+        # one value per run, repeated by Arrow: no Python object per point
+        which = pa.array(
+            np.repeat(np.arange(len(runs), dtype="i4"), [len(s) for s in cols["step"]])
+        )
+
+        def per_point(values: list[Any], type_: pa.DataType | None = None) -> pa.Array:
+            """Repeat one value per run over that run's points."""
+            return pa.array(values, type_).take(which)
+
         data = {
-            "run_id": pa.array(np.concatenate(cols["run_id"]), pa.string()),
-            "name": pa.array(np.concatenate(cols["name"]), pa.string()),
+            "run_id": per_point([r[0] for r in runs], pa.string()),
+            "name": per_point([r[1] for r in runs], pa.string()),
             "step": np.concatenate(cols["step"]),
             "time": np.concatenate(cols["time"]),
             "value": np.concatenate(cols["value"]),
         }
 
         if group_by:
-            data[group_by] = pa.array(list(np.concatenate(groups)))
+            values = [r[2] for r in runs]
+
+            try:
+                data[group_by] = per_point(values)
+            except (pa.ArrowInvalid, pa.ArrowTypeError):  # mixed types, such as 0.001 and "auto"
+                data[group_by] = per_point(
+                    [None if v is None else str(v) for v in values], pa.string()
+                )
 
         return pa.table(data)
 

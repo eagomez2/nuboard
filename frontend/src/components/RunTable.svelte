@@ -140,13 +140,18 @@
 
   // Config keys whose values differ between the listed runs: the ones worth showing.
   const varying = $derived.by(() => {
-    const values = new Map<string, Set<string>>();
-    for (const r of rows.slice(0, 2000))
+    // the first value seen per key; a key drops out of the comparison once it differs
+    const first = new Map<string, string>();
+    const differs = new Set<string>();
+    for (const r of rows)
       for (const [k, v] of Object.entries(r.config)) {
-        if (!values.has(k)) values.set(k, new Set());
-        values.get(k)!.add(JSON.stringify(v));
+        if (differs.has(k)) continue;
+        const text = JSON.stringify(v);
+        const seen = first.get(k);
+        if (seen === undefined) first.set(k, text);
+        else if (seen !== text) differs.add(k);
       }
-    return [...values.entries()].filter(([, s]) => s.size > 1).map(([k]) => k);
+    return [...first.keys()].filter((k) => differs.has(k));
   });
 
   // Extra columns picked in the Columns menu: field:<name>, config:<key>, metric:<name>.
@@ -160,7 +165,7 @@
   });
   const configKeys = $derived.by(() => {
     const keys = new Set<string>();
-    for (const r of (app.runs?.runs ?? []).slice(0, 2000)) for (const k of Object.keys(r.config)) keys.add(k);
+    for (const r of app.runs?.runs ?? []) for (const k of Object.keys(r.config)) keys.add(k);
     return [...keys].sort();
   });
   // Columns are as wide as their widest value, so nothing is cut off; a table wider
@@ -545,8 +550,8 @@
         >
           <input
             class="input sm mono colfind"
-            placeholder="Search columns"
-            aria-label="Search columns"
+            placeholder="Filter columns"
+            aria-label="Filter columns"
             bind:this={colFindEl}
             bind:value={colFind}
             onkeydown={(e) => e.key === 'Escape' && (colFind ? (colFind = '') : (menu = false))}

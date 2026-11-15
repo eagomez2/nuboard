@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import LineChart, { type CursorValue } from './LineChart.svelte';
   import { api, type ChartData } from '../lib/api';
   import { chartZone } from '../lib/chartzone';
+  import { mergeSeries, runsToRefetch } from '../lib/livechart';
   import { fmtDuration, fmtNum, fmtSeconds, fmtTimeIn } from '../lib/format';
 
   let {
@@ -22,6 +23,7 @@
     colorOf,
     themeVersion,
     tick,
+    changed = null,
     onFocus,
     markers = true,
     pinX = null,
@@ -45,6 +47,8 @@
     colorOf: (label: string, i: number) => string;
     themeVersion: number;
     tick: number;
+    /** The runs whose data changed since the last `tick`; null when unknown. */
+    changed?: string[] | null;
     onFocus: () => void;
     /** A dot on each curve at the point under the cursor (or the pinned step). */
     markers?: boolean;
@@ -81,26 +85,49 @@
   let data = $state<ChartData | null>(null);
   let error = $state<string | null>(null);
 
+  // The fetch in flight; a new one cancels it
+  let ctrl: AbortController | null = null;
   onMount(() => {
     const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting), { rootMargin: '300px' });
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      ctrl?.abort();
+    };
   });
 
+  // Fetched again only when the query or `tick` changes (a new run list with the same runs, or
+  // scrolling back into view, keeps what is shown). A live update (only `tick` moved by one)
+  // refetches just the changed runs of an ungrouped chart and merges them in.
+  let lastTick = -1;
+  let lastQuery = '';
   $effect(() => {
     if (!visible || !runs.length) return;
-    void tick;
-    const ctrl = new AbortController();
-    api
-      .chart({ runs, metric, x, group, agg, points: 320, logx: logX, signal: ctrl.signal })
+    const query = JSON.stringify([runs, metric, x, group, agg, logX]);
+    if (query === lastQuery && tick === lastTick) return;
+    // a hidden chart may have missed more ticks, and a cancelled fetch the changes of its own
+    const live = tick === lastTick + 1 && query === lastQuery && !ctrl;
+    lastTick = tick;
+    lastQuery = query;
+    const [old, seen, failed] = untrack(() => [data, changed, error !== null] as const);
+    const part = live ? runsToRefetch(runs, seen, !!group, !!old && !failed) : null;
+    if (part && !part.length) return;
+    ctrl?.abort();
+    const own = new AbortController();
+    ctrl = own;
+    const load = (keys: string[]) =>
+      api.chart({ runs: keys, metric, x, group, agg, points: 320, logx: logX, signal: own.signal });
+    (part ? load(part).then((d) => mergeSeries(old!, d, part, runs) ?? load(runs)) : load(runs))
       .then((d) => {
         data = d;
         error = null;
       })
       .catch((e) => {
         if (e.name !== 'AbortError') error = String(e);
+      })
+      .finally(() => {
+        if (ctrl === own) ctrl = null;
       });
-    return () => ctrl.abort();
   });
 
   const note = $derived(

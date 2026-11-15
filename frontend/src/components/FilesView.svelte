@@ -10,9 +10,10 @@
   import { sideBySide } from '../lib/diff';
   import { fmtBytes, fmtDate, fmtNum } from '../lib/format';
   import { isPattern, patternRegex, pinMatches } from '../lib/pattern';
-  import { onLive } from '../lib/live';
+  import { EVERYTHING, onLive } from '../lib/live';
   import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
+  import { DISPLAY_NAME } from '../lib/brand';
 
   // Every file of the shown runs' folders: a tree to browse, with a preview of the
   // picked file below. Text files are diffed between two runs, checkpoints are listed
@@ -244,7 +245,7 @@
     const read = (changed: string[]) => {
       const key = loadKey;
       if (onScreen !== key || Date.now() - lastRead < 1000) return;
-      if (!changed.some((k) => shownKeys.includes(k))) return;
+      if (!changed.some((k) => k === EVERYTHING || shownKeys.includes(k))) return;
       lastRead = Date.now();
       readTexts(key, ++request);
     };
@@ -520,9 +521,9 @@
               class="switch"
               role="switch"
               aria-checked={showInternal}
-              aria-label="Show NuBoard data"
+              aria-label="Show {DISPLAY_NAME} data"
               onclick={() => (showInternal = !showInternal)}
-            ></button>NuBoard data ({internalCount})</label
+            ></button>{DISPLAY_NAME} data ({internalCount})</label
           >
         {/if}
       </div>

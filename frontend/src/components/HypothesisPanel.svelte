@@ -381,13 +381,13 @@
 
         <section>
           <div class="sec-head">
-            <span class="label">Metrics</span>
+            <span class="label">Scalars</span>
             {#if !ro}
               <button
                 class="btn btn-ghost icon sm"
                 class:on={choosing}
-                title="Choose the metrics listed here (for the whole board)"
-                aria-label="Choose metrics"
+                title="Choose the scalars listed here (for the whole board)"
+                aria-label="Choose scalars"
                 aria-pressed={choosing}
                 onclick={() => {
                   choosing = !choosing;
@@ -401,8 +401,8 @@
               <input
                 class="input sm"
                 bind:value={metricFind}
-                placeholder="Filter metrics"
-                aria-label="Filter metrics"
+                placeholder="Filter scalars"
+                aria-label="Filter scalars"
               />
               <div class="opts">
                 {#each chooserList as m (m)}
@@ -422,7 +422,7 @@
                     >{#if on}<span class="grip" aria-hidden="true">⋮⋮</span>{/if}</label
                   >
                 {:else}
-                  <p class="help">No metric matches.</p>
+                  <p class="help">No scalar matches.</p>
                 {/each}
               </div>
               <div class="row">
@@ -430,7 +430,7 @@
                 <button
                   class="btn sm"
                   disabled={!chosen.length}
-                  title="The card's metric first, then the run's first metrics, without system metrics and timers"
+                  title="The card's scalar first, then the run's first scalars, without system metrics and timers"
                   onclick={() => onsaveboard({ panel_metrics: [] })}>Use default</button
                 >
                 <span class="hint"

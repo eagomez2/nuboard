@@ -242,7 +242,7 @@ def check_run(reader: RunReader) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
 
     for rank in reader.ranks() or [0]:
-        for metric, (s, _, v) in reader.all_scalars(rank).items():
+        for metric, (s, _, v) in reader.all_scalars(rank, copy=False).items():
             if len(s):
                 out += check_series(metric, rank, s, v)
 

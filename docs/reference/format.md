@@ -105,7 +105,9 @@ is a folder on the same machine.
   work on Windows.
 - In a distributed job with a shared id (`TORCHELASTIC_RUN_ID` or
   `SLURM_JOB_ID`), `<hash8>` is the first 8 hex digits of the SHA-1 of that id
-  so every rank finds the same folder.
+  so every rank finds the same folder. The second and later runs started by
+  one process of the job use the SHA-1 of `<id>#<n>`, where `n` counts that
+  rank's earlier runs (1 for the second), so they get folders of their own.
 
 ## `run.json`
 
@@ -239,7 +241,7 @@ the frame length).
 | `S` | `n:u32, metric_id:u32[n], step:i64[n], time:f64[n], value:f64[n]` | A batch of scalars as four columns. |
 | `H` | `time:f64` | Heartbeat. |
 | `T` | `key_id:u32, step:i64, time:f64, text:utf8` | Text sample. |
-| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `audio`, `video`, `figure`, `html`), plus `caption` for images, audio and video, `sample_rate`, `channels` and `duration` (seconds) for audio when known, and `fps`, `frames`, `width`, `height` and `duration` for video encoded from arrays. |
+| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`, or in `media.r<rank>.s<session>.pack` for a session of a helper job when that file exists. `meta` holds at least `mime` and `kind` (`image`, `audio`, `video`, `figure`, `html`), plus `caption` for images, audio and video, `sample_rate`, `channels` and `duration` (seconds) for audio when known, and `fps`, `frames`, `width`, `height` and `duration` for video encoded from arrays. |
 | `E` | `time:f64, status:utf8` | End of session, written by `finish()`. |
 
 Scalars named `system/...` are the [system samples](../api/init.md#system-scalars)
@@ -295,6 +297,13 @@ wins on overlapping steps** (a resume from a checkpoint replaces what was
 logged after the checkpoint). Ranks are never merged; each rank is its own
 series and rank 0 is the default.
 
+The viewer applies the same rule to text and media items, per key: items of
+an earlier session at or after a later session's first step for that key are
+not listed. The files keep every item, and `RunReader.texts()` and `media()`
+return all of them. The viewer names a media item by
+`session * 1_000_000_000 + n`, where `n` counts the `M` frames of that
+session's log; it never changes as later sessions are written.
+
 ## Media pack: `media.r<rank>.pack`
 
 Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), video (APNG/MP4/WebM/MOV/Ogg/GIF), figures (Plotly JSON,
@@ -349,7 +358,7 @@ each name to its file.
   "range": [0.0, 1.0],
   "regions": {"target": [[0.42, 1.87, "speech"]], "predicted": [[0.40, 1.95, "speech"]]},
   "notes": [{"id": "...", "start": 0.4, "end": 0.6, "text": "false alarm"}],
-  "exported_with": "nuboard 0.29.0"
+  "exported_with": "nuboard 0.31.0"
 }
 ```
 
@@ -362,8 +371,11 @@ figure from a bundle.
 
 ## Compacted scalars: `data.parquet`
 
-Written by `finish()` when PyArrow and NumPy are installed, or by
-`nuboard compact <dir>`. It is a cache of the logs: the logs stay the source of
+Written by `finish()` (PyArrow and NumPy are required dependencies), or by
+`nuboard compact <dir>`. In a multi-process run, rank 0 writes it at finish
+once the other ranks' logs have ended (it waits up to 10 s for them); a run
+stopped by SIGTERM is not compacted at finish, and `nuboard compact` can do
+it later. It is a cache of the logs: the logs stay the source of
 truth and are never deleted.
 
 Columns: `metric: string`, `level: int8`, `rank: int32`, `step: int64`,
@@ -374,6 +386,9 @@ Columns: `metric: string`, `level: int8`, `rank: int32`, `step: int64`,
 - File key/value metadata `row_groups` holds a JSON map
   `{metric: [[row_group_index, rows], ...]}` indexed by level, so reading one
   scalar at one level is one row-group read. `format_version` is also stored.
+- File key/value metadata `metric_ranks` holds `{metric: [ranks]}`, the ranks
+  that logged each scalar. Files written before multi-process runs were
+  compacted lack it; readers then list every scalar for every rank.
 - Level 0 is the raw data (`vmin`/`vmax` equal `value`). Level *k* averages
   consecutive buckets of 8^*k* points: `step`/`time` of the bucket's first
   point, `value` = mean of finite values, `vmin`/`vmax` = min/max. Levels stop

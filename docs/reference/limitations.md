@@ -10,11 +10,15 @@ What NuBoard does not do yet, or does with a trade-off.
   one to two points per pixel), not to every raw point.
 - The run list sends the whole filtered list to the browser; at tens of
   thousands of runs this should become paged.
-- Runs on Windows are covered by design (no colons, atomic replace with
-  retries, case-collision check) but were only tested on Linux so far.
+- The test suite runs in CI on Linux, macOS and Windows. On Windows, a file
+  another program holds open (an antivirus scan, a viewer reading it) can
+  delay compaction or `nuboard rm`; both retry, and `rm` finishes removing a
+  run the next time it or `nuboard up` runs.
 - Edits of a run's stars, tags, notes and properties are safe within one
   viewer, and stale edits of notes and properties are caught, but two viewers
   (or a viewer and `Run.set_field`) saving the same run within the same few
   milliseconds can still lose one edit, and a sync tool restoring an older
   `annotations.json` wins. See
   [Editing from several places](../guide/viewer.md#editing-from-several-places).
+- Hypothesis cards and reports are saved whole: when two tabs or viewers edit
+  the same card or report, the last save wins, with no warning.

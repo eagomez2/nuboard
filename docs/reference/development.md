@@ -142,7 +142,7 @@ The **Docs** workflow builds the site on every push to `main` and publishes it
 to <https://eagomez2.github.io/nuboard/>. It needs **Settings → Pages →
 Source: GitHub Actions** set once in the repository.
 
-Keep [`docs/format.md`](format.md) in sync with every change to what is
+Keep [`docs/reference/format.md`](format.md) in sync with every change to what is
 written to disk.
 
 ## Rules for the logging side

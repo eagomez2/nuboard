@@ -68,4 +68,9 @@ second time.
 | `directions.json` | Directions DEST lacks are added; a scalar better lower on one side and higher on the other keeps DEST's. |
 
 Each run and artifact version is copied to `<project>/.merge-tmp/` and then
-moved into place, so a viewer open on DEST never shows a half-copied run.
+moved into place, so a viewer open on DEST never shows a half-copied run. If a
+merge is stopped part way, run it again: it plans what is still missing. Each
+copy has a folder of its own in `.merge-tmp/`, so two merges into the same DEST
+at once do not get in each other's way. A copy that fails (a full disk) is
+removed at once, and a partial copy left by a merge killed outright is deleted
+once nothing in it changed for 6 hours.

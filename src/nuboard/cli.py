@@ -1,4 +1,4 @@
-"""Command line: `NAME up`, `demo`, `compact`, `ls`, `artifact`, `merge` and friends."""
+"""Command line: `nuboard up`, `demo`, `compact`, `ls`, `artifact`, `merge` and friends."""
 
 from __future__ import annotations
 
@@ -145,7 +145,14 @@ def up(
     shown = "localhost" if loopback else socket.gethostname() if host in ("0.0.0.0", "::") else host
     url = f"http://{shown}:{port}/"
     link = f"{url}?token={token}" if token else url
-    runs = len(app.state.store.catalog.runs())
+    catalog = app.state.store.catalog
+    runs = len(catalog.runs())
+
+    from .remove import purge  # finish deletions `rm` had to leave (files open on Windows)
+
+    for project in {catalog.project_dir(p["name"]) for p in catalog.projects()} - {None}:
+        purge(project)
+
     print(f"{NAME} serving {root.resolve()} ({runs} runs) at {link}  (Ctrl+C to stop)")
 
     if token:
@@ -530,9 +537,15 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{done} run(s) compacted")
     elif args.cmd == "ls":
         from . import _fs
-        from .catalog import effective_status, find_runs, make_record
+        from .catalog import find_runs, make_record
         from .jobs import read_meta
-        from .query import parse
+        from .query import QueryError, parse
+
+        try:
+            query = parse(args.query)
+        except QueryError as exc:  # as `rm` reports it, before reading any run
+            print(f"error: {exc}")
+            raise SystemExit(2) from None
 
         root = Path(args.dir or _default_dir())
         records = []
@@ -542,7 +555,7 @@ def main(argv: list[str] | None = None) -> None:
             ann = _fs.read_json(path / "annotations.json", {}) or {}
             records.append(make_record(path.name, project, path.name, meta, ann))
 
-        for r in parse(args.query).apply(records):
+        for r in query.apply(records):
             print(f"{r['status']:<9} {r['project']:<20} {r['id']}")
     elif args.cmd == "import-tensorboard":
         _import_tensorboard(args.logdir, args.project, args.dir, args.tags)

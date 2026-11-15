@@ -43,11 +43,11 @@ NumPy; TensorBoard's `EventAccumulator` parses one protobuf event per point.
 
 The numbers above are the common case. Know these too:
 
-- **`finish()` compacts the run into Parquet** in a single-process run. It
+- **`finish()` compacts the run into Parquet**. It
   takes about 2 s per million points and holds them in memory while it works
   (20M points: about 30 s and 2.4 GB). Pass `nb.init(..., compact=False)` to
-  skip it; the viewer reads the event log directly. Multi-GPU runs never
-  compact at `finish()`.
+  skip it; the viewer reads the event log directly. In a multi-GPU run, rank 0
+  compacts once the other ranks' logs have ended.
 - **Very fast steps with many metrics.** The writer thread holds the GIL for
   about 0.8 µs per point it writes. That is invisible at normal step times, but
   logging 50 metrics every 100 µs step costs about 40% of the throughput.

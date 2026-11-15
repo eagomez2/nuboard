@@ -9,6 +9,7 @@
   import { fmtAgo, fmtBytes, fmtDate, fmtValue } from '../lib/format';
   import { router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { DISPLAY_NAME } from '../lib/brand';
 
   const NODE_W = 168;
   const NODE_H = 44;
@@ -384,7 +385,7 @@ run.use_artifact("dataset:latest")</pre>
             {#if selected.manifest.type}<span class="chip keep">{selected.manifest.type}</span>{/if}
             {#if selected.manifest.reference}<span
                 class="chip keep"
-                title="The files stay where they are; NuBoard records their path and fingerprint">Reference</span
+                title="The files stay where they are; {DISPLAY_NAME} records their path and fingerprint">Reference</span
               >{/if}
             {#if selected.unlinked}<span class="chip keep" title="Hidden; its folder is in artifacts/.unlinked/"
                 >Unlinked</span

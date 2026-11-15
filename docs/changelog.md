@@ -1,5 +1,150 @@
 # Changelog
 
+## 0.31.0
+
+Fixes from a code audit: resumed runs and their media in an open viewer,
+`flush()` and values changed right after `add_scalar`, several runs per
+distributed job, SIGTERM, Windows file locks, and a faster viewer with many
+runs or live charts. No breaking changes: run folders written by earlier
+versions read as before, `data.parquet` gains one metadata key, and the
+Python API only gains optional arguments.
+
+- **A resumed run updates in an open viewer.** A finished run that was
+  resumed while `nuboard up` was running kept showing its old, compacted data
+  until the viewer restarted. The viewer now notices that the logs grew (or
+  that `data.parquet` was rewritten) and reads the new data.
+- **Media stay correct after a resume.** Images, audio and other media were
+  addressed by their position in the list, which a resume could shift, so the
+  browser could show a cached item under the wrong step. Each item now has an
+  id that never changes. Text and media also follow the rule scalars already
+  follow: where a resumed session logs a key again, the earlier session's
+  items from that step on are no longer listed twice. The Python reader still
+  returns every logged item.
+- **One scalar menu instead of a row of tabs on the focused chart.** With
+  many long scalar names, the tabs above the chart were cut off, and the
+  **All N** button could slide under **New data · Update**. The header now
+  holds a single searchable menu showing the full scalar name, ‹ › buttons
+  to step to the previous or next scalar, and a `30 / 54` counter, so the
+  header stays tidy and nothing overlaps. Live updates leave it alone: an
+  open menu keeps its search text and focus, and nothing in the header or
+  the plot moves when new data arrives or the Update button comes and goes.
+- **`run.flush()` waits until the data is written.** It could return while
+  the background thread was still writing the last batch, so reading the run
+  right after a flush could miss data.
+- **A failed write no longer renames scalars.** After one batch failed (a
+  full disk, a network filesystem hiccup), the scalars first seen in it showed
+  up as numbers such as `17` for the rest of the run. Their names are now
+  written again with the next batch.
+- **Logged values are taken at the call.** `add_scalar` read tensors and
+  arrays up to a second later, on the background thread, so changing one in
+  place right after the call (`acc.add_(x)`, a reused buffer) or editing a
+  nested dict logged the later value. Tensors are now cloned on their device
+  without waiting for the GPU, arrays are copied, and nested dicts are
+  flattened at the call; `add_scalar` still takes a few microseconds.
+- **The media count in `run.json`** no longer drifts low when media are logged
+  while a heartbeat is being written.
+- **Several runs in one distributed job get their own folders.** A second
+  `init` in the same SLURM or torchrun job (train, then evaluate) got the same
+  id as the first: it failed with "already exists", or other ranks wrote into
+  the first run. The first run of a job keeps the id it gets today.
+- **SIGTERM finishes runs as killed.** A job stopped by a SLURM time limit,
+  preemption or `kill` stayed "running" until it showed as lost, and lost its
+  last second of data. It is now finished as `killed` with its data written.
+- **Multi-GPU runs are compacted** at finish, once the other ranks' logs
+  ended, so the viewer opens them as fast as single-process runs.
+- **`NUBOARD_STANDALONE=1`** makes `srun -n N` tasks independent runs instead
+  of the N ranks of one run.
+- **Windows: an open viewer no longer blocks compaction or `nuboard rm`.**
+  The viewer kept each run's `data.parquet` open, so finishing a resumed run
+  could not replace it, and `nuboard rm` failed on runs with open files. The
+  viewer now opens the file only while it reads it, compaction retries while
+  the old file is in use, and `rm` sets aside runs it cannot delete yet and
+  removes them later.
+- **A faster viewer with many runs.** The run list no longer rescans the
+  whole folder on every live update (the server has just done it), a running
+  run's heartbeat alone no longer makes every open tab reload the list, and
+  the list's run count and collections are computed once instead of once per
+  run. With 5,000 runs a live reload of `/api/runs` takes about 65 ms instead
+  of 440 ms.
+- **Live charts fetch less.** A live update refetches, on each small chart,
+  only the runs that changed and merges them into what is shown, instead of
+  every run on every chart. Charts of a compacted run keep their decoded zoom
+  levels in memory (256 MB at most), so zooming and live updates no longer
+  read them from disk again.
+- **Media are sent as they are stored.** Images, audio and video skip gzip
+  (they are compressed already), and a seek in an audio or video player reads
+  only the bytes it asks for instead of the whole file.
+  `RunReader.read_media` takes an optional `start` and `size` for the same.
+- **Open tabs catch up after a reconnect.** After the viewer restarted, or
+  a laptop slept, open tabs showed old data until the next change; they now
+  reload the runs and charts once when they reconnect.
+- **Compacting a running run no longer skips data.** With
+  `nuboard compact --include-running`, frames written while the logs were
+  being read could be counted as compacted without being in `data.parquet`;
+  if the run then died, the viewer never showed them.
+- **Runs of the same name are told apart by the end of their id** in chart
+  legends (`baseline (1a2b3c4d)`), not by the whole id.
+- **`Project.scalars(group_by=...)` with mixed value types** (`0.001` in
+  some runs, `"auto"` in another) returns the values as strings instead of
+  raising. Its `run_id` and `name` columns are built without one Python string
+  per point, so large tables load faster.
+- **The Columns menu lists config keys of every run**, not only of the first
+  2,000.
+- **Forking a resumed run** takes its history the way the viewer shows it,
+  with bands, and reads a compacted parent from `data.parquet`.
+- **Wording:** the remaining "metric" labels on the Hypotheses board say
+  "scalar", and every filter box says "Filter". The product name in the UI
+  comes from one place, and the docs describe when multi-GPU runs are
+  compacted, name both media packs, and say the tests run on Windows too.
+- **A write cut short no longer loses the rest of the run.** If the disk
+  filled up in the middle of a write, the partly written bytes stayed in the
+  log, and everything logged after them was unreadable. The failed write is
+  now cut back off the file, and logging carries on cleanly. A media item that
+  cannot be stored is skipped alone, instead of with every scalar logged in
+  the same second.
+- **An idle running run no longer reloads every open run list** on each
+  heartbeat.
+- **Media load faster on runs with many items:** each item is looked up
+  directly instead of by sorting the run's whole media list. Python:
+  `RunReader.media_item(uid)`, and `media()` and `texts()` take
+  `latest=True` to list items the way the viewer does.
+- **Open tabs notice a viewer restart** also when the restarted viewer
+  happens to reach the same catalog version.
+- **`RunReader.scalars()` returns arrays you can change**, also for a
+  compacted run (they were read-only there). `copy=False` returns the
+  reader's own arrays without copying.
+- **A SIGTERM during `finish()` lets it complete** before the process ends,
+  so a job stopped just as it was finishing is recorded as finished, not lost.
+- **Finishing a multi-GPU run is faster:** the check that the other ranks
+  have ended reads only their own logs, so the run is decoded once, for
+  compaction.
+- **The Files view reads only what it shows.** Opening a large file of a
+  run's `files/` folder (a checkpoint, a long log) read all of it into the
+  viewer's memory to send its first 2 MB. Now only those 2 MB are read.
+- **A merge stopped part way no longer blocks the next one.** A merge killed
+  while copying a run or artifact version left a partial copy in the hidden
+  `.merge-tmp/` folder, and every later merge of it failed with
+  `FileExistsError`. Each copy now has a staging folder of its own, so the
+  merge can simply be run again, and two merges into the same folder at once
+  never touch each other's copies. A copy that fails (a full disk) is removed
+  at once, and one left by a merge killed outright once nothing in it changed
+  for 6 hours.
+- **A copy that just finished is never taken as abandoned.** Merges and
+  artifact versions clear staging folders in which nothing changed for 6
+  hours, but a copy keeps its source's modification times, so a fresh copy of
+  old files could look abandoned and be deleted before it was moved into
+  place. The check now also looks at when the copy itself was written.
+- **Docs:** [known limitations](reference/limitations.md) now say that
+  hypothesis cards and reports are saved whole, so the last save wins.
+- **A TensorBoard import stopped part way is redone.** Importing the same
+  folder again skipped the run as already imported, leaving it crashed with
+  part of its data. It is now imported again in full.
+- **`nuboard ls` reports a bad query in one line**, as `nuboard rm` does,
+  instead of with a Python traceback, and before reading any run.
+- **Internal:** the viewer's routes moved from one 2,500-line `server/app.py`
+  into one module per area under `server/routes/`. No route, parameter or
+  response changed.
+
 ## 0.30.0
 
 The viewer asks before saving over notes or properties someone else changed

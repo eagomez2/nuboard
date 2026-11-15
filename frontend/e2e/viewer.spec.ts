@@ -310,7 +310,7 @@ test('sweeps parameter picker: defaults, search, clear, reset and remove', async
   await expect(page.locator('.chip.param[title^="seed "]')).toHaveCount(0); // seeds are not a default
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('seed');
+  await picker.getByLabel('Filter parameters').fill('seed');
   await expect(picker.locator('label.row')).toHaveCount(1);
   await picker.locator('label.row').getByRole('checkbox').check();
   await expect(page.locator('.chip.param[title^="seed "]')).toBeVisible();
@@ -367,7 +367,7 @@ test('sweeps compares runs by the dataset version they used', async ({ page }) =
   await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('inputs.');
+  await picker.getByLabel('Filter parameters').fill('inputs.');
   const row = picker.locator('label.row', { hasText: 'fineweb-edu' });
   await expect(row).toContainText('category · 3 values'); // v1, v2, and none for the prep and eval runs
   await page.keyboard.press('Escape');
@@ -395,7 +395,7 @@ test('sweeps splits a list into element axes and joins it back', async ({ page }
   await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale');
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('crop');
+  await picker.getByLabel('Filter parameters').fill('crop');
   await picker.getByRole('button', { name: 'Split' }).click();
   await expect(page).toHaveURL(/split=crop_scale/);
   await expect(page.locator('.chip.param[title^="crop_scale[0] "]')).toBeVisible();
@@ -433,7 +433,7 @@ test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
   const axis = page.getByRole('group', { name: 'X axis' });
   await axis.getByRole('button', { name: /^X axis scalar/ }).click();
-  await page.getByLabel('Search scalars').fill('tokens');
+  await page.getByLabel('Filter the scalar list').fill('tokens');
   await page.getByRole('option', { name: 'train/tokens' }).click();
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
   await expect(axis.getByRole('button', { name: 'X axis scalar: train/tokens' })).toHaveAttribute(
@@ -1161,12 +1161,27 @@ test('a pinned point stays on its point when the chart zooms', async ({ page }) 
   await expect(dot).toBeVisible();
 });
 
+/**
+ * Space pressed while the page itself has the focus scrolls the page, smoothly. Wait until it
+ * stops: a click aimed at an element during the scroll lands wherever the scroll has carried it.
+ */
+async function scrollSettled(page: Page) {
+  await page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const y = window.scrollY;
+        setTimeout(() => resolve(window.scrollY === y), 150);
+      }),
+  );
+}
+
 test('Space plays and pauses a waveform figure once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
   await page.keyboard.press(' ');
   await expect(fig).not.toHaveClass(/playing/);
+  await scrollSettled(page);
   // a click on the plot sets the playhead and gives the figure the focus: Space plays from there
   await fig.locator('.u-over').click({ position: { x: 40, y: 20 } });
   await page.keyboard.press(' ');
@@ -1194,6 +1209,7 @@ test('Space plays and pauses the audio player once clicked, and in full screen',
   // the page has the focus: Space is the page's
   await page.keyboard.press(' ');
   await expect(root).not.toHaveClass(/playing/);
+  await scrollSettled(page);
   // a click on the waveform gives the player the focus: Space plays and pauses
   await player.locator('#waveform').click({ position: { x: 40, y: 30 } });
   await page.keyboard.press(' ');
@@ -1545,7 +1561,7 @@ test('run table cells are never cut off, and the Columns menu is searchable', as
 
 test('any scalar can be picked for the main chart, and sections fold', async ({ page }) => {
   await page.goto('/#/charts?project=vit-ablations');
-  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.getByRole('button', { name: /^Chart scalar: / }).click();
   await page.keyboard.type('per_class');
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options.first()).toContainText('per_class');
@@ -1553,6 +1569,17 @@ test('any scalar can be picked for the main chart, and sections fold', async ({ 
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}`));
   await expect(page.getByRole('dialog', { name: 'Pick a scalar' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Chart scalar: / })).toHaveText(name);
+
+  // the arrows step to the neighbouring scalars, and the counter follows
+  const count = page.locator('.focus .count');
+  const at = Number((await count.textContent())!.split(' / ')[0]);
+  await page.getByRole('button', { name: 'Next scalar' }).click();
+  await expect(page).not.toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}(&|$)`));
+  await expect(count).toHaveText(new RegExp(`^${at + 1} / \\d+$`));
+  await page.getByRole('button', { name: 'Previous scalar' }).click();
+  await expect(page).toHaveURL(new RegExp(`metric=${encodeURIComponent(name)}`));
+  await expect(count).toHaveText(new RegExp(`^${at} / \\d+$`));
 
   const sect = page.locator('.sect').filter({ hasText: 'per_class' });
   const fold = sect.locator('.fold');
@@ -1632,7 +1659,7 @@ test('a scalar logged with low and high is drawn with its band', async ({ page }
   await page.goto('/#/charts?project=llm-pretrain&metric=eval%2Floss');
   const row = page.locator('.irow').first();
   await expect(row).toContainText(/\d to \d/);
-  await page.getByRole('button', { name: /^All \d+$/ }).click();
+  await page.getByRole('button', { name: /^Chart scalar: / }).click();
   await page.keyboard.type('eval/loss');
   const options = page.getByRole('listbox', { name: 'Scalars' }).getByRole('option');
   await expect(options).toHaveCount(1);
@@ -2153,8 +2180,24 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
 });
 
-/** Open the demo's live run on the Files tab, showing `file`. */
+/**
+ * Open the demo's live run on the Files tab, showing `file`. A live run lasts about 125 s
+ * (25,000 steps) before the next seed starts, so this first waits for one with a minute or
+ * more to go: a run that finishes mid-test stops growing its files.
+ */
 async function openLiveFile(page: Page, file: string) {
+  test.setTimeout(150_000);
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get('/api/runs?project=llm-pretrain');
+        const runs = (await res.json()).runs as { status: string; summary: Record<string, { step: number }> }[];
+        const live = runs.find((r) => r.status === 'running');
+        return live ? (live.summary['train/loss']?.step ?? 0) : Infinity;
+      },
+      { timeout: 130_000, intervals: [1000] },
+    )
+    .toBeLessThan(13_000);
   await page.goto('/#/runs?project=llm-pretrain');
   await page
     .locator('.body .row')
@@ -2604,4 +2647,26 @@ test('the spectrogram frequency axis can be turned off', async ({ page }) => {
   // it labels the spectrogram, so it goes away with it
   await page.getByRole('switch', { name: 'Spectrogram' }).click();
   await expect(freq).toHaveCount(0);
+});
+
+test('a live update refetches only the live run on the small charts @live', async ({ page }) => {
+  await page.goto('/#/charts?project=llm-pretrain&metric=train%2Floss');
+  const small = page.locator('.small').first();
+  await small.scrollIntoViewIfNeeded();
+  await expect(small.locator('canvas')).toBeVisible({ timeout: 15000 });
+  const live = await page.evaluate(async () => {
+    const res = await fetch('/api/runs?q=where%20tags%20has%20live&project=llm-pretrain');
+    return (await res.json()).runs
+      .filter((r: { status: string }) => r.status === 'running')
+      .map((r: { key: string }) => r.key);
+  });
+  expect(live.length).toBe(1);
+  const name = await small.locator('.name').textContent();
+  // the next update of this small chart asks for the live run alone, not every run on the page
+  const req = await page.waitForRequest(
+    (r) => r.url().includes('/api/scalars') && r.url().includes(`metric=${encodeURIComponent(name!.trim())}`),
+    { timeout: 15000 },
+  );
+  expect(new URL(req.url()).searchParams.get('runs')).toBe(live[0]);
+  await expect(small.locator('canvas')).toBeVisible();
 });

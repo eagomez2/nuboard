@@ -22,6 +22,19 @@ def test_load_scalars_group_by():
     assert one.column_names == ["key", "step", "time", "value"]
 
 
+def test_group_by_values_of_mixed_types_become_strings():
+    for lr in (0.001, "auto"):
+        with nb.init("mixed", config={"lr": lr}, capture_env=False) as run:
+            for s in range(3):
+                run.add_scalar({"loss": 1.0}, step=s)
+
+    table = nb.load("mixed").scalars("loss", group_by="config.lr")
+    assert table.schema.field("config.lr").type == "string"
+    assert sorted(set(table.column("config.lr").to_pylist())) == ["0.001", "auto"]
+    assert table.schema.field("run_id").type == "string"  # not a dictionary column
+    assert len(set(table.column("run_id").to_pylist())) == 2
+
+
 def test_set_field_from_python():
     with nb.init("fields", capture_env=False) as run:
         run.add_scalar({"loss": 1.0}, step=0)

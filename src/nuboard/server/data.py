@@ -72,7 +72,8 @@ class Store:
     def fresh_reader(self, key: str) -> RunReader | None:
         """Return a reader with every byte written so far decoded.
 
-        Refreshing is skipped for compacted runs, whose data is in Parquet.
+        For a compacted run this only checks that `data.parquet` is still current
+        (it is dropped when the run was resumed); its logs are read on first use.
 
         Args:
             key: Catalog key of the run.
@@ -82,7 +83,7 @@ class Store:
         """
         reader = self.reader(key)
 
-        if reader is not None and reader.parquet is None:
+        if reader is not None:
             reader.refresh()
 
         return reader
@@ -96,7 +97,7 @@ class Store:
         """
         grown = set()
 
-        for row in self.catalog.runs():
+        for row in self.catalog.records():
             if row["status"] != "running":
                 continue
 
@@ -319,7 +320,7 @@ class Store:
             else:
                 s, t, v, lo, hi = read_level(level)
         else:
-            s, t, v = reader.scalars(metric, rank)
+            s, t, v = reader.scalars(metric, rank, copy=False)
             lo = hi = v
             bounds = reader.bounds(metric, rank)
             band = bounds is not None
@@ -362,7 +363,7 @@ class Store:
         if reader is None:
             return None
 
-        xs, _, xv = reader.scalars(x_metric, rank)
+        xs, _, xv = reader.scalars(x_metric, rank, copy=False)
         ok = np.isfinite(xv)
         xs, xv = xs[ok], xv[ok]
 
@@ -538,7 +539,7 @@ class Store:
                 label = names[key]
 
                 if counts[label] > 1:  # series are told apart by label in the viewer
-                    label = f"{label} ({key.rsplit('_', 1)[-1]})"
+                    label = f"{label} ({key.rsplit('-', 1)[-1]})"
 
                 add(
                     {

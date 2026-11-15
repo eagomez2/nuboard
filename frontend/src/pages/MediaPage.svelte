@@ -27,6 +27,7 @@
   import { waveformKit } from '../lib/waveform';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
+  import { NAME } from '../lib/brand';
 
   const MAX_RUNS = 48;
   const runs = $derived(app.visibleRuns().slice(0, MAX_RUNS));
@@ -575,7 +576,7 @@
       const zip = waveformKit().zipStored(files);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
-      a.download = `${list[0]?.run.project ?? router.get('project') ?? 'nuboard'}-media-${total}.zip`;
+      a.download = `${list[0]?.run.project ?? router.get('project') ?? NAME}-media-${total}.zip`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     } catch (e) {

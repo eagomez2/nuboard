@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,12 +35,14 @@ class TextEntry:
         step: Training step.
         time: Unix time it was logged.
         text: The text.
+        session: Session of the event log it was read from.
     """
 
     key: str
     step: int
     time: float
     text: str
+    session: int = 0
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,8 @@ class MediaEntry:
         rank: Process rank whose pack holds the bytes.
         pack: File name of the pack: `media.r<rank>.pack`, or for a helper job's
             session `media.r<rank>.s<session>.pack`.
+        session: Session of the event log that indexes the item.
+        seq: Position of the item among the media frames of that log.
     """
 
     key: str
@@ -66,6 +71,58 @@ class MediaEntry:
     meta: dict[str, Any]
     rank: int
     pack: str = ""
+    session: int = 0
+    seq: int = 0
+
+    @property
+    def uid(self) -> int:
+        """A number that names this item for good, within its rank.
+
+        It is built from the session and the item's position in that session's
+        log, which is append-only, so a later session or helper job never
+        changes it (unlike the item's position in the step-sorted list).
+        """
+        return self.session * MEDIA_UID_SESSION + self.seq
+
+
+MEDIA_UID_SESSION = 1_000_000_000
+"""`MediaEntry.uid` is `session * MEDIA_UID_SESSION + seq`, safe in JavaScript up to session 9e6."""
+
+
+def latest_sessions(entries: list[Any]) -> list[Any]:
+    """Apply "the later session wins" to text or media entries, as for scalars.
+
+    For each key, entries of an earlier session at or after the first step a
+    later session logged that key at are dropped, so a run resumed from a
+    checkpoint does not list both versions of the overlapping steps.
+
+    Args:
+        entries: Text or media entries, each with `key`, `step` and `session`.
+
+    Returns:
+        The kept entries, in their original order.
+    """
+    first: dict[tuple[str, int], int] = {}
+
+    for e in entries:
+        k = (e.key, e.session)
+        first[k] = min(first.get(k, e.step), e.step)
+
+    cut: dict[tuple[str, int], float] = {}  # (key, session) -> first step of any later session
+    by_key: dict[str, list[tuple[int, int]]] = {}
+
+    for (key, session), step in first.items():
+        by_key.setdefault(key, []).append((session, step))
+
+    for key, sessions in by_key.items():
+        sessions.sort()
+        later = float("inf")
+
+        for session, step in reversed(sessions):
+            cut[(key, session)] = later
+            later = min(later, step)
+
+    return [e for e in entries if e.step < cut[(e.key, e.session)]]
 
 
 class LogFile:
@@ -158,7 +215,9 @@ class LogFile:
                 self.heartbeat = fmt.decode_f64(payload)
             elif kind == fmt.TEXT:
                 key, step, t, text = fmt.decode_text(payload)
-                self.texts.append(TextEntry(self.names.get(key, str(key)), step, t, text))
+                self.texts.append(
+                    TextEntry(self.names.get(key, str(key)), step, t, text, self.session)
+                )
             elif kind == fmt.MEDIA:
                 key, step, t, off, length, meta = fmt.decode_media(payload)
 
@@ -177,6 +236,8 @@ class LogFile:
                         json.loads(meta),
                         self.rank,
                         self._pack,
+                        self.session,
+                        len(self.media),
                     )
                 )
             elif kind == fmt.END:
@@ -280,11 +341,60 @@ def align(steps: np.ndarray, at: np.ndarray, values: np.ndarray) -> np.ndarray:
     return out
 
 
-class ParquetData:
-    """Reads `data.parquet` written by `NAME.compact.compact_run`.
+class _LevelCache:
+    """A thread-safe LRU of decoded zoom levels, bounded by their total size in bytes.
 
-    Reads are serialized with a lock, since a `ParquetFile` is not safe for
-    concurrent reads. Needs PyArrow.
+    Charts of a compacted run read the same levels again on every refresh and
+    zoom; decoding them once saves the Parquet read and the Arrow conversion.
+    Keys carry the file's mtime and size, so a new compaction never hits an old
+    entry, which then simply ages out.
+    """
+
+    def __init__(self, budget: int) -> None:
+        self.budget = budget
+        self.size = 0
+        self._items: OrderedDict[tuple, tuple[tuple[np.ndarray, ...], int]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple) -> tuple[np.ndarray, ...] | None:
+        with self._lock:
+            item = self._items.get(key)
+
+            if item is None:
+                return None
+
+            self._items.move_to_end(key)
+            return item[0]
+
+    def put(self, key: tuple, value: tuple[np.ndarray, ...], nbytes: int) -> None:
+        if nbytes > self.budget // 4:  # one huge level would flush everything else
+            return
+
+        with self._lock:
+            old = self._items.pop(key, None)
+            self.size -= old[1] if old else 0
+            self._items[key] = (value, nbytes)
+            self.size += nbytes
+
+            while self.size > self.budget:
+                _, (_, n) = self._items.popitem(last=False)
+                self.size -= n
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+            self.size = 0
+
+
+_LEVELS = _LevelCache(256 * 2**20)
+
+
+class ParquetData:
+    """Reads `data.parquet` written by `nuboard.compact.compact_run`.
+
+    The footer is read once; the file itself is opened for each read and closed
+    right after, so no handle stays open between reads (on Windows an open file
+    cannot be replaced, which a new compaction of the run needs). Needs PyArrow.
 
     Args:
         path: The `data.parquet` file.
@@ -293,15 +403,30 @@ class ParquetData:
     def __init__(self, path: Path) -> None:
         import pyarrow.parquet as pq
 
-        self.file = pq.ParquetFile(path)
-        self._lock = threading.Lock()  # a ParquetFile is not safe for concurrent reads
-        meta = self.file.schema_arrow.metadata or {}
+        self.path = path
+        st = path.stat()
+        self._key = (str(path), st.st_mtime_ns, st.st_size)
+        self._footer = pq.read_metadata(path)
+        meta = self._footer.schema.to_arrow_schema().metadata or {}
         # {metric: [[row_group, rows], ...] indexed by zoom level}
         self.row_groups: dict[str, list[list[int]]] = json.loads(meta[b"row_groups"])
+        # {metric: [ranks]}; absent in files written before multi-process runs were compacted
+        self.metric_ranks: dict[str, list[int]] | None = (
+            json.loads(meta[b"metric_ranks"]) if b"metric_ranks" in meta else None
+        )
 
-    def metric_names(self) -> list[str]:
-        """Return the names of all metrics in the file, sorted."""
-        return sorted(self.row_groups)
+    def metric_names(self, rank: int | None = None) -> list[str]:
+        """Return the names of the metrics in the file, sorted.
+
+        Args:
+            rank: Only the metrics this rank logged; None (or a file without the
+                per-rank list) returns every metric.
+        """
+
+        if rank is None or self.metric_ranks is None:
+            return sorted(self.row_groups)
+
+        return sorted(m for m in self.row_groups if rank in self.metric_ranks.get(m, ()))
 
     def levels(self, metric: str) -> list[int]:
         """Return the number of rows at each zoom level of a metric.
@@ -332,9 +457,13 @@ class ParquetData:
             return (*_EMPTY, np.empty(0, "f8"), np.empty(0, "f8"))
 
         level = min(level, len(groups) - 1)
+        key = (*self._key, metric, level, rank)
+        hit = _LEVELS.get(key)
 
-        with self._lock:
-            table = self.file.read_row_group(groups[level][0], columns=list(_PQ_COLUMNS))
+        if hit is not None:
+            return hit
+
+        table = self._read(lambda f: f.read_row_group(groups[level][0], columns=list(_PQ_COLUMNS)))
 
         ranks = table.column("rank").to_numpy()
         mask = ranks == rank
@@ -346,13 +475,29 @@ class ParquetData:
         if not mask.all():
             cols = [c[mask] for c in cols]
 
-        return tuple(cols)
+        for c in cols:  # shared through the cache, so never changed in place
+            c.setflags(write=False)
+
+        out = tuple(cols)
+        _LEVELS.put(key, out, sum(c.nbytes for c in cols))
+        return out
 
     def ranks(self) -> list[int]:
         """Return the ranks present in the file, sorted."""
 
-        with self._lock:
-            return sorted(set(self.file.read(columns=["rank"]).column("rank").to_pylist()))
+        if self.metric_ranks is not None:
+            return sorted({r for ranks in self.metric_ranks.values() for r in ranks})
+
+        return sorted(
+            set(self._read(lambda f: f.read(columns=["rank"])).column("rank").to_pylist())
+        )
+
+    def _read(self, read: Any) -> Any:
+        """Open the file, call `read` with it, and close it again."""
+        import pyarrow.parquet as pq
+
+        with pq.ParquetFile(self.path, metadata=self._footer) as f:
+            return read(f)
 
 
 class RunReader:
@@ -370,6 +515,7 @@ class RunReader:
         self.logs: dict[str, LogFile] = {}
         self._parquet: ParquetData | None = None
         self._parquet_checked = False
+        self._parquet_state: tuple[Any, ...] = ()
         self.lock = threading.RLock()
 
     # -- metadata -----------------------------------------------------------
@@ -395,38 +541,86 @@ class RunReader:
     def parquet(self) -> ParquetData | None:
         """Compacted data, used only if it covers every byte of every log.
 
-        The check runs once and is redone by `refresh` while no usable file
-        was found. None if there is no usable `data.parquet`.
+        The check runs once, and `refresh` redoes it whenever no usable file was
+        found or a log or `data.parquet` changed since (a resumed run). None if
+        there is no usable `data.parquet`.
         """
 
         if not self._parquet_checked:
             self._parquet_checked = True
+            self._parquet = None
             pq_path = self.path / "data.parquet"
 
             if pq_path.exists():
                 done = (self.meta().get("compacted") or {}).get("bytes")
+                sizes = self.log_sizes()
 
-                if done is not None and done == self.log_sizes():
+                if done is not None and done == sizes:
                     try:
                         self._parquet = ParquetData(pq_path)
+                        self._parquet_state = self._state(sizes)
                     except Exception:
                         self._parquet = None
 
         return self._parquet
 
+    def _state(self, sizes: dict[str, int] | None = None) -> tuple[Any, ...]:
+        """Return what a usable `data.parquet` depends on: the log sizes and its own stamp."""
+
+        try:
+            st = os.stat(self.path / "data.parquet")
+            stamp: tuple[int, int] | None = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = None
+
+        return tuple(sorted((sizes if sizes is not None else self.log_sizes()).items())), stamp
+
     def refresh(self) -> bool:
         """Read newly appended bytes of every event log, picking up new logs.
+
+        A compacted run whose logs have not been read yet stays unread (text and
+        media are decoded on first use), so this costs one `stat` per log. When a
+        log or `data.parquet` changed since the Parquet file was found usable,
+        it is dropped and checked again.
 
         Returns:
             True if anything changed.
         """
 
         with self.lock:
-            if self._parquet_checked and self._parquet is None:
-                self._parquet_checked = False  # a compaction may have finished since
-
             changed = False
 
+            if self._parquet_checked:
+                if self._parquet is None:
+                    self._parquet_checked = False  # a compaction may have finished since
+                elif self._state() != self._parquet_state:
+                    self._parquet_checked = False  # resumed, or compacted again
+                    self._parquet = None
+                    changed = True
+
+            if self.logs or self.parquet is None:
+                changed |= self._read_logs()
+
+            return changed
+
+    def _logs_for(self, rank: int) -> list[LogFile]:
+        """Return the logs of one rank in session order, reading them first if none are loaded."""
+
+        if not self.logs:
+            self._read_logs()
+
+        return sorted(
+            (lf for lf in self.logs.values() if lf.rank == rank), key=lambda lf: lf.session
+        )
+
+    def _read_logs(self) -> bool:
+        """Decode what is new in every event log; return True if anything was.
+
+        Also used for a compacted run, whose logs still hold its text and media.
+        """
+        changed = False
+
+        with self.lock:
             for p in self._log_paths():
                 log = self.logs.get(p.name)
 
@@ -435,23 +629,13 @@ class RunReader:
 
                 changed |= log.update()
 
-            return changed
-
-    def _logs_for(self, rank: int) -> list[LogFile]:
-        """Return the logs of one rank in session order, refreshing first if none are loaded."""
-
-        if not self.logs:
-            self.refresh()
-
-        return sorted(
-            (lf for lf in self.logs.values() if lf.rank == rank), key=lambda lf: lf.session
-        )
+        return changed
 
     def ranks(self) -> list[int]:
         """Return the ranks that have event logs, sorted."""
 
         if not self.logs:
-            self.refresh()
+            self._read_logs()
 
         return sorted({lf.rank for lf in self.logs.values()})
 
@@ -460,8 +644,7 @@ class RunReader:
         """Return the keys of the run's scalars, sorted.
 
         Args:
-            rank: Process rank. Ignored when reading from `data.parquet`, which
-                lists scalars across all ranks.
+            rank: Process rank.
             bands: Also return the companion scalars that hold band bounds
                 (see `bounds`).
 
@@ -470,7 +653,7 @@ class RunReader:
         """
 
         if self.parquet is not None:
-            names = self.parquet.metric_names()
+            names = self.parquet.metric_names(rank)
         else:
             found: set[str] = set()
 
@@ -485,12 +668,15 @@ class RunReader:
         """Return the keys of the run's scalars; the same as `scalar_names`."""
         return self.scalar_names(rank)
 
-    def scalars(self, metric: str, rank: int = 0) -> Series:
+    def scalars(self, metric: str, rank: int = 0, copy: bool = True) -> Series:
         """Return one metric at full resolution.
 
         Args:
             metric: Metric name.
             rank: Process rank.
+            copy: Return arrays of your own, which you may change. False returns
+                the reader's cached arrays without copying: faster, but they must
+                not be changed (they are read-only for a compacted run).
 
         Returns:
             `(steps, times, values)`, sorted by step; empty for an unknown
@@ -499,22 +685,28 @@ class RunReader:
 
         if self.parquet is not None:
             s, t, v, _, _ = self.parquet.read(metric, 0, rank)
-            return s, t, v
+        else:
+            with self.lock:
+                s, t, v = merge_sessions(
+                    [lf.series().get(metric, _EMPTY) for lf in self._logs_for(rank)]
+                )
 
-        with self.lock:
-            return merge_sessions([lf.series().get(metric, _EMPTY) for lf in self._logs_for(rank)])
+        return (s.copy(), t.copy(), v.copy()) if copy else (s, t, v)
 
-    def all_scalars(self, rank: int = 0, bands: bool = False) -> dict[str, Series]:
+    def all_scalars(
+        self, rank: int = 0, bands: bool = False, copy: bool = True
+    ) -> dict[str, Series]:
         """Return every metric at full resolution.
 
         Args:
             rank: Process rank.
             bands: Also return the companion scalars that hold band bounds.
+            copy: As for `scalars`.
 
         Returns:
             `{metric: (steps, times, values)}`.
         """
-        return {m: self.scalars(m, rank) for m in self.scalar_names(rank, bands)}
+        return {m: self.scalars(m, rank, copy) for m in self.scalar_names(rank, bands)}
 
     def bounds(self, metric: str, rank: int = 0) -> tuple[np.ndarray, np.ndarray] | None:
         """Return the band of a metric logged with `low` and `high`, at full resolution.
@@ -527,9 +719,9 @@ class RunReader:
             `(low, high)` aligned with the steps of `scalars(metric)`, NaN at
             steps without bounds; None if the metric has no band.
         """
-        steps = self.scalars(metric, rank)[0]
-        low = self.scalars(metric + fmt.BAND_LOW, rank)
-        high = self.scalars(metric + fmt.BAND_HIGH, rank)
+        steps = self.scalars(metric, rank, copy=False)[0]
+        low = self.scalars(metric + fmt.BAND_LOW, rank, copy=False)
+        high = self.scalars(metric + fmt.BAND_HIGH, rank, copy=False)
 
         if not len(low[0]) and not len(high[0]):
             return None
@@ -537,45 +729,73 @@ class RunReader:
         return align(steps, low[0], low[2]), align(steps, high[0], high[2])
 
     # -- text and media ---------------------------------------------------------
-    def texts(self, key: str | None = None, rank: int = 0) -> list[TextEntry]:
+    def texts(self, key: str | None = None, rank: int = 0, latest: bool = False) -> list[TextEntry]:
         """Return logged text entries, sorted by step.
 
         Args:
             key: Only return entries with this key; None returns all.
             rank: Process rank.
+            latest: Where a later session logged a key again, leave out the earlier
+                sessions' entries from that step on (see `latest_sessions`), as the
+                viewer shows them. False returns every logged entry.
 
         Returns:
             The text entries.
         """
         out = [e for lf in self._logs_for(rank) for e in lf.texts if key is None or e.key == key]
-        return sorted(out, key=lambda e: e.step)
+        return sorted(latest_sessions(out) if latest else out, key=lambda e: e.step)
 
-    def media(self, key: str | None = None, rank: int = 0) -> list[MediaEntry]:
+    def media(
+        self, key: str | None = None, rank: int = 0, latest: bool = False
+    ) -> list[MediaEntry]:
         """Return logged media entries, sorted by step.
 
         Args:
             key: Only return entries with this key; None returns all.
             rank: Process rank.
+            latest: As for `texts`: only what the later sessions did not log again.
 
         Returns:
             The media entries; use `read_media` to get their bytes.
         """
         out = [e for lf in self._logs_for(rank) for e in lf.media if key is None or e.key == key]
-        return sorted(out, key=lambda e: e.step)
+        return sorted(latest_sessions(out) if latest else out, key=lambda e: e.step)
 
-    def read_media(self, entry: MediaEntry) -> bytes:
+    def media_item(self, uid: int, rank: int = 0) -> MediaEntry | None:
+        """Return the media entry whose `MediaEntry.uid` is `uid`, or None.
+
+        A uid says where the entry is (its session, and its position among that
+        session's media frames), so this is a lookup, not a search.
+
+        Args:
+            uid: The entry's `uid`.
+            rank: Process rank.
+        """
+        session, seq = divmod(uid, MEDIA_UID_SESSION)
+
+        for lf in self._logs_for(rank):
+            if lf.session == session:
+                return lf.media[seq] if 0 <= seq < len(lf.media) else None
+
+        return None
+
+    def read_media(self, entry: MediaEntry, start: int = 0, size: int | None = None) -> bytes:
         """Read the bytes of one media entry from its media pack.
 
         Args:
             entry: An entry returned by `media`.
+            start: Offset of the first byte to read, within the entry.
+            size: Number of bytes to read; to the end of the entry when None.
 
         Returns:
             The stored bytes.
         """
+        start = max(0, min(start, entry.length))
+        size = entry.length - start if size is None else max(0, min(size, entry.length - start))
 
         with open(self.path / (entry.pack or f"media.r{entry.rank}.pack"), "rb") as f:
-            f.seek(entry.offset)
-            return f.read(entry.length)
+            f.seek(entry.offset + start)
+            return f.read(size)
 
     def heartbeat(self) -> float | None:
         """Return the latest heartbeat time across the loaded logs, or None."""

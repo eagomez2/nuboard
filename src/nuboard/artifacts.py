@@ -336,16 +336,23 @@ STALE_STAGING = 6 * 3600
 """Seconds without a change after which a staging folder is taken as abandoned."""
 
 
-def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Path]:
+def remove_stale_staging(
+    adir: Path, max_age: float = STALE_STAGING, prefix: str = ".staging-"
+) -> list[Path]:
     """Delete the abandoned `.staging-*` folders of one artifact.
 
     A staging folder is left behind when the process making a version is killed
     mid-copy. One is abandoned when nothing in it changed for `max_age` seconds,
-    so a copy still in progress, which keeps writing, is never touched.
+    so a copy still in progress, which keeps writing, is never touched. Changes
+    are told by `st_ctime` as well as `st_mtime`: a copy keeps its source's
+    modification times, so a copy of old files that just finished would
+    otherwise look abandoned.
 
     Args:
         adir: The artifact's folder, `<project>/artifacts/<name>/`.
         max_age: Seconds without a change.
+        prefix: Names of the staging folders in `adir`; `merge` passes `""` for
+            every folder of its own staging folder.
 
     Returns:
         The folders deleted.
@@ -355,14 +362,19 @@ def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Pat
 
     try:
         stagings = [
-            Path(e.path) for e in os.scandir(adir) if e.name.startswith(".staging-") and e.is_dir()
+            Path(e.path) for e in os.scandir(adir) if e.name.startswith(prefix) and e.is_dir()
         ]
     except OSError:
         return removed
 
+    def changed(p: Path) -> float:
+        # a copy inherits its source's mtimes (copy2, copystat), never its ctime
+        st = p.stat()
+        return max(st.st_mtime, st.st_ctime)
+
     for d in stagings:
         try:
-            newest = max([d.stat().st_mtime, *(p.stat().st_mtime for p in d.rglob("*"))])
+            newest = max([changed(d), *(changed(p) for p in d.rglob("*"))])
         except OSError:
             continue
 

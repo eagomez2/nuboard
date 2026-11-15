@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import struct
 from collections import Counter
 from collections.abc import Iterator
@@ -706,6 +707,7 @@ def import_logdir(
         run_id = _run_id(folder, started)
         run_dir = Path(dir) if dir is not None else None
         result = ImportResult(folder, name, run_id, Path(), hparams=len(hparams))
+        _remove_unfinished(_existing(project, run_dir, run_id))
 
         try:
             run = Run(
@@ -742,6 +744,24 @@ def import_logdir(
         results.append(result)
 
     return results
+
+
+def _remove_unfinished(path: Path) -> None:
+    """Delete an earlier import of the same folder that did not complete.
+
+    Imported runs are marked finished at their last event, so a run with the
+    import's id that crashed, was killed or was lost is a partial import (an
+    import stopped part way). It is deleted, so the folder is imported again in
+    full; the TensorBoard logs are the source, so nothing is lost. A run still
+    being imported (with a live heartbeat) is left alone.
+    """
+    from .catalog import effective_status
+    from .jobs import read_meta
+
+    meta = read_meta(path) if (path / "run.json").exists() else None
+
+    if meta is not None and effective_status(meta) not in ("finished", "running"):
+        shutil.rmtree(path)
 
 
 def _existing(project: str, dir: Path | None, run_id: str) -> Path:

@@ -10,6 +10,7 @@ import sys
 import textwrap
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -205,6 +206,25 @@ def test_fork_copies_history_up_to_step():
     assert values[-1] == 40.0
     meta = json.loads((child.path / "run.json").read_text())
     assert meta["fork"] == {"run_id": parent.id, "step": 4}
+
+
+def test_fork_of_a_resumed_run_takes_the_later_session_and_bands():
+    parent = nb.init("p", capture_env=False)
+
+    for s in range(6):
+        parent.add_scalar("loss", float(s), step=s, low=s - 1.0, high=s + 1.0)
+
+    parent.finish()
+    resumed = nb.init("p", run_id=parent.id, resume="must", capture_env=False)
+    resumed.add_scalar("loss", 30.0, step=3)  # restarted from the step 3 checkpoint
+    resumed.finish()
+    child = nb.init("p", fork_from=(parent.id, 4), capture_env=False)
+    child.finish()
+    reader = RunReader(child.path)
+    steps, _, values = reader.scalars("loss")
+    assert list(steps) == [0, 1, 2, 3] and list(values) == [0.0, 1.0, 2.0, 30.0]
+    bounds = reader.bounds("loss")
+    assert bounds is not None and list(bounds[0][:3]) == [-1.0, 0.0, 1.0]
 
 
 def test_only_rank_zero_logs(monkeypatch, tmp_path):
@@ -897,3 +917,115 @@ def test_runs_without_session_offsets_still_load(tmp_path):
     assert "utc_offset" not in sessions[0]
     assert "utc_offset" in sessions[1]
     assert list(RunReader(run.path).scalars("loss")[0]) == [0]
+
+
+def test_second_run_in_one_distributed_job_gets_its_own_id(monkeypatch):
+    import nuboard.run as nbrun
+
+    monkeypatch.setattr(nbrun, "_shared_inits", {})
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("SLURM_JOB_ID", "4242")
+    quiet = {"capture_env": False, "system_metrics": False, "capture_console": False}
+    train = nb.init("dist3", **quiet)
+    train.finish()
+    evaluate = nb.init("dist3", **quiet)  # same job, same minute: used to raise FileExistsError
+    evaluate.finish()
+    assert train.id.endswith(nbrun._hash_from("4242"))  # the first run keeps today's id
+    assert train.id != evaluate.id
+
+
+def test_rank_skips_an_old_folder_with_the_same_suffix(monkeypatch, tmp_path):
+    import nuboard.run as nbrun
+
+    runs = tmp_path / "exp" / "dist4" / "runs"
+    old = runs / f"20200101T0000-{nbrun._hash_from('77')}"
+    old.mkdir(parents=True)
+    (old / "run.json").write_text('{"started": 1577836800}', "utf-8")  # a requeued job's old run
+    monkeypatch.setattr(nbrun, "_shared_inits", {})
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "1")
+    monkeypatch.setenv("SLURM_JOB_ID", "77")
+    run = nbrun.Run.__new__(nbrun.Run)
+    run.dist = nbrun._env.detect_dist()
+    run.started = time.time()
+    run.id = f"20990101T0000-{nbrun._hash_from('77')}"
+    run.path = runs / run.id
+
+    with pytest.raises(TimeoutError):
+        run._wait_for_folder(timeout=1.0)
+
+
+def test_standalone_env_makes_srun_tasks_separate_runs(monkeypatch):
+    from nuboard._env import detect_dist
+
+    monkeypatch.setenv("SLURM_PROCID", "3")
+    monkeypatch.setenv("SLURM_NTASKS", "4")
+    monkeypatch.setenv("NUBOARD_STANDALONE", "1")
+    d = detect_dist()
+    assert (d.rank, d.world_size) == (0, 1)
+
+
+def test_sigterm_finishes_the_run_as_killed(tmp_path):
+    import signal
+    import subprocess
+    import sys
+
+    if not hasattr(signal, "SIGKILL"):  # pragma: no cover - Windows has no POSIX SIGTERM delivery
+        pytest.skip("POSIX signals only")
+
+    script = (
+        "import nuboard as nb, sys, time\n"
+        "run = nb.init('sig', capture_env=False, system_metrics=False)\n"
+        "run.add_scalar('loss', 1.0, step=0)\n"
+        "print(run.path, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    path = proc.stdout.readline().strip()  # type: ignore[union-attr]
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=30) == -signal.SIGTERM
+    meta = json.loads((Path(path) / "run.json").read_text("utf-8"))
+    assert meta["status"] == "killed" and meta["exit"]["code"] == 143
+    assert RunReader(path).scalars("loss")[2].tolist() == [1.0]
+
+
+def test_sigterm_during_finish_lets_it_complete(tmp_path):
+    import signal
+    import subprocess
+    import sys
+
+    if not hasattr(signal, "SIGKILL"):  # pragma: no cover
+        pytest.skip("POSIX signals only")
+
+    script = (
+        "import nuboard as nb, time\n"
+        "from nuboard._writer import Writer\n"
+        "close = Writer.close\n"
+        "def slow(self, status):\n"  # a finish still busy writing when SIGTERM comes
+        "    print('closing', flush=True); time.sleep(1.0); close(self, status)\n"
+        "Writer.close = slow\n"
+        "run = nb.init('sig', capture_env=False, system_metrics=False)\n"
+        "run.add_scalar('loss', 1.0, step=0)\n"
+        "print(run.path, flush=True)\n"
+        "run.finish()\n"
+        "time.sleep(60)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    path = proc.stdout.readline().strip()  # type: ignore[union-attr]
+    assert proc.stdout.readline().strip() == "closing"  # type: ignore[union-attr]
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=30) == -signal.SIGTERM  # ended right after the finish, not at 60 s
+    meta = json.loads((Path(path) / "run.json").read_text("utf-8"))
+    assert meta["status"] == "finished"
+    assert RunReader(path).scalars("loss")[2].tolist() == [1.0]
+
+
+def test_multi_gpu_run_is_compacted_when_only_rank_0_logged(monkeypatch):
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    monkeypatch.setenv("RANK", "0")
+    monkeypatch.setenv("SLURM_JOB_ID", "999")
+    run = nb.init("dist5", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    assert (run.path / "data.parquet").exists()

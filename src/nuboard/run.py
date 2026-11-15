@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import sys
 import threading
@@ -28,7 +29,7 @@ from . import _format as fmt
 from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
 from ._system import SystemMonitor, choose_gpus, parse_groups
-from ._writer import Writer, _flatten, _to_float
+from ._writer import SCALARS, Writer, _flatten, _to_float, snapshot
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
 from .catalog import effective_status
@@ -54,6 +55,9 @@ def _check_prefix(kind: str, value: Any) -> None:
 
 _active: list[Run] = []
 _hook_installed = False
+_shared_inits: dict[tuple[str, int], int] = {}  # (job id, rank) -> runs started (_new_run_id)
+MAX_RANK_SKEW_S = 600.0
+"""How far apart, in seconds, the ranks of one run may call `init`."""
 
 
 def data_root(dir: str | os.PathLike[str] | None) -> Path:
@@ -179,9 +183,15 @@ def utc_offset(t: float) -> int | None:
     return None if delta is None else int(delta.total_seconds())
 
 
-def _hash_from(shared_id: str) -> str:
-    """Derive the 8 hex digit run id hash from an id shared by every rank."""
-    return hashlib.sha1(shared_id.encode("utf-8")).hexdigest()[:8]
+def _hash_from(shared_id: str, nth: int = 0) -> str:
+    """Derive the 8 hex digit run id hash from an id shared by every rank.
+
+    `nth` counts the runs this process started before from the same job, so a
+    second `init` in one job gets an id of its own; the first keeps the hash of
+    the shared id alone.
+    """
+    seed = shared_id if nth == 0 else f"{shared_id}#{nth}"
+    return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8]
 
 
 def _warn_if_changed(art: Artifact) -> None:
@@ -219,6 +229,69 @@ def _install_excepthook() -> None:
         previous(exc_type, exc, tb)
 
     sys.excepthook = hook
+
+
+_sigterm_installed = False
+_finishing: dict[Run, int] = {}  # runs in the middle of finish() -> the thread finishing them
+_sigterm_pending = False  # SIGTERM came while this thread was finishing a run
+
+
+def _terminate() -> None:
+    """End the process as SIGTERM's default action would."""
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _install_sigterm() -> None:
+    """Install, once, a SIGTERM handler that finishes active runs as `killed`.
+
+    SLURM (time limit, preemption), Kubernetes and `kill` stop a job with
+    SIGTERM, whose default action skips `atexit`, so the run would stay
+    `running` until it shows as lost. The handler is installed only from the
+    main thread and only while SIGTERM has its default action, so a handler of
+    the script's own (or of a framework) is never replaced. After finishing the
+    runs it restores the default action and sends the signal again, so the
+    process ends exactly as it would have.
+    """
+    global _sigterm_installed
+
+    if _sigterm_installed or threading.current_thread() is not threading.main_thread():
+        return
+
+    try:
+        if signal.getsignal(signal.SIGTERM) is not signal.SIG_DFL:
+            return
+
+        def handler(signum: int, frame: Any) -> None:
+            """Finish every active run as killed, then terminate as SIGTERM would.
+
+            A run already in the middle of `finish()` is let finish first: on
+            this thread (the signal interrupted it) the process ends once that
+            finish returns; on another thread, the handler waits up to 5 s.
+            """
+            global _sigterm_pending
+
+            for run in list(_active):
+                run.finish(
+                    status="killed",
+                    exit_code=128 + signum,
+                    error="terminated by SIGTERM",
+                    _compact=False,  # be done before the job's grace period ends
+                )
+
+            if threading.get_ident() in _finishing.values():
+                _sigterm_pending = True  # finish() ends the process when it returns
+                return
+
+            for run in list(_finishing):
+                run._finish_done.wait(5)
+
+            _terminate()
+
+        signal.signal(signal.SIGTERM, handler)
+        _sigterm_installed = True
+    except (ValueError, OSError, AttributeError):  # pragma: no cover - no signals here
+        pass
 
 
 def _records(rows: Any) -> list[dict[Any, Any]]:
@@ -262,7 +335,7 @@ def _copied(data: Any) -> Any:
 class Run:
     """One training run, stored as one self-contained folder.
 
-    Create it with `NAME.init`. `add_scalar` and the other `add_*` methods are safe to call
+    Create it with `nb.init`. `add_scalar` and the other `add_*` methods are safe to call
     from the training loop: they only append to an in-memory queue that a
     background thread writes out.
 
@@ -411,6 +484,7 @@ class Run:
         self._next_step = 0
         self._last_step = 0
         self._finished = False
+        self._finish_done = threading.Event()  # set when finish() has returned
         self._media_new = 0  # media and text items logged since run.json was last written
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
@@ -521,6 +595,7 @@ class Run:
         _active.append(self)
         atexit.register(self._atexit)
         _install_excepthook()
+        _install_sigterm()
 
         if capture_console and self.dist.is_main:
             base = "output" if self.job is None else f"output.{self.job}"
@@ -546,7 +621,10 @@ class Run:
         """
 
         if self.dist.world_size > 1 and self.dist.shared_id:
-            return _format_run_id(self.started, _hash_from(self.dist.shared_id))
+            counted = (self.dist.shared_id, self.dist.rank)  # every rank counts alike
+            nth = _shared_inits.get(counted, 0)
+            _shared_inits[counted] = nth + 1
+            return _format_run_id(self.started, _hash_from(self.dist.shared_id, nth))
 
         return self._fresh_run_id(runs_dir) if self.dist.is_main else None
 
@@ -563,7 +641,9 @@ class Run:
         """Wait, on a non-zero rank, for rank 0 to create the run folder.
 
         Rank 0 may have started in a different minute, so a folder with the same
-        name and suffix but another timestamp is accepted too.
+        name and suffix but another timestamp is accepted too, once its `run.json`
+        shows it started within `MAX_RANK_SKEW_S` of this process (an older run
+        with that suffix, from an earlier attempt of a requeued job, is not).
 
         Raises:
             TimeoutError: If no folder appears within `timeout` seconds.
@@ -576,16 +656,23 @@ class Run:
             if self.path.exists():
                 return
 
-            matches = glob.glob(pattern)  # rank 0 may have started in a different minute
+            # rank 0 may have started in a different minute
+            for match in sorted(glob.glob(pattern), reverse=True):
+                started = (_fs.read_json(Path(match) / "run.json", {}) or {}).get("started")
 
-            if matches:
-                self.path = Path(sorted(matches)[-1])
-                self.id = self.path.name
-                return
+                if isinstance(started, (int, float)) and abs(started - self.started) < (
+                    MAX_RANK_SKEW_S
+                ):
+                    self.path = Path(match)
+                    self.id = self.path.name
+                    return
 
             time.sleep(0.5)
 
-        raise TimeoutError(f"rank {self.dist.rank}: rank 0 never created {self.path}")
+        raise TimeoutError(
+            f"rank {self.dist.rank}: rank 0 never created {self.path}. Did every rank call "
+            "init the same number of times in this job? (Call it on all ranks, or only on rank 0.)"
+        )
 
     def _next_session(self) -> int:
         """Return the next free session index for this rank's event logs."""
@@ -833,35 +920,17 @@ class Run:
         if not (parent / "run.json").exists():
             raise FileNotFoundError(f"cannot fork: no run {parent_id!r} in {parent.parent}")
 
-        merged: dict[str, list[tuple[int, float, float]]] = {}
-        logs = sorted(
-            (int(m.group(2)), p)
-            for p in parent.iterdir()
-            if (m := _LOG_RE.match(p.name)) and int(m.group(1)) == 0
-        )
+        from .reader import RunReader  # imported here: it needs NumPy, which `init` does not
 
-        for _, path in logs:
-            per_metric: dict[str, list[tuple[int, float, float]]] = {}
-            names: dict[int, str] = {}
+        merged = RunReader(parent).all_scalars(0, bands=True, copy=False)
+        points = []
 
-            for kind, payload, _ in fmt.iter_frames(path.read_bytes(), len(fmt.MAGIC)):
-                if kind == fmt.NAME:
-                    mid, mname = fmt.decode_name(payload)
-                    names[mid] = mname
-                elif kind == fmt.SCALARS:
-                    ids, steps, times, values = fmt.decode_scalars_py(payload)
+        for mname, (s, t, v) in merged.items():
+            keep = s <= step
+            points.extend(
+                zip([mname] * int(keep.sum()), s[keep].tolist(), t[keep].tolist(), v[keep].tolist())
+            )
 
-                    for i, s, t, v in zip(ids, steps, times, values):
-                        per_metric.setdefault(names[i], []).append((s, t, v))
-
-            for mname, pts in per_metric.items():  # later session wins from its first step
-                first = min(p[0] for p in pts)
-                kept = [p for p in merged.get(mname, []) if p[0] < first]
-                merged[mname] = kept + pts
-
-        points = [
-            (mname, s, t, v) for mname, pts in merged.items() for (s, t, v) in pts if s <= step
-        ]
         points.sort(key=lambda p: (p[1], p[0]))
         writer = self._ensure_writer()
 
@@ -944,7 +1013,10 @@ class Run:
     ) -> None:
         """Log one scalar, or several at the same step.
 
-        Non-blocking: values are converted off-thread. On ranks other than 0 the
+        Non-blocking: values are converted to float on a background thread. The
+        values are taken as they are at the call (tensors are cloned on their
+        device without waiting, arrays are copied), so changing them in place
+        afterwards does not change what is logged. On ranks other than 0 the
         call is a no-op.
 
         Args:
@@ -973,18 +1045,18 @@ class Run:
             if low is not None or high is not None:
                 raise TypeError("add_scalar takes low and high only with a single name")
 
-            data = dict(key)
+            data = snapshot(key)
 
             if value is not None and step is None:
                 step = int(value)
         elif value is None:
             raise TypeError(f"add_scalar({key!r}) needs a value")
         elif low is None and high is None:
-            data = {key: value}
+            data = snapshot({key: value})
         elif low is None or high is None:
             raise TypeError(f"add_scalar({key!r}) needs both low and high, or neither")
         else:
-            data = {key: value, key + fmt.BAND_LOW: low, key + fmt.BAND_HIGH: high}
+            data = snapshot({key: value, key + fmt.BAND_LOW: low, key + fmt.BAND_HIGH: high})
 
         if step is None:
             step = self._next_step
@@ -1003,7 +1075,7 @@ class Run:
         writer = self._writer or self._ensure_writer()
 
         if writer is not None:
-            writer.queue.append((0, step, _now() if time is None else time, data))
+            writer.queue.append((SCALARS, step, _now() if time is None else time, data))
 
     def add_scalar_baseline(
         self,
@@ -1094,7 +1166,9 @@ class Run:
 
         if writer is not None:
             writer.put_text(key, self._step(step), _now() if time is None else time, str(text))
-            self._media_new += 1
+
+            with self._meta_lock:  # _save_meta resets it from the writer thread
+                self._media_new += 1
 
     def add_image(
         self,
@@ -1554,7 +1628,9 @@ class Run:
             writer.put_media(
                 key, self._step(step), _now() if time is None else time, producer, meta
             )
-            self._media_new += 1
+
+            with self._meta_lock:  # _save_meta resets it from the writer thread
+                self._media_new += 1
 
     def _step(self, step: int | None) -> int:
         """Return `step`, or the step of the latest `add_scalar` call when it is None."""
@@ -1827,25 +1903,48 @@ class Run:
         exit_code: int = 0,
         error: str | None = None,
         _ended: float | None = None,
+        _compact: bool = True,
     ) -> None:
         """Flush, close the log and mark the run finished. Safe to call twice.
 
-        Called automatically at interpreter exit and by the context manager. Rank 0
-        records the status, exit code and end time in `run.json`. A single-process
-        run created with `compact=True` is then compacted into Parquet when PyArrow
-        and NumPy are installed; if compaction fails, a warning is issued and the
-        logs are left intact.
+        Called automatically at interpreter exit, on SIGTERM and by the context
+        manager. Rank 0 records the status, exit code and end time in `run.json`.
+        A run created with `compact=True` is then compacted into Parquet by rank 0;
+        in a multi-process run, once the other ranks' logs have ended (waiting up
+        to 10 s). If compaction fails, a warning is issued and the logs are left
+        intact.
 
         Args:
             status: Final status, such as `"finished"`, `"crashed"` or `"killed"`.
             exit_code: Process exit code to record.
             error: Error text (e.g. a traceback) to record.
             _ended: End timestamp override, for tests.
+            _compact: False skips compaction (on SIGTERM, to end quickly).
         """
 
         if self._finished:
             return
 
+        _finishing[self] = threading.get_ident()
+
+        try:
+            self._finish(status, exit_code, error, _ended, _compact)
+        finally:
+            _finishing.pop(self, None)
+            self._finish_done.set()
+
+            if _sigterm_pending and not _finishing:  # a SIGTERM came while finishing
+                _terminate()
+
+    def _finish(
+        self,
+        status: str,
+        exit_code: int,
+        error: str | None,
+        _ended: float | None,
+        _compact: bool,
+    ) -> None:
+        """Do what `finish` describes, once."""
         self._close_timers()
         self._finished = True
 
@@ -1887,9 +1986,10 @@ class Run:
 
         if (
             self._compact
-            and self.dist.world_size == 1
+            and _compact
             and status != "running"
             and not self._others_running()  # the last job to end compacts
+            and self._other_ranks_ended()
         ):
             try:
                 from .compact import compact_run
@@ -1900,6 +2000,43 @@ class Run:
                 compact_run(self.path)
             except Exception as exc:  # pragma: no cover
                 warnings.warn(f"{NAME}: compaction failed, logs are intact: {exc!r}", stacklevel=2)
+
+    def _other_ranks_ended(self, timeout: float = 10.0) -> bool:
+        """Wait for the newest log of every other rank to end; False if one does not.
+
+        Ranks that logged nothing have no log, so a run where only rank 0 logs
+        (the default) never waits.
+        """
+
+        if self.dist.world_size == 1:
+            return True
+
+        from .reader import LogFile
+
+        newest: dict[int, tuple[int, str]] = {}  # other rank -> (session, file name)
+
+        for name in os.listdir(self.path):
+            m = _LOG_RE.match(name)
+
+            if m and int(m.group(1)) != self.dist.rank:
+                rank, session = int(m.group(1)), int(m.group(2))
+                newest[rank] = max(newest.get(rank, (session, name)), (session, name))
+
+        # only those logs are read, incrementally, and rank 0's own not at all
+        logs = [LogFile(self.path / name) for _, name in newest.values()]
+        deadline = time.monotonic() + timeout
+
+        while True:
+            for lf in logs:
+                lf.update()
+
+            if all(lf.end is not None for lf in logs):
+                return True
+
+            if time.monotonic() >= deadline:
+                return False
+
+            time.sleep(0.2)
 
     def _close_timers(self) -> None:
         """Log what accumulating timers summed; drop timers still running, with a warning."""

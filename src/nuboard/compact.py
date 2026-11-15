@@ -41,7 +41,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
 
     The file is written to a temporary name and then moved into place. Also
     records in `run.json` which log bytes the file covers and the run's health
-    alerts (see `NAME.alerts`).
+    alerts (see `nuboard.alerts`).
 
     Args:
         path: The run folder.
@@ -52,12 +52,16 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     path = Path(path)
     reader = RunReader(path)
     reader._parquet_checked = True  # always decode the logs themselves
-    reader.refresh()
+    # Sizes taken before decoding: bytes written after this are not in the file,
+    # and they make the logs longer than recorded, so the viewer reads the logs
+    # instead. A torn frame at the end extends past these sizes too, so it is
+    # never counted as covered once its writer completes it.
     sizes = reader.log_sizes()
+    reader._read_logs()
     per_metric: dict[str, list[tuple[int, list[tuple[np.ndarray, ...]]]]] = {}
 
     for rank in reader.ranks():
-        for metric, (s, t, v) in reader.all_scalars(rank, bands=True).items():
+        for metric, (s, t, v) in reader.all_scalars(rank, bands=True, copy=False).items():
             per_metric.setdefault(metric, []).append((rank, zoom_levels(s, t, v)))
 
     tables: list[pa.Table] = []
@@ -82,7 +86,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
             n = len(arrays[0])
             table = pa.table(
                 {
-                    "metric": pa.array([metric] * n, pa.string()),
+                    "metric": pa.repeat(pa.scalar(metric, pa.string()), n),
                     "level": pa.array(np.full(n, level, "i1")),
                     "rank": arrays[0],
                     "step": arrays[1].astype("i8"),
@@ -99,6 +103,9 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     schema = SCHEMA.with_metadata(
         {
             "row_groups": json.dumps(row_groups),
+            "metric_ranks": json.dumps(
+                {m: sorted(rank for rank, _ in ranks) for m, ranks in per_metric.items()}
+            ),
             "format_version": str(FORMAT_VERSION),
         }
     )
@@ -112,7 +119,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
                 row_group_size=max(1, table.num_rows),
             )
 
-    os.replace(tmp, target)
+    _fs.replace(tmp, target)  # retried while a viewer on Windows reads the old file
     meta = _fs.read_json(path / "run.json", {})
 
     if meta:
