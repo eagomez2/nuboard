@@ -315,7 +315,7 @@ def _copied(data: Any) -> Any:
 class Run:
     """One training run, stored as one self-contained folder.
 
-    Create it with `NAME.init`. `add_scalar` and the other `add_*` methods are safe to call
+    Create it with `nb.init`. `add_scalar` and the other `add_*` methods are safe to call
     from the training loop: they only append to an in-memory queue that a
     background thread writes out.
 

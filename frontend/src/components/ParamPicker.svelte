@@ -134,8 +134,8 @@
             class="mono"
             bind:this={search}
             bind:value={query}
-            placeholder="Search  (/regex/, !exclude)"
-            aria-label="Search parameters"
+            placeholder="Filter  (/regex/, !exclude)"
+            aria-label="Filter parameters"
             aria-invalid={!!finder.error}
             title={finder.error ?? undefined}
             spellcheck="false"

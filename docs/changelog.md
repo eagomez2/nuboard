@@ -85,6 +85,10 @@
   2,000.
 - **Forking a resumed run** takes its history the way the viewer shows it,
   with bands, and reads a compacted parent from `data.parquet`.
+- **Wording:** the remaining "metric" labels on the Hypotheses board say
+  "scalar", and every filter box says "Filter". The product name in the UI
+  comes from one place, and the docs describe when multi-GPU runs are
+  compacted, name both media packs, and say the tests run on Windows too.
 
 ## 0.30.0
 

@@ -550,8 +550,8 @@
         >
           <input
             class="input sm mono colfind"
-            placeholder="Search columns"
-            aria-label="Search columns"
+            placeholder="Filter columns"
+            aria-label="Filter columns"
             bind:this={colFindEl}
             bind:value={colFind}
             onkeydown={(e) => e.key === 'Escape' && (colFind ? (colFind = '') : (menu = false))}

@@ -390,7 +390,7 @@ _LEVELS = _LevelCache(256 * 2**20)
 
 
 class ParquetData:
-    """Reads `data.parquet` written by `NAME.compact.compact_run`.
+    """Reads `data.parquet` written by `nuboard.compact.compact_run`.
 
     The footer is read once; the file itself is opened for each read and closed
     right after, so no handle stays open between reads (on Windows an open file

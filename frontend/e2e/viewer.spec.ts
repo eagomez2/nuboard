@@ -310,7 +310,7 @@ test('sweeps parameter picker: defaults, search, clear, reset and remove', async
   await expect(page.locator('.chip.param[title^="seed "]')).toHaveCount(0); // seeds are not a default
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('seed');
+  await picker.getByLabel('Filter parameters').fill('seed');
   await expect(picker.locator('label.row')).toHaveCount(1);
   await picker.locator('label.row').getByRole('checkbox').check();
   await expect(page.locator('.chip.param[title^="seed "]')).toBeVisible();
@@ -367,7 +367,7 @@ test('sweeps compares runs by the dataset version they used', async ({ page }) =
   await page.goto('/#/sweeps?project=llm-pretrain&metric=train%2Floss');
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('inputs.');
+  await picker.getByLabel('Filter parameters').fill('inputs.');
   const row = picker.locator('label.row', { hasText: 'fineweb-edu' });
   await expect(row).toContainText('category · 3 values'); // v1, v2, and none for the prep and eval runs
   await page.keyboard.press('Escape');
@@ -395,7 +395,7 @@ test('sweeps splits a list into element axes and joins it back', async ({ page }
   await page.goto('/#/sweeps?project=vit-ablations&metric=val%2Facc&params=crop_scale');
   await page.getByRole('button', { name: /Parameters/ }).click();
   const picker = page.getByRole('dialog', { name: 'Parameters' });
-  await picker.getByLabel('Search parameters').fill('crop');
+  await picker.getByLabel('Filter parameters').fill('crop');
   await picker.getByRole('button', { name: 'Split' }).click();
   await expect(page).toHaveURL(/split=crop_scale/);
   await expect(page.locator('.chip.param[title^="crop_scale[0] "]')).toBeVisible();
@@ -433,7 +433,7 @@ test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
   const axis = page.getByRole('group', { name: 'X axis' });
   await axis.getByRole('button', { name: /^X axis scalar/ }).click();
-  await page.getByLabel('Search scalars').fill('tokens');
+  await page.getByLabel('Filter scalars').fill('tokens');
   await page.getByRole('option', { name: 'train/tokens' }).click();
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
   await expect(axis.getByRole('button', { name: 'X axis scalar: train/tokens' })).toHaveAttribute(

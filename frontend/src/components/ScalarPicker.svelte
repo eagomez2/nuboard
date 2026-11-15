@@ -125,7 +125,7 @@
       <input
         class="input sm mono"
         placeholder="Filter {metrics.length} scalars (/regex/, !exclude)"
-        aria-label="Search scalars"
+        aria-label="Filter scalars"
         bind:this={input}
         bind:value={find}
         oninput={() => (index = 0)}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from '../lib/api';
   import { fmtBytes } from '../lib/format';
+  import { DISPLAY_NAME } from '../lib/brand';
 
   // A new artifact version that references a path on the machine running the viewer,
   // as `nuboard artifact add --reference` does: checked as it is typed, reviewed, then added.
@@ -286,7 +287,7 @@
         </p>
       {:else}
         <p class="msg">
-          The version references files on the machine running the viewer. Nothing is copied, and NuBoard never changes
+          The version references files on the machine running the viewer. Nothing is copied, and {DISPLAY_NAME} never changes
           them.
         </p>
       {/if}

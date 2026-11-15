@@ -41,7 +41,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
 
     The file is written to a temporary name and then moved into place. Also
     records in `run.json` which log bytes the file covers and the run's health
-    alerts (see `NAME.alerts`).
+    alerts (see `nuboard.alerts`).
 
     Args:
         path: The run folder.

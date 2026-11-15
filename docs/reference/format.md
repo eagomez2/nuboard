@@ -241,7 +241,7 @@ the frame length).
 | `S` | `n:u32, metric_id:u32[n], step:i64[n], time:f64[n], value:f64[n]` | A batch of scalars as four columns. |
 | `H` | `time:f64` | Heartbeat. |
 | `T` | `key_id:u32, step:i64, time:f64, text:utf8` | Text sample. |
-| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`. `meta` holds at least `mime` and `kind` (`image`, `audio`, `video`, `figure`, `html`), plus `caption` for images, audio and video, `sample_rate`, `channels` and `duration` (seconds) for audio when known, and `fps`, `frames`, `width`, `height` and `duration` for video encoded from arrays. |
+| `M` | `key_id:u32, step:i64, time:f64, offset:u64, length:u64, meta:utf8 JSON` | Media index entry: `length` bytes at `offset` in `media.r<rank>.pack`, or in `media.r<rank>.s<session>.pack` for a session of a helper job when that file exists. `meta` holds at least `mime` and `kind` (`image`, `audio`, `video`, `figure`, `html`), plus `caption` for images, audio and video, `sample_rate`, `channels` and `duration` (seconds) for audio when known, and `fps`, `frames`, `width`, `height` and `duration` for video encoded from arrays. |
 | `E` | `time:f64, status:utf8` | End of session, written by `finish()`. |
 
 Scalars named `system/...` are the [system samples](../api/init.md#system-scalars)
@@ -371,8 +371,11 @@ figure from a bundle.
 
 ## Compacted scalars: `data.parquet`
 
-Written by `finish()` when PyArrow and NumPy are installed, or by
-`nuboard compact <dir>`. It is a cache of the logs: the logs stay the source of
+Written by `finish()` (PyArrow and NumPy are required dependencies), or by
+`nuboard compact <dir>`. In a multi-process run, rank 0 writes it at finish
+once the other ranks' logs have ended (it waits up to 10 s for them); a run
+stopped by SIGTERM is not compacted at finish, and `nuboard compact` can do
+it later. It is a cache of the logs: the logs stay the source of
 truth and are never deleted.
 
 Columns: `metric: string`, `level: int8`, `rank: int32`, `step: int64`,

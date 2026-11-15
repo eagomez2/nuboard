@@ -1,4 +1,4 @@
-"""Analysis API: `NAME.load(project)` returns Arrow tables."""
+"""Analysis API: `nb.load(project)` returns Arrow tables."""
 
 from __future__ import annotations
 

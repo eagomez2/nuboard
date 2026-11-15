@@ -1,4 +1,4 @@
-"""Starlette application behind `NAME up`."""
+"""Starlette application behind `nuboard up`."""
 
 from __future__ import annotations
 

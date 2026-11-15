@@ -1,4 +1,4 @@
-"""Command line: `NAME up`, `demo`, `compact`, `ls`, `artifact`, `merge` and friends."""
+"""Command line: `nuboard up`, `demo`, `compact`, `ls`, `artifact`, `merge` and friends."""
 
 from __future__ import annotations
 
