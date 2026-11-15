@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.31.0
+
+Fixes from a code audit: resumed runs and their media in an open viewer,
+`flush()` and values changed right after `add_scalar`, several runs per
+distributed job, SIGTERM, Windows file locks, and a faster viewer with many
+runs or live charts. No breaking changes: run folders written by earlier
+versions read as before, `data.parquet` gains one metadata key, and the
+Python API only gains optional arguments.
 
 - **A resumed run updates in an open viewer.** A finished run that was
   resumed while `nuboard up` was running kept showing its old, compacted data
