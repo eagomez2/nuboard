@@ -1161,12 +1161,27 @@ test('a pinned point stays on its point when the chart zooms', async ({ page }) 
   await expect(dot).toBeVisible();
 });
 
+/**
+ * Space pressed while the page itself has the focus scrolls the page, smoothly. Wait until it
+ * stops: a click aimed at an element during the scroll lands wherever the scroll has carried it.
+ */
+async function scrollSettled(page: Page) {
+  await page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const y = window.scrollY;
+        setTimeout(() => resolve(window.scrollY === y), 150);
+      }),
+  );
+}
+
 test('Space plays and pauses a waveform figure once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mmode=step&mstep=0&mfind=%5Evad%2Fenhanced%24');
   const fig = page.locator('.nbwf').first();
   await expect(fig.locator('.u-over')).toBeVisible({ timeout: 15000 });
   await page.keyboard.press(' ');
   await expect(fig).not.toHaveClass(/playing/);
+  await scrollSettled(page);
   // a click on the plot sets the playhead and gives the figure the focus: Space plays from there
   await fig.locator('.u-over').click({ position: { x: 40, y: 20 } });
   await page.keyboard.press(' ');
@@ -1194,6 +1209,7 @@ test('Space plays and pauses the audio player once clicked, and in full screen',
   // the page has the focus: Space is the page's
   await page.keyboard.press(' ');
   await expect(root).not.toHaveClass(/playing/);
+  await scrollSettled(page);
   // a click on the waveform gives the player the focus: Space plays and pauses
   await player.locator('#waveform').click({ position: { x: 40, y: 30 } });
   await page.keyboard.press(' ');
