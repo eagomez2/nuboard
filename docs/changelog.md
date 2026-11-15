@@ -113,6 +113,11 @@ Python API only gains optional arguments.
 - **`RunReader.scalars()` returns arrays you can change**, also for a
   compacted run (they were read-only there). `copy=False` returns the
   reader's own arrays without copying.
+- **A SIGTERM during `finish()` lets it complete** before the process ends,
+  so a job stopped just as it was finishing is recorded as finished, not lost.
+- **Finishing a multi-GPU run is faster:** the check that the other ranks
+  have ended reads only their own logs, so the run is decoded once, for
+  compaction.
 
 ## 0.30.0
 

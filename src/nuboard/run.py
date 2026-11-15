@@ -232,6 +232,14 @@ def _install_excepthook() -> None:
 
 
 _sigterm_installed = False
+_finishing: dict[Run, int] = {}  # runs in the middle of finish() -> the thread finishing them
+_sigterm_pending = False  # SIGTERM came while this thread was finishing a run
+
+
+def _terminate() -> None:
+    """End the process as SIGTERM's default action would."""
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 def _install_sigterm() -> None:
@@ -255,7 +263,13 @@ def _install_sigterm() -> None:
             return
 
         def handler(signum: int, frame: Any) -> None:
-            """Finish every active run as killed, then terminate as SIGTERM would."""
+            """Finish every active run as killed, then terminate as SIGTERM would.
+
+            A run already in the middle of `finish()` is let finish first: on
+            this thread (the signal interrupted it) the process ends once that
+            finish returns; on another thread, the handler waits up to 5 s.
+            """
+            global _sigterm_pending
 
             for run in list(_active):
                 run.finish(
@@ -265,8 +279,14 @@ def _install_sigterm() -> None:
                     _compact=False,  # be done before the job's grace period ends
                 )
 
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            os.kill(os.getpid(), signal.SIGTERM)
+            if threading.get_ident() in _finishing.values():
+                _sigterm_pending = True  # finish() ends the process when it returns
+                return
+
+            for run in list(_finishing):
+                run._finish_done.wait(5)
+
+            _terminate()
 
         signal.signal(signal.SIGTERM, handler)
         _sigterm_installed = True
@@ -464,6 +484,7 @@ class Run:
         self._next_step = 0
         self._last_step = 0
         self._finished = False
+        self._finish_done = threading.Event()  # set when finish() has returned
         self._media_new = 0  # media and text items logged since run.json was last written
         self._system: SystemMonitor | None = None
         self._console: ConsoleLog | None = None
@@ -648,7 +669,10 @@ class Run:
 
             time.sleep(0.5)
 
-        raise TimeoutError(f"rank {self.dist.rank}: rank 0 never created {self.path}")
+        raise TimeoutError(
+            f"rank {self.dist.rank}: rank 0 never created {self.path}. Did every rank call "
+            "init the same number of times in this job? (Call it on all ranks, or only on rank 0.)"
+        )
 
     def _next_session(self) -> int:
         """Return the next free session index for this rank's event logs."""
@@ -1901,6 +1925,26 @@ class Run:
         if self._finished:
             return
 
+        _finishing[self] = threading.get_ident()
+
+        try:
+            self._finish(status, exit_code, error, _ended, _compact)
+        finally:
+            _finishing.pop(self, None)
+            self._finish_done.set()
+
+            if _sigterm_pending and not _finishing:  # a SIGTERM came while finishing
+                _terminate()
+
+    def _finish(
+        self,
+        status: str,
+        exit_code: int,
+        error: str | None,
+        _ended: float | None,
+        _compact: bool,
+    ) -> None:
+        """Do what `finish` describes, once."""
         self._close_timers()
         self._finished = True
 
@@ -1967,20 +2011,26 @@ class Run:
         if self.dist.world_size == 1:
             return True
 
-        from .reader import RunReader
+        from .reader import LogFile
 
-        reader = RunReader(self.path)
+        newest: dict[int, tuple[int, str]] = {}  # other rank -> (session, file name)
+
+        for name in os.listdir(self.path):
+            m = _LOG_RE.match(name)
+
+            if m and int(m.group(1)) != self.dist.rank:
+                rank, session = int(m.group(1)), int(m.group(2))
+                newest[rank] = max(newest.get(rank, (session, name)), (session, name))
+
+        # only those logs are read, incrementally, and rank 0's own not at all
+        logs = [LogFile(self.path / name) for _, name in newest.values()]
         deadline = time.monotonic() + timeout
 
         while True:
-            reader._read_logs()
-            newest: dict[int, Any] = {}
+            for lf in logs:
+                lf.update()
 
-            for lf in reader.iter_logs():
-                if lf.rank != self.dist.rank and lf.session >= newest.get(lf.rank, lf).session:
-                    newest[lf.rank] = lf
-
-            if all(lf.end is not None for lf in newest.values()):
+            if all(lf.end is not None for lf in logs):
                 return True
 
             if time.monotonic() >= deadline:

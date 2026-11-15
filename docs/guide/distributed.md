@@ -52,6 +52,10 @@ All ranks must agree on the run folder. In order of preference:
    folder. Rank 0 never waits. A script that starts several runs in one job
    (train, then evaluate) gets a different id for each: every rank counts its
    `init` calls, and the count goes into the suffix from the second run on.
+   So call `init` the same number of times on every rank, or only on rank 0:
+   an extra `init` on rank 0 alone (`if rank == 0: nb.init(...)` followed by
+   an `init` on every rank) puts the counts out of step, and the other ranks
+   time out waiting for a folder that never appears.
 2. Without one, rank 0 picks a random id on its own and logs normally, and
    the other ranks do nothing: `run.id` is empty there. On one machine nothing
    is lost, since only rank 0 writes. On several machines, local rank 0 of each

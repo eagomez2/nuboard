@@ -990,6 +990,37 @@ def test_sigterm_finishes_the_run_as_killed(tmp_path):
     assert RunReader(path).scalars("loss")[2].tolist() == [1.0]
 
 
+def test_sigterm_during_finish_lets_it_complete(tmp_path):
+    import signal
+    import subprocess
+    import sys
+
+    if not hasattr(signal, "SIGKILL"):  # pragma: no cover
+        pytest.skip("POSIX signals only")
+
+    script = (
+        "import nuboard as nb, time\n"
+        "from nuboard._writer import Writer\n"
+        "close = Writer.close\n"
+        "def slow(self, status):\n"  # a finish still busy writing when SIGTERM comes
+        "    print('closing', flush=True); time.sleep(1.0); close(self, status)\n"
+        "Writer.close = slow\n"
+        "run = nb.init('sig', capture_env=False, system_metrics=False)\n"
+        "run.add_scalar('loss', 1.0, step=0)\n"
+        "print(run.path, flush=True)\n"
+        "run.finish()\n"
+        "time.sleep(60)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    path = proc.stdout.readline().strip()  # type: ignore[union-attr]
+    assert proc.stdout.readline().strip() == "closing"  # type: ignore[union-attr]
+    proc.send_signal(signal.SIGTERM)
+    assert proc.wait(timeout=30) == -signal.SIGTERM  # ended right after the finish, not at 60 s
+    meta = json.loads((Path(path) / "run.json").read_text("utf-8"))
+    assert meta["status"] == "finished"
+    assert RunReader(path).scalars("loss")[2].tolist() == [1.0]
+
+
 def test_multi_gpu_run_is_compacted_when_only_rank_0_logged(monkeypatch):
     monkeypatch.setenv("WORLD_SIZE", "2")
     monkeypatch.setenv("RANK", "0")
