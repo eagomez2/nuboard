@@ -433,7 +433,7 @@ test('charts can use another scalar as the x axis', async ({ page }) => {
   await page.goto('/#/charts?project=llm-pretrain');
   const axis = page.getByRole('group', { name: 'X axis' });
   await axis.getByRole('button', { name: /^X axis scalar/ }).click();
-  await page.getByLabel('Filter scalars').fill('tokens');
+  await page.getByLabel('Filter the scalar list').fill('tokens');
   await page.getByRole('option', { name: 'train/tokens' }).click();
   await expect(page).toHaveURL(/x=metric(:|%3A)train(\/|%2F)tokens/);
   await expect(axis.getByRole('button', { name: 'X axis scalar: train/tokens' })).toHaveAttribute(
