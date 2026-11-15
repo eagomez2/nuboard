@@ -21,6 +21,21 @@
   header stays tidy and nothing overlaps. Live updates leave it alone: an
   open menu keeps its search text and focus, and nothing in the header or
   the plot moves when new data arrives or the Update button comes and goes.
+- **`run.flush()` waits until the data is written.** It could return while
+  the background thread was still writing the last batch, so reading the run
+  right after a flush could miss data.
+- **A failed write no longer renames scalars.** After one batch failed (a
+  full disk, a network filesystem hiccup), the scalars first seen in it showed
+  up as numbers such as `17` for the rest of the run. Their names are now
+  written again with the next batch.
+- **Logged values are taken at the call.** `add_scalar` read tensors and
+  arrays up to a second later, on the background thread, so changing one in
+  place right after the call (`acc.add_(x)`, a reused buffer) or editing a
+  nested dict logged the later value. Tensors are now cloned on their device
+  without waiting for the GPU, arrays are copied, and nested dicts are
+  flattened at the call; `add_scalar` still takes a few microseconds.
+- **The media count in `run.json`** no longer drifts low when media are logged
+  while a heartbeat is being written.
 
 ## 0.30.0
 

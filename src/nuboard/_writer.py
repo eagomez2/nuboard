@@ -23,7 +23,7 @@ from typing import Any
 from . import _format as fmt
 from ._meta import NAME
 
-_SCALARS, _TEXT, _MEDIA, _OWN = 0, 1, 2, 3  # _OWN: scalars logged by the run itself
+SCALARS, _TEXT, _MEDIA, _OWN, _FLUSH = 0, 1, 2, 3, 4  # _OWN: scalars logged by the run itself
 
 
 def _flatten(data: Mapping[str, Any], prefix: str = "") -> Iterable[tuple[str, Any]]:
@@ -36,6 +36,47 @@ def _flatten(data: Mapping[str, Any], prefix: str = "") -> Iterable[tuple[str, A
             yield from _flatten(value, name + "/")
         else:
             yield name, value
+
+
+def snapshot(
+    data: Mapping[str, Any], prefix: str = "", out: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Return `data` flattened, with values the caller could still change copied.
+
+    Called on the training thread, so it stays cheap: numbers pass through, a
+    tensor is detached and cloned (on its device, without waiting for it, so a
+    later in-place change such as `acc.add_(x)` does not reach the logged
+    value) and a NumPy array is copied. The conversion to float happens later,
+    on the writer thread.
+
+    Args:
+        data: Scalar names to values, possibly nested.
+        prefix: Prepended to every name (used for nested dicts).
+        out: Dict to add to (used for nested dicts).
+
+    Returns:
+        A flat dict of names to values.
+    """
+
+    if out is None:
+        out = {}
+
+    for key, value in data.items():
+        kind = type(value)
+
+        if kind is float or kind is int:
+            out[prefix + key if prefix else key] = value
+        elif isinstance(value, Mapping):
+            snapshot(value, f"{prefix}{key}/", out)
+        else:
+            if hasattr(value, "detach") and hasattr(value, "clone"):  # torch tensor
+                value = value.detach().clone()
+            elif hasattr(value, "dtype") and hasattr(value, "copy"):  # NumPy array or scalar
+                value = value.copy()
+
+            out[f"{prefix}{key}"] = value
+
+    return out
 
 
 def _to_float(value: Any) -> float:
@@ -76,7 +117,8 @@ class Writer:
     """Owns one `events.r<rank>.s<session>.log` file and its media pack.
 
     The `put_*` methods only append to `queue` and are cheap enough to call
-    from the training loop; a daemon thread encodes and writes the items.
+    from the training loop (`add_scalar` appends `(SCALARS, step, time, data)`
+    itself, to save a call); a daemon thread encodes and writes the items.
     Creating a writer opens (or appends to) the log and starts that thread.
 
     Args:
@@ -89,7 +131,7 @@ class Writer:
         own_pack: Write media to `media.r<rank>.s<session>.pack` instead of the
             rank's shared pack, for a helper job that runs alongside the main one.
         reserved: Name prefixes (such as `"timing/"`) kept for scalars the run
-            logs itself; a scalar logged with `put_scalars` under one of them
+            logs itself; a scalar from `add_scalar` under one of them
             gets a one-time warning, from the writer thread.
     """
 
@@ -132,24 +174,11 @@ class Writer:
         self._thread.start()
 
     # -- called from the training thread ------------------------------------
-    def put_scalars(self, step: int, t: float, data: Mapping[str, Any]) -> None:
-        """Queue scalar values for one step.
-
-        Nested mappings are flattened into `a/b` names. Values that cannot be
-        converted to float are skipped with a one-time warning per name.
-
-        Args:
-            step: Training step.
-            t: Unix time.
-            data: Metric names to numbers, possibly nested.
-        """
-        self.queue.append((_SCALARS, step, t, data))
-
     def put_own_scalars(self, step: int, t: float, data: Mapping[str, Any]) -> None:
         """Queue scalars the run logs itself (timers, system metrics).
 
-        Like `put_scalars`, but names under a reserved prefix are expected and
-        not warned about.
+        Like scalars from `add_scalar`, but names under a reserved prefix are
+        expected and not warned about.
 
         Args:
             step: Training step.
@@ -200,14 +229,17 @@ class Writer:
         Args:
             timeout: Maximum seconds to wait.
         """
-        deadline = time.monotonic() + timeout
+        # A marker behind everything queued so far: the writer sets it once the
+        # batch holding it is written (an empty queue alone is not enough, since
+        # the writer takes items off the queue before it writes them).
+        done = threading.Event()
+        self.queue.append((_FLUSH, done))
         self._wake.set()
+        deadline = time.monotonic() + timeout
 
-        while self.queue and time.monotonic() < deadline and self._thread.is_alive():
-            time.sleep(0.005)
-            self._wake.set()
-
-        time.sleep(0)  # let the writer finish the batch it popped
+        while not done.wait(0.05):
+            if time.monotonic() >= deadline or not self._thread.is_alive():
+                break
 
     def summary(self) -> dict[str, dict[str, Any]]:
         """Summarize every scalar written so far.
@@ -364,6 +396,8 @@ class Writer:
 
         ids, steps, times, values = array("I"), array("q"), array("d"), array("d")
         out: list[bytes] = []
+        known = dict(self._ids)  # restored if the batch cannot be written
+        markers: list[threading.Event] = []
 
         try:
             with self.summary_lock:
@@ -371,12 +405,16 @@ class Writer:
                     item = q.popleft()
                     kind = item[0]
 
-                    if kind == _SCALARS or kind == _OWN:
+                    if kind == _FLUSH:
+                        markers.append(item[1])
+                        continue
+
+                    if kind == SCALARS or kind == _OWN:
                         _, step, t, data = item
 
                         for name, raw in _flatten(data):
                             if (
-                                kind == _SCALARS
+                                kind == SCALARS
                                 and self.reserved
                                 and name not in self._ids
                                 and name.startswith(self.reserved)
@@ -434,8 +472,16 @@ class Writer:
             if out:
                 self._f.write(b"".join(out))
                 self._f.flush()
-        except Exception as exc:  # pragma: no cover - never break training
+        except Exception as exc:  # never break training
+            # The batch's NAME frames were not written: forget its new ids, so the
+            # next batch declares them again instead of using undeclared ids.
+            with self.summary_lock:
+                self._ids = known
+
             self._warn_once("drain", f"{NAME}: failed to write a batch: {exc!r}")
+        finally:
+            for done in markers:
+                done.set()
 
     def _warn_reserved(self, name: str) -> None:
         """Warn once that a hand-logged scalar uses a prefix the run keeps for itself."""

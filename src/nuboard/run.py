@@ -28,7 +28,7 @@ from . import _format as fmt
 from ._console import ConsoleLog
 from ._meta import DEFAULT_ROOT, ENV_PREFIX, FORMAT_VERSION, NAME
 from ._system import SystemMonitor, choose_gpus, parse_groups
-from ._writer import Writer, _flatten, _to_float
+from ._writer import SCALARS, Writer, _flatten, _to_float, snapshot
 from .artifacts import Artifact, resolve_artifact, split_ref
 from .artifacts import add_artifact as _add_artifact
 from .catalog import effective_status
@@ -944,7 +944,10 @@ class Run:
     ) -> None:
         """Log one scalar, or several at the same step.
 
-        Non-blocking: values are converted off-thread. On ranks other than 0 the
+        Non-blocking: values are converted to float on a background thread. The
+        values are taken as they are at the call (tensors are cloned on their
+        device without waiting, arrays are copied), so changing them in place
+        afterwards does not change what is logged. On ranks other than 0 the
         call is a no-op.
 
         Args:
@@ -973,18 +976,18 @@ class Run:
             if low is not None or high is not None:
                 raise TypeError("add_scalar takes low and high only with a single name")
 
-            data = dict(key)
+            data = snapshot(key)
 
             if value is not None and step is None:
                 step = int(value)
         elif value is None:
             raise TypeError(f"add_scalar({key!r}) needs a value")
         elif low is None and high is None:
-            data = {key: value}
+            data = snapshot({key: value})
         elif low is None or high is None:
             raise TypeError(f"add_scalar({key!r}) needs both low and high, or neither")
         else:
-            data = {key: value, key + fmt.BAND_LOW: low, key + fmt.BAND_HIGH: high}
+            data = snapshot({key: value, key + fmt.BAND_LOW: low, key + fmt.BAND_HIGH: high})
 
         if step is None:
             step = self._next_step
@@ -1003,7 +1006,7 @@ class Run:
         writer = self._writer or self._ensure_writer()
 
         if writer is not None:
-            writer.queue.append((0, step, _now() if time is None else time, data))
+            writer.queue.append((SCALARS, step, _now() if time is None else time, data))
 
     def add_scalar_baseline(
         self,
@@ -1094,7 +1097,9 @@ class Run:
 
         if writer is not None:
             writer.put_text(key, self._step(step), _now() if time is None else time, str(text))
-            self._media_new += 1
+
+            with self._meta_lock:  # _save_meta resets it from the writer thread
+                self._media_new += 1
 
     def add_image(
         self,
@@ -1554,7 +1559,9 @@ class Run:
             writer.put_media(
                 key, self._step(step), _now() if time is None else time, producer, meta
             )
-            self._media_new += 1
+
+            with self._meta_lock:  # _save_meta resets it from the writer thread
+                self._media_new += 1
 
     def _step(self, step: int | None) -> int:
         """Return `step`, or the step of the latest `add_scalar` call when it is None."""
