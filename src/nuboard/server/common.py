@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import (
     FileResponse,
     JSONResponse,
+    PlainTextResponse,
     Response,
 )
 
@@ -261,6 +262,26 @@ def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
 
 class _NotFound(Exception):
     """Raised by route handlers for an unknown run key; answered with a JSON 404."""
+
+
+def text_part(target: Path, tail: bool) -> Response:
+    """Send the first (or with `tail`, the last) `TEXT_LIMIT` bytes of a file as text.
+
+    Only those bytes are read, so a large file (a checkpoint, a long log) costs
+    no more than a small one. `X-Truncated` says whether the file was longer.
+    """
+    size = target.stat().st_size
+
+    with target.open("rb") as f:
+        if tail:
+            f.seek(max(0, size - TEXT_LIMIT))
+
+        data = f.read(TEXT_LIMIT)
+
+    return PlainTextResponse(
+        data.decode("utf-8", errors="replace"),
+        headers={"X-Truncated": "1" if size > TEXT_LIMIT else "0"},
+    )
 
 
 def send_file(target: Path, download: bool) -> Response:

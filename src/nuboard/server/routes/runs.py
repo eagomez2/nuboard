@@ -29,10 +29,10 @@ from ...reports import (
 from ..common import (
     ANNOTATION_FIELDS,
     JSON,
-    TEXT_LIMIT,
     _brief,
     _sweep_keys,
     send_file,
+    text_part,
 )
 from ..context import Context
 from ..data import path_inside
@@ -257,14 +257,7 @@ def routes(ctx: Context) -> list[BaseRoute]:
         if target is None or not target.is_file():
             return PlainTextResponse("not found", 404)
 
-        if request.query_params.get("tail") == "1":
-            with target.open("rb") as f:
-                f.seek(max(0, target.stat().st_size - TEXT_LIMIT))
-                data = f.read()
-        else:
-            data = target.read_bytes()[:TEXT_LIMIT]
-
-        return PlainTextResponse(data.decode("utf-8", errors="replace"))
+        return text_part(target, request.query_params.get("tail") == "1")
 
     def run_folder_file(request: Request) -> Path | None:
         """The file a request names inside a run folder, or None (also for symlinks out)."""
@@ -290,18 +283,7 @@ def routes(ctx: Context) -> list[BaseRoute]:
         if target is None:
             return PlainTextResponse("not found", 404)
 
-        size = target.stat().st_size
-
-        with target.open("rb") as f:
-            if request.query_params.get("tail") == "1":
-                f.seek(max(0, size - TEXT_LIMIT))
-
-            data = f.read(TEXT_LIMIT)
-
-        return PlainTextResponse(
-            data.decode("utf-8", errors="replace"),
-            headers={"X-Truncated": "1" if size > TEXT_LIMIT else "0"},
-        )
+        return text_part(target, request.query_params.get("tail") == "1")
 
     def run_raw(request: Request) -> Response:
         """Send a run file as is; `download=1` saves it even if it is an image."""

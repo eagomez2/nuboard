@@ -126,6 +126,30 @@ def test_annotations_and_files(client):
     assert media[0]["text"] == "hi"
 
 
+def test_run_files_are_read_only_as_far_as_they_are_sent(client, monkeypatch):
+    key = client.get("/api/runs").json()["runs"][0]["key"]
+    reads: list[int] = []
+    real_open = __import__("pathlib").Path.open
+
+    def counting_open(self, *args, **kwargs):
+        f = real_open(self, *args, **kwargs)
+
+        if self.name == "output.log":
+            read = f.read
+            f.read = lambda n=-1: reads.append(n) or read(n)  # type: ignore[method-assign]
+
+        return f
+
+    monkeypatch.setattr("pathlib.Path.open", counting_open)
+    monkeypatch.setattr("pathlib.Path.read_bytes", lambda self: pytest.fail("read in full"))
+
+    for tail in (0, 1):
+        r = client.get(f"/api/runs/{key}/files/output.log", params={"tail": tail})
+        assert len(r.text) == 2_000_000 and r.headers["x-truncated"] == "1"
+
+    assert reads == [2_000_000, 2_000_000]
+
+
 def test_views_round_trip(client):
     r = client.post(
         "/api/views",
