@@ -126,8 +126,16 @@ Python API only gains optional arguments.
   `.merge-tmp/` folder, and every later merge of it failed with
   `FileExistsError`. Each copy now has a staging folder of its own, so the
   merge can simply be run again, and two merges into the same folder at once
-  never touch each other's copies. Partial copies are deleted once nothing in
-  them changed for 6 hours.
+  never touch each other's copies. A copy that fails (a full disk) is removed
+  at once, and one left by a merge killed outright once nothing in it changed
+  for 6 hours.
+- **A copy that just finished is never taken as abandoned.** Merges and
+  artifact versions clear staging folders in which nothing changed for 6
+  hours, but a copy keeps its source's modification times, so a fresh copy of
+  old files could look abandoned and be deleted before it was moved into
+  place. The check now also looks at when the copy itself was written.
+- **Docs:** [known limitations](reference/limitations.md) now say that
+  hypothesis cards and reports are saved whole, so the last save wins.
 - **A TensorBoard import stopped part way is redone.** Importing the same
   folder again skipped the run as already imported, leaving it crashed with
   part of its data. It is now imported again in full.

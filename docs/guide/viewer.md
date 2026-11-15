@@ -931,6 +931,9 @@ Some cases are not fully covered:
   per folder and let everyone use it.
 - **Other tools rewriting the file**, such as a hand edit, or a sync tool
   (Dropbox, rsync) restoring an older copy. The last writer wins.
+- **Hypothesis cards and reports.** Each is saved whole, so when two tabs or
+  viewers edit the same card or report, the last save wins and replaces the
+  other's changes, with no warning. Edit each one from one place at a time.
 
 If someone saves a run's notes or a property **after you started editing
 it**, your save is not applied over theirs. The viewer shows what they saved

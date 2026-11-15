@@ -20,3 +20,5 @@ What NuBoard does not do yet, or does with a trade-off.
   milliseconds can still lose one edit, and a sync tool restoring an older
   `annotations.json` wins. See
   [Editing from several places](../guide/viewer.md#editing-from-several-places).
+- Hypothesis cards and reports are saved whole: when two tabs or viewers edit
+  the same card or report, the last save wins, with no warning.
