@@ -68,4 +68,6 @@ second time.
 | `directions.json` | Directions DEST lacks are added; a scalar better lower on one side and higher on the other keeps DEST's. |
 
 Each run and artifact version is copied to `<project>/.merge-tmp/` and then
-moved into place, so a viewer open on DEST never shows a half-copied run.
+moved into place, so a viewer open on DEST never shows a half-copied run. If a
+merge is stopped part way, run it again: it plans what is still missing, and
+clears the partial copy it left in `.merge-tmp/`.

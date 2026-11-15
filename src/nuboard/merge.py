@@ -939,6 +939,22 @@ def _repoint(
     return changed
 
 
+def _staging(path: Path) -> Path:
+    """Return a staging path in `.merge-tmp/`, clearing what an interrupted merge left there.
+
+    Only `apply` writes to `.merge-tmp/`, and it moves each copy out once it is
+    complete, so anything already at `path` is a partial copy of a merge that
+    was killed part way.
+    """
+
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+    return path
+
+
 def apply(p: Plan) -> list[Action]:
     """Carry out a plan made by `plan`.
 
@@ -974,7 +990,7 @@ def apply(p: Plan) -> list[Action]:
         tmp.mkdir(parents=True, exist_ok=True)
 
         if a.kind == "run":
-            staged = tmp / src.name
+            staged = _staging(tmp / src.name)
             shutil.copytree(src, staged)
             data = a.data or {}
 
@@ -993,7 +1009,7 @@ def apply(p: Plan) -> list[Action]:
 
             os.replace(staged, dest)
         elif a.kind == "artifact":
-            staged = tmp / f"{src.parent.name}-{dest.name}"
+            staged = _staging(tmp / f"{src.parent.name}-{dest.name}")
             shutil.copytree(src, staged)
 
             if a.data and "version" in a.data:

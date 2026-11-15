@@ -67,6 +67,23 @@ def test_a_clashing_artifact_version_is_renumbered_and_copied_runs_repointed(tmp
     assert merge.plan(b, a).changes == []  # v1 of b is now known as a's v2
 
 
+def test_a_merge_killed_mid_copy_does_not_block_the_next_one(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    (tmp_path / "x.txt").write_text("data")
+    run = make_run(b, "prep", data=tmp_path / "x.txt")
+
+    # what a merge killed during its copies leaves in DEST's staging folder
+    tmp = a / "proj" / merge.TMP
+    (tmp / run.name).mkdir(parents=True)
+    (tmp / run.name / "run.json").write_text("{")  # a partial copy
+    (tmp / "corpus-v1").mkdir()
+
+    merge.apply(merge.plan(b, a))
+    assert json.loads((a / "proj" / "runs" / run.name / "run.json").read_text())["name"] == "prep"
+    assert (a / "proj" / "artifacts" / "corpus" / "v1" / "manifest.json").exists()
+    assert not tmp.exists()
+
+
 def test_identical_artifacts_are_skipped(tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
     (tmp_path / "x.txt").write_text("same")

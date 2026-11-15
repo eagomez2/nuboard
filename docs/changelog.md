@@ -118,6 +118,13 @@ Python API only gains optional arguments.
 - **Finishing a multi-GPU run is faster:** the check that the other ranks
   have ended reads only their own logs, so the run is decoded once, for
   compaction.
+- **The Files view reads only what it shows.** Opening a large file of a
+  run's `files/` folder (a checkpoint, a long log) read all of it into the
+  viewer's memory to send its first 2 MB. Now only those 2 MB are read.
+- **A merge stopped part way no longer blocks the next one.** A merge killed
+  while copying a run or artifact version left a partial copy in the hidden
+  `.merge-tmp/` folder, and every later merge of it failed with
+  `FileExistsError`. Running the merge again now clears it and completes.
 - **Internal:** the viewer's routes moved from one 2,500-line `server/app.py`
   into one module per area under `server/routes/`. No route, parameter or
   response changed.
