@@ -115,7 +115,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
                 row_group_size=max(1, table.num_rows),
             )
 
-    os.replace(tmp, target)
+    _fs.replace(tmp, target)  # retried while a viewer on Windows reads the old file
     meta = _fs.read_json(path / "run.json", {})
 
     if meta:

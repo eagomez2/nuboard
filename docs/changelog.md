@@ -47,6 +47,12 @@
   ended, so the viewer opens them as fast as single-process runs.
 - **`NUBOARD_STANDALONE=1`** makes `srun -n N` tasks independent runs instead
   of the N ranks of one run.
+- **Windows: an open viewer no longer blocks compaction or `nuboard rm`.**
+  The viewer kept each run's `data.parquet` open, so finishing a resumed run
+  could not replace it, and `nuboard rm` failed on runs with open files. The
+  viewer now opens the file only while it reads it, compaction retries while
+  the old file is in use, and `rm` sets aside runs it cannot delete yet and
+  removes them later.
 
 ## 0.30.0
 

@@ -114,6 +114,12 @@ This cannot be undone. Delete these runs? [y/N]
 | `--include-running` | also delete runs that are still logging (skipped by default) |
 | `--force` | also delete runs whose files a linked artifact version references (kept by default); those versions then report their files as missing |
 
+On Windows a file that another program has open (a running viewer, a sync
+client) cannot be deleted. Such a run is moved out of `runs/` into the
+project's `.rm-tmp/` folder, where no reader looks, and removed by the next
+`nuboard rm` or `nuboard up`. A run whose folder cannot even be moved is
+reported and left as it is.
+
 Artifact versions a deleted run produced are kept. A run whose files a version
 references (made from the run's files without copying) is listed as
 `kept`, with the versions, unless `--force`. Each run folder is moved

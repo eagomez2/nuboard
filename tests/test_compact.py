@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import pyarrow.parquet as pq
+import pytest
 
 import nuboard as nb
 from nuboard.compact import compact_run
@@ -87,3 +88,55 @@ def test_million_points_read_quickly():
     elapsed = time.perf_counter() - t0
     assert sum(len(v[0]) for v in data.values()) == 1_000_000
     assert elapsed < 0.5, elapsed  # target is 0.1 s on a laptop; CI machines vary
+
+
+def test_compaction_retries_while_the_old_file_is_in_use(monkeypatch):
+    import os
+
+    from nuboard import _fs
+    from nuboard.compact import compact_run
+
+    run = nb.init("busy", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    real, calls = os.replace, {"n": 0}
+
+    def busy(src, dest):  # Windows, while a viewer reads the old data.parquet
+        if str(dest).endswith("data.parquet"):
+            calls["n"] += 1
+
+            if calls["n"] <= 2:
+                raise PermissionError("in use")
+
+        return real(src, dest)
+
+    monkeypatch.setattr(_fs.os, "replace", busy)
+    compact_run(run.path)
+    assert calls["n"] == 3
+
+
+def test_parquet_reads_leave_no_file_open():
+    import sys
+
+    from nuboard.reader import RunReader
+
+    if not sys.platform.startswith("linux"):
+        pytest.skip("counts open files with /proc")
+
+    import os
+
+    run = nb.init("open", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    reader = RunReader(run.path)
+    assert reader.parquet is not None and reader.scalars("loss")[2].tolist() == [1.0]
+    target = str(run.path / "data.parquet")
+    fds = []
+
+    for fd in os.listdir("/proc/self/fd"):
+        try:
+            fds.append(os.readlink(f"/proc/self/fd/{fd}"))
+        except OSError:  # the descriptor listdir itself used
+            pass
+
+    assert target not in fds

@@ -343,8 +343,9 @@ def align(steps: np.ndarray, at: np.ndarray, values: np.ndarray) -> np.ndarray:
 class ParquetData:
     """Reads `data.parquet` written by `NAME.compact.compact_run`.
 
-    Reads are serialized with a lock, since a `ParquetFile` is not safe for
-    concurrent reads. Needs PyArrow.
+    The footer is read once; the file itself is opened for each read and closed
+    right after, so no handle stays open between reads (on Windows an open file
+    cannot be replaced, which a new compaction of the run needs). Needs PyArrow.
 
     Args:
         path: The `data.parquet` file.
@@ -353,9 +354,9 @@ class ParquetData:
     def __init__(self, path: Path) -> None:
         import pyarrow.parquet as pq
 
-        self.file = pq.ParquetFile(path)
-        self._lock = threading.Lock()  # a ParquetFile is not safe for concurrent reads
-        meta = self.file.schema_arrow.metadata or {}
+        self.path = path
+        self._footer = pq.read_metadata(path)
+        meta = self._footer.schema.to_arrow_schema().metadata or {}
         # {metric: [[row_group, rows], ...] indexed by zoom level}
         self.row_groups: dict[str, list[list[int]]] = json.loads(meta[b"row_groups"])
         # {metric: [ranks]}; absent in files written before multi-process runs were compacted
@@ -406,8 +407,7 @@ class ParquetData:
 
         level = min(level, len(groups) - 1)
 
-        with self._lock:
-            table = self.file.read_row_group(groups[level][0], columns=list(_PQ_COLUMNS))
+        table = self._read(lambda f: f.read_row_group(groups[level][0], columns=list(_PQ_COLUMNS)))
 
         ranks = table.column("rank").to_numpy()
         mask = ranks == rank
@@ -424,8 +424,19 @@ class ParquetData:
     def ranks(self) -> list[int]:
         """Return the ranks present in the file, sorted."""
 
-        with self._lock:
-            return sorted(set(self.file.read(columns=["rank"]).column("rank").to_pylist()))
+        if self.metric_ranks is not None:
+            return sorted({r for ranks in self.metric_ranks.values() for r in ranks})
+
+        return sorted(
+            set(self._read(lambda f: f.read(columns=["rank"])).column("rank").to_pylist())
+        )
+
+    def _read(self, read: Any) -> Any:
+        """Open the file, call `read` with it, and close it again."""
+        import pyarrow.parquet as pq
+
+        with pq.ParquetFile(self.path, metadata=self._footer) as f:
+            return read(f)
 
 
 class RunReader:

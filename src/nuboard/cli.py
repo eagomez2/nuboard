@@ -145,7 +145,14 @@ def up(
     shown = "localhost" if loopback else socket.gethostname() if host in ("0.0.0.0", "::") else host
     url = f"http://{shown}:{port}/"
     link = f"{url}?token={token}" if token else url
-    runs = len(app.state.store.catalog.runs())
+    catalog = app.state.store.catalog
+    runs = len(catalog.runs())
+
+    from .remove import purge  # finish deletions `rm` had to leave (files open on Windows)
+
+    for project in {catalog.project_dir(p["name"]) for p in catalog.projects()} - {None}:
+        purge(project)
+
     print(f"{NAME} serving {root.resolve()} ({runs} runs) at {link}  (Ctrl+C to stop)")
 
     if token:
