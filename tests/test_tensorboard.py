@@ -113,6 +113,39 @@ def test_importing_twice_skips_existing_runs(tmp_path):
     assert len(_runs(tmp_path)) == len(first)
 
 
+def test_an_import_stopped_part_way_is_redone(tmp_path, monkeypatch):
+    import nuboard.tensorboard as tb
+
+    write = tb._write
+    calls = []
+
+    def stopped(run, files, result, prefix=""):
+        calls.append(1)
+
+        if len(calls) == 1:
+            write(run, files[:1], result, prefix)  # part of the data, then Ctrl+C
+            raise KeyboardInterrupt
+
+        return write(run, files, result, prefix)
+
+    monkeypatch.setattr(tb, "_write", stopped)
+
+    with pytest.raises(KeyboardInterrupt):
+        import_logdir(DATA / "torch", "tb", dir=tmp_path)
+
+    monkeypatch.setattr(tb, "_write", write)
+    stopped_run = next(iter(_runs(tmp_path).values()))
+    assert stopped_run.record["status"] == "crashed"
+
+    again = import_logdir(DATA / "torch", "tb", dir=tmp_path)
+    assert not any(r.skipped for r in again)
+    assert {h.record["status"] for h in _runs(tmp_path).values()} == {"finished"}
+    assert len(_runs(tmp_path)) == len(again)
+
+    full = import_logdir(DATA / "torch", "tb2", dir=tmp_path)  # one never stopped
+    assert [r.scalars for r in again] == [r.scalars for r in full]
+
+
 def test_single_run_folder_and_truncated_file(tmp_path):
     src = tmp_path / "logs" / "solo"
     shutil.copytree(DATA / "tbx" / "exp1", src)
