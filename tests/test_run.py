@@ -208,6 +208,25 @@ def test_fork_copies_history_up_to_step():
     assert meta["fork"] == {"run_id": parent.id, "step": 4}
 
 
+def test_fork_of_a_resumed_run_takes_the_later_session_and_bands():
+    parent = nb.init("p", capture_env=False)
+
+    for s in range(6):
+        parent.add_scalar("loss", float(s), step=s, low=s - 1.0, high=s + 1.0)
+
+    parent.finish()
+    resumed = nb.init("p", run_id=parent.id, resume="must", capture_env=False)
+    resumed.add_scalar("loss", 30.0, step=3)  # restarted from the step 3 checkpoint
+    resumed.finish()
+    child = nb.init("p", fork_from=(parent.id, 4), capture_env=False)
+    child.finish()
+    reader = RunReader(child.path)
+    steps, _, values = reader.scalars("loss")
+    assert list(steps) == [0, 1, 2, 3] and list(values) == [0.0, 1.0, 2.0, 30.0]
+    bounds = reader.bounds("loss")
+    assert bounds is not None and list(bounds[0][:3]) == [-1.0, 0.0, 1.0]
+
+
 def test_only_rank_zero_logs(monkeypatch, tmp_path):
     monkeypatch.setenv("WORLD_SIZE", "2")
     monkeypatch.setenv("TORCHELASTIC_RUN_ID", "job-42")

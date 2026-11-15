@@ -1,6 +1,6 @@
 """Encoding of the append-only event log (standard library only).
 
-See `docs/format.md` for the full specification. In short:
+See `docs/reference/format.md` for the full specification. In short:
 
     file   := MAGIC frame*
     frame  := kind:u8  length:u32  crc32:u32  payload[length]

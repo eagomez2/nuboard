@@ -896,35 +896,17 @@ class Run:
         if not (parent / "run.json").exists():
             raise FileNotFoundError(f"cannot fork: no run {parent_id!r} in {parent.parent}")
 
-        merged: dict[str, list[tuple[int, float, float]]] = {}
-        logs = sorted(
-            (int(m.group(2)), p)
-            for p in parent.iterdir()
-            if (m := _LOG_RE.match(p.name)) and int(m.group(1)) == 0
-        )
+        from .reader import RunReader  # imported here: it needs NumPy, which `init` does not
 
-        for _, path in logs:
-            per_metric: dict[str, list[tuple[int, float, float]]] = {}
-            names: dict[int, str] = {}
+        merged = RunReader(parent).all_scalars(0, bands=True)
+        points = []
 
-            for kind, payload, _ in fmt.iter_frames(path.read_bytes(), len(fmt.MAGIC)):
-                if kind == fmt.NAME:
-                    mid, mname = fmt.decode_name(payload)
-                    names[mid] = mname
-                elif kind == fmt.SCALARS:
-                    ids, steps, times, values = fmt.decode_scalars_py(payload)
+        for mname, (s, t, v) in merged.items():
+            keep = s <= step
+            points.extend(
+                zip([mname] * int(keep.sum()), s[keep].tolist(), t[keep].tolist(), v[keep].tolist())
+            )
 
-                    for i, s, t, v in zip(ids, steps, times, values):
-                        per_metric.setdefault(names[i], []).append((s, t, v))
-
-            for mname, pts in per_metric.items():  # later session wins from its first step
-                first = min(p[0] for p in pts)
-                kept = [p for p in merged.get(mname, []) if p[0] < first]
-                merged[mname] = kept + pts
-
-        points = [
-            (mname, s, t, v) for mname, pts in merged.items() for (s, t, v) in pts if s <= step
-        ]
         points.sort(key=lambda p: (p[1], p[0]))
         writer = self._ensure_writer()
 

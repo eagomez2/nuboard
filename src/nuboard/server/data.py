@@ -539,7 +539,7 @@ class Store:
                 label = names[key]
 
                 if counts[label] > 1:  # series are told apart by label in the viewer
-                    label = f"{label} ({key.rsplit('_', 1)[-1]})"
+                    label = f"{label} ({key.rsplit('-', 1)[-1]})"
 
                 add(
                     {

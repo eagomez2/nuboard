@@ -53,6 +53,21 @@ def test_runs_and_query(client):
     assert bad["error"] and len(bad["runs"]) == 4
 
 
+def test_runs_of_the_same_name_are_labelled_by_their_id_suffix(tmp_path):
+    for _ in range(2):
+        with nb.init("twins", run_name="base", capture_env=False) as run:
+            run.add_scalar("loss", 1.0, step=0)
+
+    with TestClient(create_app(tmp_path / "exp", cache_dir=tmp_path / "cache")) as c:
+        keys = [r["key"] for r in c.get("/api/runs").json()["runs"]]
+        res = c.get("/api/scalars", params={"runs": ",".join(keys), "metric": "loss"})
+        series = json.loads(pa.ipc.open_stream(res.content).read_all().schema.metadata[b"series"])
+        suffixes = {k: k.rsplit("-", 1)[-1] for k in keys}
+        assert sorted(s["label"] for s in series) == sorted(
+            f"base ({x})" for x in suffixes.values()
+        )
+
+
 def test_scalars_arrow_grouped(client):
     keys = [r["key"] for r in client.get("/api/runs").json()["runs"]]
     res = client.get(

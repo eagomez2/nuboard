@@ -71,6 +71,20 @@
 - **Open tabs catch up after a reconnect.** After the viewer restarted, or
   a laptop slept, open tabs showed old data until the next change; they now
   reload the runs and charts once when they reconnect.
+- **Compacting a running run no longer skips data.** With
+  `nuboard compact --include-running`, frames written while the logs were
+  being read could be counted as compacted without being in `data.parquet`;
+  if the run then died, the viewer never showed them.
+- **Runs of the same name are told apart by the end of their id** in chart
+  legends (`baseline (1a2b3c4d)`), not by the whole id.
+- **`Project.scalars(group_by=...)` with mixed value types** (`0.001` in
+  some runs, `"auto"` in another) returns the values as strings instead of
+  raising. Its `run_id` and `name` columns are built without one Python string
+  per point, so large tables load faster.
+- **The Columns menu lists config keys of every run**, not only of the first
+  2,000.
+- **Forking a resumed run** takes its history the way the viewer shows it,
+  with bands, and reads a compacted parent from `data.parquet`.
 
 ## 0.30.0
 

@@ -164,3 +164,29 @@ def test_zoom_levels_are_cached_until_the_file_changes():
     assert again is not None and len(again.read("loss")[0]) == 51
     assert _LEVELS.size <= _LEVELS.budget
 
+
+def test_bytes_written_while_compacting_are_not_counted_as_covered(monkeypatch):
+    from array import array
+
+    from nuboard import _format as fmt
+
+    run = nb.init("race", capture_env=False, system_metrics=False, capture_console=False)
+    run.add_scalar("loss", 1.0, step=0)
+    run.finish()
+    log = next(run.path.glob("events.*.log"))
+    decode = RunReader._read_logs
+
+    def decode_then_write(self):  # the run writes one more frame during compaction
+        decode(self)
+
+        with open(log, "ab") as f:
+            f.write(fmt.name_frame(99, "late"))
+            ids, steps = array("I", [99]), array("q", [1])
+            f.write(fmt.scalars_frame(ids, steps, array("d", [0.0]), array("d", [2.0])))
+
+    monkeypatch.setattr(RunReader, "_read_logs", decode_then_write)
+    compact_run(run.path)
+    monkeypatch.undo()
+    reader = RunReader(run.path)
+    assert reader.parquet is None  # the logs are longer than what the file covers
+    assert list(reader.scalars("late")[2]) == [2.0]

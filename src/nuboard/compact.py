@@ -52,8 +52,12 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     path = Path(path)
     reader = RunReader(path)
     reader._parquet_checked = True  # always decode the logs themselves
-    reader._read_logs()
+    # Sizes taken before decoding: bytes written after this are not in the file,
+    # and they make the logs longer than recorded, so the viewer reads the logs
+    # instead. A torn frame at the end extends past these sizes too, so it is
+    # never counted as covered once its writer completes it.
     sizes = reader.log_sizes()
+    reader._read_logs()
     per_metric: dict[str, list[tuple[int, list[tuple[np.ndarray, ...]]]]] = {}
 
     for rank in reader.ranks():
@@ -82,7 +86,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
             n = len(arrays[0])
             table = pa.table(
                 {
-                    "metric": pa.array([metric] * n, pa.string()),
+                    "metric": pa.repeat(pa.scalar(metric, pa.string()), n),
                     "level": pa.array(np.full(n, level, "i1")),
                     "rank": arrays[0],
                     "step": arrays[1].astype("i8"),
