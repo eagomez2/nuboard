@@ -2180,8 +2180,24 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
 });
 
-/** Open the demo's live run on the Files tab, showing `file`. */
+/**
+ * Open the demo's live run on the Files tab, showing `file`. A live run lasts about 125 s
+ * (25,000 steps) before the next seed starts, so this first waits for one with a minute or
+ * more to go: a run that finishes mid-test stops growing its files.
+ */
 async function openLiveFile(page: Page, file: string) {
+  test.setTimeout(150_000);
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get('/api/runs?project=llm-pretrain');
+        const runs = (await res.json()).runs as { status: string; summary: Record<string, { step: number }> }[];
+        const live = runs.find((r) => r.status === 'running');
+        return live ? (live.summary['train/loss']?.step ?? 0) : Infinity;
+      },
+      { timeout: 130_000, intervals: [1000] },
+    )
+    .toBeLessThan(13_000);
   await page.goto('/#/runs?project=llm-pretrain');
   await page
     .locator('.body .row')
