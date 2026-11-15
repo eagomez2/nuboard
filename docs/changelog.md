@@ -124,7 +124,15 @@ Python API only gains optional arguments.
 - **A merge stopped part way no longer blocks the next one.** A merge killed
   while copying a run or artifact version left a partial copy in the hidden
   `.merge-tmp/` folder, and every later merge of it failed with
-  `FileExistsError`. Running the merge again now clears it and completes.
+  `FileExistsError`. Each copy now has a staging folder of its own, so the
+  merge can simply be run again, and two merges into the same folder at once
+  never touch each other's copies. Partial copies are deleted once nothing in
+  them changed for 6 hours.
+- **A TensorBoard import stopped part way is redone.** Importing the same
+  folder again skipped the run as already imported, leaving it crashed with
+  part of its data. It is now imported again in full.
+- **`nuboard ls` reports a bad query in one line**, as `nuboard rm` does,
+  instead of with a Python traceback, and before reading any run.
 - **Internal:** the viewer's routes moved from one 2,500-line `server/app.py`
   into one module per area under `server/routes/`. No route, parameter or
   response changed.

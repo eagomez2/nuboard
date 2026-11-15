@@ -131,3 +131,18 @@ def test_a_run_that_cannot_move_is_reported_and_kept(tmp_path, monkeypatch):
     p = remove.plan(tmp_path, "", [run.name])
     assert remove.apply(p) == [] and [t.path for t in p.failed] == [run]
     assert run.exists()
+
+
+def test_ls_and_rm_report_a_bad_query_the_same_way(tmp_path, capsys):
+    make_run(tmp_path, "r")
+    capsys.readouterr()
+
+    for cmd in ("ls", "rm"):
+        with pytest.raises(SystemExit) as exc:
+            main([cmd, str(tmp_path), "-q", "bogus(("])
+
+        assert exc.value.code == 2
+        assert capsys.readouterr().out == "error: expected a comparison after 'bogus'\n"
+
+    main(["ls", str(tmp_path), "-q", "name = r"])
+    assert capsys.readouterr().out.split()[0] == "finished"

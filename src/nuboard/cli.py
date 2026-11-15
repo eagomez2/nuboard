@@ -537,9 +537,15 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{done} run(s) compacted")
     elif args.cmd == "ls":
         from . import _fs
-        from .catalog import effective_status, find_runs, make_record
+        from .catalog import find_runs, make_record
         from .jobs import read_meta
-        from .query import parse
+        from .query import QueryError, parse
+
+        try:
+            query = parse(args.query)
+        except QueryError as exc:  # as `rm` reports it, before reading any run
+            print(f"error: {exc}")
+            raise SystemExit(2) from None
 
         root = Path(args.dir or _default_dir())
         records = []
@@ -549,7 +555,7 @@ def main(argv: list[str] | None = None) -> None:
             ann = _fs.read_json(path / "annotations.json", {}) or {}
             records.append(make_record(path.name, project, path.name, meta, ann))
 
-        for r in parse(args.query).apply(records):
+        for r in query.apply(records):
             print(f"{r['status']:<9} {r['project']:<20} {r['id']}")
     elif args.cmd == "import-tensorboard":
         _import_tensorboard(args.logdir, args.project, args.dir, args.tags)
