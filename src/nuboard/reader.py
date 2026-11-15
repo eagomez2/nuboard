@@ -34,12 +34,14 @@ class TextEntry:
         step: Training step.
         time: Unix time it was logged.
         text: The text.
+        session: Session of the event log it was read from.
     """
 
     key: str
     step: int
     time: float
     text: str
+    session: int = 0
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,8 @@ class MediaEntry:
         rank: Process rank whose pack holds the bytes.
         pack: File name of the pack: `media.r<rank>.pack`, or for a helper job's
             session `media.r<rank>.s<session>.pack`.
+        session: Session of the event log that indexes the item.
+        seq: Position of the item among the media frames of that log.
     """
 
     key: str
@@ -66,6 +70,58 @@ class MediaEntry:
     meta: dict[str, Any]
     rank: int
     pack: str = ""
+    session: int = 0
+    seq: int = 0
+
+    @property
+    def uid(self) -> int:
+        """A number that names this item for good, within its rank.
+
+        It is built from the session and the item's position in that session's
+        log, which is append-only, so a later session or helper job never
+        changes it (unlike the item's position in the step-sorted list).
+        """
+        return self.session * MEDIA_UID_SESSION + self.seq
+
+
+MEDIA_UID_SESSION = 1_000_000_000
+"""`MediaEntry.uid` is `session * MEDIA_UID_SESSION + seq`, safe in JavaScript up to session 9e6."""
+
+
+def latest_sessions(entries: list[Any]) -> list[Any]:
+    """Apply "the later session wins" to text or media entries, as for scalars.
+
+    For each key, entries of an earlier session at or after the first step a
+    later session logged that key at are dropped, so a run resumed from a
+    checkpoint does not list both versions of the overlapping steps.
+
+    Args:
+        entries: Text or media entries, each with `key`, `step` and `session`.
+
+    Returns:
+        The kept entries, in their original order.
+    """
+    first: dict[tuple[str, int], int] = {}
+
+    for e in entries:
+        k = (e.key, e.session)
+        first[k] = min(first.get(k, e.step), e.step)
+
+    cut: dict[tuple[str, int], float] = {}  # (key, session) -> first step of any later session
+    by_key: dict[str, list[tuple[int, int]]] = {}
+
+    for (key, session), step in first.items():
+        by_key.setdefault(key, []).append((session, step))
+
+    for key, sessions in by_key.items():
+        sessions.sort()
+        later = float("inf")
+
+        for session, step in reversed(sessions):
+            cut[(key, session)] = later
+            later = min(later, step)
+
+    return [e for e in entries if e.step < cut[(e.key, e.session)]]
 
 
 class LogFile:
@@ -158,7 +214,9 @@ class LogFile:
                 self.heartbeat = fmt.decode_f64(payload)
             elif kind == fmt.TEXT:
                 key, step, t, text = fmt.decode_text(payload)
-                self.texts.append(TextEntry(self.names.get(key, str(key)), step, t, text))
+                self.texts.append(
+                    TextEntry(self.names.get(key, str(key)), step, t, text, self.session)
+                )
             elif kind == fmt.MEDIA:
                 key, step, t, off, length, meta = fmt.decode_media(payload)
 
@@ -177,6 +235,8 @@ class LogFile:
                         json.loads(meta),
                         self.rank,
                         self._pack,
+                        self.session,
+                        len(self.media),
                     )
                 )
             elif kind == fmt.END:
@@ -370,6 +430,7 @@ class RunReader:
         self.logs: dict[str, LogFile] = {}
         self._parquet: ParquetData | None = None
         self._parquet_checked = False
+        self._parquet_state: tuple[Any, ...] = ()
         self.lock = threading.RLock()
 
     # -- metadata -----------------------------------------------------------
@@ -395,63 +456,101 @@ class RunReader:
     def parquet(self) -> ParquetData | None:
         """Compacted data, used only if it covers every byte of every log.
 
-        The check runs once and is redone by `refresh` while no usable file
-        was found. None if there is no usable `data.parquet`.
+        The check runs once, and `refresh` redoes it whenever no usable file was
+        found or a log or `data.parquet` changed since (a resumed run). None if
+        there is no usable `data.parquet`.
         """
 
         if not self._parquet_checked:
             self._parquet_checked = True
+            self._parquet = None
             pq_path = self.path / "data.parquet"
 
             if pq_path.exists():
                 done = (self.meta().get("compacted") or {}).get("bytes")
+                sizes = self.log_sizes()
 
-                if done is not None and done == self.log_sizes():
+                if done is not None and done == sizes:
                     try:
                         self._parquet = ParquetData(pq_path)
+                        self._parquet_state = self._state(sizes)
                     except Exception:
                         self._parquet = None
 
         return self._parquet
 
+    def _state(self, sizes: dict[str, int] | None = None) -> tuple[Any, ...]:
+        """Return what a usable `data.parquet` depends on: the log sizes and its own stamp."""
+
+        try:
+            st = os.stat(self.path / "data.parquet")
+            stamp: tuple[int, int] | None = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = None
+
+        return tuple(sorted((sizes if sizes is not None else self.log_sizes()).items())), stamp
+
     def refresh(self) -> bool:
         """Read newly appended bytes of every event log, picking up new logs.
+
+        A compacted run whose logs have not been read yet stays unread (text and
+        media are decoded on first use), so this costs one `stat` per log. When a
+        log or `data.parquet` changed since the Parquet file was found usable,
+        it is dropped and checked again.
 
         Returns:
             True if anything changed.
         """
 
         with self.lock:
-            if self._parquet_checked and self._parquet is None:
-                self._parquet_checked = False  # a compaction may have finished since
-
             changed = False
 
+            if self._parquet_checked:
+                if self._parquet is None:
+                    self._parquet_checked = False  # a compaction may have finished since
+                elif self._state() != self._parquet_state:
+                    self._parquet_checked = False  # resumed, or compacted again
+                    self._parquet = None
+                    changed = True
+
+            if self.logs or self.parquet is None:
+                for p in self._log_paths():
+                    log = self.logs.get(p.name)
+
+                    if log is None:
+                        log = self.logs[p.name] = LogFile(p)
+
+                    changed |= log.update()
+
+            return changed
+
+    def _logs_for(self, rank: int) -> list[LogFile]:
+        """Return the logs of one rank in session order, reading them first if none are loaded."""
+
+        if not self.logs:
+            self._read_logs()
+
+        return sorted(
+            (lf for lf in self.logs.values() if lf.rank == rank), key=lambda lf: lf.session
+        )
+
+    def _read_logs(self) -> None:
+        """Decode every event log, also for a compacted run (for its text and media)."""
+
+        with self.lock:
             for p in self._log_paths():
                 log = self.logs.get(p.name)
 
                 if log is None:
                     log = self.logs[p.name] = LogFile(p)
 
-                changed |= log.update()
-
-            return changed
-
-    def _logs_for(self, rank: int) -> list[LogFile]:
-        """Return the logs of one rank in session order, refreshing first if none are loaded."""
-
-        if not self.logs:
-            self.refresh()
-
-        return sorted(
-            (lf for lf in self.logs.values() if lf.rank == rank), key=lambda lf: lf.session
-        )
+                log.update()
 
     def ranks(self) -> list[int]:
         """Return the ranks that have event logs, sorted."""
 
         if not self.logs:
-            self.refresh()
+            self._read_logs()
 
         return sorted({lf.rank for lf in self.logs.values()})
 

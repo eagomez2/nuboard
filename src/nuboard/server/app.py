@@ -17,6 +17,7 @@ from typing import Any
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -63,6 +64,7 @@ from ..hypotheses import (
 )
 from ..jobs import read_meta
 from ..query import QueryError, parse
+from ..reader import MediaEntry, RunReader, latest_sessions
 from ..reports import (
     MAX_AUDIO_BYTES,
     MAX_IMAGE_BYTES,
@@ -98,6 +100,32 @@ ANNOTATION_FIELDS = {
     "fields": dict,
 }
 TEXT_LIMIT = 2_000_000
+
+
+def query_int(request: Request, name: str, default: int) -> int:
+    """Return an integer query parameter; a value that is not one is a 400 error.
+
+    Raises:
+        HTTPException: With status 400 if the parameter is not an integer.
+    """
+    raw = request.query_params.get(name)
+
+    if raw is None or raw == "":
+        return default
+
+    try:
+        return int(raw)
+    except ValueError:
+        raise HTTPException(400, f"{name} must be a number") from None
+
+
+def media_entry(reader: RunReader | None, uid: int, rank: int) -> MediaEntry | None:
+    """Return the media item of `rank` whose `MediaEntry.uid` is `uid`, or None."""
+
+    if reader is None:
+        return None
+
+    return next((e for e in reader.media(rank=rank) if e.uid == uid), None)
 
 
 def _safe(obj: Any) -> Any:
@@ -561,13 +589,13 @@ def create_app(
         media_keys: dict[str, dict[str, Any]] = {}
 
         if reader is not None:
-            for entry in reader.media():
+            for entry in latest_sessions(reader.media()):
                 info = media_keys.setdefault(
                     entry.key, {"kind": entry.meta.get("kind"), "count": 0}
                 )
                 info["count"] += 1
 
-            for text in reader.texts():
+            for text in latest_sessions(reader.texts()):
                 info = media_keys.setdefault(text.key, {"kind": "text", "count": 0})
                 info["count"] += 1
 
@@ -998,23 +1026,26 @@ def create_app(
         """Return a run's media and text entries.
 
         Query parameters: `rank` (default 0) and `key` (only entries with that
-        media key). Media entries carry their `index` for `media_blob`.
+        media key). Media entries carry their `index` for `media_blob`: a number
+        that keeps naming the same item after a resume (`MediaEntry.uid`). Where a
+        later session logged a key again, the earlier session's items from that
+        step on are left out, as for scalars.
         """
         key = request.path_params["key"]
         record_or_404(key)
         reader = store.fresh_reader(key)
-        rank = int(request.query_params.get("rank", 0))
+        rank = query_int(request, "rank", 0)
         want = request.query_params.get("key")
         items: list[dict[str, Any]] = []
         notes = audio_notes_of(key) if rank == 0 else {}
 
         if reader is not None:
-            for i, e in enumerate(reader.media(rank=rank)):
+            for e in latest_sessions(reader.media(rank=rank)):
                 if want is None or e.key == want:
-                    item = {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
+                    item = {"key": e.key, "step": e.step, "time": e.time, "index": e.uid, **e.meta}
                     items.append(with_notes(item, notes))
 
-            for t in reader.texts(rank=rank):
+            for t in latest_sessions(reader.texts(rank=rank)):
                 if want is None or t.key == want:
                     items.append(
                         {
@@ -1030,23 +1061,21 @@ def create_app(
         return JSON({"items": items})
 
     def media_blob(request: Request) -> Response:
-        """Return the bytes of the media entry at `index` for the given `rank` query parameter.
+        """Return the bytes of the media entry `index` (its `uid`) of the `rank` query parameter.
 
-        Responses are cached as immutable. HTML is sent with a sandbox CSP.
-        Audio and video support single byte-range requests.
+        Responses are cached as immutable: an `index` names one item for good.
+        HTML is sent with a sandbox CSP. Audio and video support single
+        byte-range requests.
         """
         key = request.path_params["key"]
         record_or_404(key)
         reader = store.fresh_reader(key)
-        rank = int(request.query_params.get("rank", 0))
-        entries = reader.media(rank=rank) if reader else []
-        index = int(request.path_params["index"])
+        rank = query_int(request, "rank", 0)
+        entry = media_entry(reader, int(request.path_params["index"]), rank)
 
-        if not 0 <= index < len(entries):
+        if entry is None or reader is None:
             return PlainTextResponse("not found", 404)
 
-        entry = entries[index]
-        assert reader is not None
         headers = {"Cache-Control": "max-age=31536000, immutable"}
 
         if entry.meta.get("mime") == "text/html":  # rendered only inside a sandboxed iframe
@@ -1880,12 +1909,12 @@ def create_app(
 
         found: dict[str, Any] | None = None
 
-        for i, e in enumerate(reader.media()):
+        for e in latest_sessions(reader.media()):
             if e.key == ref.key and e.step == ref.step:
-                found = {"key": e.key, "step": e.step, "time": e.time, "index": i, **e.meta}
+                found = {"key": e.key, "step": e.step, "time": e.time, "index": e.uid, **e.meta}
                 found = with_notes(found, audio_notes_of(key))
 
-        for t in reader.texts(ref.key):
+        for t in latest_sessions(reader.texts(ref.key)):
             if t.step == ref.step:
                 found = {"key": t.key, "step": t.step, "time": t.time, "kind": "text"}
                 found.update({"mime": "text/plain", "text": t.text})
@@ -1992,8 +2021,12 @@ def create_app(
             record = catalog.get(key) or {}
             item = {**item, "run_name": record.get("name", ref.run_id), "project": project}
             reader = store.fresh_reader(key)
-            assert reader is not None
-            return item, reader.read_media(reader.media()[item["index"]])
+            entry = media_entry(reader, item["index"], 0)
+
+            if reader is None or entry is None:
+                return None
+
+            return item, reader.read_media(entry)
 
         def local(name: str) -> bytes | None:
             """Return a report-local file such as a chart snapshot."""

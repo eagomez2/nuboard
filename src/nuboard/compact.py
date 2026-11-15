@@ -52,7 +52,7 @@ def compact_run(path: str | os.PathLike[str]) -> Path:
     path = Path(path)
     reader = RunReader(path)
     reader._parquet_checked = True  # always decode the logs themselves
-    reader.refresh()
+    reader._read_logs()
     sizes = reader.log_sizes()
     per_metric: dict[str, list[tuple[int, list[tuple[np.ndarray, ...]]]]] = {}
 

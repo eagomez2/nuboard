@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **A resumed run updates in an open viewer.** A finished run that was
+  resumed while `nuboard up` was running kept showing its old, compacted data
+  until the viewer restarted. The viewer now notices that the logs grew (or
+  that `data.parquet` was rewritten) and reads the new data.
+- **Media stay correct after a resume.** Images, audio and other media were
+  addressed by their position in the list, which a resume could shift, so the
+  browser could show a cached item under the wrong step. Each item now has an
+  id that never changes. Text and media also follow the rule scalars already
+  follow: where a resumed session logs a key again, the earlier session's
+  items from that step on are no longer listed twice. The Python reader still
+  returns every logged item.
 - **One scalar menu instead of a row of tabs on the focused chart.** With
   many long scalar names, the tabs above the chart were cut off, and the
   **All N** button could slide under **New data · Update**. The header now

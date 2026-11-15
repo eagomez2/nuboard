@@ -295,6 +295,13 @@ wins on overlapping steps** (a resume from a checkpoint replaces what was
 logged after the checkpoint). Ranks are never merged; each rank is its own
 series and rank 0 is the default.
 
+The viewer applies the same rule to text and media items, per key: items of
+an earlier session at or after a later session's first step for that key are
+not listed. The files keep every item, and `RunReader.texts()` and `media()`
+return all of them. The viewer names a media item by
+`session * 1_000_000_000 + n`, where `n` counts the `M` frames of that
+session's log; it never changes as later sessions are written.
+
 ## Media pack: `media.r<rank>.pack`
 
 Raw bytes of images (PNG/JPEG/GIF/WebP/SVG), audio (WAV/FLAC/MP3/Ogg/MP4/WebM), video (APNG/MP4/WebM/MOV/Ogg/GIF), figures (Plotly JSON,

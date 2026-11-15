@@ -72,7 +72,8 @@ class Store:
     def fresh_reader(self, key: str) -> RunReader | None:
         """Return a reader with every byte written so far decoded.
 
-        Refreshing is skipped for compacted runs, whose data is in Parquet.
+        For a compacted run this only checks that `data.parquet` is still current
+        (it is dropped when the run was resumed); its logs are read on first use.
 
         Args:
             key: Catalog key of the run.
@@ -82,7 +83,7 @@ class Store:
         """
         reader = self.reader(key)
 
-        if reader is not None and reader.parquet is None:
+        if reader is not None:
             reader.refresh()
 
         return reader
