@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from . import _fs
+from .artifacts import remove_stale_staging
 from .catalog import effective_status
 from .directions import read_directions
 
@@ -939,20 +940,17 @@ def _repoint(
     return changed
 
 
-def _staging(path: Path) -> Path:
-    """Return a staging path in `.merge-tmp/`, clearing what an interrupted merge left there.
+def _staging(tmp: Path, name: str) -> Path:
+    """Return a new staging path in `.merge-tmp/`, clearing what killed merges left.
 
-    Only `apply` writes to `.merge-tmp/`, and it moves each copy out once it is
-    complete, so anything already at `path` is a partial copy of a merge that
-    was killed part way.
+    Each copy gets a folder of its own, so two merges into the same DEST at
+    once never share one. A folder in which nothing changed for
+    `STALE_STAGING` seconds is a partial copy of a merge that was killed part
+    way, and is deleted; a copy still in progress keeps writing and is left
+    alone.
     """
-
-    if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path)
-    elif path.exists() or path.is_symlink():
-        path.unlink()
-
-    return path
+    remove_stale_staging(tmp, prefix="")
+    return tmp / f"{name}-{_fs.random_suffix()}"
 
 
 def apply(p: Plan) -> list[Action]:
@@ -990,7 +988,7 @@ def apply(p: Plan) -> list[Action]:
         tmp.mkdir(parents=True, exist_ok=True)
 
         if a.kind == "run":
-            staged = _staging(tmp / src.name)
+            staged = _staging(tmp, src.name)
             shutil.copytree(src, staged)
             data = a.data or {}
 
@@ -1009,7 +1007,7 @@ def apply(p: Plan) -> list[Action]:
 
             os.replace(staged, dest)
         elif a.kind == "artifact":
-            staged = _staging(tmp / f"{src.parent.name}-{dest.name}")
+            staged = _staging(tmp, f"{src.parent.name}-{dest.name}")
             shutil.copytree(src, staged)
 
             if a.data and "version" in a.data:

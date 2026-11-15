@@ -1,5 +1,7 @@
 import json
+import os
 import shutil
+import time
 
 import pytest
 
@@ -72,16 +74,33 @@ def test_a_merge_killed_mid_copy_does_not_block_the_next_one(tmp_path):
     (tmp_path / "x.txt").write_text("data")
     run = make_run(b, "prep", data=tmp_path / "x.txt")
 
-    # what a merge killed during its copies leaves in DEST's staging folder
+    # what merges killed during their copies left in DEST's staging folder, hours ago
     tmp = a / "proj" / merge.TMP
-    (tmp / run.name).mkdir(parents=True)
-    (tmp / run.name / "run.json").write_text("{")  # a partial copy
-    (tmp / "corpus-v1").mkdir()
+    old = time.time() - 7 * 3600
+
+    for name in (run.name, "corpus-v1"):
+        (tmp / name / "files").mkdir(parents=True)
+        (tmp / name / "run.json").write_text("{")  # a partial copy
+
+        for p in (tmp / name / "run.json", tmp / name / "files", tmp / name):
+            os.utime(p, (old, old))
 
     merge.apply(merge.plan(b, a))
     assert json.loads((a / "proj" / "runs" / run.name / "run.json").read_text())["name"] == "prep"
     assert (a / "proj" / "artifacts" / "corpus" / "v1" / "manifest.json").exists()
     assert not tmp.exists()
+
+
+def test_a_merge_leaves_a_copy_another_merge_is_still_making(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    run = make_run(b, "prep")
+    busy = a / "proj" / merge.TMP / run.name  # another merge's copy, still being written
+    busy.mkdir(parents=True)
+    (busy / "run.json").write_text("{")
+
+    merge.apply(merge.plan(b, a))
+    assert (a / "proj" / "runs" / run.name / "run.json").exists()
+    assert (busy / "run.json").read_text() == "{"  # untouched
 
 
 def test_identical_artifacts_are_skipped(tmp_path):

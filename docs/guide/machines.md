@@ -69,5 +69,7 @@ second time.
 
 Each run and artifact version is copied to `<project>/.merge-tmp/` and then
 moved into place, so a viewer open on DEST never shows a half-copied run. If a
-merge is stopped part way, run it again: it plans what is still missing, and
-clears the partial copy it left in `.merge-tmp/`.
+merge is stopped part way, run it again: it plans what is still missing. Each
+copy has a folder of its own in `.merge-tmp/`, so two merges into the same DEST
+at once do not get in each other's way, and a partial copy left by a stopped
+merge is deleted once nothing in it changed for 6 hours.

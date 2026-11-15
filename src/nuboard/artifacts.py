@@ -336,7 +336,9 @@ STALE_STAGING = 6 * 3600
 """Seconds without a change after which a staging folder is taken as abandoned."""
 
 
-def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Path]:
+def remove_stale_staging(
+    adir: Path, max_age: float = STALE_STAGING, prefix: str = ".staging-"
+) -> list[Path]:
     """Delete the abandoned `.staging-*` folders of one artifact.
 
     A staging folder is left behind when the process making a version is killed
@@ -346,6 +348,8 @@ def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Pat
     Args:
         adir: The artifact's folder, `<project>/artifacts/<name>/`.
         max_age: Seconds without a change.
+        prefix: Names of the staging folders in `adir`; `merge` passes `""` for
+            every folder of its own staging folder.
 
     Returns:
         The folders deleted.
@@ -355,7 +359,7 @@ def remove_stale_staging(adir: Path, max_age: float = STALE_STAGING) -> list[Pat
 
     try:
         stagings = [
-            Path(e.path) for e in os.scandir(adir) if e.name.startswith(".staging-") and e.is_dir()
+            Path(e.path) for e in os.scandir(adir) if e.name.startswith(prefix) and e.is_dir()
         ]
     except OSError:
         return removed
