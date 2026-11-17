@@ -77,7 +77,24 @@ hypothesis boards, so it then asks for a random access token, as Jupyter does:
 gpu-box$ nuboard up ~/experiments --host 0.0.0.0
 nuboard serving /home/me/experiments (31 runs) at http://gpu-box:6070/?token=3f9c…e1  (Ctrl+C to stop)
   Open the link above once per browser; it signs the browser in.
+  Warning: this app is open to other computers, and anyone with the link can use it.
+    - The app speaks plain HTTP: the token and the data travel unencrypted. Outside
+      a trusted network, put it behind HTTPS (Caddy, nginx) or use a private network
+      such as Tailscale.
+    - Anyone with the link can edit reports, hypothesis boards and directions, and
+      upload files into reports. For people who only read, add --read-only-reports,
+      --read-only-hypotheses and --read-only-directions.
+    - Notes, tags, fields, pins, collections and saved views can always be edited.
+  Hide this warning with --no-share-warning.
 ```
+
+The warning sums up what the rest of this section explains. It follows the
+flags you pass: with some `--read-only-…` flags it lists only what can still
+be changed, and with `--edit-artifacts` it says that artifact versions can be
+added. `--no-share-warning` hides it once you know. With `--no-token`, the
+line saying there is no token is always printed, even with
+`--no-share-warning`. A viewer on `127.0.0.1` (the default) prints none of
+this.
 
 Send the link to whoever should look. If the printed host name does not
 resolve from their side, replace `gpu-box` with the machine's IP address.
@@ -166,6 +183,20 @@ Services that publish a local port under a public URL, such as ngrok or
 Cloudflare Tunnel, work the same way: keep a token, and have them send
 `Host: localhost` (or run the viewer with `--host 0.0.0.0`, which accepts any
 host name and then always asks for a token).
+
+!!! warning "A proxy needs a token"
+
+    A viewer on `127.0.0.1` without a token is for the machine itself. It
+    refuses, with a 403, any request that carries a header proxies and tunnels
+    add (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`,
+    `CF-Connecting-IP`, `True-Client-IP`), so rewriting the host name to
+    `localhost` cannot publish it without a token by accident. Set a token as
+    above, or use `--host 0.0.0.0`. SSH port forwarding adds none of these
+    headers and works without a token.
+
+    With a token, 20 wrong tokens in a minute make signing in answer 429
+    until the minute passes, and the sign-in cookie is marked `Secure` when
+    the page came over HTTPS (the proxy sends `X-Forwarded-Proto: https`).
 
 ## Sharing without a server
 

@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.31.1
+
+Safer sharing: a local viewer without a token can no longer be published by a
+tunnel that rewrites the host name, wrong tokens are limited, the sign-in
+cookie is `Secure` over HTTPS, and `nuboard up` warns when the viewer is open
+to other computers. No breaking changes: run folders and the Python API are
+unchanged, and a viewer on `127.0.0.1` behaves as before for requests from
+the machine itself and SSH port forwarding.
+
+- **A warning when the viewer is shared.** `nuboard up` on an address that
+  is not local (`--host 0.0.0.0` or similar) now prints a warning after the
+  startup lines: the viewer speaks plain HTTP, so the token and the data
+  travel unencrypted, and it says what others can change (reports, hypothesis
+  boards, directions, artifact versions with `--edit-artifacts`, and notes,
+  tags, fields, pins, collections and saved views, which are always editable).
+  With some `--read-only-…` flags it lists only what can still change.
+  `--no-share-warning` hides it; the `--no-token` warning is always printed.
+  A local viewer prints nothing new.
+- **A local viewer without a token can no longer be published by a tunnel.**
+  `nuboard up` on `127.0.0.1` asks for no token and accepts only `localhost`
+  host names, but a tunnel or proxy that rewrites the host name to
+  `localhost` (ngrok `--host-header=rewrite`, nginx `proxy_set_header Host
+  localhost`) made it reachable from the internet with no token. Such a
+  viewer now answers 403 to any request carrying a header that proxies and
+  tunnels add (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
+  `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`). Requests from the
+  machine itself and SSH port forwarding work as before, and so does a viewer
+  with a token or one started with `--no-token`.
+- **Wrong tokens are limited.** After 20 wrong tokens in a minute (sign-in
+  form, `?token=` link or `Authorization` header), signing in answers 429
+  until the minute passes. Browsers already signed in carry on.
+- **The sign-in cookie is `Secure` over HTTPS**, directly or behind a proxy
+  that sends `X-Forwarded-Proto: https`.
+
 ## 0.31.0
 
 Fixes from a code audit: resumed runs and their media in an open viewer,
