@@ -77,7 +77,24 @@ hypothesis boards, so it then asks for a random access token, as Jupyter does:
 gpu-box$ nuboard up ~/experiments --host 0.0.0.0
 nuboard serving /home/me/experiments (31 runs) at http://gpu-box:6070/?token=3f9c…e1  (Ctrl+C to stop)
   Open the link above once per browser; it signs the browser in.
+  Warning: this app is open to other computers, and anyone with the link can use it.
+    - The app speaks plain HTTP: the token and the data travel unencrypted. Outside
+      a trusted network, put it behind HTTPS (Caddy, nginx) or use a private network
+      such as Tailscale.
+    - Anyone with the link can edit reports, hypothesis boards and directions, and
+      upload files into reports. For people who only read, add --read-only-reports,
+      --read-only-hypotheses and --read-only-directions.
+    - Notes, tags, fields, pins, collections and saved views can always be edited.
+  Hide this warning with --no-share-warning.
 ```
+
+The warning sums up what the rest of this section explains. It follows the
+flags you pass: with some `--read-only-…` flags it lists only what can still
+be changed, and with `--edit-artifacts` it says that artifact versions can be
+added. `--no-share-warning` hides it once you know. With `--no-token`, the
+line saying there is no token is always printed, even with
+`--no-share-warning`. A viewer on `127.0.0.1` (the default) prints none of
+this.
 
 Send the link to whoever should look. If the printed host name does not
 resolve from their side, replace `gpu-box` with the machine's IP address.

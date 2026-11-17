@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **A warning when the viewer is shared.** `nuboard up` on an address that
+  is not local (`--host 0.0.0.0` or similar) now prints a warning after the
+  startup lines: the viewer speaks plain HTTP, so the token and the data
+  travel unencrypted, and it says what others can change (reports, hypothesis
+  boards, directions, artifact versions with `--edit-artifacts`, and notes,
+  tags, fields, pins, collections and saved views, which are always editable).
+  With some `--read-only-…` flags it lists only what can still change.
+  `--no-share-warning` hides it; the `--no-token` warning is always printed.
+  A local viewer prints nothing new.
 - **A local viewer without a token can no longer be published by a tunnel.**
   `nuboard up` on `127.0.0.1` asks for no token and accepts only `localhost`
   host names, but a tunnel or proxy that rewrites the host name to
