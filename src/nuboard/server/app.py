@@ -136,6 +136,7 @@ def create_app(
     cache_dir: Path | None = None,
     allowed_hosts: list[str] | None = None,
     token: str | None = None,
+    local_only: bool = False,
     edit_artifacts: bool = False,
     read_only_reports: bool = False,
     read_only_hypotheses: bool = False,
@@ -156,6 +157,8 @@ def create_app(
         allowed_hosts: Accepted `Host` header values, or None to accept any host.
         token: Access token every request must carry (see `auth.Guard`), or None
             for an open viewer.
+        local_only: The viewer is for this computer only (loopback, no token):
+            refuse requests that came through a proxy or tunnel (see `auth.Guard`).
         edit_artifacts: Allow adding artifact versions (as references to paths
             on this machine, or from a run's files by copy or reference) and
             unlinking and restoring them. Without it those requests are refused.
@@ -309,7 +312,7 @@ def create_app(
 
     routes.append(Route("/{path:path}", static_file))
     middleware = [
-        Middleware(Guard, token=token),
+        Middleware(Guard, token=token, local_only=local_only),
         Middleware(GZipMiddleware, minimum_size=2048, compresslevel=5),
     ]
 

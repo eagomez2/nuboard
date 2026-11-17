@@ -786,6 +786,113 @@ def test_token_guards_everything_but_assets(tmp_path):
         assert c.get("/api/info").status_code == 200
 
 
+PROXY_HEADERS = {
+    "forwarded": "for=203.0.113.7;host=public.example;proto=https",
+    "x-forwarded-for": "203.0.113.7",
+    "x-forwarded-host": "public.example",
+    "x-real-ip": "203.0.113.7",
+    "cf-connecting-ip": "203.0.113.7",
+    "true-client-ip": "203.0.113.7",
+}
+
+
+def test_a_local_viewer_without_a_token_refuses_proxies_and_tunnels(tmp_path):
+    # a tunnel that rewrites Host to localhost must not publish a viewer that asks for no token
+    with nb.init("p", capture_env=False) as run:
+        run.add_scalar("loss", 1.0, step=0)
+
+    local = ["127.0.0.1", "localhost", "[::1]", "::1"]
+    app = create_app(
+        tmp_path / "exp", cache_dir=tmp_path / "cache", allowed_hosts=local, local_only=True
+    )
+
+    with TestClient(app, base_url="http://localhost") as c:
+        assert c.get("/api/info").status_code == 200
+
+        for name, value in PROXY_HEADERS.items():
+            for path in ("/api/info", "/", "/assets/x.js"):
+                res = c.get(path, headers={name: value})
+                assert res.status_code == 403, (name, path)
+                assert "--host 0.0.0.0" in res.text
+
+            assert c.post("/api/pins", json={}, headers={name: value}).status_code == 403
+
+        assert c.get("/api/info", headers={"x-forwarded-proto": "https"}).status_code == 200
+
+    # with a token, or without one on purpose (--no-token), proxies are fine
+    for token, local_only in (("s3cret", True), (None, False)):
+        app = create_app(
+            tmp_path / "exp", cache_dir=tmp_path / "cache", token=token, local_only=local_only
+        )
+        auth = {"authorization": "token s3cret"} if token else {}
+
+        with TestClient(app) as c:
+            res = c.get("/api/info", headers={**PROXY_HEADERS, **auth})
+            assert res.status_code == 200
+
+
+def test_the_sign_in_cookie_is_secure_over_https(tmp_path):
+    with nb.init("p", capture_env=False) as run:
+        run.add_scalar("loss", 1.0, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", token="s3cret")
+    behind_proxy = {"x-forwarded-for": "203.0.113.7", "x-forwarded-host": "public.example"}
+
+    with TestClient(app, follow_redirects=False) as c:
+        res = c.get("/?token=s3cret", headers=behind_proxy)
+        assert res.status_code == 303 and "Secure" not in res.headers["set-cookie"]
+        res = c.get("/?token=s3cret", headers={**behind_proxy, "x-forwarded-proto": "https"})
+        assert res.status_code == 303 and res.headers["set-cookie"].endswith("; Secure")
+        res = c.post("/login", data={"token": "s3cret"}, headers={"x-forwarded-proto": "https"})
+        assert res.status_code == 303 and "; Secure" in res.headers["set-cookie"]
+        res = c.post("/login", data={"token": "s3cret"})
+        assert res.status_code == 303 and "Secure" not in res.headers["set-cookie"]
+
+    with TestClient(app, base_url="https://testserver", follow_redirects=False) as c:
+        res = c.get("/?token=s3cret")
+        assert res.status_code == 303 and "; Secure" in res.headers["set-cookie"]
+
+
+def test_wrong_tokens_are_limited_to_twenty_a_minute(tmp_path):
+    with nb.init("p", capture_env=False) as run:
+        run.add_scalar("loss", 1.0, step=0)
+
+    app = create_app(tmp_path / "exp", cache_dir=tmp_path / "cache", token="s3cret")
+    now = [1000.0]
+
+    with (
+        TestClient(app, follow_redirects=False) as browser,
+        TestClient(app, follow_redirects=False) as c,
+    ):
+        assert browser.get("/?token=s3cret").status_code == 303  # signed in before the guessing
+        guard = app.middleware_stack
+
+        while not hasattr(guard, "failures"):
+            guard = guard.app
+
+        guard.clock = lambda: now[0]
+        ways = (
+            lambda t: c.post("/login", data={"token": t}),
+            lambda t: c.get(f"/?token={t}", headers={"accept": "text/html"}),
+            lambda t: c.get("/api/info", headers={"authorization": f"token {t}"}),
+        )
+
+        for i in range(20):
+            assert ways[i % 3](f"wrong{i}").status_code == 401
+
+        for way in ways:  # every way of signing in is refused, even with the right token
+            assert way("wrong").status_code == 429
+            assert way("s3cret").status_code == 429
+
+        assert browser.get("/api/info").status_code == 200  # a signed-in browser carries on
+        now[0] += 59
+        assert ways[0]("s3cret").status_code == 429
+        now[0] += 1  # the minute has passed
+
+        for way in ways:
+            assert way("s3cret").status_code in (200, 303)
+
+
 def test_viewer_pages_cannot_be_framed_by_another_site(client):
     for path in ("/", "/charts", "/figure.html"):
         res = client.get(path)

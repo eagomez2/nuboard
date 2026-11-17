@@ -37,11 +37,12 @@ that holds `runs/`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed |
+| `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed, and on localhost without a token, requests through a proxy or tunnel are refused |
 | `--port` | `6070` | port to listen on; the next free one is used if it is taken |
 | `--open` | | open a browser tab |
 | `--token VALUE` | `$NUBOARD_TOKEN`, or random off localhost | access token; the printed link signs a browser in |
 | `--no-token` | | serve a non-local `--host` without a token (anyone who reaches it can use it) |
+| `--no-share-warning` | | on a non-local `--host`, don't print the warning about plain HTTP and what others can change (the `--no-token` warning is always printed) |
 | `--edit-artifacts` | | allow adding artifact versions (references to paths on the server, or from a run's files by copy or reference) and unlinking them in the viewer |
 | `--read-only-reports` | | refuse every change to reports, uploads included (for a shared server) |
 | `--read-only-hypotheses` | | refuse every change to hypothesis boards (for a shared server) |

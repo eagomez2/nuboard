@@ -7,6 +7,7 @@ import os
 import secrets
 import socket
 import sys
+import textwrap
 import threading
 import time
 import webbrowser
@@ -67,6 +68,79 @@ def _need_viewer() -> None:
         ) from None
 
 
+NO_TOKEN_WARNING = "  Warning: no token, so anyone who can reach this address can use the viewer."
+
+
+def share_warning(
+    token: bool,
+    *,
+    edit_artifacts: bool = False,
+    read_only_reports: bool = False,
+    read_only_hypotheses: bool = False,
+    lock_directions: bool = False,
+) -> list[str]:
+    """Return the lines of the warning `up` prints when it listens on a non-local address.
+
+    Args:
+        token: The viewer asks for a token. Without one, the warning starts with
+            `NO_TOKEN_WARNING`, which `up` prints even when this warning is hidden.
+        edit_artifacts: Artifact versions can be added and unlinked from the viewer.
+        read_only_reports: Reports cannot be changed.
+        read_only_hypotheses: Hypothesis boards cannot be changed.
+        lock_directions: Directions cannot be saved.
+
+    Returns:
+        The lines to print, indented.
+    """
+    who = "anyone with the link" if token else "anyone who can reach it"
+    head = (
+        f"  Warning: this app is open to other computers, and {who} can use it."
+        if token
+        else NO_TOKEN_WARNING
+    )
+    secret = "the token and the data travel" if token else "the data travel"
+    points = [
+        f"The app speaks plain HTTP: {secret} unencrypted. Outside a trusted network, put it"
+        " behind HTTPS (Caddy, nginx) or use a private network such as Tailscale."
+    ]
+    parts = [
+        ("reports", "--read-only-reports", read_only_reports),
+        ("hypothesis boards", "--read-only-hypotheses", read_only_hypotheses),
+        ("directions", "--read-only-directions", lock_directions),
+    ]
+    editable = [(name, flag) for name, flag, locked in parts if not locked]
+
+    if not editable:
+        points.append("Reports, hypotheses and directions are read-only: nobody can change them.")
+    else:
+        still = "can still edit" if len(editable) < len(parts) else "can edit"
+        upload = "" if read_only_reports else ", and upload files into reports"
+        points.append(
+            f"{who.capitalize()} {still} {_and([n for n, _ in editable])}{upload}."
+            f" For people who only read, add {_and([f for _, f in editable])}."
+        )
+
+    points.append("Notes, tags, fields, pins, collections and saved views can always be edited.")
+
+    if edit_artifacts:
+        points.append(
+            f"With --edit-artifacts, {who} can add artifact versions that point at files"
+            " on this machine, and unlink versions."
+        )
+
+    lines = [head]
+
+    for point in points:
+        lines += textwrap.wrap(point, 84, initial_indent="    - ", subsequent_indent="      ")
+
+    return [*lines, "  Hide this warning with --no-share-warning."]
+
+
+def _and(items: list[str]) -> str:
+    """Join `items` as `a, b and c`."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
 def up(
     directory: str,
     host: str = "127.0.0.1",
@@ -82,11 +156,13 @@ def up(
     max_image_mb: float = 20,
     max_text_mb: float = 5,
     max_audio_mb: float = 50,
+    share_warning_shown: bool = True,
 ) -> None:
     """Serve a folder of runs with the web viewer until interrupted.
 
     When `host` is a loopback address, the app only accepts loopback `Host`
-    headers. Otherwise it needs an access token: `token`, else
+    headers and, without a token, refuses requests that came through a proxy or
+    tunnel. Otherwise it needs an access token: `token`, else
     `$NUBOARD_TOKEN`, else a random one, printed in the viewer's link. If `port`
     is taken, the next free port (up to 19 above it) is used.
 
@@ -105,6 +181,8 @@ def up(
         max_image_mb: Size limit, in MB, of an image uploaded into a report.
         max_text_mb: Size limit, in MB, of a text file uploaded into a report.
         max_audio_mb: Size limit, in MB, of an audio file uploaded into a report.
+        share_warning_shown: On a non-local address, print `share_warning` after the startup
+            lines.
 
     Raises:
         SystemExit: If the viewer dependencies are missing, `directory` does not
@@ -133,6 +211,7 @@ def up(
         root,
         allowed_hosts=["127.0.0.1", "localhost", "[::1]", "::1"] if loopback else None,
         token=token,
+        local_only=loopback and token is None and not no_token,
         edit_artifacts=edit_artifacts,
         read_only_reports=read_only_reports,
         read_only_hypotheses=read_only_hypotheses,
@@ -157,8 +236,8 @@ def up(
 
     if token:
         print("  Open the link above once per browser; it signs the browser in.")
-    elif not loopback:
-        print("  Warning: no token, so anyone who can reach this address can use the viewer.")
+    elif not loopback and not share_warning_shown:
+        print(NO_TOKEN_WARNING)
 
     if edit_artifacts:
         print("  Artifact versions can be added, unlinked and restored from the viewer.")
@@ -171,6 +250,16 @@ def up(
 
     if lock_directions:
         print("  Directions (which way is better) are locked: views can flip them, not save them.")
+
+    if not loopback and share_warning_shown:
+        lines = share_warning(
+            token is not None,
+            edit_artifacts=edit_artifacts,
+            read_only_reports=read_only_reports,
+            read_only_hypotheses=read_only_hypotheses,
+            lock_directions=lock_directions,
+        )
+        print("\n".join(lines))
 
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(link)).start()
@@ -273,6 +362,12 @@ def main(argv: list[str] | None = None) -> None:
         "--no-token",
         action="store_true",
         help="serve a non-local --host without a token (anyone who reaches it can use it)",
+    )
+    p.add_argument(
+        "--no-share-warning",
+        action="store_true",
+        help="on a non-local --host, don't print the warning about plain HTTP and what others "
+        "can change (the warning for --no-token is always printed)",
     )
     p.add_argument(
         "--edit-artifacts",
@@ -483,6 +578,7 @@ def main(argv: list[str] | None = None) -> None:
             max_image_mb=args.max_image_mb,
             max_text_mb=args.max_text_mb,
             max_audio_mb=args.max_audio_mb,
+            share_warning_shown=not args.no_share_warning,
         )
     elif args.cmd == "demo":
         from .demo import generate, is_demo, live

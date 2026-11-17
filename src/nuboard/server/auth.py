@@ -10,6 +10,13 @@ form and API calls get a 401.
 Writes (`POST`, `PUT`, `PATCH`, `DELETE`) from a browser must come from the
 viewer's own pages: an `Origin` (or `Referer`) of another site is refused, so
 another website cannot make your browser change runs or artifacts.
+
+A viewer for this computer only (loopback, no token) refuses requests that
+carry a header proxies and tunnels add (`X-Forwarded-For` and the like): a
+tunnel that rewrites `Host` to `localhost` would otherwise publish it with no
+token. Wrong tokens are limited to 20 a minute; after that, signing in (form,
+`?token=` link or `Authorization` header) answers 429 until the minute passes.
+The sign-in cookie is `Secure` when the page came over HTTPS.
 """
 
 from __future__ import annotations
@@ -17,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import time
+from collections import deque
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -24,6 +33,17 @@ from .._meta import NAME
 
 Scope = dict[str, Any]
 _UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
+# Headers that reverse proxies and tunnels add; requests from this computer carry none of them
+PROXY_HEADERS = (
+    "forwarded",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-real-ip",
+    "cf-connecting-ip",
+    "true-client-ip",
+)
+MAX_FAILURES = 20  # wrong tokens accepted per window before signing in answers 429
+FAILURE_WINDOW = 60.0  # seconds
 
 
 def cookie_name(token: str) -> str:
@@ -70,19 +90,43 @@ def _same_origin(headers: dict[str, str]) -> bool:
     return netloc in (headers.get("host", ""), headers.get("x-forwarded-host", ""))
 
 
+def _https(scope: Scope, headers: dict[str, str]) -> bool:
+    """Return True when the page came over HTTPS, directly or through a proxy that says so."""
+    proto = headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return scope.get("scheme") == "https" or proto == "https"
+
+
 class Guard:
     """ASGI middleware: the access token (if any) and the same-origin check for writes.
 
     Args:
         app: The wrapped app.
         token: The access token, or None to check only the origin of writes.
+        local_only: The viewer is for this computer only (loopback, no token): refuse
+            requests that came through a proxy or tunnel.
     """
 
-    def __init__(self, app: Any, token: str | None = None) -> None:
+    def __init__(self, app: Any, token: str | None = None, local_only: bool = False) -> None:
         self.app = app
         self.token = token
+        self.local_only = local_only and not token
         self.cookie = cookie_name(token) if token else ""
         self.value = cookie_value(token) if token else ""
+        self.failures: deque[float] = deque()  # times of recent wrong tokens
+        self.clock = time.monotonic
+
+    def _locked(self) -> bool:
+        """Return True while too many wrong tokens came in the last window."""
+        now = self.clock()
+
+        while self.failures and now - self.failures[0] >= FAILURE_WINDOW:
+            self.failures.popleft()
+
+        return len(self.failures) >= MAX_FAILURES
+
+    def _fail(self) -> None:
+        """Count one wrong token."""
+        self.failures.append(self.clock())
 
     async def __call__(self, scope: Scope, receive: Any, send: Any) -> None:
         """Pass the request on, or answer it with a redirect, sign-in page or error."""
@@ -95,25 +139,48 @@ class Guard:
         method = scope["method"]
         by_header = False
 
+        if self.local_only and any(h in headers for h in PROXY_HEADERS):
+            await _plain(
+                send,
+                403,
+                f"refused: this {NAME} viewer is for this computer only, and the request came"
+                " through a proxy or tunnel. To share it, start it with --host 0.0.0.0, which"
+                " asks for a token.",
+            )
+            return
+
         if self.token and not scope["path"].startswith("/assets/"):
             auth = headers.get("authorization", "")
-            by_header = auth.startswith("token ") and _eq(auth[6:], self.token)
-            signed_in = by_header or _eq(
-                _cookies(headers.get("cookie", "")).get(self.cookie, ""), self.value
-            )
+            by_cookie = _eq(_cookies(headers.get("cookie", "")).get(self.cookie, ""), self.value)
+            query = dict(parse_qsl(scope.get("query_string", b"").decode("latin-1")))
+            login = scope["path"] == "/login" and method == "POST"
+            by_link = method == "GET" and "token" in query
 
-            if scope["path"] == "/login" and method == "POST":
-                await self._login(scope, receive, send)
+            if (login or by_link or (auth.startswith("token ") and not by_cookie)) and (
+                self._locked()
+            ):
+                await _plain(send, 429, "too many wrong tokens: try again in a minute")
                 return
 
-            query = dict(parse_qsl(scope.get("query_string", b"").decode("latin-1")))
+            by_header = auth.startswith("token ") and _eq(auth[6:], self.token)
 
-            if method == "GET" and "token" in query:
+            if auth.startswith("token ") and not by_header:
+                self._fail()
+
+            signed_in = by_header or by_cookie
+
+            if login:
+                await self._login(scope, receive, send, headers)
+                return
+
+            if by_link:
                 if _eq(query["token"], self.token):
                     query.pop("token")
                     rest = urlencode(query)
-                    await self._redirect(send, scope["path"] + (f"?{rest}" if rest else ""))
+                    location = scope["path"] + (f"?{rest}" if rest else "")
+                    await self._redirect(send, location, _https(scope, headers))
                 else:
+                    self._fail()
                     await self._page(send, scope["path"], "That token is not right.")
 
                 return
@@ -132,7 +199,7 @@ class Guard:
 
         await self.app(scope, receive, send)
 
-    async def _login(self, scope: Scope, receive: Any, send: Any) -> None:
+    async def _login(self, scope: Scope, receive: Any, send: Any, headers: dict[str, str]) -> None:
         """Handle the sign-in form: set the cookie and go to `next`, or show the form again."""
         body = b""
 
@@ -150,13 +217,18 @@ class Guard:
             target = "/"
 
         if _eq(form.get("token", "").strip(), self.token or ""):
-            await self._redirect(send, target)
+            await self._redirect(send, target, _https(scope, headers))
         else:
+            self._fail()
             await self._page(send, target, "That token is not right.")
 
-    async def _redirect(self, send: Any, location: str) -> None:
-        """Answer with a 303 to `location` that also sets the sign-in cookie."""
+    async def _redirect(self, send: Any, location: str, secure: bool) -> None:
+        """Answer with a 303 to `location` that sets the sign-in cookie (`Secure` over HTTPS)."""
         cookie = f"{self.cookie}={self.value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000"
+
+        if secure:
+            cookie += "; Secure"
+
         await send(
             {
                 "type": "http.response.start",
