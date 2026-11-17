@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.31.1
+
+Safer sharing: a local viewer without a token can no longer be published by a
+tunnel that rewrites the host name, wrong tokens are limited, the sign-in
+cookie is `Secure` over HTTPS, and `nuboard up` warns when the viewer is open
+to other computers. No breaking changes: run folders and the Python API are
+unchanged, and a viewer on `127.0.0.1` behaves as before for requests from
+the machine itself and SSH port forwarding.
 
 - **A warning when the viewer is shared.** `nuboard up` on an address that
   is not local (`--host 0.0.0.0` or similar) now prints a warning after the
