@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **A local viewer without a token can no longer be published by a tunnel.**
+  `nuboard up` on `127.0.0.1` asks for no token and accepts only `localhost`
+  host names, but a tunnel or proxy that rewrites the host name to
+  `localhost` (ngrok `--host-header=rewrite`, nginx `proxy_set_header Host
+  localhost`) made it reachable from the internet with no token. Such a
+  viewer now answers 403 to any request carrying a header that proxies and
+  tunnels add (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
+  `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`). Requests from the
+  machine itself and SSH port forwarding work as before, and so does a viewer
+  with a token or one started with `--no-token`.
+- **Wrong tokens are limited.** After 20 wrong tokens in a minute (sign-in
+  form, `?token=` link or `Authorization` header), signing in answers 429
+  until the minute passes. Browsers already signed in carry on.
+- **The sign-in cookie is `Secure` over HTTPS**, directly or behind a proxy
+  that sends `X-Forwarded-Proto: https`.
+
 ## 0.31.0
 
 Fixes from a code audit: resumed runs and their media in an open viewer,

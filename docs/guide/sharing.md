@@ -167,6 +167,20 @@ Cloudflare Tunnel, work the same way: keep a token, and have them send
 `Host: localhost` (or run the viewer with `--host 0.0.0.0`, which accepts any
 host name and then always asks for a token).
 
+!!! warning "A proxy needs a token"
+
+    A viewer on `127.0.0.1` without a token is for the machine itself. It
+    refuses, with a 403, any request that carries a header proxies and tunnels
+    add (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`,
+    `CF-Connecting-IP`, `True-Client-IP`), so rewriting the host name to
+    `localhost` cannot publish it without a token by accident. Set a token as
+    above, or use `--host 0.0.0.0`. SSH port forwarding adds none of these
+    headers and works without a token.
+
+    With a token, 20 wrong tokens in a minute make signing in answer 429
+    until the minute passes, and the sign-in cookie is marked `Secure` when
+    the page came over HTTPS (the proxy sends `X-Forwarded-Proto: https`).
+
 ## Sharing without a server
 
 You do not always need a running viewer. A run is a folder, so you can copy

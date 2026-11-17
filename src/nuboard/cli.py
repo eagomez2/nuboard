@@ -86,7 +86,8 @@ def up(
     """Serve a folder of runs with the web viewer until interrupted.
 
     When `host` is a loopback address, the app only accepts loopback `Host`
-    headers. Otherwise it needs an access token: `token`, else
+    headers and, without a token, refuses requests that came through a proxy or
+    tunnel. Otherwise it needs an access token: `token`, else
     `$NUBOARD_TOKEN`, else a random one, printed in the viewer's link. If `port`
     is taken, the next free port (up to 19 above it) is used.
 
@@ -133,6 +134,7 @@ def up(
         root,
         allowed_hosts=["127.0.0.1", "localhost", "[::1]", "::1"] if loopback else None,
         token=token,
+        local_only=loopback and token is None and not no_token,
         edit_artifacts=edit_artifacts,
         read_only_reports=read_only_reports,
         read_only_hypotheses=read_only_hypotheses,

@@ -37,7 +37,7 @@ that holds `runs/`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed |
+| `--host` | `127.0.0.1` | interface to listen on; off localhost an access token is needed, and on localhost without a token, requests through a proxy or tunnel are refused |
 | `--port` | `6070` | port to listen on; the next free one is used if it is taken |
 | `--open` | | open a browser tab |
 | `--token VALUE` | `$NUBOARD_TOKEN`, or random off localhost | access token; the printed link signs a browser in |
