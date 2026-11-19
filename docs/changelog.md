@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.33.0
+
+Small viewer fixes: clearer labels on the Select page, one style for the
+floating selection bars, and straight row lines in the Timing tab. No breaking
+changes: run folders and the Python API are unchanged.
+
+- **Select: best badges name the scalar as its column does.** A shortlisted
+  step that is best on one scalar reads "Best …/Training/SisdrLoss", in the
+  case the scalar was logged with, instead of the capitalized last segment. A
+  step best on several shows one badge, "Best on 2 scalars" (or "all"), with
+  the names on hover, so a row no longer runs off the table.
+- **Select: Artifacts, not Checkpoints.** The Shortlist column, the Compare
+  section, the Picks column and the pick dialog list the artifact versions
+  a run logged, and now say so. Hovering "none" explains that a checkpoint
+  saved only to disk shows up once it is logged with
+  `run.add_artifact(..., step=step)`.
+- **One floating selection bar.** The bars that float at the bottom of the
+  window while runs, steps or media are selected share one style: the count,
+  the actions and the main action last. On Select, the bar is no longer
+  inverted, and Clear is the same × as on Runs.
+- **Timing: straight row lines.** In the Timers table, the line under the
+  timer name no longer sits a few pixels above the rest of the row.
+
 ## 0.32.0
 
 A new **Select** page for choosing which run, at which step, to take forward
