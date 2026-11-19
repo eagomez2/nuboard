@@ -14,6 +14,7 @@
   import MediaPage from './pages/MediaPage.svelte';
   import TimelinePage from './pages/TimelinePage.svelte';
   import SweepsPage from './pages/SweepsPage.svelte';
+  import SelectPage from './pages/SelectPage.svelte';
   import ArtifactsPage from './pages/ArtifactsPage.svelte';
   import ReportsPage from './pages/ReportsPage.svelte';
   import HypothesesPage from './pages/HypothesesPage.svelte';
@@ -28,6 +29,7 @@
     { page: 'charts', icon: 'charts', label: 'Charts' },
     { page: 'media', icon: 'media', label: 'Media' },
     { page: 'sweeps', icon: 'sweep', label: 'Sweeps' },
+    { page: 'select', icon: 'flag', label: 'Select' },
     { page: 'timeline', icon: 'timeline', label: 'Timeline' },
     { page: 'artifacts', icon: 'artifact', label: 'Artifacts' },
     { page: 'hypotheses', icon: 'tree', label: 'Hypotheses' },
@@ -38,6 +40,7 @@
     charts: 'Charts',
     media: 'Media',
     sweeps: 'Sweeps',
+    select: 'Select',
     timeline: 'Timeline',
     artifacts: 'Artifacts',
     reports: 'Reports',
@@ -148,7 +151,7 @@
       <div class="card errbox">Could not reach the {NAME} server: {app.error}</div>
     {/if}
 
-    {#if ['charts', 'sweeps', 'media', 'timeline'].includes(router.page) && router.list('sel').length}
+    {#if ['charts', 'sweeps', 'select', 'media', 'timeline'].includes(router.page) && router.list('sel').length}
       <SelectionBanner />
     {/if}
 
@@ -158,6 +161,8 @@
       <ChartsPage />
     {:else if router.page === 'sweeps'}
       <SweepsPage />
+    {:else if router.page === 'select'}
+      <SelectPage />
     {:else if router.page === 'timeline'}
       <TimelinePage />
     {:else if router.page === 'artifacts'}

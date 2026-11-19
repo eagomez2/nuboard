@@ -2,13 +2,14 @@
   import { router, type Page } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
 
-  // Shown on Charts, Sweeps, Media and Timeline while they are limited to runs picked on the Runs
+  // Shown on Charts, Sweeps, Select, Media and Timeline while they are limited to runs picked on the Runs
   // page (`sel` in the URL): says so, switches page keeping them, and Show all goes back to the query.
   const keys = $derived(router.list('sel'));
   const found = $derived(keys.filter((k) => app.runByKey(k)).length);
   const PAGES: { page: Page; label: string }[] = [
     { page: 'charts', label: 'Charts' },
     { page: 'sweeps', label: 'Sweeps' },
+    { page: 'select', label: 'Select' },
     { page: 'media', label: 'Media' },
   ];
 </script>

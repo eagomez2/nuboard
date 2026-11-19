@@ -468,6 +468,15 @@ axis).
 The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
 
+## Select page
+
+Which run at which step to take forward, when runs win on different scalars.
+Choose the scalars that matter and which way is better for each; every run
+at every step where all of them were logged is scored, and the shortlist
+keeps the steps that no other step beats on every scalar. Compare a few side
+by side and pick one with a note, saved in the project's `picks.json`. See
+[Choosing a step](selecting.md).
+
 ## Timeline page
 
 ![Timeline page](../assets/timeline-light.png){ .nb-shot }

@@ -417,6 +417,7 @@ def add_artifact(
     checksum: bool = False,
     description: str | None = None,
     source: dict[str, Any] | None = None,
+    step: int | None = None,
 ) -> Artifact:
     """Copy a file or folder into a new version of an artifact, or reference it.
 
@@ -433,6 +434,7 @@ def add_artifact(
         type: Optional free-form type, such as `"model"` or `"dataset"`.
         metadata: Optional extra data stored in the manifest.
         run_id: Id of the run that produced the artifact, if any.
+        step: The training step the version was made at, such as a checkpoint's, if any.
         reference: Record where `src` is instead of copying it. Each file's size and
             modification time are recorded, which is quick even for large datasets.
             Environment variables in `src`, such as `"${DATA}/fineweb"`, are kept
@@ -540,6 +542,7 @@ def add_artifact(
             "files": entries,
             "created": time.time(),
             "producer_run": run_id,
+            **({"step": step} if step is not None else {}),
             "created_by": _created_by(),
             **({"source": source} if source else {}),
             **extra,

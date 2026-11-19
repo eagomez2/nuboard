@@ -44,6 +44,7 @@ path.
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
     directions.json                            which way is better per scalar or table column
+    picks.json                            steps chosen on the Select page, with a note each
     hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number, panel
     hypotheses/<board>/<id>.json          one hypothesis of that board
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
@@ -443,6 +444,7 @@ manifest records where the files are and a fingerprint of each one:
 | `root` | The folder `files[].path` is relative to: `reference` for a folder, its parent for a file. |
 | `files[].mtime_ns` | Modification time in nanoseconds, for information. Readers compare `size` to detect changes, since copies on other machines have their own times. |
 | `files[].sha256` | Present for every copied file, and for referenced files only with `checksum=True`. |
+| `step` | The training step the version was made at, from `run.add_artifact(..., step=...)`. Absent when none was given. Since 0.32. |
 | `producer_run` | `null` for a version added with `nb.add_artifact` or `nuboard artifact add`, outside a run. |
 | `description` | Free text saying what the version is; `""` when none was given. Since 0.15. |
 | `created_by` | `{user, host, command}`: who created the version, on which machine, with which command line. `user` is `null` when the environment has no user name. Since 0.15. |
@@ -668,6 +670,24 @@ cards) and left neutral in tables. It is the only place a direction is
 stored: hypothesis boards keep only Min / Max / Last. The viewer writes it
 under a lock (`.directions.lock` next to it) and refuses a save when the entry
 changed since it was shown. `nuboard up --read-only-directions` refuses every change.
+
+## Picked steps: `picks.json`
+
+```json
+{"picks": [{"id": "3f2a9c1e", "run": "20261119-0840_base_ab12", "run_name": "base",
+            "step": 15000, "note": "Best accuracy under 25 ms",
+            "metrics": {"val/acc": 0.839, "val/ece": 0.0203},
+            "directions": {"val/acc": "max", "val/ece": "min"},
+            "checkpoint": {"artifact": "model", "version": 5},
+            "created": 1795079576.8}]}
+```
+
+Steps chosen with **Pick this step** on the Select page, oldest first. `run`
+is the run id, `metrics` the chosen scalars' values at `step` when it was
+picked and `directions` which way was better for each, so the pick still says
+what it was chosen on after the runs are gone. `checkpoint` is the artifact
+version that goes with it, or `null`. An edited pick adds `edited` (Unix
+seconds). The viewer writes it under a lock (`.picks.lock` next to it). Since 0.32.
 
 ## The catalog cache
 
