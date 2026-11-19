@@ -42,7 +42,7 @@ from .auth import Guard
 from .common import JSON, _NotFound
 from .context import Context
 from .data import Store, path_inside
-from .routes import artifacts, media, projects, reports, runs
+from .routes import artifacts, media, projects, reports, runs, select
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
@@ -303,6 +303,7 @@ def create_app(
         *artifacts.routes(ctx),
         *projects.routes(ctx),
         *reports.routes(ctx),
+        *select.routes(ctx),
         Route("/api/stream", stream),
         Route("/", index),
     ]

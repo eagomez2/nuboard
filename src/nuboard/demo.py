@@ -22,10 +22,12 @@ from . import _fs
 from ._writer import Writer
 from .cells import Audio
 from .collection import save_collection
+from .directions import change_direction
 from .figures import WaveformFigure
 from .hypotheses import save_board, save_hypothesis
 from .reports import save_fields, save_report, save_snapshot
 from .run import Run, add_artifact, init
+from .selection import save_pick
 from .timing import COUNT
 
 LLM_LRS = {3e-4: 2.43, 1e-3: 2.345, 3e-3: 2.505, 1e-4: 2.78}  # lr -> final loss
@@ -612,6 +614,10 @@ def _vit_runs(root: Path, base: float) -> None:
         dir=root,
     )
     curves: dict[str, list[float]] = {}
+    evals: dict[tuple[str, int], tuple[float, float]] = {}  # (val/acc, val/calibration_error)
+    versions: dict[tuple[str, int], int] = {}
+    ckpt = Path(tempfile.mkdtemp())
+    (ckpt / "model.safetensors").write_bytes(b"\0" * 2048)
 
     for i, (aug, seed) in enumerate((a, s) for a in gains for s in (0, 1)):
         rng = random.Random(f"{aug}{seed}")
@@ -661,12 +667,22 @@ def _vit_runs(root: Path, base: float) -> None:
                     + rng.gauss(0, 0.02),
                     "val/acc": acc,
                     "val/loss": 1.6 - acc + rng.gauss(0, 0.01),
-                    **_vit_extra(epoch, acc, rng),
+                    **(extra := _vit_extra(epoch, acc, rng, aug)),
                 },
                 step=epoch,
                 time=t,
             )
             curves.setdefault(f"{aug}-s{seed}", []).append(acc)
+            evals[(f"{aug}-s{seed}", epoch)] = (acc, extra["val/calibration_error"])
+
+            if epoch in (60, 80, 100):  # saved with its step, so Select lists it next to the row
+                versions[(f"{aug}-s{seed}", epoch)] = run.add_artifact(
+                    "vit-s16",
+                    ckpt,
+                    type="checkpoint",
+                    step=epoch,
+                    description=f"{aug} seed {seed}, epoch {epoch}",
+                ).version
 
             if epoch % 5 == 0:
                 for key, values in _distributions(seed, epoch, gains[aug]).items():
@@ -710,6 +726,33 @@ def _vit_runs(root: Path, base: float) -> None:
 
     _vit_notes(root / "vit-ablations", ids, curves)
     _vit_hypotheses(root / "vit-ablations", ids)
+    _vit_pick(root / "vit-ablations", ids, evals, versions)
+
+
+def _vit_pick(
+    project: Path,
+    ids: dict[str, str],
+    evals: dict[tuple[str, int], tuple[float, float]],
+    versions: dict[tuple[str, int], int],
+) -> None:
+    """Save the directions of the two scalars Select judges by, and one pick made with them."""
+    change_direction(project, "val/acc", "max")
+    change_direction(project, "val/calibration_error", "min")
+    name, epoch = "mixup-s1", 100  # on the shortlist, with a checkpoint
+    acc, ece = evals[(name, epoch)]
+    save_pick(
+        project,
+        {
+            "run": ids[name],
+            "run_name": name,
+            "step": epoch,
+            "note": "About a point behind CutMix on accuracy, with half its calibration error. "
+            "Taken forward for the on-device test, where scores feed a threshold.",
+            "metrics": {"val/acc": acc, "val/calibration_error": ece},
+            "directions": {"val/acc": "max", "val/calibration_error": "min"},
+            "checkpoint": {"artifact": "vit-s16", "version": versions[(name, epoch)]},
+        },
+    )
 
 
 def _vit_timing(
@@ -760,14 +803,29 @@ def _vit_timing(
                 writer.put_own_scalars(epoch, start, data)
 
 
-def _vit_extra(epoch: int, acc: float, rng: random.Random) -> dict[str, float]:
+# Calibration error by augmentation: the lowest it gets, and how far it drifts back up over the
+# last 50 epochs while accuracy still creeps up. Stronger augmentations trade calibration for
+# accuracy differently, which gives the Select page real choices to make.
+_VIT_CALIBRATION = {
+    "none": (0.030, 0.030),
+    "randaug": (0.019, 0.013),
+    "mixup": (0.012, 0.004),
+    "cutmix": (0.022, 0.020),
+}
+
+
+def _vit_extra(epoch: int, acc: float, rng: random.Random, aug: str) -> dict[str, float]:
     """Return the other `vit-ablations` metrics of one epoch, enough to fill the chart grid."""
     lr = 5e-4 * min(1.0, (epoch + 1) / 5) * 0.5 * (1 + math.cos(math.pi * epoch / 100))
+    floor, drift = _VIT_CALIBRATION[aug]
     out = {
         "train/lr": lr,
         "train/grad_norm": 1.2 * math.exp(-epoch / 60) + 0.3 + abs(rng.gauss(0, 0.05)),
         "val/top5": min(0.999, acc + 0.12 + rng.gauss(0, 0.002)),
-        "val/calibration_error": 0.08 * math.exp(-epoch / 40) + 0.02 + abs(rng.gauss(0, 0.003)),
+        "val/calibration_error": 0.08 * math.exp(-epoch / 40)
+        + floor
+        + drift * max(0, epoch - 50) / 50
+        + abs(rng.gauss(0, 0.003)),
         "perf/images_per_sec": 2400 + rng.gauss(0, 40),
     }
 
