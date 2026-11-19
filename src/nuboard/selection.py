@@ -110,9 +110,9 @@ def pareto_mask(values: np.ndarray, directions: Sequence[str]) -> np.ndarray:
     for start in range(0, n, _CHUNK):
         c = xs[start : start + _CHUNK]
         rivals = np.concatenate([front, c])
-        le = (rivals[None, :, :] <= c[:, None, :]).all(axis=2)
-        lt = (rivals[None, :, :] < c[:, None, :]).any(axis=2)
-        beaten = (le & lt).any(axis=1)
+        le = np.all(rivals[None, :, :] <= c[:, None, :], axis=2)
+        lt = np.any(rivals[None, :, :] < c[:, None, :], axis=2)
+        beaten = np.any(np.logical_and(le, lt), axis=1)
         keep[start : start + len(c)] = ~beaten
         front = np.concatenate([front, c[~beaten]])
 
