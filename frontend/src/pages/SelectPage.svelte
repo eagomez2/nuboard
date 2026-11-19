@@ -122,6 +122,8 @@
     ),
   );
   const color = (r: StepRows) => seriesVar(r.run);
+  // the scalars a shortlisted step is best on, for its badge
+  const bestOn = (r: StepRows) => metrics.filter((_, k) => front[best[k]] === r);
 
   // ---- picks ----
   let picks = $state<SavedPick[]>([]);
@@ -891,11 +893,15 @@
                       <td class="l tags">
                         {#if pickedIds.has(r.id)}<span class="badge pick"><Icon name="flag" size={11} /> picked</span
                           >{/if}
-                        {#each metrics as m, k (m)}
-                          {#if front[best[k]] === r}<span class="badge best" title="Best {m} on the shortlist"
-                              >Best <span class="mono">{tailName(m, 26)}</span></span
-                            >{/if}
-                        {/each}
+                        {#if bestOn(r).length === 1}<span
+                            class="badge best"
+                            title="Best {bestOn(r)[0]} on the shortlist"
+                            >Best <span class="mono">{tailName(bestOn(r)[0], 26)}</span></span
+                          >{:else if bestOn(r).length > 1}<span
+                            class="badge best"
+                            title={`Best on the shortlist for:\n${bestOn(r).join('\n')}`}
+                            >Best on {bestOn(r).length === metrics.length ? 'all' : bestOn(r).length} scalars</span
+                          >{/if}
                       </td>
                     </tr>
                   {/each}
