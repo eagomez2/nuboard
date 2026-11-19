@@ -120,7 +120,7 @@
     <header>
       <button class="btn folder" title={app.info?.root} onclick={() => router.go('runs', { project: null })}>
         <Icon name="folder" size={17} />
-        <span class="mono">{app.info?.root_display ?? '…'}</span>
+        <span class="mono lpath">{'\u200e' + (app.info?.root_display ?? '…') + '\u200e'}</span>
       </button>
       <div class="title">
         <h1>{title}</h1>
@@ -272,9 +272,18 @@
     box-shadow: var(--lift);
     max-width: 260px;
   }
+  .folder :global(svg) {
+    flex-shrink: 0;
+  }
   .folder span {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* A long path loses its start, not the folder name at its end; the marks keep "/" in place. */
+  .lpath {
+    direction: rtl;
+    text-align: left;
   }
   .title h1 {
     font-size: 22px;

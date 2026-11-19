@@ -1,4 +1,5 @@
 import type { Baseline } from './baselines';
+import type { SavedQuery } from './queries';
 import { tableFromIPC } from 'apache-arrow';
 import type { Board, BoardData, BoardListItem, Hypothesis } from './hypotheses';
 
@@ -432,8 +433,27 @@ const qs = (params: Record<string, string | number | null | undefined>) =>
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
+/** POST to `/api/queries`; a refusal throws an Error with the server's message. */
+async function queriesPost(body: Record<string, unknown>): Promise<SavedQuery[]> {
+  const res = await fetch('/api/queries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) location.reload();
+  const out = (await res.json().catch(() => ({}))) as { queries?: SavedQuery[]; error?: string };
+  if (!res.ok) throw new Error(out.error ?? `${res.status}`);
+  return out.queries ?? [];
+}
+
 export const api = {
   info: () => json<Info>('/api/info'),
+  /** Saved queries of the workspace (`queries.json` in its folder). */
+  queries: async () => (await json<{ queries: SavedQuery[] }>('/api/queries')).queries,
+  /** Save a query under a name (renaming it when it is saved already); returns the saved queries. */
+  saveQuery: (name: string, query: string) => queriesPost({ add: { name, query } }),
+  /** Delete a saved query; returns the saved queries. */
+  deleteQuery: (query: string) => queriesPost({ delete: query }),
   storage: (action?: 'start' | 'resume' | 'stop') =>
     json<StorageStatus>(
       '/api/storage',

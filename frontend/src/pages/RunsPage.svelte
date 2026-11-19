@@ -95,7 +95,7 @@
       </div>
       <button class="item root" class:on={!project} onclick={() => router.set({ project: null, sel: null })}>
         <Icon name="folder" size={16} />
-        <span class="mono grow">{app.info?.root_display ?? '…'}</span>
+        <span class="mono grow lpath">{'\u200e' + (app.info?.root_display ?? '…') + '\u200e'}</span>
         <span class="count">{total}</span>
       </button>
       {#each app.info?.projects ?? [] as p (p.name)}
@@ -285,5 +285,10 @@
     .side {
       position: static;
     }
+  }
+  /* A long path loses its start, not the folder name at its end. */
+  .lpath {
+    direction: rtl;
+    text-align: left;
   }
 </style>

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Saved queries.** The **▾** button at the end of the query bar lists saved
+  queries and the queries this browser applied last; click one to apply it.
+  **Save this query…** names the query in the bar and writes it to
+  `queries.json` in the served folder, shared by every browser and safe to
+  commit. New endpoints: `GET` and `POST /api/queries`.
+- **The folder chip shows the end of a long path**, such as
+  `…/experiments/demo-runs`, instead of cutting off the folder name, and its
+  icon no longer shrinks. The same goes for the root folder in the Runs
+  page's workspace list.
+
 ## 0.31.1
 
 Safer sharing: a local viewer without a token can no longer be published by a

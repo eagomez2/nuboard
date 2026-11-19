@@ -170,6 +170,39 @@ def test_views_round_trip(client):
     assert client.delete("/api/views/sweep/%2E%2E%2Fruns").status_code == 404  # stays in views/
 
 
+def test_saved_queries(client):
+    assert client.get("/api/queries").json() == {"queries": []}
+    r = client.post("/api/queries", json={"add": {"name": "Good lr", "query": "where lr < 0.01"}})
+    assert r.json() == {"queries": [{"name": "Good lr", "query": "where lr < 0.01"}]}
+    # no name: the query is its name; the same query again renames it
+    client.post("/api/queries", json={"add": {"query": "group by lr"}})
+    r = client.post("/api/queries", json={"add": {"name": "By lr", "query": "group by lr"}})
+    assert [q["name"] for q in r.json()["queries"]] == ["Good lr", "By lr"]
+    assert client.get("/api/queries").json() == r.json()
+    bad = client.post("/api/queries", json={"add": {"name": "x", "query": "where = 1"}})
+    assert bad.status_code == 400 and "not a valid query" in bad.json()["error"]
+    assert client.post("/api/queries", json={"add": {"query": " "}}).status_code == 400
+    assert client.post("/api/queries", json={"nothing": 1}).status_code == 400
+    r = client.post("/api/queries", json={"delete": "where lr < 0.01"})
+    assert r.json() == {"queries": [{"name": "By lr", "query": "group by lr"}]}
+    assert (
+        client.post("/api/queries", content="x", headers={"content-type": "text/plain"}).status_code
+        == 415
+    )
+
+
+def test_saved_queries_skip_a_malformed_file(tmp_path):
+    from nuboard.server.routes.projects import QUERIES_FILE
+
+    (tmp_path / QUERIES_FILE).write_text(
+        '{"queries": [1, {"query": ""}, {"query": "group by lr"}]}'
+    )
+    client = TestClient(create_app(str(tmp_path)))
+    assert client.get("/api/queries").json() == {
+        "queries": [{"name": "group by lr", "query": "group by lr"}]
+    }
+
+
 def test_custom_fields_and_query(client):
     keys = [r["key"] for r in client.get("/api/runs").json()["runs"]]
     res = client.post(

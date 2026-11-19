@@ -19,10 +19,16 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 
 ## Header
 
-- **Folder chip**: the served folder; click it to go back to all runs.
+- **Folder chip**: the served folder; click it to go back to all runs. A long
+  path is shortened at its start, so the folder's own name stays visible.
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
-  [query language](../reference/query.md).
+  [query language](../reference/query.md). The **▾** button at its end opens
+  **Saved** queries and the queries **Recent in this browser**; click one to
+  apply it. **Save this query…** names the query in the bar and writes it to
+  `queries.json` in the served folder, so every browser on the server sees it
+  and you can commit it. The **×** on a saved query deletes it, after asking.
+  Recent queries stay in this browser only; **Clear** forgets them.
 - **Time zone chip** (the clock button): **Local time** by default, which shows times as they
   always have been, in your computer's zone. Optionally, pick another zone to
   show every date and time in. See [Time zones](#time-zones).

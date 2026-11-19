@@ -14,6 +14,7 @@ path.
 
 ```text
 <root>/                                   any folder; may hold many projects
+  queries.json                            saved queries of the viewer's query bar; safe to commit
   <project>/                              may be nested: team/llm/<project>/
     runs/
       <YYYYMMDDTHHMM>-<hash8>/            one run (the folder name is the run id)
@@ -550,6 +551,19 @@ invalid values fall back to defaults.
 
 `{"page": "charts", "params": {"q": "...", "metric": "...", ...}}`, where
 `params` are the viewer's URL parameters. Safe to commit.
+
+## Saved queries: `queries.json`
+
+In the served folder (the root), not in a project, since a query can span
+projects:
+
+`{"queries": [{"name": "Crashed runs", "query": "where status = crashed"}, ...]}`
+
+Written atomically by the viewer's query bar, in the order the queries were
+saved; at most 200, with names of at most 200 characters and queries of at
+most 2000. A query that does not parse is refused when saving. Entries that
+are not objects or have an empty `query` are skipped on reading, and a missing
+`name` falls back to the query. Safe to edit by hand or commit.
 
 ## Sweeps settings: `sweeps.json`
 
