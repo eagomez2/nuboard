@@ -1005,7 +1005,7 @@
       {#if compared.length > 1}
         <div class="grp label">Summary <span class="sub">· among the steps compared</span></div>
         {#each [['Best on', wins], ['Worst on', losses]] as const as [label, lists] (label)}
-          <div class="rh">{label}</div>
+          <div class="rh top">{label}</div>
           {#each compared as r, i (r.id)}
             <div class="sum">
               {#if lists[i].length}
@@ -1020,7 +1020,7 @@
       {#if configDiff.length}
         <div class="grp label">Config <span class="sub">· only the keys that differ</span></div>
         {#each configDiff.slice(0, 30) as key (key)}
-          <div class="rh mono trunc" title={key}>{key}</div>
+          <div class="rh mono" title={key}><span class="trunc">{key}</span></div>
           {#each compared as r (r.id)}
             <div class="mono cfg trunc">{fmtValue(config?.values[key]?.[r.key])}</div>
           {/each}
@@ -1615,10 +1615,15 @@
     border-bottom: 1px solid var(--border);
     padding: 7px 14px;
   }
+  /* row labels fill their grid row, so their divider lines up with the cells beside them */
   .rh {
     color: var(--muted);
     font-size: 12.5px;
-    align-self: center;
+    display: flex;
+    align-items: center;
+  }
+  .rh.top {
+    align-items: flex-start;
   }
   .val {
     display: flex;
