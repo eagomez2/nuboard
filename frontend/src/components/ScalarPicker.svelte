@@ -43,10 +43,15 @@
   let el = $state<HTMLElement>();
   let input = $state<HTMLInputElement>();
 
-  // on open: focus the search box and bring the picked scalar into view
+  // on open: keep the list inside the window (it opens to the left when there is no room on the
+  // right, as for a picker at the right end of a toolbar), focus the search box and bring the
+  // picked scalar into view
+  let pop = $state<HTMLElement>();
+  let toLeft = $state(false);
   $effect(() => {
-    if (!open) return;
-    input?.focus();
+    if (!open || !el || !pop) return;
+    toLeft = el.getBoundingClientRect().left + pop.offsetWidth > document.documentElement.clientWidth - 8;
+    input?.focus({ preventScroll: true });
     requestAnimationFrame(() => el?.querySelector('.opt.on')?.scrollIntoView({ block: 'center' }));
   });
 
@@ -121,7 +126,7 @@
     >
   {/if}
   {#if open}
-    <div class="card pop" role="dialog" aria-label="Pick a scalar">
+    <div class="card pop" class:left={toLeft} role="dialog" aria-label="Pick a scalar" bind:this={pop}>
       <input
         class="input sm mono"
         placeholder="Filter {metrics.length} scalars (/regex/, !exclude)"
@@ -185,6 +190,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+  .pop.left {
+    left: auto;
+    right: 0;
   }
   .pop {
     position: absolute;
