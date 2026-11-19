@@ -1229,7 +1229,8 @@
     cursor: grabbing;
   }
   .zoombox {
-    fill: var(--accent-soft);
+    fill: var(--accent);
+    fill-opacity: 0.1;
     stroke: var(--accent);
     stroke-width: 1;
     stroke-dasharray: 3 3;
