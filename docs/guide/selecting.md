@@ -79,7 +79,7 @@ checkpoints at that step.
 **Pick this step** asks why, and which checkpoint goes with it. The pick is
 saved in the project's `picks.json`, with the scalars' values and directions
 at the time, so it can be committed to git and read later. **Picks** lists
-them; a pick can be edited or removed.
+them; each pick can be opened in Charts, edited or removed.
 
 ## Checkpoints
 
