@@ -19,8 +19,9 @@
   // A row is a run at a step where every chosen scalar was logged; the shortlist holds the rows no
   // other row beats on every scalar (the server finds it, see nuboard/selection.py). Rows can be
   // compared side by side and picked with a note, saved in the project's picks.json.
-  // URL: `m` the scalars, `dirs` this view's own direction of each (empty: the project's), `x` and
-  // `y` the scatter axes, `rows` the rows to compare, `sort` the shortlist's column, `tab`.
+  // URL: `m` the scalars, `dirs` this view's own direction of each (empty: the project's), `tx` and
+  // `ty` the scatter axes, `rows` the rows to compare, `order` the shortlist's column, `pane` the
+  // tab. Names other pages use (`x`, `sort`, `tab`) are avoided, as the URL is kept across pages.
 
   const MAX_COMPARE = 6;
   const SHOWN = 100; // shortlist rows shown before "Show all"
@@ -29,7 +30,7 @@
   const runKeys = $derived(runs.map((r) => r.key));
   const projects = $derived([...new Set(runs.map((r) => r.project))].sort());
   const allMetrics = $derived(app.runs?.metrics ?? []);
-  const tab = $derived(router.get('tab', 'shortlist'));
+  const tab = $derived(router.get('pane', 'shortlist'));
 
   // ---- the scalars and which way is better for each ----
   const metrics = $derived(router.list('m'));
@@ -143,7 +144,7 @@
   const compared = $derived(chosen.map((id) => byId.get(id)).filter((r): r is Row => !!r));
 
   // ---- the shortlist table ----
-  const sortBy = $derived(metrics.includes(router.get('sort')) ? router.get('sort') : metrics[0]);
+  const sortBy = $derived(metrics.includes(router.get('order')) ? router.get('order') : metrics[0]);
   const sorted = $derived.by(() => {
     const k = metrics.indexOf(sortBy);
     if (k < 0) return front;
@@ -165,10 +166,10 @@
 
   // ---- the scatter plot ----
   const axes = $derived(['step', ...metrics]);
-  const ax = $derived(axes.includes(router.get('x')) ? router.get('x') : (metrics[0] ?? 'step'));
+  const ax = $derived(axes.includes(router.get('tx')) ? router.get('tx') : (metrics[0] ?? 'step'));
   const ay = $derived(
-    axes.includes(router.get('y'))
-      ? router.get('y')
+    axes.includes(router.get('ty'))
+      ? router.get('ty')
       : metrics.length > 1
         ? metrics[1]
         : metrics[0] === ax
@@ -472,13 +473,13 @@
 
 <div class="toolbar">
   <div class="seg" aria-label="Select page view">
-    <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ tab: null })}
+    <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ pane: null })}
       >Shortlist{#if data}<span class="count">{data.front_count}</span>{/if}</button
     >
-    <button aria-pressed={tab === 'compare'} onclick={() => router.set({ tab: 'compare' })}
+    <button aria-pressed={tab === 'compare'} onclick={() => router.set({ pane: 'compare' })}
       >Compare<span class="count">{compared.length}</span></button
     >
-    <button aria-pressed={tab === 'picks'} onclick={() => router.set({ tab: 'picks' })}
+    <button aria-pressed={tab === 'picks'} onclick={() => router.set({ pane: 'picks' })}
       >Picks<span class="count">{shownPicks.length}</span></button
     >
   </div>
@@ -529,12 +530,24 @@
               <td class="l faint">{fmtDate(p.edited ?? p.created)}</td>
               <td class="actions">
                 {#if p.key}<button
-                    class="btn btn-ghost sm"
-                    onclick={() => router.go('charts', { sel: p.key!, tab: null })}>Charts</button
+                    class="btn btn-ghost sm icon-btn"
+                    title="Open this run in Charts"
+                    aria-label="Open {p.run_name || p.run} in Charts"
+                    onclick={() =>
+                      router.go('charts', { sel: p.key!, metric: Object.keys(p.metrics)[0] ?? null, tab: null })}
+                    ><Icon name="charts" size={14} /></button
                   >{/if}
-                <button class="btn btn-ghost sm" onclick={() => editNote(p)}>Edit</button>
-                <button class="btn btn-ghost sm" aria-label="Remove pick" onclick={() => removePick(p)}
-                  ><Icon name="trash" size={14} /></button
+                <button
+                  class="btn btn-ghost sm icon-btn"
+                  title="Edit the note and checkpoint"
+                  aria-label="Edit pick"
+                  onclick={() => editNote(p)}><Icon name="edit" size={14} /></button
+                >
+                <button
+                  class="btn btn-ghost sm icon-btn"
+                  title="Remove this pick"
+                  aria-label="Remove pick"
+                  onclick={() => removePick(p)}><Icon name="trash" size={14} /></button
                 >
               </td>
             </tr>
@@ -626,7 +639,7 @@
                 value={ax}
                 size="sm"
                 ariaLabel="X axis"
-                onpick={(m) => router.set({ x: m })}
+                onpick={(m) => router.set({ tx: m })}
               /></span
             >
             <span class="axis"
@@ -636,7 +649,7 @@
                 value={ay}
                 size="sm"
                 ariaLabel="Y axis"
-                onpick={(m) => router.set({ y: m })}
+                onpick={(m) => router.set({ ty: m })}
               /></span
             >
             {#if zoomed}<button class="btn" onclick={() => (zoom = null)}>Reset zoom</button>{/if}
@@ -809,7 +822,7 @@
                     <th></th><th class="l">Run</th><th>Step</th>
                     {#each metrics as m, k (m)}
                       <th
-                        ><button class="sort mono" class:on={sortBy === m} onclick={() => router.set({ sort: m })}
+                        ><button class="sort mono" class:on={sortBy === m} onclick={() => router.set({ order: m })}
                           >{m} {arrow(dirs[k])}</button
                         ></th
                       >
@@ -908,7 +921,7 @@
     <div class="selbar">
       <span><b>{compared.length}</b> step{compared.length === 1 ? '' : 's'} chosen</span>
       <button class="btn" onclick={() => router.set({ rows: null })}>Clear</button>
-      <button class="btn btn-primary" onclick={() => router.set({ tab: 'compare' })}
+      <button class="btn btn-primary" onclick={() => router.set({ pane: 'compare' })}
         ><Icon name="compare" size={14} /> Compare side by side</button
       >
     </div>
@@ -919,7 +932,7 @@
   {#if !compared.length}
     <div class="card empty">
       Choose steps to compare on the shortlist: tick their boxes, or click their dots on the plot.
-      <button class="btn" onclick={() => router.set({ tab: null })}>Back to the shortlist</button>
+      <button class="btn" onclick={() => router.set({ pane: null })}>Back to the shortlist</button>
     </div>
   {:else}
     <div class="card cmp" style="grid-template-columns: 190px repeat({compared.length}, minmax(180px, 1fr))">
@@ -1403,6 +1416,10 @@
   }
   td.actions {
     white-space: nowrap;
+  }
+  .icon-btn.sm {
+    height: 28px;
+    width: 30px;
   }
   .kv {
     margin-right: 12px;
