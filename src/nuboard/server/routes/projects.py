@@ -1,4 +1,4 @@
-"""Routes for project settings: collections, hypotheses, views, fields, pins, directions, sweeps."""
+"""Routes for project settings: collections, hypotheses, views, queries, fields, pins and more."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from ...hypotheses import (
     save_board,
     save_hypothesis,
 )
+from ...query import QueryError, parse
 from ...reports import (
     read_fields,
     report_names,
@@ -38,6 +39,12 @@ from ..common import (
 from ..context import Context
 from ..data import path_inside
 from ..runfiles import change_pins, read_pins
+
+QUERIES_FILE = "queries.json"
+"""Saved queries of the query bar, in the root folder of the workspace."""
+MAX_QUERIES = 200
+MAX_QUERY = 2000
+MAX_QUERY_NAME = 200
 
 
 def routes(ctx: Context) -> list[BaseRoute]:
@@ -292,6 +299,75 @@ def routes(ctx: Context) -> list[BaseRoute]:
         )
         return JSON({"saved": name})
 
+    queries_file = catalog.root / QUERIES_FILE
+
+    def read_queries() -> list[dict[str, str]]:
+        """Return the saved queries of the workspace, skipping malformed entries."""
+        got = _fs.read_json(queries_file, {})
+        items = got.get("queries") if isinstance(got, dict) else None
+        out = []
+
+        for q in items if isinstance(items, list) else []:
+            if isinstance(q, dict) and isinstance(q.get("query"), str) and q["query"].strip():
+                name = q.get("name")
+                out.append(
+                    {
+                        "name": name if isinstance(name, str) and name.strip() else q["query"],
+                        "query": q["query"],
+                    }
+                )
+
+        return out
+
+    def queries_get(request: Request) -> Response:
+        """Return the saved queries of the workspace (`queries.json` in the root folder)."""
+        return JSON({"queries": read_queries()})
+
+    async def queries_save(request: Request) -> Response:
+        """Add a saved query or delete one, and return the saved queries.
+
+        The JSON body is `{"add": {"name": ..., "query": ...}}` or `{"delete": <query>}`.
+        Adding a query that is saved already renames it. A query that does not parse is
+        refused, and so are names and queries longer than the limits below.
+        """
+
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            return PlainTextResponse("expected application/json", 415)
+
+        body = await request.json()
+        items = read_queries()
+        body = body if isinstance(body, dict) else {}
+        add = body.get("add")
+
+        if isinstance(add, dict):
+            query = str(add.get("query", "")).strip()
+            name = str(add.get("name", "")).strip() or query
+
+            if not query:
+                return JSON({"error": "the query is empty"}, status_code=400)
+
+            if len(query) > MAX_QUERY or len(name) > MAX_QUERY_NAME:
+                return JSON({"error": "the name or the query is too long"}, status_code=400)
+
+            try:
+                parse(query)
+            except QueryError as exc:
+                return JSON({"error": f"not a valid query: {exc}"}, status_code=400)
+
+            items = [q for q in items if q["query"] != query]
+
+            if len(items) >= MAX_QUERIES:
+                return JSON({"error": f"at most {MAX_QUERIES} saved queries"}, status_code=400)
+
+            items.append({"name": name, "query": query})
+        elif isinstance(body.get("delete"), str):
+            items = [q for q in items if q["query"] != body["delete"]]
+        else:
+            return JSON({"error": "expected add or delete"}, status_code=400)
+
+        _fs.atomic_write_json(queries_file, {"queries": items})
+        return JSON({"queries": items})
+
     def fields_get(request: Request) -> Response:
         """Return the property definitions of the `project` query parameter."""
         pdir = project_dir(request.query_params.get("project", ""))
@@ -451,6 +527,8 @@ def routes(ctx: Context) -> list[BaseRoute]:
         Route("/api/hypotheses", hypothesis_save, methods=["POST"]),
         Route("/api/views", view_save, methods=["POST"]),
         Route("/api/views/{project:path}/{name}", view_item, methods=["GET", "DELETE"]),
+        Route("/api/queries", queries_get),
+        Route("/api/queries", queries_save, methods=["POST"]),
         Route("/api/fields", fields_get),
         Route("/api/fields", fields_save, methods=["POST"]),
         Route("/api/pins", pins_get),

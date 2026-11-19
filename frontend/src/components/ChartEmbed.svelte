@@ -73,7 +73,7 @@
 <figure class="embed">
   {#if s && data && !failed}
     <div class="head">
-      <span class="mono metric" title={s.metric}>{s.metric}</span>
+      <span class="mono metric tail" title={s.metric}><span dir="ltr">{s.metric}</span></span>
       <span class="faint small">{s.group ? `grouped by ${s.group}` : `${s.runs.length} runs`} · live</span>
       <button class="btn btn-ghost sm" onclick={() => router.go('charts', chartsParams(s))}>Open in Charts</button>
     </div>

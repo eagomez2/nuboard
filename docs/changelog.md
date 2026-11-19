@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.32.0
+
+A new **Select** page for choosing which run, at which step, to take forward
+when runs win on different scalars, saved queries in the query bar, and
+baselines in the small charts' tooltips. No breaking changes: run folders and
+the Python API keep working as before.
+
+- **Select page.** Choose the scalars that matter and which way is better for
+  each. Every run at every step where all of them were logged is scored, and
+  the shortlist keeps the steps no other step beats on every scalar. A
+  trade-off plot shows any two of them, with hover on every step, zoom, pan,
+  full screen and adding it to a report, as in the other charts; **Compare** puts a few steps side by
+  side with each run's curves, a summary of the scalars each one is best and
+  worst on, the config keys that differ and the checkpoints at that step; **Pick this step** saves the choice with a note
+  in the project's `picks.json`. Runs that never log a chosen scalar are
+  listed as not ranked instead of being judged on fewer numbers. See
+  [Choosing a step](guide/selecting.md). New endpoints: `GET /api/steps`,
+  `GET` and `POST /api/picks`. The demo's `vit-ablations` project has
+  checkpoints, a pick, and a calibration error that drifts back up late in
+  training, so there is a real trade-off to look at.
+- **`run.add_artifact(..., step=...)`** records the step a checkpoint was
+  made at, in its manifest (`step`). The Select page lists the version next
+  to that step; a version without one is placed at the last step logged
+  before it was made.
+- **Saved queries.** The **▾** button at the end of the query bar lists saved
+  queries and the queries this browser applied last; click one to apply it.
+  **Save this query…** names the query in the bar and writes it to
+  `queries.json` in the served folder, shared by every browser and safe to
+  commit. New endpoints: `GET` and `POST /api/queries`.
+- **The folder chip shows the end of a long path**, such as
+  `…/experiments/demo-runs`, instead of cutting off the folder name, and its
+  icon no longer shrinks. The same goes for the root folder in the Runs
+  page's workspace list.
+- **Long metric names keep their end.** Wherever a scalar name, config key
+  or path is too long to fit, it now loses its start instead of its end
+  (`…/per_class/acc_cat`), so names that share a long prefix stay
+  distinguishable: chart titles, the focus chart's picker and inspector,
+  **Best** on the Charts page, the scalar picker's list, Sweeps, Artifacts,
+  the parameter picker, run paths and the report path. The full name shows on
+  hover. Run names and other labels are still cut at the end.
+- **Baselines in the small charts' tooltips.** Hovering a chart under **All
+  scalars** now lists its baseline (and range, if set) under the runs'
+  values, as the inspector does for the chart in focus. It follows the
+  **Baseline** toggle.
+
 ## 0.31.1
 
 Safer sharing: a local viewer without a token can no longer be published by a

@@ -95,7 +95,9 @@
       </div>
       <button class="item root" class:on={!project} onclick={() => router.set({ project: null, sel: null })}>
         <Icon name="folder" size={16} />
-        <span class="mono grow">{app.info?.root_display ?? '…'}</span>
+        <span class="mono grow tail" title={app.info?.root_display}
+          ><span dir="ltr">{app.info?.root_display ?? '…'}</span></span
+        >
         <span class="count">{total}</span>
       </button>
       {#each app.info?.projects ?? [] as p (p.name)}

@@ -19,10 +19,16 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
 
 ## Header
 
-- **Folder chip**: the served folder; click it to go back to all runs.
+- **Folder chip**: the served folder; click it to go back to all runs. A long
+  path is shortened at its start, so the folder's own name stays visible.
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
-  [query language](../reference/query.md).
+  [query language](../reference/query.md). The **▾** button at its end opens
+  **Saved** queries and the queries **Recent in this browser**; click one to
+  apply it. **Save this query…** names the query in the bar and writes it to
+  `queries.json` in the served folder, so every browser on the server sees it
+  and you can commit it. The **×** on a saved query deletes it, after asking.
+  Recent queries stay in this browser only; **Clear** forgets them.
 - **Time zone chip** (the clock button): **Local time** by default, which shows times as they
   always have been, in your computer's zone. Optionally, pick another zone to
   show every date and time in. See [Time zones](#time-zones).
@@ -44,7 +50,7 @@ means the same thing on every page:
 | Box | Matches | Also |
 | --- | --- | --- |
 | Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
-| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Select, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
 | Charts **Filter scalars** | the scalar's name | each word is a regular expression |
 | Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
 | Media **Filter keys** | the media key | each word is a regular expression |
@@ -461,6 +467,15 @@ runs. **Min**, **Max** or **Last** picks the value of each run, and the **↑**
 axis).
 The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
+
+## Select page
+
+Which run at which step to take forward, when runs win on different scalars.
+Choose the scalars that matter and which way is better for each; every run
+at every step where all of them were logged is scored, and the shortlist
+keeps the steps that no other step beats on every scalar. Compare a few side
+by side and pick one with a note, saved in the project's `picks.json`. See
+[Choosing a step](selecting.md).
 
 ## Timeline page
 

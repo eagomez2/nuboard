@@ -1696,6 +1696,7 @@ class Run:
         reference: bool = False,
         checksum: bool = False,
         description: str | None = None,
+        step: int | None = None,
     ) -> Artifact:
         """Copy a file or folder into `artifacts/<name>/v<N>/` with a manifest.
 
@@ -1712,6 +1713,9 @@ class Run:
                 modification time, instead of copying it.
             checksum: With `reference`, also hash every file (SHA-256).
             description: Optional free text saying what this version is.
+            step: The training step the version was made at, such as a checkpoint's.
+                The viewer's Select page lists the version next to that step; without
+                it, the step is guessed from when the version was made.
 
         Returns:
             The new artifact version.
@@ -1731,6 +1735,7 @@ class Run:
             reference=reference,
             checksum=checksum,
             description=description,
+            step=None if step is None else int(step),
         )
 
         with self._meta_lock:

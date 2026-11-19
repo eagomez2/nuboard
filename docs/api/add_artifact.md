@@ -8,7 +8,7 @@ them.
 ## `add_artifact`
 
 ```python
-run.add_artifact(name, path, *, type=None, metadata=None, reference=False, checksum=False) -> Artifact
+run.add_artifact(name, path, *, type=None, metadata=None, reference=False, checksum=False, step=None) -> Artifact
 ```
 
 Adds a new version of an artifact and records this run as its producer.
@@ -36,6 +36,10 @@ Versions are numbered automatically and created atomically.
 - **description** (*str*, optional): what this version is, shown on the
   Artifacts page. The manifest also records who created the version, on
   which machine and with which command (`created_by`).
+- **step** (*int*, optional): the training step the version was made at,
+  such as a checkpoint's. The [Select page](../guide/selecting.md) lists the
+  version next to that step; without it, the step is guessed from when the
+  version was made.
 
 **Returns** an `Artifact` with `ref` (such as `"model:v3"`), `files` (the
 folder holding the files), `reference` (the referenced path, or None for a
@@ -139,6 +143,6 @@ with nb.init("api-tour", run_name="artifacts") as run:
     with open("model.bin", "wb") as f:
         f.write(b"weights")
 
-    v = run.add_artifact("model", "model.bin", type="checkpoint", metadata={"step": 100})
+    v = run.add_artifact("model", "model.bin", type="checkpoint", step=100)
     print(v.ref)  # model:v1, then model:v2, ...
 ```

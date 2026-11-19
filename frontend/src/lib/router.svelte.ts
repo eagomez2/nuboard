@@ -3,8 +3,9 @@
  * bookmarked, shared or saved. Per-viewer preferences go to localStorage instead.
  */
 
-export type Page = 'runs' | 'charts' | 'media' | 'timeline' | 'sweeps' | 'artifacts' | 'reports' | 'hypotheses';
-const PAGES: Page[] = ['runs', 'charts', 'media', 'timeline', 'sweeps', 'artifacts', 'reports', 'hypotheses'];
+export type Page =
+  'runs' | 'charts' | 'media' | 'timeline' | 'sweeps' | 'select' | 'artifacts' | 'reports' | 'hypotheses';
+const PAGES: Page[] = ['runs', 'charts', 'media', 'timeline', 'sweeps', 'select', 'artifacts', 'reports', 'hypotheses'];
 
 function parse(): { page: Page; params: URLSearchParams } {
   const hash = location.hash.replace(/^#\/?/, '');

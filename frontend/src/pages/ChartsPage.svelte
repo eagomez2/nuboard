@@ -544,7 +544,8 @@
   <section class="stats">
     <div class="card stat">
       <div class="label lrow">
-        <span class="trunc" title="Best {focus || 'scalar'}">Best {focus || 'scalar'}</span>
+        <span class="keep">Best</span>
+        <span class="trunc tail" title={focus || 'scalar'}><span dir="ltr">{focus || 'scalar'}</span></span>
         <span class="faint keep">(last value)</span>
         <button
           class="btn better"
@@ -577,7 +578,9 @@
           {#each nonfinite.slice(0, 2) as r (r.key)}<span
               class="chip chip-err nf"
               title="{r.name}: {r.nonfinite.join(', ')}"
-              ><span class="trunc nfname">{r.name}:</span><span class="trunc nfmetric">{r.nonfinite[0]}</span></span
+              ><span class="trunc nfname">{r.name}:</span><span class="trunc tail nfmetric"
+                ><span dir="ltr">{r.nonfinite[0]}</span></span
+              ></span
             >{/each}
         {:else}No NaN or Inf logged{/if}
       </div>
@@ -941,11 +944,11 @@
       </div>
       <div class="ix mono">
         {#if xRead.prefix}<span class="keep">{xRead.prefix}</span>{/if}
-        {#if xRead.name}<span class="trunc" title={xRead.name}>{xRead.name}</span>{/if}
+        {#if xRead.name}<span class="trunc tail" title={xRead.name}><span dir="ltr">{xRead.name}</span></span>{/if}
         <span class="keep">{xRead.value}</span>
       </div>
       <div class="im">
-        <span class="mono trunc" title={focus}>{focus}</span><span class="faint keep"
+        <span class="mono trunc tail" title={focus}><span dir="ltr">{focus}</span></span><span class="faint keep"
           >{lower ? 'Lowest first' : 'Highest first'}</span
         >
       </div>
@@ -1052,7 +1055,7 @@
             onclick={() => setFolded({ ...folded, [prefix]: open })}
           >
             <span class="chev" class:closed={!open}><Icon name="chevron" size={16} /></span>
-            <span class="label trunc">{prefix}</span>
+            <span class="label trunc tail"><span dir="ltr">{prefix}</span></span>
             <span class="faint nchart">{list.length} chart{list.length === 1 ? '' : 's'}</span>
           </button>
           {#if open && pageCount > 1}
@@ -1114,7 +1117,8 @@
 {/if}
 
 <style>
-  /* Long names shrink with an ellipsis (full text in the title attribute); values never do. */
+  /* Long names shrink with an ellipsis (full text in the title attribute); values never do.
+     Metric names add the global `.tail`, so they lose their start instead of their end. */
   .trunc {
     display: block;
     min-width: 0;

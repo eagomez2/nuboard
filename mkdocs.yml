@@ -37,6 +37,7 @@ nav:
       - Reports: guide/reports.md
       - Hypotheses: guide/hypotheses.md
       - Sweeps: guide/sweeps.md
+      - Choosing a step: guide/selecting.md
       - Health alerts: guide/alerts.md
       - Artifacts and lineage: guide/artifacts.md
       - Reproducibility: guide/reproducibility.md

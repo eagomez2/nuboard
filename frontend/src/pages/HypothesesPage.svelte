@@ -747,8 +747,8 @@
                           <span>{n} run{n === 1 ? '' : 's'}</span>
                         {/if}
                         <span class="meta">
-                          {#if p.hyp.card}<span class="own" title="This card shows {numberName(p.hyp)}"
-                              >{p.hyp.card.metric}</span
+                          {#if p.hyp.card}<span class="own tail" title="This card shows {numberName(p.hyp)}"
+                              ><span dir="ltr">{p.hyp.card.metric}</span></span
                             >{/if}
                           {#if p.hyp.reports.length}{p.hyp.reports.length} report{p.hyp.reports.length > 1
                               ? 's'
@@ -1660,13 +1660,6 @@
     flex-direction: column;
     align-items: flex-end;
     min-width: 0;
-  }
-  .tail {
-    /* clip from the start, so the end of a long metric name stays readable */
-    direction: rtl;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .tlrow .num .own {
     display: flex;

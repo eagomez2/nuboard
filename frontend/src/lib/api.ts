@@ -1,4 +1,5 @@
 import type { Baseline } from './baselines';
+import type { SavedQuery } from './queries';
 import { tableFromIPC } from 'apache-arrow';
 import type { Board, BoardData, BoardListItem, Hypothesis } from './hypotheses';
 
@@ -418,6 +419,76 @@ async function hypothesisPost<T>(body: Record<string, unknown>): Promise<T> {
   return out;
 }
 
+/** One column of rows from `/api/steps`: a run (index into `runs`) at a step, with its values. */
+export interface StepRows {
+  run: number;
+  step: number;
+  values: number[];
+}
+
+export interface StepCheckpoint {
+  artifact: string;
+  version: number | null;
+  project: string;
+  type: string | null;
+  /** The step the version belongs to, or null when it cannot be told. */
+  step: number | null;
+  /** True when the version said its step; false when it was guessed from when it was made. */
+  exact: boolean;
+  /** The row step it goes with, or null. */
+  row: number | null;
+}
+
+export interface StepsResult {
+  metrics: string[];
+  directions: ('min' | 'max')[];
+  runs: { key: string; id: string; name: string; project: string; checkpoints: StepCheckpoint[] }[];
+  /** How many runs log each scalar. */
+  coverage: Record<string, number>;
+  /** Runs left out: the scalars they never log, or none when the scalars never share a step. */
+  unranked: { run: string; name: string; project: string; missing: string[] }[];
+  /** Rows: run steps where every scalar was logged. */
+  complete: number;
+  /** Rows no other row beats on every scalar (at most 500 are sent). */
+  front: StepRows[];
+  front_count: number;
+  /** A sample of the other rows, for the scatter plot. */
+  others: StepRows[];
+  others_count: number;
+}
+
+export interface SavedPick {
+  id: string;
+  project: string;
+  /** The run's id, and its catalog key (null when the run is gone). */
+  run: string;
+  key: string | null;
+  run_name: string;
+  step: number;
+  note: string;
+  metrics: Record<string, number>;
+  directions: Record<string, 'min' | 'max'>;
+  checkpoint: { artifact: string; version: number | null } | null;
+  created: number;
+  edited?: number;
+}
+
+/** The columns of `/api/steps` as one object per row. */
+function stepRows(cols: { run: number[]; step: number[]; values: number[][] }): StepRows[] {
+  return cols.run.map((run, i) => ({ run, step: cols.step[i], values: cols.values.map((c) => c[i]) }));
+}
+
+async function picksPost(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const res = await fetch('/api/picks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const got = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(got.error ?? `${res.status}`);
+  return got;
+}
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (res.status === 401) location.reload(); // signed out: the page asks for the token
@@ -432,8 +503,27 @@ const qs = (params: Record<string, string | number | null | undefined>) =>
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
+/** POST to `/api/queries`; a refusal throws an Error with the server's message. */
+async function queriesPost(body: Record<string, unknown>): Promise<SavedQuery[]> {
+  const res = await fetch('/api/queries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) location.reload();
+  const out = (await res.json().catch(() => ({}))) as { queries?: SavedQuery[]; error?: string };
+  if (!res.ok) throw new Error(out.error ?? `${res.status}`);
+  return out.queries ?? [];
+}
+
 export const api = {
   info: () => json<Info>('/api/info'),
+  /** Saved queries of the workspace (`queries.json` in its folder). */
+  queries: async () => (await json<{ queries: SavedQuery[] }>('/api/queries')).queries,
+  /** Save a query under a name (renaming it when it is saved already); returns the saved queries. */
+  saveQuery: (name: string, query: string) => queriesPost({ add: { name, query } }),
+  /** Delete a saved query; returns the saved queries. */
+  deleteQuery: (query: string) => queriesPost({ delete: query }),
   storage: (action?: 'start' | 'resume' | 'stop') =>
     json<StorageStatus>(
       '/api/storage',
@@ -532,6 +622,26 @@ export const api = {
     if (!res.ok || body.hide === undefined) throw new Error(body.error ?? `${res.status}`);
     return body.hide;
   },
+  /** Score every step of `runs` where all of `metrics` were logged; `dirs` says which way is better. */
+  async steps(runs: string[], metrics: string[], dirs: ('min' | 'max')[], signal?: AbortSignal): Promise<StepsResult> {
+    const q = new URLSearchParams({ runs: runs.join(',') });
+    metrics.forEach((m, i) => {
+      q.append('m', m);
+      q.append('d', dirs[i]);
+    });
+    type Cols = { run: number[]; step: number[]; values: number[][] };
+    const raw = await json<Omit<StepsResult, 'front' | 'others'> & { front: Cols; others: Cols }>(`/api/steps?${q}`, {
+      signal,
+    });
+    return { ...raw, front: stepRows(raw.front), others: stepRows(raw.others) };
+  },
+  /** The steps picked in every project, or in one. */
+  picks: async (project?: string) =>
+    (await json<{ picks: SavedPick[] }>(`/api/picks${project ? `?${qs({ project })}` : ''}`)).picks,
+  /** Save a pick (with `id`: replace that one); returns it as saved. */
+  savePick: async (project: string, pick: Partial<SavedPick> & { run: string; step: number }) =>
+    (await picksPost({ project, pick })).pick as SavedPick,
+  deletePick: (project: string, id: string) => picksPost({ project, delete: id }),
   sweepKeys: (keys: string[]) =>
     json<{ keys: string[]; values: Record<string, Record<string, unknown>> }>(
       `/api/sweep-keys?runs=${keys.map(encodeURIComponent).join(',')}`,

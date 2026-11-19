@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import { keyFilter } from '../lib/keyfilter';
+  import { tailName } from '../lib/format';
 
   /**
    * Pick one scalar out of many: a button that opens a searchable list (type to narrow, ↑ ↓ and
@@ -43,10 +44,15 @@
   let el = $state<HTMLElement>();
   let input = $state<HTMLInputElement>();
 
-  // on open: focus the search box and bring the picked scalar into view
+  // on open: keep the list inside the window (it opens to the left when there is no room on the
+  // right, as for a picker at the right end of a toolbar), focus the search box and bring the
+  // picked scalar into view
+  let pop = $state<HTMLElement>();
+  let toLeft = $state(false);
   $effect(() => {
-    if (!open) return;
-    input?.focus();
+    if (!open || !el || !pop) return;
+    toLeft = el.getBoundingClientRect().left + pop.offsetWidth > document.documentElement.clientWidth - 8;
+    input?.focus({ preventScroll: true });
     requestAnimationFrame(() => el?.querySelector('.opt.on')?.scrollIntoView({ block: 'center' }));
   });
 
@@ -117,11 +123,12 @@
       title={title ?? value}
       {disabled}
       onclick={toggle}
-      ><span class="val" class:faint={!value}>{value || none || '—'}</span><Icon name="chevron" size={13} /></button
+      ><span class="val" class:faint={!value}>{value ? tailName(value, size === 'sm' ? 20 : 26) : none || '—'}</span
+      ><Icon name="chevron" size={13} /></button
     >
   {/if}
   {#if open}
-    <div class="card pop" role="dialog" aria-label="Pick a scalar">
+    <div class="card pop" class:left={toLeft} role="dialog" aria-label="Pick a scalar" bind:this={pop}>
       <input
         class="input sm mono"
         placeholder="Filter {metrics.length} scalars (/regex/, !exclude)"
@@ -140,9 +147,11 @@
             data-i={i}
             aria-selected={i === index}
             class:on={m === value}
+            class:tail={m !== ''}
             title={m || none}
             onmouseenter={() => (index = i)}
-            onclick={() => pick(m)}>{m || none}</button
+            onclick={() => pick(m)}
+            >{#if m}<span dir="ltr">{m}</span>{:else}{none}{/if}</button
           >
         {:else}
           <p class="faint small">No scalar matches “{find}”.</p>
@@ -185,6 +194,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+  .pop.left {
+    left: auto;
+    right: 0;
   }
   .pop {
     position: absolute;

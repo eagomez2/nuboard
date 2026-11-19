@@ -4,6 +4,7 @@
   import { api, type ChartData } from '../lib/api';
   import { chartZone } from '../lib/chartzone';
   import { mergeSeries, runsToRefetch } from '../lib/livechart';
+  import { baselineLines } from '../lib/baselines';
   import { fmtDuration, fmtNum, fmtSeconds, fmtTimeIn } from '../lib/format';
 
   let {
@@ -69,6 +70,7 @@
   const tipX = $derived(pinX ?? cursorX);
   // largest on top: a fixed order, so the tooltip never has to guess whether lower is better
   const rows = $derived([...(pinX != null ? pinValues : cursorValues)].sort((a, b) => b.value - a.value));
+  const fmtV = (v: number) => (timing ? fmtSeconds(v) : fmtNum(v));
   function fmtX(v: number) {
     if (x === 'time') return fmtTimeIn(chartZone(data).kit, v);
     if (x === 'relative' || x === 'active') return fmtDuration(v);
@@ -84,6 +86,10 @@
   let visible = $state(false);
   let data = $state<ChartData | null>(null);
   let error = $state<string | null>(null);
+  // The baselines drawn on the chart, listed under the values (largest first, like the rows)
+  const baseRows = $derived(
+    baselines && data ? baselineLines(data.series, hidden).sort((a, b) => b.value - a.value) : [],
+  );
 
   // The fetch in flight; a new one cancels it
   let ctrl: AbortController | null = null;
@@ -145,7 +151,7 @@
 
 <div class="card small" bind:this={el}>
   <button class="title" onclick={onFocus} title="{metric}: click to bring into focus">
-    <span class="mono name">{metric}</span>
+    <span class="mono name tail"><span dir="ltr">{metric}</span></span>
     <span class="note">{note}</span>
   </button>
   {#if error}
@@ -192,10 +198,26 @@
             <div class="trow">
               <i style="background:{colorOf(v.label, v.series)}"></i>
               <span class="mono trunc tl">{v.label}</span>
-              <span class="mono tv">{timing ? fmtSeconds(v.value) : fmtNum(v.value)}</span>
+              <span class="mono tv">{fmtV(v.value)}</span>
             </div>
           {/each}
           {#if rows.length > TIP_ROWS}<div class="faint more">+{rows.length - TIP_ROWS} more</div>{/if}
+          {#each baseRows as b, k (b.labels.join('\n'))}
+            <div class="trow base" class:first={k === 0}>
+              <i
+                class="dash"
+                style="border-color:{b.series.length === 1 ? colorOf(b.labels[0], b.series[0]) : 'var(--muted)'}"
+              ></i>
+              <span class="trunc tl"
+                >Baseline{#if baseRows.length > 1}<span class="mono faint"> · {b.labels.join(', ')}</span>{/if}</span
+              >
+              <span class="mono tv"
+                >{fmtV(b.value)}{#if b.low !== undefined && b.high !== undefined}<span class="faint range"
+                    >({fmtV(b.low)} to {fmtV(b.high)})</span
+                  >{/if}</span
+              >
+            </div>
+          {/each}
         </div>
       {/if}
     </div>
@@ -242,6 +264,20 @@
     height: 8px;
     border-radius: 50%;
     flex: none;
+  }
+  .trow i.dash {
+    width: 10px;
+    height: 0;
+    border-radius: 0;
+    border-top: 1.5px dashed;
+  }
+  .range {
+    margin-left: 0.5ch;
+  }
+  .base.first {
+    margin-top: 3px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
   }
   .tl {
     flex: 1;
