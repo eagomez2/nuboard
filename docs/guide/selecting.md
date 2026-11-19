@@ -72,7 +72,9 @@ lists the runs left out and what they miss. Removing that scalar ranks them.
 bold where it is the best of the steps compared), its rank on the shortlist
 (such as "#2 of 15"), and a small curve of the whole run with the step
 marked, which shows whether the run was still improving or already drifting.
-Below are the config keys that differ and the checkpoints at that step.
+**Summary** lists, for each step, the scalars it is the best and the worst
+on among the steps compared. Below are the config keys that differ and the
+checkpoints at that step.
 
 **Pick this step** asks why, and which checkpoint goes with it. The pick is
 saved in the project's `picks.json`, with the scalars' values and directions

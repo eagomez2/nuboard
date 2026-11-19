@@ -142,6 +142,20 @@
     router.set({ rows: next.length ? next.join(',') : null });
   }
   const compared = $derived(chosen.map((id) => byId.get(id)).filter((r): r is Row => !!r));
+  // For each compared step, the scalars it is best (or worst) on among the steps compared, as the
+  // bold values show; a scalar on which all of them are equal counts for none.
+  function standing(worst: boolean): string[][] {
+    return compared.map((r) =>
+      metrics.filter((_, k) => {
+        if (compared.length < 2 || compared.every((o) => o.values[k] === r.values[k])) return false;
+        return compared.every(
+          (o) => !better(worst ? r.values[k] : o.values[k], worst ? o.values[k] : r.values[k], dirs[k]),
+        );
+      }),
+    );
+  }
+  const wins = $derived(standing(false));
+  const losses = $derived(standing(true));
 
   // ---- the shortlist table ----
   const sortBy = $derived(metrics.includes(router.get('order')) ? router.get('order') : metrics[0]);
@@ -988,6 +1002,21 @@
         {/each}
       {/each}
 
+      {#if compared.length > 1}
+        <div class="grp label">Summary <span class="sub">· among the steps compared</span></div>
+        {#each [['Best on', wins], ['Worst on', losses]] as const as [label, lists] (label)}
+          <div class="rh">{label}</div>
+          {#each compared as r, i (r.id)}
+            <div class="sum">
+              {#if lists[i].length}
+                <span class="count" class:win={label === 'Best on'}>{lists[i].length} of {metrics.length}</span>
+                {#each lists[i] as m (m)}<span class="mono small trunc" title={m}>{m}</span>{/each}
+              {:else}<span class="faint small">none</span>{/if}
+            </div>
+          {/each}
+        {/each}
+      {/if}
+
       {#if configDiff.length}
         <div class="grp label">Config <span class="sub">· only the keys that differ</span></div>
         {#each configDiff.slice(0, 30) as key (key)}
@@ -1413,6 +1442,20 @@
     white-space: normal;
     max-width: 40ch;
     color: var(--muted);
+  }
+  .sum {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .sum .count {
+    align-self: flex-start;
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .sum .count.win {
+    color: var(--accent);
   }
   td.actions {
     white-space: nowrap;
