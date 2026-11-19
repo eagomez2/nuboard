@@ -1106,7 +1106,8 @@
 {/if}
 
 {#if selecting}
-  <div class="card selbar" role="toolbar" aria-label="Selected media">
+  <div class="selpad" aria-hidden="true"></div>
+  <div class="selbar" role="toolbar" aria-label="Selected media">
     {#if zipping}
       <span class="zipnote">Downloading {zipping.done} of {zipping.total} · {mb(zipping.bytes)}</span>
       <div
@@ -1119,27 +1120,27 @@
       >
         <span style="width:{(100 * zipping.done) / zipping.total}%"></span>
       </div>
-      <button class="btn btn-ghost sm" onclick={() => zipAbort?.abort()}>Cancel</button>
+      <button class="btn btn-ghost" onclick={() => zipAbort?.abort()}>Cancel</button>
     {:else}
-      <span class:err={!!zipError}
+      <span class:selcount={!zipError && nPicked} class:hint={!zipError && !nPicked} class:err={!!zipError}
         >{zipError || (nPicked ? `${nPicked} selected` : 'Tick items to add them to a report or download them')}</span
       >
-      <span class="spacer"></span>
+      <span class="sep" aria-hidden="true"></span>
       <button
-        class="btn btn-ghost sm"
+        class="btn btn-ghost"
         onclick={selectShown}
         disabled={allShownPicked}
         title="Tick the item every card shows, in all the sections that match the filter"
         >Select all shown ({shownCount})</button
       >
-      <button class="btn btn-ghost sm" onclick={clearPicked} disabled={!nPicked}>Clear</button>
-      <button class="btn sm" disabled={!nPicked} onclick={downloadPicked}
-        ><Icon name="download" size={14} /> Download {nPicked || ''} as .zip</button
+      <button class="btn btn-ghost" onclick={clearPicked} disabled={!nPicked}>Clear</button>
+      <button class="btn btn-ghost" disabled={!nPicked} onclick={downloadPicked}
+        ><Icon name="download" size={15} /> Download {nPicked || ''} as .zip</button
       >
-      <button class="btn btn-primary sm" disabled={!nPicked} onclick={savePicked}
-        ><Icon name="bookmark" size={14} /> Add {nPicked || ''} to report</button
+      <button class="btn btn-primary" disabled={!nPicked} onclick={savePicked}
+        ><Icon name="bookmark" size={15} /> Add {nPicked || ''} to report</button
       >
-      <button class="btn btn-ghost sm" onclick={stopSelecting}>Done</button>
+      <button class="btn btn-ghost" onclick={stopSelecting}>Done</button>
     {/if}
   </div>
 {/if}
@@ -1340,23 +1341,14 @@
   .spacer {
     flex: 1;
   }
-  .selbar {
-    position: sticky;
-    bottom: 12px;
-    z-index: 5;
-    margin-top: 12px;
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+  .selbar .hint {
+    color: var(--muted);
   }
   .selbar .err {
     color: var(--err);
   }
   .zipbar {
-    flex: 1;
+    width: 180px;
     height: 6px;
     border-radius: 3px;
     background: var(--panel-2);

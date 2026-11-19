@@ -606,7 +606,7 @@
   {#if selected.length}
     <!-- floats at the bottom of the window, so ticking a box never pushes the table down -->
     <div class="selbar" role="toolbar" aria-label="Selected runs">
-      <span class="count">{selected.length} selected</span>
+      <span class="selcount">{selected.length} selected</span>
       <span class="sep" aria-hidden="true"></span>
       <button
         class="btn btn-ghost icon"
@@ -906,62 +906,6 @@
     gap: 8px;
     color: var(--muted);
     font-size: 13.5px;
-  }
-  .selbar {
-    position: fixed;
-    /* centred on the page area, right of the 64px rail */
-    left: calc(50% + 32px);
-    bottom: 24px;
-    transform: translateX(-50%);
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    max-width: calc(100vw - 64px - 32px);
-    overflow-x: auto;
-    padding: 6px 8px 6px 16px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow:
-      0 18px 48px rgb(0 0 0 / 0.22),
-      0 2px 6px rgb(0 0 0 / 0.08);
-    white-space: nowrap;
-  }
-  .selbar .count {
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 13.5px;
-    margin-right: 6px;
-  }
-  .selbar .sep {
-    flex: none;
-    width: 1px;
-    height: 22px;
-    margin: 0 6px;
-    background: var(--border);
-  }
-  .selbar .btn {
-    flex: none;
-  }
-  .selbar .icon {
-    width: 34px;
-    padding: 0;
-    justify-content: center;
-  }
-  .selbar .btn-primary {
-    margin-left: 4px;
-  }
-  /* room under the last row, so the floating bar never hides it */
-  .selpad {
-    height: 72px;
-  }
-  @media (max-width: 720px) {
-    .selbar {
-      left: 50%;
-      bottom: 12px;
-      max-width: calc(100vw - 24px);
-    }
   }
   /* display is set here because Tailwind's `table` utility (display: table) also
      matches this class, and a CSS table ignores overflow, so it never scrolled */

@@ -953,11 +953,18 @@
   </div>
 
   {#if tab !== 'compare' && chosen.length}
-    <div class="selbar">
-      <span><b>{compared.length}</b> step{compared.length === 1 ? '' : 's'} chosen</span>
-      <button class="btn" onclick={() => router.set({ rows: null })}>Clear</button>
+    <div class="selpad" aria-hidden="true"></div>
+    <div class="selbar" role="toolbar" aria-label="Chosen steps">
+      <span class="selcount">{compared.length} step{compared.length === 1 ? '' : 's'} chosen</span>
+      <span class="sep" aria-hidden="true"></span>
       <button class="btn btn-primary" onclick={() => router.set({ pane: 'compare' })}
-        ><Icon name="compare" size={14} /> Compare side by side</button
+        ><Icon name="compare" size={15} /> Compare side by side</button
+      >
+      <button
+        class="btn btn-ghost icon"
+        title="Clear the chosen steps"
+        aria-label="Clear"
+        onclick={() => router.set({ rows: null })}><Icon name="x" size={16} /></button
       >
     </div>
   {/if}
@@ -1602,32 +1609,6 @@
     padding-left: 20px;
     color: var(--muted);
     line-height: 1.7;
-  }
-  .selbar {
-    position: sticky;
-    bottom: 14px;
-    align-self: center;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px 8px 16px;
-    border-radius: 12px;
-    background: var(--text);
-    color: var(--bg);
-    font-size: 13px;
-    box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.4);
-    z-index: 4;
-  }
-  .selbar .btn:not(.btn-primary) {
-    background: transparent;
-    color: var(--bg);
-    border-color: color-mix(in srgb, var(--bg) 30%, transparent);
-  }
-  .selbar .btn-primary {
-    background: var(--bg);
-    color: var(--text);
-    border-color: var(--bg);
   }
   .cmp {
     display: grid;
