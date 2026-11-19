@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import { keyFilter } from '../lib/keyfilter';
+  import { tailName } from '../lib/format';
 
   /**
    * Pick one scalar out of many: a button that opens a searchable list (type to narrow, ↑ ↓ and
@@ -122,7 +123,8 @@
       title={title ?? value}
       {disabled}
       onclick={toggle}
-      ><span class="val" class:faint={!value}>{value || none || '—'}</span><Icon name="chevron" size={13} /></button
+      ><span class="val" class:faint={!value}>{value ? tailName(value, size === 'sm' ? 20 : 26) : none || '—'}</span
+      ><Icon name="chevron" size={13} /></button
     >
   {/if}
   {#if open}

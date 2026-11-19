@@ -7,7 +7,7 @@
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { directionOf } from '../lib/directions.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
-  import { fmtAxis, fmtDate, fmtNum, fmtValue } from '../lib/format';
+  import { fmtAxis, fmtDate, fmtNum, fmtValue, tailName } from '../lib/format';
   import { onLive } from '../lib/live';
   import { addSnapshotToReport } from '../lib/reports.svelte';
   import { router } from '../lib/router.svelte';
@@ -524,8 +524,8 @@
               >
               <td class="mono">{p.step.toLocaleString()}</td>
               <td class="l mono small"
-                >{#each Object.entries(p.metrics) as [m, v] (m)}<span class="kv"
-                    >{m} {p.directions[m] ? arrow(p.directions[m]) : ''} <b>{fmtNum(v)}</b></span
+                >{#each Object.entries(p.metrics) as [m, v] (m)}<span class="kv" title={m}
+                    >{tailName(m, 30)} {p.directions[m] ? arrow(p.directions[m]) : ''} <b>{fmtNum(v)}</b></span
                   >{/each}</td
               >
               <td class="l"
@@ -582,7 +582,7 @@
         {@const n = data?.coverage[m]}
         <div class="mrow">
           <div class="mname">
-            <span class="mono trunc" title={m}>{m}</span>
+            <span class="mono trunc" title={m}>{tailName(m, 21)}</span>
             {#if n !== undefined}<span class="cov" class:part={n < runs.length}>{n} of {runs.length} runs</span>{/if}
           </div>
           <button
@@ -722,10 +722,14 @@
                   <text class="tick" x={PL - 6} y={Y(t) + 4} text-anchor="end">{fmtAxis(t)}</text>
                 {/each}
                 <text class="axt" x={(PL + plotW - PR) / 2} y={PH - 6} text-anchor="middle"
-                  >{ax}{dirOn(ax) ? ` ${arrow(dirOn(ax)!)} better →` : ''}</text
+                  >{tailName(ax, Math.max(12, Math.floor((plotW - PL - PR) / 7.2) - 12))}{dirOn(ax)
+                    ? ` ${arrow(dirOn(ax)!)} better →`
+                    : ''}<title>{ax}</title></text
                 >
                 <text class="axt" transform="translate(13 {(PT + PH - PB) / 2}) rotate(-90)" text-anchor="middle"
-                  >{ay}{dirOn(ay) ? ` ${arrow(dirOn(ay)!)} better →` : ''}</text
+                  >{tailName(ay, Math.max(12, Math.floor((PH - PT - PB) / 7.2) - 12))}{dirOn(ay)
+                    ? ` ${arrow(dirOn(ay)!)} better →`
+                    : ''}<title>{ay}</title></text
                 >
                 <g clip-path="url(#tradeoff-clip)">
                   {#each others.filter(inside) as r (r.id)}
@@ -783,7 +787,7 @@
                   {#each tipCols as k (k)}
                     {@const m = metrics[k]}
                     <div class="tr">
-                      <span class="mono faint trunc" title={m}>{m}</span><span
+                      <span class="mono faint" title={m}>{tailName(m, 34)}</span><span
                         class="mono"
                         class:best={best[k] >= 0 && front[best[k]] === hover}>{fmtNum(hover.values[k])}</span
                       >
@@ -836,8 +840,11 @@
                     <th></th><th class="l">Run</th><th>Step</th>
                     {#each metrics as m, k (m)}
                       <th
-                        ><button class="sort mono" class:on={sortBy === m} onclick={() => router.set({ order: m })}
-                          >{m} {arrow(dirs[k])}</button
+                        ><button
+                          class="sort mono"
+                          class:on={sortBy === m}
+                          onclick={() => router.set({ order: m })}
+                          title={m}>{tailName(m, 26)} {arrow(dirs[k])}</button
                         ></th
                       >
                     {/each}
@@ -857,7 +864,9 @@
                         /></td
                       >
                       <td class="l"
-                        ><i class="dot" style="background:{color(r)}"></i><span class="mono">{runOf(r).name}</span
+                        ><i class="dot" style="background:{color(r)}"></i><span
+                          class="mono runname"
+                          title={runOf(r).name}>{runOf(r).name}</span
                         >{#if projects.length > 1}<span class="faint"> · {runOf(r).project}</span>{/if}</td
                       >
                       <td class="mono">{r.step.toLocaleString()}</td>
@@ -882,7 +891,7 @@
                           >{/if}
                         {#each metrics as m, k (m)}
                           {#if front[best[k]] === r}<span class="badge best" title="Best {m} on the shortlist"
-                              >best {m.split('/').pop()}</span
+                              >best {tailName(m.split('/').pop() ?? m, 22)}</span
                             >{/if}
                         {/each}
                       </td>
@@ -949,7 +958,7 @@
       <button class="btn" onclick={() => router.set({ pane: null })}>Back to the shortlist</button>
     </div>
   {:else}
-    <div class="card cmp" style="grid-template-columns: 190px repeat({compared.length}, minmax(180px, 1fr))">
+    <div class="card cmp" style="grid-template-columns: 230px repeat({compared.length}, minmax(180px, 1fr))">
       <div class="ch"><span class="label">{compared.length} step{compared.length === 1 ? '' : 's'}</span></div>
       {#each compared as r (r.id)}
         <div class="ch">
@@ -974,7 +983,7 @@
         Scalars at that step <span class="sub">· the dashed line marks the step on the whole run</span>
       </div>
       {#each metrics as m, k (m)}
-        <div class="rh mono">{m} {arrow(dirs[k])}</div>
+        <div class="rh mono" title={m}>{tailName(m, 24)}&nbsp;{arrow(dirs[k])}</div>
         {#each compared as r (r.id)}
           {@const top = compared.every((o) => !better(o.values[k], r.values[k], dirs[k]))}
           {@const sp = spark(r.key, m, r.step)}
@@ -1010,7 +1019,7 @@
             <div class="sum">
               {#if lists[i].length}
                 <span class="count" class:win={label === 'Best on'}>{lists[i].length} of {metrics.length}</span>
-                {#each lists[i] as m (m)}<span class="mono small trunc" title={m}>{m}</span>{/each}
+                {#each lists[i] as m (m)}<span class="mono small" title={m}>{tailName(m, 34)}</span>{/each}
               {:else}<span class="faint small">none</span>{/if}
             </div>
           {/each}
@@ -1020,7 +1029,7 @@
       {#if configDiff.length}
         <div class="grp label">Config <span class="sub">· only the keys that differ</span></div>
         {#each configDiff.slice(0, 30) as key (key)}
-          <div class="rh mono" title={key}><span class="trunc">{key}</span></div>
+          <div class="rh mono" title={key}><span class="trunc">{tailName(key, 26)}</span></div>
           {#each compared as r (r.id)}
             <div class="mono cfg trunc">{fmtValue(config?.values[key]?.[r.key])}</div>
           {/each}
@@ -1457,6 +1466,14 @@
   .sum .count.win {
     color: var(--accent);
   }
+  .runname {
+    display: inline-block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
   td.actions {
     white-space: nowrap;
   }
@@ -1621,6 +1638,8 @@
     font-size: 12.5px;
     display: flex;
     align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
   }
   .rh.top {
     align-items: flex-start;
