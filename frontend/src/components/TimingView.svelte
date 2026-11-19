@@ -331,12 +331,14 @@
             {@const p = sparkPaths(t.series)}
             <tr class="row" class:open={open === t.name} onclick={() => (open = open === t.name ? null : t.name)}>
               <td class="name">
-                <span class="chev">{open === t.name ? '▾' : '▸'}</span>
-                <span style="padding-left: {t.depth * 14}px"></span>
-                {#if t.depth}<span class="tree">└</span>{/if}
-                <span class="sw" style="background: {colorOf(t.name)}"></span><span class="mono">{t.name}</span>
-                {#if t.accumulated}<span class="acc" title="Logged with accumulate=True: summed per step">summed</span
-                  >{/if}
+                <div class="name-in">
+                  <span class="chev">{open === t.name ? '▾' : '▸'}</span>
+                  <span style="padding-left: {t.depth * 14}px"></span>
+                  {#if t.depth}<span class="tree">└</span>{/if}
+                  <span class="sw" style="background: {colorOf(t.name)}"></span><span class="mono">{t.name}</span>
+                  {#if t.accumulated}<span class="acc" title="Logged with accumulate=True: summed per step">summed</span
+                    >{/if}
+                </div>
               </td>
               <td class="num" title={Math.round(t.calls).toLocaleString('en')}>{fmtCount(t.calls)}</td>
               <td class="num">{fmtSeconds(t.mean)}</td>
@@ -438,7 +440,9 @@
           {#if summary.waiting}
             {@const p = sparkPaths(summary.waiting.series)}
             <tr class="extra">
-              <td class="name"><span class="chev"></span><span class="sw hatch"></span>waiting for other ranks</td>
+              <td class="name"
+                ><div class="name-in"><span class="chev"></span><span class="sw hatch"></span>waiting for other ranks</div></td
+              >
               <td class="num"></td>
               <td class="num">{fmtSeconds(summary.waiting.mean)}</td>
               <td class="num">{fmtSeconds(summary.waiting.p95)}</td>
@@ -465,7 +469,7 @@
           {#if summary.untimed}
             <tr class="extra">
               <td class="name" title="Wall time when no timer was running"
-                ><span class="chev"></span><span class="sw empty"></span>not under a timer</td
+                ><div class="name-in"><span class="chev"></span><span class="sw empty"></span>not under a timer</div></td
               >
               <td class="num"></td>
               <td class="num">{fmtSeconds(summary.untimed.mean)}</td>
@@ -703,7 +707,9 @@
   tr.open td {
     background: var(--accent-soft);
   }
-  .name {
+  /* the cell stays a table cell (a flex td stops at its content's height, so its divider
+     sat above the rest of the row); the flex layout lives inside it */
+  .name-in {
     display: flex;
     align-items: center;
   }

@@ -2310,6 +2310,14 @@ test("the Timing tab shows where a run's time went, per rank", async ({ page }) 
   await expect(rows.nth(1)).toContainText('summed');
   await expect(page.getByText('waiting for other ranks')).toBeVisible();
   await expect(page.getByText('not under a timer')).toBeVisible();
+  // every cell of a row ends at the row's bottom, so the dividers run straight across
+  const offsets = await page.locator('tr.row, tr.extra').evaluateAll((trs) =>
+    trs.flatMap((tr) => {
+      const bottom = tr.getBoundingClientRect().bottom;
+      return [...tr.children].map((td) => Math.abs(td.getBoundingClientRect().bottom - bottom));
+    }),
+  );
+  expect(Math.max(...offsets)).toBeLessThan(1);
   // a lane per rank in the timeline
   await expect(page.locator('svg text', { hasText: /^rank 3$/ })).toBeVisible();
   // a row opens its chart, which jumps to Charts on that scalar
