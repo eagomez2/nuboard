@@ -122,6 +122,8 @@
     ),
   );
   const color = (r: StepRows) => seriesVar(r.run);
+  // the scalars a shortlisted step is best on, for its badge
+  const bestOn = (r: StepRows) => metrics.filter((_, k) => front[best[k]] === r);
 
   // ---- picks ----
   let picks = $state<SavedPick[]>([]);
@@ -434,7 +436,7 @@
       ...(options.length
         ? [
             {
-              label: 'Checkpoint to go with it',
+              label: 'Artifact to go with it',
               options: [...options, { value: '', label: 'None' }],
               value: options[0].value,
             },
@@ -508,7 +510,7 @@
       <table>
         <thead
           ><tr
-            ><th class="l">Run</th><th>Step</th><th class="l">Scalars when picked</th><th class="l">Checkpoint</th><th
+            ><th class="l">Run</th><th>Step</th><th class="l">Scalars when picked</th><th class="l">Artifact</th><th
               class="l">Why</th
             ><th class="l">When</th><th></th></tr
           ></thead
@@ -553,7 +555,7 @@
                   >{/if}
                 <button
                   class="btn btn-ghost sm icon-btn"
-                  title="Edit the note and checkpoint"
+                  title="Edit the note and artifact"
                   aria-label="Edit pick"
                   onclick={() => editNote(p)}><Icon name="edit" size={14} /></button
                 >
@@ -850,7 +852,7 @@
                         ></th
                       >
                     {/each}
-                    <th class="l">Checkpoints</th><th class="l"></th>
+                    <th class="l">Artifacts</th><th class="l"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -885,17 +887,25 @@
                             onclick={() => openCheckpoint(c)}><Icon name="artifact" size={11} /> {ckptLabel(c)}</button
                           >
                         {:else}
-                          <span class="faint small">none</span>
+                          <span
+                            class="faint small"
+                            title="No artifact logged at this step. A checkpoint saved only to disk shows here once it is logged with run.add_artifact(..., step=step)"
+                            >none</span
+                          >
                         {/each}
                       </td>
                       <td class="l tags">
                         {#if pickedIds.has(r.id)}<span class="badge pick"><Icon name="flag" size={11} /> picked</span
                           >{/if}
-                        {#each metrics as m, k (m)}
-                          {#if front[best[k]] === r}<span class="badge best" title="Best {m} on the shortlist"
-                              >best {tailName(m.split('/').pop() ?? m, 22)}</span
-                            >{/if}
-                        {/each}
+                        {#if bestOn(r).length === 1}<span
+                            class="badge best"
+                            title="Best {bestOn(r)[0]} on the shortlist"
+                            >Best <span class="mono">{tailName(bestOn(r)[0], 26)}</span></span
+                          >{:else if bestOn(r).length > 1}<span
+                            class="badge best"
+                            title={`Best on the shortlist for:\n${bestOn(r).join('\n')}`}
+                            >Best on {bestOn(r).length === metrics.length ? 'all' : bestOn(r).length} scalars</span
+                          >{/if}
                       </td>
                     </tr>
                   {/each}
@@ -1038,7 +1048,7 @@
         {/each}
       {/if}
 
-      <div class="grp label">Checkpoints</div>
+      <div class="grp label">Artifacts <span class="sub">· logged by the run</span></div>
       <div class="rh">at that step</div>
       {#each compared as r (r.id)}
         {@const ck = checkpointsAt(r)}
@@ -1049,7 +1059,9 @@
               ><Icon name="artifact" size={11} /> {ckptLabel(c)}</button
             >
           {:else}
-            <span class="faint small"
+            <span
+              class="faint small"
+              title="No artifact logged at this step. A checkpoint saved only to disk shows here once it is logged with run.add_artifact(..., step=step)"
               >none{near ? ` · nearest is ${ckptLabel(near)} at step ${near.step!.toLocaleString()}` : ''}</span
             >
           {/each}
@@ -1552,9 +1564,16 @@
     background: var(--panel-2);
     color: var(--muted);
   }
+  /* the scalar's name as logged and as its column shows it, never recased */
   .badge.best {
     background: var(--accent-soft);
     color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+  .badge.best .mono {
+    font-size: 11px;
   }
   .badge.pick {
     background: var(--warn-bg);
