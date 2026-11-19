@@ -893,7 +893,7 @@
                           >{/if}
                         {#each metrics as m, k (m)}
                           {#if front[best[k]] === r}<span class="badge best" title="Best {m} on the shortlist"
-                              >best {tailName(m.split('/').pop() ?? m, 22)}</span
+                              >Best <span class="mono">{tailName(m, 26)}</span></span
                             >{/if}
                         {/each}
                       </td>
@@ -1552,9 +1552,16 @@
     background: var(--panel-2);
     color: var(--muted);
   }
+  /* the scalar's name as logged and as its column shows it, never recased */
   .badge.best {
     background: var(--accent-soft);
     color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+  .badge.best .mono {
+    font-size: 11px;
   }
   .badge.pick {
     background: var(--warn-bg);
