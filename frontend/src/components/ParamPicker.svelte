@@ -166,9 +166,11 @@
                 {#each g.items as p (p.key)}
                   <label class="row" class:sub={!!g.prefix} class:hid={hidden(p.key)} title={p.key}>
                     <input type="checkbox" checked={chosen.includes(p.key)} onchange={() => toggle(p.key)} />
-                    <span class="key mono trunc" aria-label={p.key}
-                      >{#each rest(p.key, g.prefix) as part, i (i)}{#if part.mark}<mark>{part.text}</mark
-                          >{:else}{part.text}{/if}{/each}</span
+                    <span class="key mono trunc tail" aria-label={p.key}
+                      ><span dir="ltr"
+                        >{#each rest(p.key, g.prefix) as part, i (i)}{#if part.mark}<mark>{part.text}</mark
+                            >{:else}{part.text}{/if}{/each}</span
+                      ></span
                     >
                     <span class="meta">
                       {#if p.many}<span
@@ -251,7 +253,7 @@
         drop(key);
       }}
     >
-      <span class="mono trunc">{short(key)}</span>
+      <span class="mono trunc tail" title={key}><span dir="ltr">{short(key)}</span></span>
       {#if p?.score != null}<span class="imp"><span style="width:{p.score * 100}%"></span></span>{/if}
       <button class="x" aria-label="Remove {key}" onclick={() => toggle(key)}>×</button>
     </span>

@@ -561,7 +561,7 @@
       {@const a = axes[params.indexOf(p)]}
       <div class="card scatter" bind:clientWidth={scatterW}>
         <div class="sh">
-          <span class="mono trunc" title={p}>{short(p)}</span>
+          <span class="mono trunc tail" title={p}><span dir="ltr">{short(p)}</span></span>
           {#if scores.get(p) !== null && scores.get(p) !== undefined}<span class="faint keep"
               >Correlation {fmtNum(scores.get(p)!, 2)}</span
             >{/if}
@@ -629,8 +629,11 @@
         <tr>
           <th>#</th>
           <th>Run</th>
-          {#each params as p (p)}<th class="mono"><span class="trunc cell" title={p}>{short(p)}</span></th>{/each}
-          <th class="right mono"><span class="trunc cell" title={metric}>{metric}</span></th>
+          {#each params as p (p)}<th class="mono"
+              ><span class="trunc tail cell" title={p}><span dir="ltr">{short(p)}</span></span></th
+            >{/each}
+          <th class="right mono"><span class="trunc tail cell" title={metric}><span dir="ltr">{metric}</span></span></th
+          >
         </tr>
       </thead>
       <tbody>

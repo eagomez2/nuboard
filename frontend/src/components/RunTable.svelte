@@ -763,7 +763,7 @@
               </span>
               <span class="subline">
                 {#if r.tags.length}<TagPills tags={r.tags} max={3} />{/if}
-                <span class="path mono" title={r.path}>{r.path}/</span>
+                <span class="path mono tail" title={r.path}><span dir="ltr">{r.path}/</span></span>
               </span>
             </span>
             {#each cols as c (c)}

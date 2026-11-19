@@ -151,7 +151,7 @@
 
 <div class="card small" bind:this={el}>
   <button class="title" onclick={onFocus} title="{metric}: click to bring into focus">
-    <span class="mono name">{metric}</span>
+    <span class="mono name tail"><span dir="ltr">{metric}</span></span>
     <span class="note">{note}</span>
   </button>
   {#if error}

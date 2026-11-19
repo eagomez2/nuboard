@@ -507,7 +507,9 @@ run.use_artifact("dataset:latest")</pre>
             <div class="label">Metadata</div>
             {#each Object.entries(selected.manifest.metadata ?? {}) as [k, v] (k)}
               <div class="kv">
-                <span class="mono faint trunc" title={k}>{k}</span><span class="mono kval">{fmtValue(v)}</span>
+                <span class="mono faint trunc tail" title={k}><span dir="ltr">{k}</span></span><span class="mono kval"
+                  >{fmtValue(v)}</span
+                >
               </div>
             {:else}
               <p class="faint">None.</p>

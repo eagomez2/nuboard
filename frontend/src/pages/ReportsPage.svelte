@@ -255,8 +255,8 @@
     {:else}
       <div class="toolbar">
         <h2 title={current.title}>{current.title}</h2>
-        <span class="faint small mono path" title="{current.project}/reports/{current.name}.md"
-          >{current.project}/reports/{current.name}.md</span
+        <span class="faint small mono path tail" title="{current.project}/reports/{current.name}.md"
+          ><span dir="ltr">{current.project}/reports/{current.name}.md</span></span
         >
         <span class="faint small state">{saving ? 'Saving…' : text === savedText ? 'Saved' : 'Editing'}</span>
         <div class="seg" role="group" aria-label="View">

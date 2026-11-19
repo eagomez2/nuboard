@@ -606,7 +606,9 @@
       />
       {#if !metrics.length && suggestions.length}
         <div class="suggest">
-          {#each suggestions as s (s)}<button class="chip mono" onclick={() => addMetric(s)}>+ {s}</button>{/each}
+          {#each suggestions as s (s)}<button class="chip mono" title={s} onclick={() => addMetric(s)}
+              >+<span class="tail"><span dir="ltr">{s}</span></span></button
+            >{/each}
         </div>
       {/if}
       {#if metrics.length}
@@ -1198,6 +1200,11 @@
   .suggest .chip {
     cursor: pointer;
     color: var(--accent);
+    max-width: 100%;
+    gap: 4px;
+  }
+  .suggest .tail {
+    min-width: 0;
   }
   .note-line {
     display: flex;

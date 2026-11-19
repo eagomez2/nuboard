@@ -147,9 +147,11 @@
             data-i={i}
             aria-selected={i === index}
             class:on={m === value}
+            class:tail={m !== ''}
             title={m || none}
             onmouseenter={() => (index = i)}
-            onclick={() => pick(m)}>{m || none}</button
+            onclick={() => pick(m)}
+            >{#if m}<span dir="ltr">{m}</span>{:else}{none}{/if}</button
           >
         {:else}
           <p class="faint small">No scalar matches “{find}”.</p>
