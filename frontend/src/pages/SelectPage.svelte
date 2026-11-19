@@ -436,7 +436,7 @@
       ...(options.length
         ? [
             {
-              label: 'Checkpoint to go with it',
+              label: 'Artifact to go with it',
               options: [...options, { value: '', label: 'None' }],
               value: options[0].value,
             },
@@ -510,7 +510,7 @@
       <table>
         <thead
           ><tr
-            ><th class="l">Run</th><th>Step</th><th class="l">Scalars when picked</th><th class="l">Checkpoint</th><th
+            ><th class="l">Run</th><th>Step</th><th class="l">Scalars when picked</th><th class="l">Artifact</th><th
               class="l">Why</th
             ><th class="l">When</th><th></th></tr
           ></thead
@@ -555,7 +555,7 @@
                   >{/if}
                 <button
                   class="btn btn-ghost sm icon-btn"
-                  title="Edit the note and checkpoint"
+                  title="Edit the note and artifact"
                   aria-label="Edit pick"
                   onclick={() => editNote(p)}><Icon name="edit" size={14} /></button
                 >
@@ -852,7 +852,7 @@
                         ></th
                       >
                     {/each}
-                    <th class="l">Checkpoints</th><th class="l"></th>
+                    <th class="l">Artifacts</th><th class="l"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -887,7 +887,11 @@
                             onclick={() => openCheckpoint(c)}><Icon name="artifact" size={11} /> {ckptLabel(c)}</button
                           >
                         {:else}
-                          <span class="faint small">none</span>
+                          <span
+                            class="faint small"
+                            title="No artifact logged at this step. A checkpoint saved only to disk shows here once it is logged with run.add_artifact(..., step=step)"
+                            >none</span
+                          >
                         {/each}
                       </td>
                       <td class="l tags">
@@ -1044,7 +1048,7 @@
         {/each}
       {/if}
 
-      <div class="grp label">Checkpoints</div>
+      <div class="grp label">Artifacts <span class="sub">· logged by the run</span></div>
       <div class="rh">at that step</div>
       {#each compared as r (r.id)}
         {@const ck = checkpointsAt(r)}
@@ -1055,7 +1059,9 @@
               ><Icon name="artifact" size={11} /> {ckptLabel(c)}</button
             >
           {:else}
-            <span class="faint small"
+            <span
+              class="faint small"
+              title="No artifact logged at this step. A checkpoint saved only to disk shows here once it is logged with run.add_artifact(..., step=step)"
               >none{near ? ` · nearest is ${ckptLabel(near)} at step ${near.step!.toLocaleString()}` : ''}</span
             >
           {/each}

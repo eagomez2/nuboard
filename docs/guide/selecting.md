@@ -74,16 +74,19 @@ bold where it is the best of the steps compared), its rank on the shortlist
 marked, which shows whether the run was still improving or already drifting.
 **Summary** lists, for each step, the scalars it is the best and the worst
 on among the steps compared. Below are the config keys that differ and the
-checkpoints at that step.
+artifacts the run logged at that step.
 
-**Pick this step** asks why, and which checkpoint goes with it. The pick is
+**Pick this step** asks why, and which artifact (such as a checkpoint) goes
+with it. The pick is
 saved in the project's `picks.json`, with the scalars' values and directions
 at the time, so it can be committed to git and read later. **Picks** lists
 them; each pick can be opened in Charts, edited or removed.
 
-## Checkpoints
+## Artifacts at a step
 
-A checkpoint is listed next to a step when it was saved with that step:
+The **Artifacts** column lists the artifact versions a run logged, next to
+the step they belong to. A checkpoint file saved to disk without
+`add_artifact` is not listed: log it as an artifact, with its step:
 
 ```python
 run.add_artifact("model", "ckpt/", type="checkpoint", step=step)
