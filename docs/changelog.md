@@ -11,6 +11,10 @@
   `…/experiments/demo-runs`, instead of cutting off the folder name, and its
   icon no longer shrinks. The same goes for the root folder in the Runs
   page's workspace list.
+- **Baselines in the small charts' tooltips.** Hovering a chart under **All
+  scalars** now lists its baseline (and range, if set) under the runs'
+  values, as the inspector does for the chart in focus. It follows the
+  **Baseline** toggle.
 
 ## 0.31.1
 
