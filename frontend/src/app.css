@@ -212,6 +212,15 @@ button.btn-primary {
 }
 
 @layer components {
+  /* A long metric name or path loses its start, not the end that tells it apart
+     (`…/per_class/acc_cat`). Wrap the text in `<span dir="ltr">` so punctuation keeps its place. */
+  .tail {
+    direction: rtl;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .card {
     background: var(--panel);
     border: 1px solid var(--border);

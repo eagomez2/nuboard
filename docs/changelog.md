@@ -33,6 +33,13 @@ the Python API keep working as before.
   `…/experiments/demo-runs`, instead of cutting off the folder name, and its
   icon no longer shrinks. The same goes for the root folder in the Runs
   page's workspace list.
+- **Long metric names keep their end.** Wherever a scalar name, config key
+  or path is too long to fit, it now loses its start instead of its end
+  (`…/per_class/acc_cat`), so names that share a long prefix stay
+  distinguishable: chart titles, the focus chart's picker and inspector,
+  **Best** on the Charts page, the scalar picker's list, Sweeps, Artifacts,
+  the parameter picker, run paths and the report path. The full name shows on
+  hover. Run names and other labels are still cut at the end.
 - **Baselines in the small charts' tooltips.** Hovering a chart under **All
   scalars** now lists its baseline (and range, if set) under the runs'
   values, as the inspector does for the chart in focus. It follows the

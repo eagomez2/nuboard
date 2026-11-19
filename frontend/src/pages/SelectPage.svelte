@@ -7,7 +7,7 @@
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { directionOf } from '../lib/directions.svelte';
   import { FullScreen } from '../lib/fullscreen.svelte';
-  import { fmtAxis, fmtDate, fmtNum, fmtValue } from '../lib/format';
+  import { fmtAxis, fmtDate, fmtNum, fmtValue, tailName } from '../lib/format';
   import { onLive } from '../lib/live';
   import { addSnapshotToReport } from '../lib/reports.svelte';
   import { router } from '../lib/router.svelte';
@@ -19,8 +19,9 @@
   // A row is a run at a step where every chosen scalar was logged; the shortlist holds the rows no
   // other row beats on every scalar (the server finds it, see nuboard/selection.py). Rows can be
   // compared side by side and picked with a note, saved in the project's picks.json.
-  // URL: `m` the scalars, `dirs` this view's own direction of each (empty: the project's), `x` and
-  // `y` the scatter axes, `rows` the rows to compare, `sort` the shortlist's column, `tab`.
+  // URL: `m` the scalars, `dirs` this view's own direction of each (empty: the project's), `tx` and
+  // `ty` the scatter axes, `rows` the rows to compare, `order` the shortlist's column, `pane` the
+  // tab. Names other pages use (`x`, `sort`, `tab`) are avoided, as the URL is kept across pages.
 
   const MAX_COMPARE = 6;
   const SHOWN = 100; // shortlist rows shown before "Show all"
@@ -29,7 +30,7 @@
   const runKeys = $derived(runs.map((r) => r.key));
   const projects = $derived([...new Set(runs.map((r) => r.project))].sort());
   const allMetrics = $derived(app.runs?.metrics ?? []);
-  const tab = $derived(router.get('tab', 'shortlist'));
+  const tab = $derived(router.get('pane', 'shortlist'));
 
   // ---- the scalars and which way is better for each ----
   const metrics = $derived(router.list('m'));
@@ -141,9 +142,23 @@
     router.set({ rows: next.length ? next.join(',') : null });
   }
   const compared = $derived(chosen.map((id) => byId.get(id)).filter((r): r is Row => !!r));
+  // For each compared step, the scalars it is best (or worst) on among the steps compared, as the
+  // bold values show; a scalar on which all of them are equal counts for none.
+  function standing(worst: boolean): string[][] {
+    return compared.map((r) =>
+      metrics.filter((_, k) => {
+        if (compared.length < 2 || compared.every((o) => o.values[k] === r.values[k])) return false;
+        return compared.every(
+          (o) => !better(worst ? r.values[k] : o.values[k], worst ? o.values[k] : r.values[k], dirs[k]),
+        );
+      }),
+    );
+  }
+  const wins = $derived(standing(false));
+  const losses = $derived(standing(true));
 
   // ---- the shortlist table ----
-  const sortBy = $derived(metrics.includes(router.get('sort')) ? router.get('sort') : metrics[0]);
+  const sortBy = $derived(metrics.includes(router.get('order')) ? router.get('order') : metrics[0]);
   const sorted = $derived.by(() => {
     const k = metrics.indexOf(sortBy);
     if (k < 0) return front;
@@ -165,10 +180,10 @@
 
   // ---- the scatter plot ----
   const axes = $derived(['step', ...metrics]);
-  const ax = $derived(axes.includes(router.get('x')) ? router.get('x') : (metrics[0] ?? 'step'));
+  const ax = $derived(axes.includes(router.get('tx')) ? router.get('tx') : (metrics[0] ?? 'step'));
   const ay = $derived(
-    axes.includes(router.get('y'))
-      ? router.get('y')
+    axes.includes(router.get('ty'))
+      ? router.get('ty')
       : metrics.length > 1
         ? metrics[1]
         : metrics[0] === ax
@@ -472,13 +487,13 @@
 
 <div class="toolbar">
   <div class="seg" aria-label="Select page view">
-    <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ tab: null })}
+    <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ pane: null })}
       >Shortlist{#if data}<span class="count">{data.front_count}</span>{/if}</button
     >
-    <button aria-pressed={tab === 'compare'} onclick={() => router.set({ tab: 'compare' })}
+    <button aria-pressed={tab === 'compare'} onclick={() => router.set({ pane: 'compare' })}
       >Compare<span class="count">{compared.length}</span></button
     >
-    <button aria-pressed={tab === 'picks'} onclick={() => router.set({ tab: 'picks' })}
+    <button aria-pressed={tab === 'picks'} onclick={() => router.set({ pane: 'picks' })}
       >Picks<span class="count">{shownPicks.length}</span></button
     >
   </div>
@@ -509,8 +524,8 @@
               >
               <td class="mono">{p.step.toLocaleString()}</td>
               <td class="l mono small"
-                >{#each Object.entries(p.metrics) as [m, v] (m)}<span class="kv"
-                    >{m} {p.directions[m] ? arrow(p.directions[m]) : ''} <b>{fmtNum(v)}</b></span
+                >{#each Object.entries(p.metrics) as [m, v] (m)}<span class="kv" title={m}
+                    >{tailName(m, 30)} {p.directions[m] ? arrow(p.directions[m]) : ''} <b>{fmtNum(v)}</b></span
                   >{/each}</td
               >
               <td class="l"
@@ -529,12 +544,24 @@
               <td class="l faint">{fmtDate(p.edited ?? p.created)}</td>
               <td class="actions">
                 {#if p.key}<button
-                    class="btn btn-ghost sm"
-                    onclick={() => router.go('charts', { sel: p.key!, tab: null })}>Charts</button
+                    class="btn btn-ghost sm icon-btn"
+                    title="Open this run in Charts"
+                    aria-label="Open {p.run_name || p.run} in Charts"
+                    onclick={() =>
+                      router.go('charts', { sel: p.key!, metric: Object.keys(p.metrics)[0] ?? null, tab: null })}
+                    ><Icon name="charts" size={14} /></button
                   >{/if}
-                <button class="btn btn-ghost sm" onclick={() => editNote(p)}>Edit</button>
-                <button class="btn btn-ghost sm" aria-label="Remove pick" onclick={() => removePick(p)}
-                  ><Icon name="trash" size={14} /></button
+                <button
+                  class="btn btn-ghost sm icon-btn"
+                  title="Edit the note and checkpoint"
+                  aria-label="Edit pick"
+                  onclick={() => editNote(p)}><Icon name="edit" size={14} /></button
+                >
+                <button
+                  class="btn btn-ghost sm icon-btn"
+                  title="Remove this pick"
+                  aria-label="Remove pick"
+                  onclick={() => removePick(p)}><Icon name="trash" size={14} /></button
                 >
               </td>
             </tr>
@@ -555,7 +582,7 @@
         {@const n = data?.coverage[m]}
         <div class="mrow">
           <div class="mname">
-            <span class="mono trunc" title={m}>{m}</span>
+            <span class="mono trunc" title={m}>{tailName(m, 21)}</span>
             {#if n !== undefined}<span class="cov" class:part={n < runs.length}>{n} of {runs.length} runs</span>{/if}
           </div>
           <button
@@ -579,7 +606,9 @@
       />
       {#if !metrics.length && suggestions.length}
         <div class="suggest">
-          {#each suggestions as s (s)}<button class="chip mono" onclick={() => addMetric(s)}>+ {s}</button>{/each}
+          {#each suggestions as s (s)}<button class="chip mono" title={s} onclick={() => addMetric(s)}
+              >+<span class="tail"><span dir="ltr">{s}</span></span></button
+            >{/each}
         </div>
       {/if}
       {#if metrics.length}
@@ -626,7 +655,7 @@
                 value={ax}
                 size="sm"
                 ariaLabel="X axis"
-                onpick={(m) => router.set({ x: m })}
+                onpick={(m) => router.set({ tx: m })}
               /></span
             >
             <span class="axis"
@@ -636,7 +665,7 @@
                 value={ay}
                 size="sm"
                 ariaLabel="Y axis"
-                onpick={(m) => router.set({ y: m })}
+                onpick={(m) => router.set({ ty: m })}
               /></span
             >
             {#if zoomed}<button class="btn" onclick={() => (zoom = null)}>Reset zoom</button>{/if}
@@ -695,10 +724,14 @@
                   <text class="tick" x={PL - 6} y={Y(t) + 4} text-anchor="end">{fmtAxis(t)}</text>
                 {/each}
                 <text class="axt" x={(PL + plotW - PR) / 2} y={PH - 6} text-anchor="middle"
-                  >{ax}{dirOn(ax) ? ` ${arrow(dirOn(ax)!)} better →` : ''}</text
+                  >{tailName(ax, Math.max(12, Math.floor((plotW - PL - PR) / 7.2) - 12))}{dirOn(ax)
+                    ? ` ${arrow(dirOn(ax)!)} better →`
+                    : ''}<title>{ax}</title></text
                 >
                 <text class="axt" transform="translate(13 {(PT + PH - PB) / 2}) rotate(-90)" text-anchor="middle"
-                  >{ay}{dirOn(ay) ? ` ${arrow(dirOn(ay)!)} better →` : ''}</text
+                  >{tailName(ay, Math.max(12, Math.floor((PH - PT - PB) / 7.2) - 12))}{dirOn(ay)
+                    ? ` ${arrow(dirOn(ay)!)} better →`
+                    : ''}<title>{ay}</title></text
                 >
                 <g clip-path="url(#tradeoff-clip)">
                   {#each others.filter(inside) as r (r.id)}
@@ -756,7 +789,7 @@
                   {#each tipCols as k (k)}
                     {@const m = metrics[k]}
                     <div class="tr">
-                      <span class="mono faint trunc" title={m}>{m}</span><span
+                      <span class="mono faint" title={m}>{tailName(m, 34)}</span><span
                         class="mono"
                         class:best={best[k] >= 0 && front[best[k]] === hover}>{fmtNum(hover.values[k])}</span
                       >
@@ -809,8 +842,11 @@
                     <th></th><th class="l">Run</th><th>Step</th>
                     {#each metrics as m, k (m)}
                       <th
-                        ><button class="sort mono" class:on={sortBy === m} onclick={() => router.set({ sort: m })}
-                          >{m} {arrow(dirs[k])}</button
+                        ><button
+                          class="sort mono"
+                          class:on={sortBy === m}
+                          onclick={() => router.set({ order: m })}
+                          title={m}>{tailName(m, 26)} {arrow(dirs[k])}</button
                         ></th
                       >
                     {/each}
@@ -830,7 +866,9 @@
                         /></td
                       >
                       <td class="l"
-                        ><i class="dot" style="background:{color(r)}"></i><span class="mono">{runOf(r).name}</span
+                        ><i class="dot" style="background:{color(r)}"></i><span
+                          class="mono runname"
+                          title={runOf(r).name}>{runOf(r).name}</span
                         >{#if projects.length > 1}<span class="faint"> · {runOf(r).project}</span>{/if}</td
                       >
                       <td class="mono">{r.step.toLocaleString()}</td>
@@ -855,7 +893,7 @@
                           >{/if}
                         {#each metrics as m, k (m)}
                           {#if front[best[k]] === r}<span class="badge best" title="Best {m} on the shortlist"
-                              >best {m.split('/').pop()}</span
+                              >best {tailName(m.split('/').pop() ?? m, 22)}</span
                             >{/if}
                         {/each}
                       </td>
@@ -908,7 +946,7 @@
     <div class="selbar">
       <span><b>{compared.length}</b> step{compared.length === 1 ? '' : 's'} chosen</span>
       <button class="btn" onclick={() => router.set({ rows: null })}>Clear</button>
-      <button class="btn btn-primary" onclick={() => router.set({ tab: 'compare' })}
+      <button class="btn btn-primary" onclick={() => router.set({ pane: 'compare' })}
         ><Icon name="compare" size={14} /> Compare side by side</button
       >
     </div>
@@ -919,10 +957,10 @@
   {#if !compared.length}
     <div class="card empty">
       Choose steps to compare on the shortlist: tick their boxes, or click their dots on the plot.
-      <button class="btn" onclick={() => router.set({ tab: null })}>Back to the shortlist</button>
+      <button class="btn" onclick={() => router.set({ pane: null })}>Back to the shortlist</button>
     </div>
   {:else}
-    <div class="card cmp" style="grid-template-columns: 190px repeat({compared.length}, minmax(180px, 1fr))">
+    <div class="card cmp" style="grid-template-columns: 230px repeat({compared.length}, minmax(180px, 1fr))">
       <div class="ch"><span class="label">{compared.length} step{compared.length === 1 ? '' : 's'}</span></div>
       {#each compared as r (r.id)}
         <div class="ch">
@@ -938,10 +976,7 @@
           <div class="faint small">step {r.step.toLocaleString()} · {runOf(r).project}</div>
           <div class="tags">
             {#if pickedIds.has(r.id)}<span class="badge pick"><Icon name="flag" size={11} /> picked</span>{/if}
-            {#if !r.front}<span class="badge">beaten on every scalar</span>{/if}
-            {#each metrics as m, k (m)}
-              {#if front[best[k]] === r}<span class="badge best">best {m.split('/').pop()}</span>{/if}
-            {/each}
+            {#if !r.front}<span class="badge">not on the shortlist</span>{/if}
           </div>
         </div>
       {/each}
@@ -950,7 +985,7 @@
         Scalars at that step <span class="sub">· the dashed line marks the step on the whole run</span>
       </div>
       {#each metrics as m, k (m)}
-        <div class="rh mono">{m} {arrow(dirs[k])}</div>
+        <div class="rh mono" title={m}>{tailName(m, 24)}&nbsp;{arrow(dirs[k])}</div>
         {#each compared as r (r.id)}
           {@const top = compared.every((o) => !better(o.values[k], r.values[k], dirs[k]))}
           {@const sp = spark(r.key, m, r.step)}
@@ -978,10 +1013,25 @@
         {/each}
       {/each}
 
+      {#if compared.length > 1}
+        <div class="grp label">Summary <span class="sub">· among the steps compared</span></div>
+        {#each [['Best on', wins], ['Worst on', losses]] as const as [label, lists] (label)}
+          <div class="rh top">{label}</div>
+          {#each compared as r, i (r.id)}
+            <div class="sum">
+              {#if lists[i].length}
+                <span class="count" class:win={label === 'Best on'}>{lists[i].length} of {metrics.length}</span>
+                {#each lists[i] as m (m)}<span class="mono small" title={m}>{tailName(m, 34)}</span>{/each}
+              {:else}<span class="faint small">none</span>{/if}
+            </div>
+          {/each}
+        {/each}
+      {/if}
+
       {#if configDiff.length}
         <div class="grp label">Config <span class="sub">· only the keys that differ</span></div>
         {#each configDiff.slice(0, 30) as key (key)}
-          <div class="rh mono trunc" title={key}>{key}</div>
+          <div class="rh mono" title={key}><span class="trunc">{tailName(key, 26)}</span></div>
           {#each compared as r (r.id)}
             <div class="mono cfg trunc">{fmtValue(config?.values[key]?.[r.key])}</div>
           {/each}
@@ -1085,6 +1135,7 @@
     gap: 8px;
     position: sticky;
     top: 12px;
+    z-index: 2; /* sticky makes its own layer: keep it, and the scalar list it opens, above the plot */
   }
   .crit .row {
     display: flex;
@@ -1149,6 +1200,11 @@
   .suggest .chip {
     cursor: pointer;
     color: var(--accent);
+    max-width: 100%;
+    gap: 4px;
+  }
+  .suggest .tail {
+    min-width: 0;
   }
   .note-line {
     display: flex;
@@ -1403,8 +1459,34 @@
     max-width: 40ch;
     color: var(--muted);
   }
+  .sum {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .sum .count {
+    align-self: flex-start;
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .sum .count.win {
+    color: var(--accent);
+  }
+  .runname {
+    display: inline-block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
   td.actions {
     white-space: nowrap;
+  }
+  .icon-btn.sm {
+    height: 28px;
+    width: 30px;
   }
   .kv {
     margin-right: 12px;
@@ -1557,10 +1639,17 @@
     border-bottom: 1px solid var(--border);
     padding: 7px 14px;
   }
+  /* row labels fill their grid row, so their divider lines up with the cells beside them */
   .rh {
     color: var(--muted);
     font-size: 12.5px;
-    align-self: center;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .rh.top {
+    align-items: flex-start;
   }
   .val {
     display: flex;
