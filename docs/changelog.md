@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.33.0
+## 0.32.1
 
 Small viewer fixes: clearer labels on the Select page, one style for the
 floating selection bars, and straight row lines in the Timing tab. No breaking
