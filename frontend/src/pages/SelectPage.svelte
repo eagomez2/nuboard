@@ -244,6 +244,14 @@
   const inPlot = (px: number, py: number) => px >= PL && px <= plotW - PR && py >= PT && py <= PH - PB;
 
   let hover = $state<Row | null>(null);
+  // the scalars the tooltip lists: the two on the axes first, then the others, at most TIP_MAX
+  const TIP_MAX = 6;
+  const tipCols = $derived(
+    [...new Set([ax, ay, ...metrics])]
+      .map((m) => metrics.indexOf(m))
+      .filter((k) => k >= 0)
+      .slice(0, TIP_MAX),
+  );
   let legendRun = $state<number | null>(null);
   // the run whose dots stand out: the one under the cursor, on the plot or in the legend
   const litRun = $derived(hover ? hover.run : legendRun);
@@ -745,14 +753,18 @@
                   {#if runOf(hover).project !== runOf(hover).name && projects.length > 1}
                     <div class="faint small">{runOf(hover).project}</div>
                   {/if}
-                  {#each metrics as m, k (m)}
+                  {#each tipCols as k (k)}
+                    {@const m = metrics[k]}
                     <div class="tr">
-                      <span class="mono faint">{m}</span><span
+                      <span class="mono faint trunc" title={m}>{m}</span><span
                         class="mono"
                         class:best={best[k] >= 0 && front[best[k]] === hover}>{fmtNum(hover.values[k])}</span
                       >
                     </div>
                   {/each}
+                  {#if metrics.length > tipCols.length}
+                    <div class="faint small">+{metrics.length - tipCols.length} more scalars in the shortlist</div>
+                  {/if}
                   <div class="foot faint">
                     {hover.front ? 'On the shortlist' : 'Not on the shortlist'} · {chosen.includes(hover.id)
                       ? 'click to stop comparing'
@@ -1313,6 +1325,7 @@
     font-size: 12px;
     pointer-events: none;
     min-width: 200px;
+    max-width: 360px;
   }
   .th {
     display: flex;

@@ -49,8 +49,10 @@ the choice is made. Click a dot, or tick a row, to compare it.
 
 The plot works like the charts elsewhere:
 
-- **Hover** any dot, big or small, to see its run, step and values. The
-  run's other steps stand out, and hovering a run in the legend does the same.
+- **Hover** any dot, big or small, to see its run, step and values: the two
+  scalars on the axes first, and up to six in all (the shortlist has every
+  one). The run's other steps stand out, and hovering a run in the legend
+  does the same.
 - **Drag** a box to zoom in. **Ctrl/⌘ + wheel** (or a pinch) zooms around the
   cursor, **Shift + drag** pans, and **double-click** or **Reset zoom** shows
   it all again.
