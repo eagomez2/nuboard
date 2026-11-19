@@ -130,6 +130,21 @@
   });
   const shownPicks = $derived(picks.filter((p) => projects.includes(p.project)));
   const pickedIds = $derived(new Set(shownPicks.filter((p) => p.key).map((p) => rowId(p.key!, p.step))));
+  // the latest pick made with scalars, to judge by them again before any is chosen
+  const lastPick = $derived(
+    shownPicks
+      .filter((p) => Object.keys(p.metrics).length)
+      .reduce<SavedPick | null>((a, p) => (!a || (p.edited ?? p.created) > (a.edited ?? a.created) ? p : a), null),
+  );
+  function judgeLike(p: SavedPick) {
+    const list = Object.keys(p.metrics);
+    const own = list.map((m) => {
+      const d = p.directions[m];
+      const saved = directionOf(projects, m, true);
+      return d && !(saved.set && saved.direction === d) ? d : '';
+    });
+    setMetrics(list, own);
+  }
 
   // ---- rows chosen to compare ----
   const chosen = $derived(router.list('rows'));
@@ -444,6 +459,18 @@
         label={metrics.length ? 'Add a scalar' : 'Choose a scalar'}
         onpick={addMetric}
       />
+      {#if !metrics.length && lastPick}
+        {@const p = lastPick}
+        <button class="reuse" onclick={() => judgeLike(p)}>
+          <Icon name="flag" size={13} /><span
+            >Judge as in the last pick: <span class="mono"
+              >{Object.keys(p.metrics)
+                .map((m) => `${m} ${arrow(p.directions[m] ?? 'max')}`)
+                .join(', ')}</span
+            ></span
+          >
+        </button>
+      {/if}
       {#if !metrics.length && suggestions.length}
         <div class="suggest">
           {#each suggestions as s (s)}<button class="chip mono" onclick={() => addMetric(s)}>+ {s}</button>{/each}
@@ -930,6 +957,28 @@
   }
   .x:hover {
     color: var(--text);
+  }
+  .reuse {
+    display: flex;
+    gap: 7px;
+    align-items: flex-start;
+    text-align: left;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 12.5px;
+    line-height: 1.45;
+    padding: 7px 9px;
+    cursor: pointer;
+  }
+  .reuse:hover {
+    background: var(--accent-soft);
+  }
+  .reuse :global(svg) {
+    flex: none;
+    margin-top: 2px;
   }
   .suggest {
     display: flex;

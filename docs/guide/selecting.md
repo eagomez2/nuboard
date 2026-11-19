@@ -9,6 +9,13 @@ what you picked and why.
 
 ![Select page with the trade-off plot and the shortlist](../assets/select-light.png){ .nb-shot }
 
+Try it on the demo: `nuboard demo demo-runs --up --open`, open **Select** on
+`vit-ablations` and click **Judge as in the last pick**. Its eight runs trade
+accuracy (`val/acc`) against calibration (`val/calibration_error`): CutMix is
+the most accurate, MixUp the best calibrated, and later epochs gain accuracy
+while calibration drifts back. Checkpoints are saved at epochs 60, 80 and
+100, and one pick is already made.
+
 ## What a candidate is
 
 A candidate is **one run at one step**, scored on the scalars you already log
@@ -57,7 +64,9 @@ Below are the config keys that differ and the checkpoints at that step.
 **Pick this step** asks why, and which checkpoint goes with it. The pick is
 saved in the project's `picks.json`, with the scalars' values and directions
 at the time, so it can be committed to git and read later. **Picks** lists
-them; a pick can be edited or removed.
+them; a pick can be edited or removed. Before any scalar is chosen,
+**Judge as in the last pick** sets the scalars and directions of the latest
+pick again.
 
 ## Checkpoints
 

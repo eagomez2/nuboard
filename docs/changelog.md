@@ -16,7 +16,9 @@ the Python API keep working as before.
   in the project's `picks.json`. Runs that never log a chosen scalar are
   listed as not ranked instead of being judged on fewer numbers. See
   [Choosing a step](guide/selecting.md). New endpoints: `GET /api/steps`,
-  `GET` and `POST /api/picks`.
+  `GET` and `POST /api/picks`. The demo's `vit-ablations` project has
+  checkpoints, a pick, and a calibration error that drifts back up late in
+  training, so there is a real trade-off to look at.
 - **`run.add_artifact(..., step=...)`** records the step a checkpoint was
   made at, in its manifest (`step`). The Select page lists the version next
   to that step; a version without one is placed at the last step logged
