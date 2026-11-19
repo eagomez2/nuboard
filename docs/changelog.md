@@ -12,8 +12,8 @@ the Python API keep working as before.
   the shortlist keeps the steps no other step beats on every scalar. A
   trade-off plot shows any two of them, with hover on every step, zoom, pan,
   full screen and adding it to a report, as in the other charts; **Compare** puts a few steps side by
-  side with each run's curves, the config keys that differ and the
-  checkpoints at that step; **Pick this step** saves the choice with a note
+  side with each run's curves, a summary of the scalars each one is best and
+  worst on, the config keys that differ and the checkpoints at that step; **Pick this step** saves the choice with a note
   in the project's `picks.json`. Runs that never log a chosen scalar are
   listed as not ranked instead of being judged on fewer numbers. See
   [Choosing a step](guide/selecting.md). New endpoints: `GET /api/steps`,

@@ -50,7 +50,7 @@ means the same thing on every page:
 | Box | Matches | Also |
 | --- | --- | --- |
 | Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
-| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Select, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
 | Charts **Filter scalars** | the scalar's name | each word is a regular expression |
 | Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
 | Media **Filter keys** | the media key | each word is a regular expression |
