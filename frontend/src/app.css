@@ -381,8 +381,13 @@ button.btn-primary {
 .u-legend {
   display: none;
 }
+/* The box drawn while dragging to zoom: uPlot's in the line charts, and the SVG plots' own (`.zoom-select`) */
 .u-select {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.zoom-select {
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
 }
 .u-cursor-x,
 .u-cursor-y {
