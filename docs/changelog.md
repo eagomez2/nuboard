@@ -1,7 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.32.0
 
+A new **Select** page for choosing which run, at which step, to take forward
+when runs win on different scalars, saved queries in the query bar, and
+baselines in the small charts' tooltips. No breaking changes: run folders and
+the Python API keep working as before.
+
+- **Select page.** Choose the scalars that matter and which way is better for
+  each. Every run at every step where all of them were logged is scored, and
+  the shortlist keeps the steps no other step beats on every scalar. A
+  trade-off plot shows any two of them; **Compare** puts a few steps side by
+  side with each run's curves, the config keys that differ and the
+  checkpoints at that step; **Pick this step** saves the choice with a note
+  in the project's `picks.json`. Runs that never log a chosen scalar are
+  listed as not ranked instead of being judged on fewer numbers. See
+  [Choosing a step](guide/selecting.md). New endpoints: `GET /api/steps`,
+  `GET` and `POST /api/picks`.
+- **`run.add_artifact(..., step=...)`** records the step a checkpoint was
+  made at, in its manifest (`step`). The Select page lists the version next
+  to that step; a version without one is placed at the last step logged
+  before it was made.
 - **Saved queries.** The **▾** button at the end of the query bar lists saved
   queries and the queries this browser applied last; click one to apply it.
   **Save this query…** names the query in the bar and writes it to
