@@ -68,8 +68,9 @@ lists the runs left out and what they miss. Removing that scalar ranks them.
 
 ## Comparing and picking
 
-**Compare** puts the chosen steps side by side: the value of each scalar, its
-rank on the shortlist, and a small curve of the whole run with the step
+**Compare** puts the chosen steps side by side: the value of each scalar (in
+bold where it is the best of the steps compared), its rank on the shortlist
+(such as "#2 of 15"), and a small curve of the whole run with the step
 marked, which shows whether the run was still improving or already drifting.
 Below are the config keys that differ and the checkpoints at that step.
 

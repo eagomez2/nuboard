@@ -938,10 +938,7 @@
           <div class="faint small">step {r.step.toLocaleString()} · {runOf(r).project}</div>
           <div class="tags">
             {#if pickedIds.has(r.id)}<span class="badge pick"><Icon name="flag" size={11} /> picked</span>{/if}
-            {#if !r.front}<span class="badge">beaten on every scalar</span>{/if}
-            {#each metrics as m, k (m)}
-              {#if front[best[k]] === r}<span class="badge best">best {m.split('/').pop()}</span>{/if}
-            {/each}
+            {#if !r.front}<span class="badge">not on the shortlist</span>{/if}
           </div>
         </div>
       {/each}
