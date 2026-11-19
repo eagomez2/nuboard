@@ -1085,6 +1085,7 @@
     gap: 8px;
     position: sticky;
     top: 12px;
+    z-index: 2; /* sticky makes its own layer: keep it, and the scalar list it opens, above the plot */
   }
   .crit .row {
     display: flex;
