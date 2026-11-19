@@ -6,10 +6,13 @@
   import { seriesVar } from '../lib/colors';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { directionOf } from '../lib/directions.svelte';
+  import { FullScreen } from '../lib/fullscreen.svelte';
   import { fmtAxis, fmtDate, fmtNum, fmtValue } from '../lib/format';
   import { onLive } from '../lib/live';
+  import { addSnapshotToReport } from '../lib/reports.svelte';
   import { router } from '../lib/router.svelte';
   import { bestIndex, better, edge2d, niceTicks, padded, rankOf, rowId, type Dir } from '../lib/selection';
+  import { svgToPng } from '../lib/snapshot';
   import { app } from '../lib/state.svelte';
 
   // The Select page: which run at which step to take forward, when runs win on different scalars.
@@ -130,21 +133,6 @@
   });
   const shownPicks = $derived(picks.filter((p) => projects.includes(p.project)));
   const pickedIds = $derived(new Set(shownPicks.filter((p) => p.key).map((p) => rowId(p.key!, p.step))));
-  // the latest pick made with scalars, to judge by them again before any is chosen
-  const lastPick = $derived(
-    shownPicks
-      .filter((p) => Object.keys(p.metrics).length)
-      .reduce<SavedPick | null>((a, p) => (!a || (p.edited ?? p.created) > (a.edited ?? a.created) ? p : a), null),
-  );
-  function judgeLike(p: SavedPick) {
-    const list = Object.keys(p.metrics);
-    const own = list.map((m) => {
-      const d = p.directions[m];
-      const saved = directionOf(projects, m, true);
-      return d && !(saved.set && saved.direction === d) ? d : '';
-    });
-    setMetrics(list, own);
-  }
 
   // ---- rows chosen to compare ----
   const chosen = $derived(router.list('rows'));
@@ -190,7 +178,10 @@
   const valueOn = (r: StepRows, axis: string) => (axis === 'step' ? r.step : r.values[metrics.indexOf(axis)]);
   const dirOn = (axis: string): Dir | null => (axis === 'step' ? null : dirs[metrics.indexOf(axis)]);
   let plotW = $state(800);
-  const PH = 300;
+  let innerHeight = $state(900);
+  const fs = new FullScreen();
+  onMount(() => fs.listen());
+  const PH = $derived(fs.on ? Math.max(300, innerHeight - 170) : 300);
   const PL = 62;
   const PR = 16;
   const PT = 12;
@@ -205,8 +196,13 @@
     const cut = d === 'max' ? o[Math.floor(o.length * 0.1)] : o[Math.ceil(o.length * 0.9) - 1];
     return padded([...f, ...o.filter((v) => (d === 'max' ? v >= cut : v <= cut))]);
   }
-  const xr = $derived(axisRange(ax));
-  const yr = $derived(axisRange(ay));
+  // The zoomed ranges, in data units. They belong to the axes and directions they were set on, so
+  // changing either shows the whole plot again.
+  const zoomKey = $derived(JSON.stringify([ax, ay, dirOn(ax), dirOn(ay)]));
+  let zoom = $state<{ key: string; x: [number, number]; y: [number, number] } | null>(null);
+  const zoomed = $derived(zoom?.key === zoomKey ? zoom : null);
+  const xr = $derived(zoomed?.x ?? axisRange(ax));
+  const yr = $derived(zoomed?.y ?? axisRange(ay));
   const inside = (r: StepRows) => {
     const [x, y] = [valueOn(r, ax), valueOn(r, ay)];
     return x >= xr[0] && x <= xr[1] && y >= yr[0] && y <= yr[1];
@@ -232,7 +228,127 @@
     );
     return e.map(([x, y], i) => `${i ? 'L' : 'M'}${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join('');
   });
+  // the value at a pixel, the inverse of X and Y
+  const xAt = (px: number) => {
+    const t = (px - PL) / (plotW - PL - PR);
+    return xr[0] + (dirOn(ax) === 'min' ? 1 - t : t) * (xr[1] - xr[0]);
+  };
+  const yAt = (py: number) => {
+    const t = (py - PT) / (PH - PT - PB);
+    return yr[0] + (dirOn(ay) === 'min' ? t : 1 - t) * (yr[1] - yr[0]);
+  };
+  const span = (a: number, b: number): [number, number] => (a < b ? [a, b] : [b, a]);
+  function setZoom(x0: number, x1: number, y0: number, y1: number) {
+    zoom = { key: zoomKey, x: span(xAt(x0), xAt(x1)), y: span(yAt(y0), yAt(y1)) };
+  }
+  const inPlot = (px: number, py: number) => px >= PL && px <= plotW - PR && py >= PT && py <= PH - PB;
+
   let hover = $state<Row | null>(null);
+  // the scalars the tooltip lists: the two on the axes first, then the others, at most TIP_MAX
+  const TIP_MAX = 6;
+  const tipCols = $derived(
+    [...new Set([ax, ay, ...metrics])]
+      .map((m) => metrics.indexOf(m))
+      .filter((k) => k >= 0)
+      .slice(0, TIP_MAX),
+  );
+  let legendRun = $state<number | null>(null);
+  // the run whose dots stand out: the one under the cursor, on the plot or in the legend
+  const litRun = $derived(hover ? hover.run : legendRun);
+  /** The dot nearest the cursor: a shortlist dot within 14px, else another within 8px. */
+  function dotAt(px: number, py: number): Row | null {
+    const find = (rows: Row[], radius: number) => {
+      let best: Row | null = null;
+      let bd = radius * radius;
+      for (const r of rows) {
+        const x = X(valueOn(r, ax));
+        const y = Y(valueOn(r, ay));
+        if (!inPlot(x, y)) continue;
+        const d = (x - px) ** 2 + (y - py) ** 2;
+        if (d < bd) [best, bd] = [r, d];
+      }
+      return best;
+    };
+    return find(front, 14) ?? find(others, 8);
+  }
+
+  // Drag draws a box to zoom into; Shift + drag pans; a click without a drag compares the dot.
+  let drag = $state<{ mode: 'box' | 'pan'; x0: number; y0: number; x1: number; y1: number } | null>(null);
+  let dragStart: { x: [number, number]; y: [number, number] } = { x: [0, 1], y: [0, 1] };
+  const pos = (e: PointerEvent | WheelEvent) => {
+    const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
+  function plotDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    const [x, y] = pos(e);
+    (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+    drag = { mode: e.shiftKey ? 'pan' : 'box', x0: x, y0: y, x1: x, y1: y };
+    dragStart = { x: [...xr], y: [...yr] };
+  }
+  function plotMove(e: PointerEvent) {
+    const [x, y] = pos(e);
+    if (!drag) {
+      hover = inPlot(x, y) ? dotAt(x, y) : null;
+      return;
+    }
+    drag = { ...drag, x1: x, y1: y };
+    if (drag.mode === 'pan') {
+      hover = null;
+      const w = plotW - PL - PR;
+      const h = PH - PT - PB;
+      const sx = (dirOn(ax) === 'min' ? -1 : 1) * ((x - drag.x0) / w) * (dragStart.x[1] - dragStart.x[0]);
+      const sy = (dirOn(ay) === 'min' ? 1 : -1) * ((y - drag.y0) / h) * (dragStart.y[1] - dragStart.y[0]);
+      zoom = {
+        key: zoomKey,
+        x: [dragStart.x[0] - sx, dragStart.x[1] - sx],
+        y: [dragStart.y[0] - sy, dragStart.y[1] - sy],
+      };
+    }
+  }
+  function plotUp() {
+    const d = drag;
+    drag = null;
+    if (!d) return;
+    const moved = Math.abs(d.x1 - d.x0) > 5 || Math.abs(d.y1 - d.y0) > 5;
+    if (d.mode === 'box' && moved) {
+      const cx = (v: number) => Math.min(Math.max(v, PL), plotW - PR);
+      const cy = (v: number) => Math.min(Math.max(v, PT), PH - PB);
+      if (Math.abs(d.x1 - d.x0) > 5 && Math.abs(d.y1 - d.y0) > 5) setZoom(cx(d.x0), cx(d.x1), cy(d.y0), cy(d.y1));
+    } else if (!moved && hover) toggleRow(hover.id);
+  }
+  /** Ctrl/⌘ or Alt + wheel (or a trackpad pinch) zooms around the cursor; Shift + wheel pans along x. */
+  function plotWheel(e: WheelEvent) {
+    const zooming = e.ctrlKey || e.metaKey || e.altKey;
+    if (!zooming && !e.shiftKey) return;
+    e.preventDefault();
+    const delta = (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.deltaY || e.deltaX);
+    if (zooming) {
+      const [px, py] = pos(e);
+      const f = Math.min(Math.max(Math.exp(delta * 0.002), 0.5), 2);
+      const [cx, cy] = [xAt(px), yAt(py)];
+      zoom = {
+        key: zoomKey,
+        x: [cx - (cx - xr[0]) * f, cx + (xr[1] - cx) * f],
+        y: [cy - (cy - yr[0]) * f, cy + (yr[1] - cy) * f],
+      };
+    } else {
+      const shift = (xr[1] - xr[0]) * Math.min(Math.max(delta * 0.001, -0.25), 0.25);
+      zoom = { key: zoomKey, x: [xr[0] + shift, xr[1] + shift], y: [...yr] };
+    }
+  }
+
+  let plotSvg = $state<SVGSVGElement>();
+  async function plotToReport() {
+    const project = runs[0]?.project ?? router.get('project');
+    if (!plotSvg || !project) return;
+    const png = await svgToPng(plotSvg, `${ay} against ${ax}`);
+    if (fs.on) await fs.toggle(); // dialogs are not shown over a full-screen element
+    await addSnapshotToReport(project, png, `Trade-off between ${ax} and ${ay}`, {
+      page: 'select',
+      params: { ...router.params },
+    });
+  }
 
   // ---- compare: each run's curves, and the config keys that differ ----
   const comparedKeys = $derived([...new Set(compared.map((r) => r.key))]);
@@ -352,6 +468,8 @@
   }
 </script>
 
+<svelte:window bind:innerHeight />
+
 <div class="toolbar">
   <div class="seg" aria-label="Select page view">
     <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ tab: null })}
@@ -459,18 +577,6 @@
         label={metrics.length ? 'Add a scalar' : 'Choose a scalar'}
         onpick={addMetric}
       />
-      {#if !metrics.length && lastPick}
-        {@const p = lastPick}
-        <button class="reuse" onclick={() => judgeLike(p)}>
-          <Icon name="flag" size={13} /><span
-            >Judge as in the last pick: <span class="mono"
-              >{Object.keys(p.metrics)
-                .map((m) => `${m} ${arrow(p.directions[m] ?? 'max')}`)
-                .join(', ')}</span
-            ></span
-          >
-        </button>
-      {/if}
       {#if !metrics.length && suggestions.length}
         <div class="suggest">
           {#each suggestions as s (s)}<button class="chip mono" onclick={() => addMetric(s)}>+ {s}</button>{/each}
@@ -509,33 +615,77 @@
       {:else if !data}
         <div class="card empty">{loading ? 'Scoring steps…' : ''}</div>
       {:else}
-        <div class="card plot">
+        <div class="card plot" class:full={fs.on} bind:this={fs.el}>
           <div class="chead">
             <h2>Trade-off</h2>
-            <span class="muted small"
-              >Each dot is a run at a step. Big dots are on the shortlist; click one to compare it.</span
-            >
             <span class="grow"></span>
-            <label class="axis"
+            <span class="axis"
               ><span class="faint">x</span>
-              <select class="input sm mono" value={ax} onchange={(e) => router.set({ x: e.currentTarget.value })}>
-                {#each axes as a (a)}<option value={a}>{a}{a === 'step' ? '' : ` ${arrow(dirOn(a)!)}`}</option>{/each}
-              </select></label
+              <ScalarPicker
+                metrics={axes}
+                value={ax}
+                size="sm"
+                ariaLabel="X axis"
+                onpick={(m) => router.set({ x: m })}
+              /></span
             >
-            <label class="axis"
+            <span class="axis"
               ><span class="faint">y</span>
-              <select class="input sm mono" value={ay} onchange={(e) => router.set({ y: e.currentTarget.value })}>
-                {#each axes as a (a)}<option value={a}>{a}{a === 'step' ? '' : ` ${arrow(dirOn(a)!)}`}</option>{/each}
-              </select></label
+              <ScalarPicker
+                metrics={axes}
+                value={ay}
+                size="sm"
+                ariaLabel="Y axis"
+                onpick={(m) => router.set({ y: m })}
+              /></span
+            >
+            {#if zoomed}<button class="btn" onclick={() => (zoom = null)}>Reset zoom</button>{/if}
+            <button
+              class="btn btn-ghost icon-btn"
+              title="Add this plot to a report"
+              aria-label="Add the trade-off plot to a report"
+              disabled={!data.complete}
+              onclick={plotToReport}><Icon name="bookmark" size={15} /></button
+            >
+            <button
+              class="btn btn-ghost icon-btn"
+              title={fs.on ? 'Exit full screen (Esc)' : 'Full screen'}
+              aria-label={fs.on ? 'Exit full screen' : 'Full screen'}
+              aria-pressed={fs.on}
+              onclick={() => fs.toggle()}><Icon name={fs.on ? 'shrink' : 'expand'} size={15} /></button
             >
           </div>
+          <p class="muted small sub">
+            Each dot is a run at a step; big dots are on the shortlist. Click a dot to compare it, drag to zoom, Shift +
+            drag to pan, double-click to see it all.
+          </p>
           {#if !data.complete}
             <div class="empty">
               No run logged {metrics.length === 1 ? 'this scalar' : 'all of these scalars at the same step'}.
             </div>
           {:else}
             <div class="svgwrap" bind:clientWidth={plotW}>
-              <svg width={plotW} height={PH} role="img" aria-label="Trade-off between {ax} and {ay}">
+              <svg
+                bind:this={plotSvg}
+                width={plotW}
+                height={PH}
+                role="application"
+                aria-label="Trade-off between {ax} and {ay}"
+                class:panning={drag?.mode === 'pan'}
+                class:pointing={!!hover && !drag}
+                onpointerdown={plotDown}
+                onpointermove={plotMove}
+                onpointerup={plotUp}
+                onpointercancel={() => (drag = null)}
+                onpointerleave={() => !drag && (hover = null)}
+                ondblclick={() => (zoom = null)}
+                onwheel={plotWheel}
+              >
+                <defs
+                  ><clipPath id="tradeoff-clip"
+                    ><rect x={PL} y={PT} width={Math.max(0, plotW - PL - PR)} height={PH - PT - PB} /></clipPath
+                  ></defs
+                >
                 {#each niceTicks(xr[0], xr[1], Math.max(3, Math.floor(plotW / 110))) as t (t)}
                   <line class="grid" x1={X(t)} x2={X(t)} y1={PT} y2={PH - PB} />
                   <text class="tick" x={X(t)} y={PH - PB + 15} text-anchor="middle">{fmtAxis(t)}</text>
@@ -550,30 +700,43 @@
                 <text class="axt" transform="translate(13 {(PT + PH - PB) / 2}) rotate(-90)" text-anchor="middle"
                   >{ay}{dirOn(ay) ? ` ${arrow(dirOn(ay)!)} better →` : ''}</text
                 >
-                {#each others.filter(inside) as r (r.id)}
-                  <circle class="pt" cx={X(valueOn(r, ax))} cy={Y(valueOn(r, ay))} r="2.6" style="fill:{color(r)}" />
-                {/each}
-                {#if edge}<path class="edge" d={edge} />{/if}
-                {#each front as r (r.id)}
-                  {@const cx = X(valueOn(r, ax))}
-                  {@const cy = Y(valueOn(r, ay))}
-                  {#if pickedIds.has(r.id)}<circle class="ring pick" {cx} {cy} r="11" />{/if}
-                  {#if chosen.includes(r.id)}<circle class="ring" {cx} {cy} r="9" />{/if}
-                  <circle
-                    class="fp"
-                    {cx}
-                    {cy}
-                    r="5.5"
-                    style="fill:{color(r)}"
-                    role="button"
-                    tabindex="-1"
-                    aria-label="{runOf(r).name} at step {r.step}"
-                    onpointerenter={() => (hover = r)}
-                    onpointerleave={() => (hover = null)}
-                    onclick={() => toggleRow(r.id)}
-                    onkeydown={(e) => e.key === 'Enter' && toggleRow(r.id)}
+                <g clip-path="url(#tradeoff-clip)">
+                  {#each others.filter(inside) as r (r.id)}
+                    <circle
+                      class="pt"
+                      class:dim={litRun !== null && r.run !== litRun}
+                      class:lit={r.run === litRun}
+                      cx={X(valueOn(r, ax))}
+                      cy={Y(valueOn(r, ay))}
+                      r={hover === r ? 4.5 : 2.6}
+                      style="fill:{color(r)}"
+                    />
+                  {/each}
+                  {#if edge}<path class="edge" d={edge} />{/if}
+                  {#each front as r (r.id)}
+                    {@const cx = X(valueOn(r, ax))}
+                    {@const cy = Y(valueOn(r, ay))}
+                    {#if pickedIds.has(r.id)}<circle class="ring pick" {cx} {cy} r="11" />{/if}
+                    {#if chosen.includes(r.id)}<circle class="ring" {cx} {cy} r="9" />{/if}
+                    <circle
+                      class="fp"
+                      class:dim={litRun !== null && r.run !== litRun}
+                      {cx}
+                      {cy}
+                      r={hover === r ? 7 : 5.5}
+                      style="fill:{color(r)}"
+                    />
+                  {/each}
+                </g>
+                {#if drag?.mode === 'box'}
+                  <rect
+                    class="zoombox"
+                    x={Math.min(drag.x0, drag.x1)}
+                    y={Math.min(drag.y0, drag.y1)}
+                    width={Math.abs(drag.x1 - drag.x0)}
+                    height={Math.abs(drag.y1 - drag.y0)}
                   />
-                {/each}
+                {/if}
               </svg>
               {#if hover}
                 {@const hx = X(valueOn(hover, ax))}
@@ -587,24 +750,44 @@
                     <i style="background:{color(hover)}"></i><span class="mono">{runOf(hover).name}</span>
                     <span class="faint">step {hover.step.toLocaleString()}</span>
                   </div>
-                  {#each metrics as m, k (m)}
+                  {#if runOf(hover).project !== runOf(hover).name && projects.length > 1}
+                    <div class="faint small">{runOf(hover).project}</div>
+                  {/if}
+                  {#each tipCols as k (k)}
+                    {@const m = metrics[k]}
                     <div class="tr">
-                      <span class="mono faint">{m}</span><span
+                      <span class="mono faint trunc" title={m}>{m}</span><span
                         class="mono"
                         class:best={best[k] >= 0 && front[best[k]] === hover}>{fmtNum(hover.values[k])}</span
                       >
                     </div>
                   {/each}
+                  {#if metrics.length > tipCols.length}
+                    <div class="faint small">+{metrics.length - tipCols.length} more scalars in the shortlist</div>
+                  {/if}
+                  <div class="foot faint">
+                    {hover.front ? 'On the shortlist' : 'Not on the shortlist'} · {chosen.includes(hover.id)
+                      ? 'click to stop comparing'
+                      : 'click to compare'}
+                  </div>
                 </div>
               {/if}
             </div>
             <div class="legend">
               {#each data.runs.slice(0, 16) as r, i (r.key)}
-                <span><i style="background:{seriesVar(i)}"></i><span class="mono">{r.name}</span></span>
+                <span
+                  role="presentation"
+                  class:dim={litRun !== null && litRun !== i}
+                  onpointerenter={() => (legendRun = i)}
+                  onpointerleave={() => (legendRun = null)}
+                  ><i style="background:{seriesVar(i)}"></i><span class="mono">{r.name}</span></span
+                >
               {/each}
               {#if data.runs.length > 16}<span class="faint">+{data.runs.length - 16} more</span>{/if}
               <span class="grow"></span>
-              {#if offPlot}<span class="faint">{offPlot.toLocaleString()} steps far behind are off the plot</span>{/if}
+              {#if zoomed}<span class="faint">Zoomed in; double-click the plot to see it all</span>
+              {:else if offPlot}<span class="faint">{offPlot.toLocaleString()} steps far behind are off the plot</span
+                >{/if}
               {#if edge}<span class="faint"><i class="dash"></i>trade-off edge on these two axes</span>{/if}
             </div>
           {/if}
@@ -958,28 +1141,6 @@
   .x:hover {
     color: var(--text);
   }
-  .reuse {
-    display: flex;
-    gap: 7px;
-    align-items: flex-start;
-    text-align: left;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    font-size: 12.5px;
-    line-height: 1.45;
-    padding: 7px 9px;
-    cursor: pointer;
-  }
-  .reuse:hover {
-    background: var(--accent-soft);
-  }
-  .reuse :global(svg) {
-    flex: none;
-    margin-top: 2px;
-  }
   .suggest {
     display: flex;
     flex-wrap: wrap;
@@ -1040,6 +1201,56 @@
   .plot {
     padding: 12px 14px 10px;
   }
+  .plot.full {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border-radius: 0;
+    overflow: auto;
+    background: var(--panel);
+  }
+  .icon-btn {
+    height: 32px;
+    width: 34px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+  }
+  .svgwrap svg {
+    cursor: crosshair;
+    touch-action: none;
+    user-select: none;
+  }
+  .svgwrap svg.pointing {
+    cursor: pointer;
+  }
+  .svgwrap svg.panning {
+    cursor: grabbing;
+  }
+  .zoombox {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+  .pt.dim,
+  .fp.dim {
+    opacity: 0.12;
+  }
+  .pt.lit {
+    opacity: 0.9;
+  }
+  .legend .dim {
+    opacity: 0.45;
+  }
+  .plot .sub {
+    margin: 2px 0 0;
+  }
+  .tip .foot {
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
   .chead {
     display: flex;
     align-items: center;
@@ -1058,10 +1269,6 @@
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-  .input.sm {
-    height: 28px;
-    font-size: 12.5px;
   }
   .svgwrap {
     position: relative;
@@ -1118,6 +1325,7 @@
     font-size: 12px;
     pointer-events: none;
     min-width: 200px;
+    max-width: 360px;
   }
   .th {
     display: flex;

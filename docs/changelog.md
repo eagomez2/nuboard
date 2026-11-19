@@ -10,7 +10,8 @@ the Python API keep working as before.
 - **Select page.** Choose the scalars that matter and which way is better for
   each. Every run at every step where all of them were logged is scored, and
   the shortlist keeps the steps no other step beats on every scalar. A
-  trade-off plot shows any two of them; **Compare** puts a few steps side by
+  trade-off plot shows any two of them, with hover on every step, zoom, pan,
+  full screen and adding it to a report, as in the other charts; **Compare** puts a few steps side by
   side with each run's curves, the config keys that differ and the
   checkpoints at that step; **Pick this step** saves the choice with a note
   in the project's `picks.json`. Runs that never log a chosen scalar are
