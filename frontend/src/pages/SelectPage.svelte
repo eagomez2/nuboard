@@ -730,7 +730,7 @@
                 </g>
                 {#if drag?.mode === 'box'}
                   <rect
-                    class="zoombox"
+                    class="zoom-select"
                     x={Math.min(drag.x0, drag.x1)}
                     y={Math.min(drag.y0, drag.y1)}
                     width={Math.abs(drag.x1 - drag.x0)}
@@ -1227,12 +1227,6 @@
   }
   .svgwrap svg.panning {
     cursor: grabbing;
-  }
-  .zoombox {
-    fill: var(--accent-soft);
-    stroke: var(--accent);
-    stroke-width: 1;
-    stroke-dasharray: 3 3;
   }
   .pt.dim,
   .fp.dim {
