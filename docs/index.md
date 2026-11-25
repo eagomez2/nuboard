@@ -74,7 +74,7 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
 
 === ":material-waveform: Audio"
 
-    **Audio with its annotations.** <span>Overlay a voice activity probability and label tracks on the waveform, then play, zoom and leave notes on any region.</span>
+    **Audio with its annotations.** <span>Overlay a voice activity probability and label tracks on the waveform, play only a frequency band, zoom and leave notes on any region.</span>
     { .nb-feature-text }
 
     ![A waveform figure: a denoised speech clip with its speech probability on top and target, predicted and event tracks below](assets/about/audio-light.png#only-light){ .nb-shot }
@@ -87,6 +87,14 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
 
     ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-light.png#only-light){ .nb-shot }
     ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-dark.png#only-dark){ .nb-shot }
+
+=== ":material-flag-outline: Select"
+
+    **Pick the step to ship.** <span>When runs win on different scalars, the shortlist keeps only the steps nothing beats on all of them, and shows what each choice costs.</span>
+    { .nb-feature-text }
+
+    ![The Select page: accuracy against calibration error for every run at every step, with the shortlist of steps no other step beats on both](assets/about/select-light.png#only-light){ .nb-shot }
+    ![The Select page: accuracy against calibration error for every run at every step, with the shortlist of steps no other step beats on both](assets/about/select-dark.png#only-dark){ .nb-shot }
 
 === ":material-source-branch: Hypotheses"
 

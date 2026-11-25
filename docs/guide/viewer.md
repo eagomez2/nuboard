@@ -666,10 +666,11 @@ sample under it, recomputed as you zoom, so long files stay fast and single
 samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
-section, then loop it, zoom to it or add a **Note**; notes show in a lane above
-the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
+section, then loop it, zoom to it or add a **Note** from the chip that shows
+under the toolbar, as in the audio player; notes show in a lane above
+the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
-the view. The full screen button (next to **Fit**) spreads the figure over the
+the view. The full screen button (last in the toolbar) spreads the figure over the
 window with a taller plot, in the viewer and in exported reports alike, and Esc
 puts it back. Space plays and pauses once you have clicked the plot or the
 overview, and in full screen. The play button plays the clip, or the selection, from where you
@@ -761,7 +762,12 @@ remembered):
 - **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
-  and full screen (`F`). Space plays and pauses once you have clicked the
+  and full screen (`F`). The toolbar keeps play and the time on the left and
+  the view's controls in one group on the right (speed, − / zoom slider / +,
+  fit, full screen). A selection shows as a chip under it, with its start, end
+  and length and buttons to **Loop**, **Zoom** to it, add a **Note** and ×
+  to clear it; a frequency band gets a chip of its own. In a narrow player
+  the chips keep only their icons (hover one for its name). Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
@@ -789,7 +795,8 @@ spectrogram greys out what is outside it. A drag straight up or down sets only
 the band, so the whole clip plays band-limited. The band shows in the toolbar
 with its bottom and top in Hz: type `300`, `2.5k` or `2,5 kHz` and Enter to
 refine either (a bottom typed above the top swaps them). Its first button
-plays every frequency again while keeping the band; × or Esc clears it. The
+(**Band**) plays every frequency again while keeping the band, and pressing it
+again goes back to the band; × or Esc clears it. The
 players of one key share the band, so every run's clip of that key plays
 through it. Only what you hear changes: the files are untouched, and with no
 band the audio plays as before.

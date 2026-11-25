@@ -10,6 +10,13 @@
   everything again while keeping the band, and the players of one key share
   it. The files are not changed. See
   [Audio](guide/viewer.md#audio).
+- **A tidier audio toolbar.** The audio player and waveform figures share one
+  design: play and time on the left, the view's controls (speed, zoom, fit,
+  download, full screen) in one group on the right, and the selection and the
+  frequency band as chips underneath with icon buttons and a lighter ×.
+  Narrow players keep only the icons. See [Audio](guide/viewer.md#audio).
+- **Select on the home page.** The docs home page has a Select tab next to
+  Timeline, and its audio screenshot shows the new toolbar.
 
 ## 0.32.1
 

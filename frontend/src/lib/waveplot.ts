@@ -115,9 +115,16 @@ export function mountWaveform(
   play.innerHTML = icon('nbwf-go', 'M8 5.5v13l10.5-6.5z') + icon('nbwf-pause', 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z');
   const time = el('span', 'nbwf-time');
   const read = el('span', 'nbwf-read');
-  const selBox = el('span', 'nbwf-sel nbwf-zoom');
+  // the selection's controls in a chip under the toolbar, and the view's in one outlined group, as
+  // in the audio player (audio.html)
+  const selBox = el('span', 'nbwf-sel nbwf-chip');
+  selBox.setAttribute('role', 'group');
+  selBox.setAttribute('aria-label', 'Selection');
   const selText = el('span', 'nbwf-seltext');
+  const selSpan = el('span', 'nbwf-selspan');
   const zoomBox = el('span', 'nbwf-zoom nbwf-view');
+  zoomBox.setAttribute('role', 'group');
+  zoomBox.setAttribute('aria-label', 'View');
   const form = el('form', 'nbwf-form') as HTMLFormElement;
   const formTime = el('span', 'nbwf-seltext');
   const noteText = el('input') as HTMLInputElement;
@@ -135,7 +142,7 @@ export function mountWaveform(
   audio.preload = 'auto';
   audio.hidden = true;
   audio.src = input.audioSrc;
-  bar.append(play, time, read, selBox, zoomBox);
+  bar.append(play, time, zoomBox, selBox, read);
   root.append(bar, form, notesLane, plotEl);
   if (tracks.length) root.append(lanes);
   root.append(overview, cap, audio);
@@ -395,7 +402,8 @@ export function mountWaveform(
     const a = Math.max(0, plot.valToPos(sel[0], 'x'));
     const b = Math.min(plot.bbox.width / devicePixelRatio, plot.valToPos(sel[1], 'x'));
     plot.setSelect({ left: a, top: 0, width: Math.max(0, b - a), height: plot.bbox.height / devicePixelRatio }, false);
-    selText.textContent = `${sel[0].toFixed(3)} – ${sel[1].toFixed(3)} s (${(sel[1] - sel[0]).toFixed(3)} s)`;
+    selText.textContent = `${sel[0].toFixed(3)} – ${sel[1].toFixed(3)} s`;
+    selSpan.textContent = `${(sel[1] - sel[0]).toFixed(3)} s`;
   };
   const noteAtSelection = () =>
     sel ? notes.find((n) => Math.abs(sel![0] - n.start) < 1e-3 && Math.abs(sel![1] - n.end) < 1e-3) : undefined;
@@ -653,22 +661,47 @@ export function mountWaveform(
   };
 
   // the selection's controls, the zoom buttons and the note form
-  selBox.append(selText);
-  const loopButton = button(selBox, 'Loop', 'Loop', () => {
+  // the icons are the audio player's (audio.html), so the two read the same
+  const ICON = {
+    range: 'M3 5h2v14H3zm16 0h2v14h-2zM7 11h10v2H7z',
+    loop: 'M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z',
+    zoom: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm.5-7H9v2H7v1h2v2h1v-2h2V9h-2z',
+    note: 'M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.17L4 17.17V4h16zM7 7h10v2H7zm0 4h7v2H7z',
+    close:
+      'M7.05 5.64 5.64 7.05 10.59 12l-4.95 4.95 1.41 1.41L12 13.41l4.95 4.95 1.41-1.41L13.41 12l4.95-4.95-1.41-1.41L12 10.59z',
+    minus: 'M5 11h14v2H5z',
+    plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
+    fit: 'M3 5h2v14H3zm16 0h2v14h-2zM6.5 12l3.5 3.5V13h4v2.5l3.5-3.5L14 8.5V11h-4V8.5z',
+  };
+  // a button with an icon, and a label that narrow figures leave out (the aria-label keeps it)
+  const iconButton = (parent: HTMLElement, d: string, text: string, label: string, onclick: () => void) => {
+    const b = button(parent, '', label, onclick);
+    b.setAttribute('aria-label', text || label);
+    b.innerHTML = icon('', d) + (text ? `<span class="nbwf-lbl">${text}</span>` : '');
+    if (!text) b.classList.add('nbwf-icon-btn');
+    return b;
+  };
+  const divider = (parent: HTMLElement) => parent.appendChild(el('span', 'nbwf-divider'));
+  selBox.insertAdjacentHTML('beforeend', icon('nbwf-chip-icon', ICON.range));
+  selBox.append(selText, selSpan);
+  divider(selBox);
+  const loopButton = iconButton(selBox, ICON.loop, 'Loop', 'Loop the selection', () => {
     looping = !looping;
     loopButton.classList.toggle('on', looping);
   });
-  // as in the audio player: the selection's Zoom in, next to − / + / Fit for the whole view
-  button(selBox, 'Zoom in', 'Zoom in to the selection', () => {
+  // as in the audio player: the selection's Zoom, next to − / + / Fit for the whole view
+  const zoomSel = iconButton(selBox, ICON.zoom, 'Zoom', 'Zoom in to the selection', () => {
     if (!sel) return;
     const pad = (sel[1] - sel[0]) * 0.05;
     setView(sel[0] - pad, sel[1] + pad);
   });
-  if (editable) button(selBox, 'Note', 'Note', openForm);
-  button(selBox, '×', 'Clear the selection', clearSelection);
-  button(zoomBox, '−', 'Zoom out', () => zoom(2));
-  button(zoomBox, '+', 'Zoom in', () => zoom(0.5));
-  button(zoomBox, 'Fit', 'Fit', () => setView(0, duration));
+  zoomSel.setAttribute('aria-label', 'Zoom in to the selection');
+  if (editable) iconButton(selBox, ICON.note, 'Note', 'Add a note on the selection', openForm);
+  const clearButton = iconButton(selBox, ICON.close, '', 'Clear the selection', clearSelection);
+  clearButton.className = 'nbwf-close';
+  iconButton(zoomBox, ICON.minus, '', 'Zoom out', () => zoom(2));
+  iconButton(zoomBox, ICON.plus, '', 'Zoom in', () => zoom(0.5));
+  iconButton(zoomBox, ICON.fit, '', 'Fit', () => setView(0, duration));
   // the Download menu: the audio as logged, or the bundle of audio, signals and metadata
   const dl = input.download;
   let closeMenu = () => {};
@@ -737,8 +770,10 @@ export function mountWaveform(
       }
     });
     wrap.append(menu);
+    divider(zoomBox);
     zoomBox.append(wrap);
   }
+  if (!dl) divider(zoomBox);
   const fullButton = button(zoomBox, '', 'Full screen', () => setFull(!full));
   fullButton.classList.add('nbwf-full-btn');
   fullButton.setAttribute('aria-pressed', 'false');

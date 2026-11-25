@@ -35,10 +35,12 @@
     duration: $('duration'),
     selection: $('selection'),
     selectionText: $('selection-text'),
+    selectionSpan: $('selection-span'),
     loop: $('loop'),
     zoomSelection: $('zoom-selection'),
     clearSelection: $('clear-selection'),
     annotate: $('annotate'),
+    annotateLabel: document.querySelector('#annotate .lbl'),
     noteForm: $('note-form'),
     noteTime: $('note-time'),
     noteText: $('note-text'),
@@ -430,7 +432,9 @@
   // Highlights the note whose section is selected (without redrawing, so
   // a double-click lands on the same element as the click before it)
   function markActiveNote() {
-    el.annotate.textContent = noteAtSelection() ? 'Edit note' : 'Note';
+    const label = noteAtSelection() ? 'Edit note' : 'Note';
+    el.annotate.setAttribute('aria-label', label);
+    el.annotateLabel.textContent = label;
 
     for (const chip of el.notesLane.children) {
       const a = chip.note;
@@ -1183,8 +1187,8 @@
 
     if (region) {
       const span = region.end - region.start;
-      el.selectionText.textContent =
-        `${region.start.toFixed(3)} – ${region.end.toFixed(3)} s ` + `(${span.toFixed(3)} s)`;
+      el.selectionText.textContent = `${region.start.toFixed(3)} – ${region.end.toFixed(3)} s`;
+      el.selectionSpan.textContent = `${span.toFixed(3)} s`;
     } else {
       looping = false;
       el.loop.classList.remove('on');
