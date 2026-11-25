@@ -218,19 +218,43 @@ select.seg {
 }
 
 /* The selection and the frequency band, each in a chip under the toolbar */
+/* One row of fixed height, always there, so nothing below it moves when a
+   selection, a band or the note form comes or goes: a hint when it is empty,
+   the chips otherwise (scrolling sideways in a very narrow player), and the
+   note form in place of the chips while it is open */
 .context {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  height: 30px;
   margin-bottom: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-.context:not(:has(> :not([hidden]))) {
+.context::-webkit-scrollbar {
+  display: none;
+}
+
+.context-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.player:not([data-spectrogram]) .hint-band,
+.context:has(> .chip:not([hidden])) .context-hint,
+.context:has(> .note-form:not([hidden])) > :not(.note-form) {
   display: none;
 }
 
 .chip {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 1px;
   max-width: 100%;
@@ -361,9 +385,11 @@ select.seg {
 
 .note-form {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
-  margin: 0 0 6px;
+  min-width: 0;
+  margin: 0;
 }
 
 .note-form[hidden] {

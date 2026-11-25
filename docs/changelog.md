@@ -13,7 +13,9 @@
 - **A tidier audio toolbar.** The audio player and waveform figures share one
   design: play and time on the left, the view's controls (speed, zoom, fit,
   download, full screen) in one group on the right, and the selection and the
-  frequency band as chips underneath with icon buttons and a lighter ×.
+  frequency band as chips in a row underneath with icon buttons and a lighter
+  ×. That row keeps one height (a hint when empty, the note form while it is
+  open), so nothing moves when you select, add a band or write a note.
   Narrow players keep only the icons. See [Audio](guide/viewer.md#audio).
 - **Select on the home page.** The docs home page has a Select tab next to
   Timeline, and its audio screenshot shows the new toolbar.

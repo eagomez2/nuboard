@@ -57,6 +57,9 @@
         </span>
       </div>
       <div class="context">
+        <span class="context-hint"
+          >Drag to select<span class="hint-band"> · Alt-drag on the spectrogram for a frequency band</span></span
+        >
         <span id="selection" class="chip" role="group" aria-label="Selection" hidden>
           <svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 5h2v14H3zm16 0h2v14h-2zM7 11h10v2H7z" />
@@ -148,19 +151,19 @@
             </svg>
           </button>
         </span>
+        <form id="note-form" class="note-form" hidden>
+          <span id="note-time" class="note-time"></span>
+          <input
+            id="note-text"
+            type="text"
+            placeholder="Note for this selection (Enter to add, Esc to cancel)"
+            autocomplete="off"
+          />
+          <button id="note-submit" type="submit" class="btn small toggle on">Add</button>
+          <button id="note-delete" type="button" class="btn small" hidden>Delete</button>
+          <button id="note-cancel" type="button" class="btn small">Cancel</button>
+        </form>
       </div>
-      <form id="note-form" class="note-form" hidden>
-        <span id="note-time" class="note-time"></span>
-        <input
-          id="note-text"
-          type="text"
-          placeholder="Note for this selection (Enter to add, Esc to cancel)"
-          autocomplete="off"
-        />
-        <button id="note-submit" type="submit" class="btn small toggle on">Add</button>
-        <button id="note-delete" type="button" class="btn small" hidden>Delete</button>
-        <button id="note-cancel" type="button" class="btn small">Cancel</button>
-      </form>
       <div id="minimap" class="minimap"></div>
       <div id="message" class="message" hidden></div>
       <canvas id="ruler" class="ruler"></canvas>

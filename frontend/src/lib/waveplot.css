@@ -36,11 +36,35 @@
   grid-column: 3;
   grid-row: 1;
 }
-.nbwf-bar > .nbwf-sel {
+/* the row under the toolbar: one height always (see waveplot.ts) */
+.nbwf-ctx {
   grid-column: 1 / -1;
-  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
-.nbwf-bar > .nbwf-sel[hidden] {
+.nbwf-ctx::-webkit-scrollbar {
+  display: none;
+}
+.nbwf-ctx > .nbwf-sel {
+  flex: none;
+}
+.nbwf-ctx > .nbwf-sel[hidden] {
+  display: none;
+}
+.nbwf-ctxhint {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-ctx:has(> .nbwf-sel:not([hidden])) > .nbwf-ctxhint,
+.nbwf-ctx:has(> .nbwf-form:not([hidden])) > :not(.nbwf-form) {
   display: none;
 }
 /* the view's buttons in one outlined group, and the selection's in a chip, as in the audio player
@@ -289,6 +313,8 @@
 }
 .nbwf-form {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   font-size: 12px;

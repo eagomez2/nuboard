@@ -667,7 +667,8 @@ samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
 section, then loop it, zoom to it or add a **Note** from the chip that shows
-under the toolbar, as in the audio player; notes show in a lane above
+in the row under the toolbar (always there, so the plot never moves), as in
+the audio player; notes show in a lane above
 the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (last in the toolbar) spreads the figure over the
@@ -764,9 +765,12 @@ remembered):
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
   and full screen (`F`). The toolbar keeps play and the time on the left and
   the view's controls in one group on the right (speed, − / zoom slider / +,
-  fit, full screen). A selection shows as a chip under it, with its start, end
-  and length and buttons to **Loop**, **Zoom** to it, add a **Note** and ×
-  to clear it; a frequency band gets a chip of its own. In a narrow player
+  fit, full screen). The row under it is always there, at one height, so
+  nothing moves as you click: it shows a hint until you select, then a chip
+  with the selection's start, end and length and buttons to **Loop**,
+  **Zoom** to it, add a **Note** and × to clear it. A frequency band gets a
+  chip of its own next to it, and the note form takes the row while it is
+  open. In a narrow player
   the chips keep only their icons (hover one for its name). Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a

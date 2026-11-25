@@ -142,8 +142,17 @@ export function mountWaveform(
   audio.preload = 'auto';
   audio.hidden = true;
   audio.src = input.audioSrc;
-  bar.append(play, time, zoomBox, selBox, read);
-  root.append(bar, form, notesLane, plotEl);
+  // the row under the toolbar is always there, at one height: a hint, the selection's chip, or the
+  // note form while it is open, so the plot never moves when one of them comes or goes
+  const ctx = el('div', 'nbwf-ctx');
+  const ctxHint = el(
+    'span',
+    'nbwf-hint nbwf-ctxhint',
+    editable ? 'Drag to select a section to loop, zoom to or note' : 'Drag to select a section to loop or zoom to',
+  );
+  ctx.append(ctxHint, selBox, form);
+  bar.append(play, time, zoomBox, ctx, read);
+  root.append(bar, notesLane, plotEl);
   if (tracks.length) root.append(lanes);
   root.append(overview, cap, audio);
   // clicking the plot or the overview gives the figure the focus, so Space then plays it (see onKey)
@@ -229,7 +238,7 @@ export function mountWaveform(
       el(
         'span',
         'nbwf-hint',
-        `Drag to select${editable ? ' and note' : ''} · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all`,
+        'Hover for values · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all',
       ),
     );
   /** Horizontal position in the plot element of time `t`, in CSS pixels. */
