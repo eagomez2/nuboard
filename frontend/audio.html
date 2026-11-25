@@ -23,7 +23,119 @@
         <span class="time"
           ><span id="current">0:00.000</span><span class="sep">/</span><span id="duration">0:00.000</span></span
         >
-        <span class="spacer"></span>
+        <div id="context" class="context">
+          <span class="context-hint"
+            >Drag to select<span class="hint-band"> · Alt-drag on the spectrogram for a band</span></span
+          >
+          <span id="selection" class="chip" role="group" aria-label="Selection" hidden>
+            <svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 5h2v14H3zm16 0h2v14h-2zM7 11h10v2H7z" />
+            </svg>
+            <span id="selection-text" class="chip-value"></span>
+            <span id="selection-span" class="chip-extra"></span>
+            <span class="divider"></span>
+            <button id="loop" class="seg toggle" title="Loop the selection (L)" aria-label="Loop">
+              <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z" /></svg>
+              <span class="lbl">Loop</span>
+            </button>
+            <button
+              id="zoom-selection"
+              class="seg"
+              title="Zoom to the selection (Z)"
+              aria-label="Zoom in to the selection"
+            >
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm.5-7H9v2H7v1h2v2h1v-2h2V9h-2z"
+                />
+              </svg>
+              <span class="lbl">Zoom</span>
+            </button>
+            <button
+              id="annotate"
+              class="seg"
+              title="Add a note on the selection, or edit the note it matches (N)"
+              aria-label="Note"
+            >
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.17L4 17.17V4h16zM7 7h10v2H7zm0 4h7v2H7z"
+                />
+              </svg>
+              <span class="lbl">Note</span>
+            </button>
+            <button
+              id="clear-selection"
+              class="close"
+              title="Clear the selection (Esc)"
+              aria-label="Clear the selection"
+            >
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M7.05 5.64 5.64 7.05 10.59 12l-4.95 4.95 1.41 1.41L12 13.41l4.95 4.95 1.41-1.41L13.41 12l4.95-4.95-1.41-1.41L12 10.59z"
+                />
+              </svg>
+            </button>
+          </span>
+          <span id="band" class="chip band" role="group" aria-label="Frequency band" hidden>
+            <button
+              id="band-toggle"
+              class="seg toggle on"
+              title="Play only this band, or every frequency again (the band is kept)"
+              aria-label="Play only the band"
+              aria-pressed="true"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M7 18h2V6H7zm4 4h2V2h-2zm-8-8h2v-4H3zm12 4h2V6h-2zm4-8v4h2v-4z" />
+              </svg>
+              <span class="lbl">Band</span>
+            </button>
+            <input
+              id="band-lo"
+              class="band-hz"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              aria-label="Band bottom, Hz"
+              title="Bottom of the band: type 300, 2.5k or 2,5 kHz and Enter"
+            />
+            <span class="band-dash">–</span>
+            <input
+              id="band-hi"
+              class="band-hz"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              aria-label="Band top, Hz"
+              title="Top of the band: type 3400, 2.5k or 2,5 kHz and Enter"
+            />
+            <span class="band-unit">Hz</span>
+            <button
+              id="band-clear"
+              class="close"
+              title="Clear the band and play every frequency (Esc)"
+              aria-label="Clear the band"
+            >
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M7.05 5.64 5.64 7.05 10.59 12l-4.95 4.95 1.41 1.41L12 13.41l4.95 4.95 1.41-1.41L13.41 12l4.95-4.95-1.41-1.41L12 10.59z"
+                />
+              </svg>
+            </button>
+          </span>
+          <form id="note-form" class="note-form" hidden>
+            <span id="note-time" class="note-time"></span>
+            <input
+              id="note-text"
+              type="text"
+              placeholder="Note for this selection (Enter to add, Esc to cancel)"
+              autocomplete="off"
+            />
+            <button id="note-submit" type="submit" class="btn small toggle on">Add</button>
+            <button id="note-delete" type="button" class="btn small" hidden>Delete</button>
+            <button id="note-cancel" type="button" class="btn small">Cancel</button>
+          </form>
+        </div>
         <span class="group" role="group" aria-label="View">
           <select id="rate" class="seg" title="Playback speed" aria-label="Playback speed">
             <option value="0.5">0.5×</option>
@@ -55,111 +167,6 @@
             </svg>
           </button>
         </span>
-      </div>
-      <div id="context" class="context">
-        <span id="selection" class="chip" role="group" aria-label="Selection" hidden>
-          <svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 5h2v14H3zm16 0h2v14h-2zM7 11h10v2H7z" />
-          </svg>
-          <span id="selection-text" class="chip-value"></span>
-          <span id="selection-span" class="chip-extra"></span>
-          <span class="divider"></span>
-          <button id="loop" class="seg toggle" title="Loop the selection (L)" aria-label="Loop">
-            <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z" /></svg>
-            <span class="lbl">Loop</span>
-          </button>
-          <button
-            id="zoom-selection"
-            class="seg"
-            title="Zoom to the selection (Z)"
-            aria-label="Zoom in to the selection"
-          >
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm.5-7H9v2H7v1h2v2h1v-2h2V9h-2z"
-              />
-            </svg>
-            <span class="lbl">Zoom</span>
-          </button>
-          <button
-            id="annotate"
-            class="seg"
-            title="Add a note on the selection, or edit the note it matches (N)"
-            aria-label="Note"
-          >
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H5.17L4 17.17V4h16zM7 7h10v2H7zm0 4h7v2H7z"
-              />
-            </svg>
-            <span class="lbl">Note</span>
-          </button>
-          <button id="clear-selection" class="close" title="Clear the selection (Esc)" aria-label="Clear the selection">
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M7.05 5.64 5.64 7.05 10.59 12l-4.95 4.95 1.41 1.41L12 13.41l4.95 4.95 1.41-1.41L13.41 12l4.95-4.95-1.41-1.41L12 10.59z"
-              />
-            </svg>
-          </button>
-        </span>
-        <span id="band" class="chip band" role="group" aria-label="Frequency band" hidden>
-          <button
-            id="band-toggle"
-            class="seg toggle on"
-            title="Play only this band, or every frequency again (the band is kept)"
-            aria-label="Play only the band"
-            aria-pressed="true"
-          >
-            <svg viewBox="0 0 24 24">
-              <path d="M7 18h2V6H7zm4 4h2V2h-2zm-8-8h2v-4H3zm12 4h2V6h-2zm4-8v4h2v-4z" />
-            </svg>
-            <span class="lbl">Band</span>
-          </button>
-          <input
-            id="band-lo"
-            class="band-hz"
-            type="text"
-            inputmode="decimal"
-            autocomplete="off"
-            aria-label="Band bottom, Hz"
-            title="Bottom of the band: type 300, 2.5k or 2,5 kHz and Enter"
-          />
-          <span class="band-dash">–</span>
-          <input
-            id="band-hi"
-            class="band-hz"
-            type="text"
-            inputmode="decimal"
-            autocomplete="off"
-            aria-label="Band top, Hz"
-            title="Top of the band: type 3400, 2.5k or 2,5 kHz and Enter"
-          />
-          <span class="band-unit">Hz</span>
-          <button
-            id="band-clear"
-            class="close"
-            title="Clear the band and play every frequency (Esc)"
-            aria-label="Clear the band"
-          >
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M7.05 5.64 5.64 7.05 10.59 12l-4.95 4.95 1.41 1.41L12 13.41l4.95 4.95 1.41-1.41L13.41 12l4.95-4.95-1.41-1.41L12 10.59z"
-              />
-            </svg>
-          </button>
-        </span>
-        <form id="note-form" class="note-form" hidden>
-          <span id="note-time" class="note-time"></span>
-          <input
-            id="note-text"
-            type="text"
-            placeholder="Note for this selection (Enter to add, Esc to cancel)"
-            autocomplete="off"
-          />
-          <button id="note-submit" type="submit" class="btn small toggle on">Add</button>
-          <button id="note-delete" type="button" class="btn small" hidden>Delete</button>
-          <button id="note-cancel" type="button" class="btn small">Cancel</button>
-        </form>
       </div>
       <div id="minimap" class="minimap"></div>
       <div id="message" class="message" hidden></div>

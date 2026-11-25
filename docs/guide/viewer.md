@@ -666,9 +666,8 @@ sample under it, recomputed as you zoom, so long files stay fast and single
 samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
-section, then loop it, zoom to it or add a **Note** from the bar that floats
-over the top of the plot, above the selection, as in the audio player (the
-figure never changes size); notes show in a lane above
+section, then loop it, zoom to it or add a **Note** from the controls that
+appear in the toolbar, as in the audio player (the figure keeps its size); notes show in a lane above
 the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (last in the toolbar) spreads the figure over the
@@ -765,12 +764,13 @@ remembered):
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
   and full screen (`F`). The toolbar keeps play and the time on the left and
   the view's controls in one group on the right (speed, − / zoom slider / +,
-  fit, full screen). A selection's controls float over the top of the waveform,
-  above the selection: its start, end and length and buttons to **Loop**,
-  **Zoom** to it, add a **Note** and × to clear it. A frequency band's
-  controls join them (or float on their own at the right), and the note form
-  opens in the same place. They never push the player around, so its size
-  stays the same whatever you click. In a narrow player
+  fit, full screen). A selection's controls appear in the toolbar, between the
+  time and the view's group: its start, end and length and buttons to
+  **Loop**, **Zoom** to it, add a **Note** and × to clear it. A frequency
+  band's controls sit next to them, and the note form opens in the same
+  place. Players narrower than 1,000 pixels give these controls a row of
+  their own, always there (with a hint while it is empty), and keep only
+  their icons; either way the player keeps its size whatever you click. In a narrow player
   the chips keep only their icons (hover one for its name). Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a

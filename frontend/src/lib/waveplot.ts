@@ -142,12 +142,13 @@ export function mountWaveform(
   audio.preload = 'auto';
   audio.hidden = true;
   audio.src = input.audioSrc;
-  // the selection's controls, and the note form while it is open, float over the top of the plot,
-  // above the selection (see placeFloat), so the figure never changes size when they come or go
-  const floatBox = el('div', 'nbwf-float');
-  floatBox.append(selBox, form);
-  bar.append(play, time, zoomBox, read);
-  root.append(bar, notesLane, plotEl, floatBox);
+  // the selection's controls, and the note form while it is open, in the toolbar between the time
+  // and the view's group, in a cell that never wraps, so the figure keeps its size whatever you click
+  // (narrow figures give it a row of its own, always)
+  const ctx = el('div', 'nbwf-ctx');
+  ctx.append(el('span', 'nbwf-hint nbwf-ctxhint', `Drag to select${editable ? ' and note' : ''}`), selBox, form);
+  bar.append(play, time, ctx, zoomBox, read);
+  root.append(bar, notesLane, plotEl);
   if (tracks.length) root.append(lanes);
   root.append(overview, cap, audio);
   // clicking the plot or the overview gives the figure the focus, so Space then plays it (see onKey)
@@ -233,7 +234,7 @@ export function mountWaveform(
       el(
         'span',
         'nbwf-hint',
-        `Drag to select${editable ? ' and note' : ''} · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all`,
+        'Hover for values · Ctrl/⌘ + wheel zooms · Shift + wheel scrolls · double-click shows all',
       ),
     );
   /** Horizontal position in the plot element of time `t`, in CSS pixels. */
@@ -408,26 +409,8 @@ export function mountWaveform(
     plot.setSelect({ left: a, top: 0, width: Math.max(0, b - a), height: plot.bbox.height / devicePixelRatio }, false);
     selText.textContent = `${sel[0].toFixed(3)} – ${sel[1].toFixed(3)} s`;
     selSpan.textContent = `${(sel[1] - sel[0]).toFixed(3)} s`;
-    placeFloat();
   };
-  /** Over the top of the plot, centred over the selection (the note form centred), inside the plot. */
-  const placeFloat = () => {
-    if (!plot || (selBox.hidden && form.hidden)) return;
-    const rr = root.getBoundingClientRect();
-    const pr = plotEl.getBoundingClientRect();
-    const left0 = pr.left - rr.left + plot.bbox.left / devicePixelRatio;
-    const w = plot.bbox.width / devicePixelRatio;
-    const width = floatBox.offsetWidth;
-    let x = left0 + (w - width) / 2;
-    if (sel && form.hidden) {
-      const a = Math.max(0, plot.valToPos(sel[0], 'x'));
-      const b = Math.min(w, plot.valToPos(sel[1], 'x'));
-      x = left0 + (a + b) / 2 - width / 2;
-    }
-    x = Math.max(left0 + 8, Math.min(left0 + w - width - 8, x));
-    floatBox.style.left = `${Math.round(x)}px`;
-    floatBox.style.top = `${Math.round(pr.top - rr.top + plot.bbox.top / devicePixelRatio + 8)}px`;
-  };
+
   const noteAtSelection = () =>
     sel ? notes.find((n) => Math.abs(sel![0] - n.start) < 1e-3 && Math.abs(sel![1] - n.end) < 1e-3) : undefined;
   const select = (a: number, b: number) => {
@@ -455,13 +438,11 @@ export function mountWaveform(
     saveButton.textContent = note ? 'Save' : 'Add';
     formTime.textContent = `${clock(sel[0], 3)} – ${clock(sel[1], 3)}`;
     form.hidden = false;
-    placeFloat();
     noteText.focus();
   };
   const closeForm = () => {
     form.hidden = true;
     editing = null;
-    placeFloat();
   };
   const save = (next: WaveformNote[]) => {
     notes = next;

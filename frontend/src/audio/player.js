@@ -142,10 +142,7 @@
       onRender(event.data.args, event.data.theme);
     }
   });
-  new ResizeObserver(() => {
-    updateHeight();
-    placeFloat();
-  }).observe(el.player);
+  new ResizeObserver(updateHeight).observe(el.player);
   send('streamlit:componentReady', { apiVersion: 1 });
 
   // -------------------------------------------------------------------------
@@ -993,7 +990,6 @@
     showBand();
     requestSpectrogram();
     updateHeight();
-    placeFloat();
 
     if (!fromRemote) broadcast({ type: 'band', band: band, on: bandOn });
   }
@@ -1194,7 +1190,8 @@
 
     if (region) {
       const span = region.end - region.start;
-      el.selectionText.textContent = `${region.start.toFixed(3)} – ${region.end.toFixed(3)} s`;
+      el.selectionText.textContent = `${region.start.toFixed(3)} – ${region.end.toFixed(3)}`;
+      el.selectionText.insertAdjacentHTML('beforeend', '<span class="unit"> s</span>');
       el.selectionSpan.textContent = `${span.toFixed(3)} s`;
     } else {
       looping = false;
@@ -1213,35 +1210,6 @@
     }
 
     updateHeight();
-    placeFloat();
-  }
-
-  //: Float the selection's and band's controls over the top of the
-  //: waveform, centred over the selection (or at the right with only a
-  //: band), and kept inside the waveform
-  function placeFloat() {
-    const box = el.context;
-
-    if (getComputedStyle(box).display === 'none') return;
-
-    const pr = el.player.getBoundingClientRect();
-    const wr = el.waveform.getBoundingClientRect();
-    const width = box.offsetWidth;
-    const lo = wr.left - pr.left + 8;
-    const hi = wr.right - pr.left - width - 8;
-    let left = hi;
-
-    if (selection && ws && ready && el.noteForm.hidden) {
-      const pps = currentPxPerSec();
-      const a = Math.max(0, selection.start * pps - ws.getScroll());
-      const b = Math.min(wr.width, selection.end * pps - ws.getScroll());
-      left = wr.left - pr.left + (a + b) / 2 - width / 2;
-    } else if (!el.noteForm.hidden) {
-      left = wr.left - pr.left + (wr.width - width) / 2;
-    }
-
-    box.style.left = `${Math.round(Math.max(lo, Math.min(hi, left)))}px`;
-    box.style.top = `${Math.round(wr.top - pr.top + 8)}px`;
   }
 
   function applyRemoteSelection(start, end) {
@@ -1311,7 +1279,6 @@
     el.noteSubmit.textContent = note ? 'Save' : 'Add';
     el.noteTime.textContent = `${formatTime(selection.start)} – ${formatTime(selection.end)}`;
     el.noteForm.hidden = false;
-    placeFloat();
     el.noteText.focus();
     updateHeight();
   }
@@ -1322,7 +1289,6 @@
     el.noteForm.hidden = true;
     el.noteText.value = '';
     updateHeight();
-    placeFloat();
   }
 
   function submitNote() {
@@ -1523,14 +1489,12 @@
     ws.on('interaction', (t) => broadcast({ type: 'seek', time: t }));
     ws.on('scroll', (start) => {
       drawRuler();
-      placeFloat();
       requestSpectrogram();
 
       if (ready) broadcast({ type: 'view', pps: currentPxPerSec(), start });
     });
     ws.on('redrawcomplete', () => {
       drawRuler();
-      placeFloat();
       requestSpectrogram();
       updateHeight();
     });

@@ -39,7 +39,7 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 8px;
   margin-bottom: 8px;
 }
@@ -152,6 +152,7 @@ body {
 /* A group of borderless buttons in one outlined box (the view controls) */
 .group {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 1px;
   height: 30px;
@@ -218,28 +219,21 @@ select.seg {
 }
 
 /* The selection and the frequency band, each in a chip under the toolbar */
-/* The selection's and the band's controls float over the top of the
-   waveform, above the selection (see placeFloat), so the player never
-   changes size: they come and go without moving anything. The note form
-   takes their place while it is open. */
-.player {
-  position: relative;
-}
-
+/* The selection's and the band's controls, in the toolbar between the time
+   and the view's group: one row that never wraps (it scrolls sideways when
+   full), so the player keeps its size whatever you click. A hint fills it
+   when it is empty, and the note form takes it while it is open. Narrow
+   players give it a row of its own, always, so that holds there too. */
 .context {
-  position: absolute;
-  z-index: 6;
+  container: context / inline-size;
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  gap: 0;
-  max-width: calc(100% - 32px);
-  padding: 2px;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
-  background: var(--bg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
@@ -247,17 +241,22 @@ select.seg {
   display: none;
 }
 
-.context:not(:has(> .chip:not([hidden]), > .note-form:not([hidden]))),
+.context-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.player:not([data-spectrogram]) .hint-band,
+.context:has(> .chip:not([hidden])) .context-hint,
 .context:has(> .note-form:not([hidden])) > :not(.note-form) {
   display: none;
 }
 
-.context:has(> .note-form:not([hidden])) {
-  width: min(560px, calc(100% - 32px));
-  padding: 3px 3px 3px 8px;
-}
-
-.context .chip {
+.chip {
   border: 0;
   background: transparent;
 }
@@ -376,8 +375,9 @@ select.seg {
   color: var(--muted);
 }
 
-/* Narrow players keep the icons and drop the labels */
-@media (max-width: 520px) {
+/* Where the toolbar leaves the chips little room, they keep their icons and
+   drop the labels */
+@container context (max-width: 780px) {
   .chip .lbl,
   .chip-extra {
     display: none;
@@ -387,14 +387,66 @@ select.seg {
     width: 26px;
     padding: 0;
   }
+}
 
-  .zoom-range {
-    width: 64px;
+/* Players narrower than both chips need give them a row of their own, at
+   every click alike, so the size still never changes */
+@media (max-width: 999px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .time {
+    flex: 1;
+  }
+
+  .context {
+    flex-basis: 100%;
+    order: 3;
   }
 }
 
-@media (max-width: 400px) {
+/* Tight chips: the selection and the band side by side in a narrow row */
+@container context (max-width: 460px) {
+  .chip > .chip-icon,
+  .chip > .divider,
+  .band-unit {
+    display: none;
+  }
+
+  .chip {
+    padding-left: 6px;
+  }
+
+  .band-hz {
+    width: 46px;
+    margin-left: 2px;
+  }
+
+  .chip-value .unit {
+    display: none;
+  }
+
+  .chip-value {
+    font-size: 11.5px;
+  }
+
+  .close {
+    margin-left: 0;
+  }
+}
+
+/* Narrow players: the zoom slider goes (− / + and Ctrl + wheel still zoom),
+   so the time and the view's group share the first row */
+@media (max-width: 560px) {
   .zoom-range {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .time .sep,
+  #duration {
     display: none;
   }
 }

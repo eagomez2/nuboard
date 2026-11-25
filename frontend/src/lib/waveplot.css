@@ -21,10 +21,11 @@
   border-color: color-mix(in srgb, var(--text) 16%, transparent);
 }
 .nbwf-bar {
-  /* play, time and the view's group on the first row; then the selection's chip, when there is one,
-     and the readout, each a row of their own, so no control moves when a selection comes or goes */
+  /* play, time, the selection's controls (or the note form) and the view's group on one row, in cells
+     that never wrap, so the figure keeps its size whatever you click; then the readout. Narrow figures
+     give the selection's controls a row of their own, always (below) */
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px 10px;
   min-height: 30px;
@@ -32,49 +33,42 @@
   --nbwf-hover: color-mix(in srgb, var(--text) 8%, transparent);
   --nbwf-line: color-mix(in srgb, var(--text) 13%, transparent);
 }
-.nbwf-bar > .nbwf-view {
-  grid-column: 3;
-  grid-row: 1;
-}
-/* the selection's controls float over the top of the plot (see waveplot.ts), so the figure never
-   changes size; the note form takes their place while it is open */
-.nbwf {
-  position: relative;
-}
-.nbwf-float {
-  position: absolute;
-  z-index: 6;
+.nbwf-ctx {
+  container: nbwfctx / inline-size;
   display: flex;
   align-items: center;
-  max-width: calc(100% - 32px);
-  padding: 2px;
-  box-sizing: border-box;
-  border: 1px solid var(--nbwf-line);
-  border-radius: 0.65rem;
-  background: var(--panel);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
-  font-size: 12px;
-  --nbwf-hover: color-mix(in srgb, var(--text) 8%, transparent);
-  --nbwf-line: color-mix(in srgb, var(--text) 13%, transparent);
 }
-.nbwf-float::-webkit-scrollbar {
+.nbwf-ctx::-webkit-scrollbar {
   display: none;
 }
-.nbwf-float:not(:has(> .nbwf-sel:not([hidden]), > .nbwf-form:not([hidden]))),
-.nbwf-float:has(> .nbwf-form:not([hidden])) > :not(.nbwf-form),
-.nbwf-float > [hidden] {
-  display: none;
-}
-.nbwf-float:has(> .nbwf-form:not([hidden])) {
-  width: min(560px, calc(100% - 32px));
-  padding: 3px 3px 3px 8px;
-}
-.nbwf-float > .nbwf-sel {
+.nbwf-ctx > .nbwf-sel {
   flex: none;
-  border: 0;
-  background: transparent;
+}
+.nbwf-ctxhint {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbwf-ctx:has(> .nbwf-sel:not([hidden])) > .nbwf-ctxhint,
+.nbwf-ctx > [hidden],
+.nbwf-ctx:has(> .nbwf-form:not([hidden])) > :not(.nbwf-form) {
+  display: none;
+}
+@container nbwf (max-width: 999px) {
+  .nbwf-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .nbwf-ctx {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 /* the view's buttons in one outlined group, and the selection's in a chip, as in the audio player
    (audio/player.css) */
@@ -235,8 +229,8 @@
   color: var(--panel);
   background: var(--nbwf-accent);
 }
-/* narrow figures keep the icons and drop the labels */
-@container nbwf (max-width: 520px) {
+/* where the toolbar leaves the selection little room, it keeps its icons and drops the labels */
+@container nbwfctx (max-width: 520px) {
   .nbwf-chip .nbwf-lbl,
   .nbwf-selspan {
     display: none;
