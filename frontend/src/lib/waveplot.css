@@ -36,36 +36,45 @@
   grid-column: 3;
   grid-row: 1;
 }
-/* the row under the toolbar: one height always (see waveplot.ts) */
-.nbwf-ctx {
-  grid-column: 1 / -1;
+/* the selection's controls float over the top of the plot (see waveplot.ts), so the figure never
+   changes size; the note form takes their place while it is open */
+.nbwf {
+  position: relative;
+}
+.nbwf-float {
+  position: absolute;
+  z-index: 6;
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  min-width: 0;
+  max-width: calc(100% - 32px);
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--nbwf-line);
+  border-radius: 0.65rem;
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
   overflow-x: auto;
-  overflow-y: hidden;
   scrollbar-width: none;
+  font-size: 12px;
+  --nbwf-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --nbwf-line: color-mix(in srgb, var(--text) 13%, transparent);
 }
-.nbwf-ctx::-webkit-scrollbar {
+.nbwf-float::-webkit-scrollbar {
   display: none;
 }
-.nbwf-ctx > .nbwf-sel {
+.nbwf-float:not(:has(> .nbwf-sel:not([hidden]), > .nbwf-form:not([hidden]))),
+.nbwf-float:has(> .nbwf-form:not([hidden])) > :not(.nbwf-form),
+.nbwf-float > [hidden] {
+  display: none;
+}
+.nbwf-float:has(> .nbwf-form:not([hidden])) {
+  width: min(560px, calc(100% - 32px));
+  padding: 3px 3px 3px 8px;
+}
+.nbwf-float > .nbwf-sel {
   flex: none;
-}
-.nbwf-ctx > .nbwf-sel[hidden] {
-  display: none;
-}
-.nbwf-ctxhint {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.nbwf-ctx:has(> .nbwf-sel:not([hidden])) > .nbwf-ctxhint,
-.nbwf-ctx:has(> .nbwf-form:not([hidden])) > :not(.nbwf-form) {
-  display: none;
+  border: 0;
+  background: transparent;
 }
 /* the view's buttons in one outlined group, and the selection's in a chip, as in the audio player
    (audio/player.css) */

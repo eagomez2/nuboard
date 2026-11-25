@@ -507,7 +507,7 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(readout).toContainText(/events\s*((blip|speech)(, (blip|speech))?|–)/);
 
   // dragging across a tenth of the plot selects it, and Zoom in shows just that; the zoom buttons
-  // stay where they were (the selection's controls have a place of their own)
+  // stay where they were (the selection's controls float over the top of the plot)
   const plus = fig.getByRole('button', { name: 'Zoom in', exact: true });
   const plusAt = (await plus.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.4, box.y + 40);
@@ -518,17 +518,17 @@ test('media page plots waveform figures, with exact values, region lanes, select
   expect(await plus.boundingBox()).toEqual(plusAt);
   await fig.getByRole('button', { name: 'Zoom in to the selection' }).click();
   // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
-  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await over.hover({ position: { x: box.width / 2, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.1[5-9]/);
   // the demo's live run makes the page fetch its media again every few seconds: the figure keeps its
   // zoom and selection (it is not mounted again for an equal item)
   await fig.evaluate((el) => (el.dataset.kept = 'yes'));
   await page.waitForTimeout(5000);
   await expect(fig).toHaveAttribute('data-kept', 'yes');
-  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await over.hover({ position: { x: box.width / 2, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.1[5-9]/);
   await fig.getByRole('button', { name: 'Fit' }).click();
-  await over.hover({ position: { x: box.width / 2 + 1, y: 20 } });
+  await over.hover({ position: { x: box.width / 2 + 1, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.(29|30)/);
 
   // a note on the selection is saved with the run, and is there after a reload

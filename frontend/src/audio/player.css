@@ -218,18 +218,28 @@ select.seg {
 }
 
 /* The selection and the frequency band, each in a chip under the toolbar */
-/* One row of fixed height, always there, so nothing below it moves when a
-   selection, a band or the note form comes or goes: a hint when it is empty,
-   the chips otherwise (scrolling sideways in a very narrow player), and the
-   note form in place of the chips while it is open */
+/* The selection's and the band's controls float over the top of the
+   waveform, above the selection (see placeFloat), so the player never
+   changes size: they come and go without moving anything. The note form
+   takes their place while it is open. */
+.player {
+  position: relative;
+}
+
 .context {
+  position: absolute;
+  z-index: 6;
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  margin-bottom: 8px;
+  gap: 0;
+  max-width: calc(100% - 32px);
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   overflow-x: auto;
-  overflow-y: hidden;
   scrollbar-width: none;
 }
 
@@ -237,19 +247,25 @@ select.seg {
   display: none;
 }
 
-.context-hint {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11.5px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.player:not([data-spectrogram]) .hint-band,
-.context:has(> .chip:not([hidden])) .context-hint,
+.context:not(:has(> .chip:not([hidden]), > .note-form:not([hidden]))),
 .context:has(> .note-form:not([hidden])) > :not(.note-form) {
   display: none;
+}
+
+.context:has(> .note-form:not([hidden])) {
+  width: min(560px, calc(100% - 32px));
+  padding: 3px 3px 3px 8px;
+}
+
+.context .chip {
+  border: 0;
+  background: transparent;
+}
+
+.context .chip:not([hidden]) ~ .chip:not([hidden]) {
+  margin-left: 2px;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
 }
 
 .chip {
