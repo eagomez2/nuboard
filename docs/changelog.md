@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Play only a frequency band.** In the Media page's audio player, Alt-drag
+  (Option-drag on a Mac) over the spectrogram to hear only part of the
+  spectrum: the box's width is the selection and its height a band that
+  playback goes through, with 48 dB/octave filters at its edges. The
+  spectrogram greys out the rest, the edges can be typed in Hz, a button plays
+  everything again while keeping the band, and the players of one key share
+  it. The files are not changed. See
+  [Audio](guide/viewer.md#audio).
+
 ## 0.32.1
 
 Small viewer fixes: clearer labels on the Select page, one style for the

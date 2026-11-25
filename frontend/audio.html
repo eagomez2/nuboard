@@ -37,6 +37,41 @@
             </svg>
           </button>
         </span>
+        <span id="band" class="band" hidden>
+          <button
+            id="band-toggle"
+            class="btn small icon toggle on"
+            title="Play only this band, or every frequency again (the band is kept)"
+            aria-pressed="true"
+          >
+            <svg viewBox="0 0 24 24"><path d="M3 7h18v2H3zm4 4h10v2H7zm-4 4h18v2H3z" /></svg>
+          </button>
+          <input
+            id="band-lo"
+            class="band-hz"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            aria-label="Band bottom, Hz"
+            title="Bottom of the band: type 300, 2.5k or 2,5 kHz and Enter"
+          />
+          <span class="band-dash">–</span>
+          <input
+            id="band-hi"
+            class="band-hz"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            aria-label="Band top, Hz"
+            title="Top of the band: type 3400, 2.5k or 2,5 kHz and Enter"
+          />
+          <span class="band-unit">Hz</span>
+          <button id="band-clear" class="btn small icon" title="Clear the band and play every frequency (Esc)">
+            <svg viewBox="0 0 24 24">
+              <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z" />
+            </svg>
+          </button>
+        </span>
         <select id="rate" class="btn small" title="Playback speed">
           <option value="0.5">0.5×</option>
           <option value="0.75">0.75×</option>

@@ -1201,6 +1201,71 @@ test('Space plays and pauses a waveform figure once clicked, and in full screen'
   await expect(fig).not.toHaveClass(/nbwf-full/);
 });
 
+test('Alt-drag on the spectrogram plays only a frequency band, shared by the players of a key', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
+  const frames = page.frameLocator('iframe[src="./audio.html"]');
+  const player = frames.first();
+  const other = frames.nth(1);
+  await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
+  await expect(other.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
+  await scrollSettled(page);
+  const spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  // a box from 20% to 50% of the width, between 30% and 70% of the height
+  await page.keyboard.down('Alt');
+  await page.mouse.move(spec.x + spec.width * 0.2, spec.y + spec.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.5, spec.y + spec.height * 0.7, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  const band = player.locator('#band');
+  await expect(band).toBeVisible();
+  // its width is the selection, and the playhead is at its start
+  await expect(player.locator('#selection')).toBeVisible();
+  const lo = Number(
+    await player
+      .locator('#band-lo')
+      .inputValue()
+      .then((v) => v.replace('k', 'e3')),
+  );
+  const hi = Number(
+    await player
+      .locator('#band-hi')
+      .inputValue()
+      .then((v) => v.replace('k', 'e3')),
+  );
+  expect(lo).toBeGreaterThan(0);
+  expect(hi).toBeGreaterThan(lo);
+  // the other run's player of the same key plays through the same band
+  await expect(other.locator('#band')).toBeVisible();
+  await expect(other.locator('#band-hi')).toHaveValue(await player.locator('#band-hi').inputValue());
+  // typed edges refine it; an edge typed past the other swaps them
+  await player.locator('#band-lo').fill('300');
+  await player.locator('#band-lo').press('Enter');
+  await player.locator('#band-hi').fill('2,5 kHz');
+  await player.locator('#band-hi').press('Enter');
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '300-2500');
+  await expect(other.locator('#player')).toHaveAttribute('data-band', '300-2500');
+  await player.locator('#band-lo').fill('4k');
+  await player.locator('#band-lo').press('Enter');
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000');
+  // something unreadable puts the field back
+  await player.locator('#band-hi').fill('loud');
+  await player.locator('#band-hi').press('Enter');
+  await expect(player.locator('#band-hi')).toHaveValue('4.00k');
+  // the toggle plays every frequency while keeping the band, and plays with it on
+  await player.locator('#band-toggle').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000 off');
+  await player.locator('#play').click();
+  await expect(player.locator('#player')).toHaveClass(/playing/);
+  await player.locator('#band-toggle').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000');
+  await player.locator('#play').click();
+  // × clears it, in every player of the key
+  await player.locator('#band-clear').click();
+  await expect(band).toBeHidden();
+  await expect(other.locator('#band')).toBeHidden();
+});
+
 test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {
   await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
   const player = page.frameLocator('iframe[src="./audio.html"]').first();

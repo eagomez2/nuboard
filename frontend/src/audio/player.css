@@ -160,6 +160,49 @@ select.btn {
   display: none;
 }
 
+/* The frequency band playback is limited to (Alt-drag on the spectrogram) */
+.band {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+}
+
+.band[hidden] {
+  display: none;
+}
+
+.band-hz {
+  width: 52px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.band-hz:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.band-dash,
+.band-unit {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.band.off .band-hz {
+  color: var(--muted);
+}
+
 #selection-text {
   font-family: var(--font-mono);
   font-size: 11.5px;
