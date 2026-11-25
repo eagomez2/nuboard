@@ -667,7 +667,8 @@ samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
 section, then loop it, zoom to it or add a **Note** from the controls that
-appear in the toolbar, as in the audio player (the figure keeps its size); notes show in a lane above
+appear in the toolbar, as in the audio player (the figure keeps its size); a
+click outside the selection clears it. Notes show in a lane above
 the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
 the view. The full screen button (last in the toolbar) spreads the figure over the
@@ -771,6 +772,8 @@ remembered):
   place. Players narrower than 1,000 pixels give these controls a row of
   their own, always there (with a hint while it is empty), and keep only
   their icons; either way the player keeps its size whatever you click.
+  A click outside the selection clears it (and moves the playhead there);
+  double-click inside it zooms to it.
   With a selection, Play (and Space) plays just the selection, and a dot on
   the play button says so; a ring instead of a dot means it loops. Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
@@ -794,11 +797,12 @@ remembered):
 **Playing a frequency band**: to hear only part of the spectrum, as with a
 spectral selection in an audio editor, turn on the band button (first in the
 view's group, or press `B`) and drag over a spectrogram, or hold Alt (Option
-on a Mac) and drag without it. The box's width becomes the selection, and the playhead
-moves to its start; its height is the band. Playback goes through steep
+on a Mac) and drag without it. Such a drag sets only the band (the box spans
+the full width while you drag) and leaves the time selection as it was, so
+the band applies to the whole clip, or to the selection when there is one; a
+plain drag selects time only. Playback goes through steep
 high-pass and low-pass filters at the band's edges (48 dB per octave), and the
-spectrogram greys out what is outside it. A drag straight up or down sets only
-the band, so the whole clip plays band-limited. The band shows in the toolbar
+spectrogram greys out what is outside it. The band shows in the toolbar
 with its bottom and top in Hz: type `300`, `2.5k` or `2,5 kHz` and Enter to
 refine either (a bottom typed above the top swaps them), or drag its top or
 bottom line on the spectrogram (the pointer turns into a resize arrow over
