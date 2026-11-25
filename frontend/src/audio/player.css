@@ -10,6 +10,7 @@
   --font: 'IBM Plex Sans', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
   --radius: 0.6rem;
+  --hover: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 html,
@@ -38,7 +39,7 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 8px;
   margin-bottom: 8px;
 }
@@ -68,12 +69,15 @@ body {
   color: var(--accent);
 }
 
-.btn:focus-visible {
+.btn:focus-visible,
+.seg:focus-visible,
+.close:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.btn[hidden] {
+.btn[hidden],
+.seg[hidden] {
   display: none;
 }
 
@@ -87,7 +91,9 @@ body {
   padding: 0;
 }
 
-.btn svg {
+.btn svg,
+.seg svg {
+  flex: none;
   width: 16px;
   height: 16px;
   fill: currentColor;
@@ -121,22 +127,47 @@ body {
   display: block;
 }
 
+/* Play plays the selection when there is one, looped when Loop is on */
+.btn.primary {
+  position: relative;
+}
+
+.btn.primary::after {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
+
+.player[data-plays='selection'] .btn.primary::after {
+  display: block;
+}
+
+.player[data-plays='loop'] .btn.primary::after {
+  display: block;
+  background: var(--bg);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
 .btn.toggle.on {
   border-color: var(--primary);
   background: var(--primary);
   color: #fff;
 }
 
-select.btn {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 8px;
-}
-
 .time {
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .time .sep {
@@ -148,30 +179,316 @@ select.btn {
   color: var(--muted);
 }
 
-.selection {
+/* A group of borderless buttons in one outlined box (the view controls) */
+.group {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 6px;
-  padding-left: 8px;
-  border-left: 2px solid var(--primary);
+  gap: 1px;
+  height: 30px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--bg);
 }
 
-.selection[hidden] {
+.seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 26px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seg.icon {
+  width: 26px;
+  padding: 0;
+}
+
+.seg:hover {
+  background: var(--hover);
+}
+
+.seg.toggle.on {
+  background: var(--primary);
+  color: #fff;
+}
+
+select.seg {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+
+.zoom-range {
+  width: 96px;
+  margin: 0 2px;
+  accent-color: var(--primary);
+}
+
+/* The selection and the frequency band, each in a chip under the toolbar */
+/* The selection's and the band's controls, in the toolbar between the time
+   and the view's group: one row that never wraps (it scrolls sideways when
+   full), so the player keeps its size whatever you click. A hint fills it
+   when it is empty, and the note form takes it while it is open. Narrow
+   players give it a row of its own, always, so that holds there too. */
+.context {
+  container: context / inline-size;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.context::-webkit-scrollbar {
   display: none;
 }
 
-#selection-text {
+.context-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.player:not([data-spectrogram]) .hint-band,
+.player:not([data-spectrogram]) .spec-only,
+.context:has(> .chip:not([hidden])) .context-hint,
+.context:has(> .note-form:not([hidden])) > :not(.note-form) {
+  display: none;
+}
+
+.chip {
+  border: 0;
+  background: transparent;
+}
+
+.context .chip:not([hidden]) ~ .chip:not([hidden]) {
+  margin-left: 2px;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 3px 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--secondary-bg);
+}
+
+.chip[hidden] {
+  display: none;
+}
+
+.chip.band {
+  padding-left: 2px;
+}
+
+.chip-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  fill: var(--primary);
+}
+
+.chip-value,
+.chip-extra {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chip-extra {
+  margin-left: 8px;
+  color: var(--muted);
+}
+
+.chip .divider {
+  margin: 0 5px;
+}
+
+.close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.close svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* The frequency band playback is limited to (Alt-drag on the spectrogram) */
+.band-hz {
+  width: 52px;
+  height: 22px;
+  margin: 0 1px 0 4px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.band-hz:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.band-dash,
+.band-unit {
+  margin-left: 3px;
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+}
+
+.band.off .band-hz {
+  color: var(--muted);
+}
+
+/* Where the toolbar leaves the chips little room, they keep their icons and
+   drop the labels */
+@container context (max-width: 780px) {
+  .chip .lbl,
+  .chip-extra {
+    display: none;
+  }
+
+  .seg:has(> .lbl) {
+    width: 26px;
+    padding: 0;
+  }
+}
+
+/* Players narrower than both chips need give them a row of their own, at
+   every click alike, so the size still never changes */
+@media (max-width: 999px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .time {
+    flex: 1;
+  }
+
+  .context {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+/* Tight chips: the selection and the band side by side in a narrow row */
+@container context (max-width: 460px) {
+  .chip > .chip-icon,
+  .chip > .divider,
+  .band-unit {
+    display: none;
+  }
+
+  .chip {
+    padding-left: 6px;
+  }
+
+  .band-hz {
+    width: 46px;
+    margin-left: 2px;
+  }
+
+  .chip-value .unit {
+    display: none;
+  }
+
+  .chip-value {
+    font-size: 11.5px;
+  }
+
+  .close {
+    margin-left: 0;
+  }
+}
+
+/* Narrow players: the zoom slider goes (− / + and Ctrl + wheel still zoom),
+   so the time and the view's group share the first row */
+@media (max-width: 560px) {
+  .zoom-range {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .time .sep,
+  #duration {
+    display: none;
+  }
 }
 
 .note-form {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
-  margin: 0 0 6px;
+  min-width: 0;
+  margin: 0;
 }
 
 .note-form[hidden] {
@@ -202,17 +519,6 @@ select.btn {
 .note-form input[type='text']:focus {
   outline: none;
   border-color: var(--primary);
-}
-
-.zoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-input[type='range'] {
-  width: 110px;
-  accent-color: var(--primary);
 }
 
 /* Views ------------------------------------------------------------------ */

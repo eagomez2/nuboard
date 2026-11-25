@@ -666,10 +666,11 @@ sample under it, recomputed as you zoom, so long files stay fast and single
 samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
-section, then loop it, zoom to it or add a **Note**; notes show in a lane above
-the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
+section, then loop it, zoom to it or add a **Note** from the controls that
+appear in the toolbar, as in the audio player (the figure keeps its size); notes show in a lane above
+the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
-the view. The full screen button (next to **Fit**) spreads the figure over the
+the view. The full screen button (last in the toolbar) spreads the figure over the
 window with a taller plot, in the viewer and in exported reports alike, and Esc
 puts it back. Space plays and pauses once you have clicked the plot or the
 overview, and in full screen. The play button plays the clip, or the selection, from where you
@@ -761,7 +762,17 @@ remembered):
 - **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
-  and full screen (`F`). Space plays and pauses once you have clicked the
+  and full screen (`F`). The toolbar keeps play and the time on the left and
+  the view's controls in one group on the right (speed, − / zoom slider / +,
+  fit, full screen). A selection's controls appear in the toolbar, between the
+  time and the view's group: its start, end and length and buttons to
+  **Loop**, **Zoom** to it, add a **Note** and × to clear it. A frequency
+  band's controls sit next to them, and the note form opens in the same
+  place. Players narrower than 1,000 pixels give these controls a row of
+  their own, always there (with a hint while it is empty), and keep only
+  their icons; either way the player keeps its size whatever you click.
+  With a selection, Play (and Space) plays just the selection, and a dot on
+  the play button says so; a ring instead of a dot means it loops. Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
@@ -779,6 +790,24 @@ remembered):
   shared link shows the
   same view.
 - **Simple**: the browser's own audio controls, as in TensorBoard.
+
+**Playing a frequency band**: to hear only part of the spectrum, as with a
+spectral selection in an audio editor, turn on the band button (first in the
+view's group, or press `B`) and drag over a spectrogram, or hold Alt (Option
+on a Mac) and drag without it. The box's width becomes the selection, and the playhead
+moves to its start; its height is the band. Playback goes through steep
+high-pass and low-pass filters at the band's edges (48 dB per octave), and the
+spectrogram greys out what is outside it. A drag straight up or down sets only
+the band, so the whole clip plays band-limited. The band shows in the toolbar
+with its bottom and top in Hz: type `300`, `2.5k` or `2,5 kHz` and Enter to
+refine either (a bottom typed above the top swaps them), or drag its top or
+bottom line on the spectrogram (the pointer turns into a resize arrow over
+it). Its first button
+(**Band**) plays every frequency again while keeping the band, and pressing it
+again goes back to the band; × or Esc clears it. The
+players of one key share the band, so every run's clip of that key plays
+through it. Only what you hear changes: the files are untouched, and with no
+band the audio plays as before.
 
 **Notes**: in the waveform player, select a section and press **Note** (or
 `N`), type, and press Enter. Notes show in a lane above the waveform; click
