@@ -1033,9 +1033,11 @@
 
   function startBandDrag(e) {
     if (!e.altKey || e.button !== 0 || !specBox || !ws || !ready) return;
-    // NOTE: The spectrogram is inside wavesurfer's shadow root, so the
-    // event's target here is its host: the path tells whether it was hit
-    if (!e.composedPath().includes(specBox)) return;
+    // NOTE: Hit-tested by position, not by target: the selection's region
+    // lies over the spectrogram, so a drag that starts inside the selection
+    // targets the region (in wavesurfer's shadow root), not the spectrogram
+    const r = specBox.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
 
     // NOTE: Captured before wavesurfer sees it, so no plain selection starts
     e.preventDefault();

@@ -1264,6 +1264,16 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await player.locator('#band-clear').click();
   await expect(band).toBeHidden();
   await expect(other.locator('#band')).toBeHidden();
+  // a drag straight down inside the selection sets a band too, leaving the selection as it was
+  const selected = await player.locator('#selection-text').textContent();
+  await page.keyboard.down('Alt');
+  await page.mouse.move(spec.x + spec.width * 0.35, spec.y + spec.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.35, spec.y + spec.height * 0.6, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect(band).toBeVisible();
+  await expect(player.locator('#selection-text')).toHaveText(selected!);
 });
 
 test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {
