@@ -25,7 +25,7 @@
         >
         <div id="context" class="context">
           <span class="context-hint"
-            >Drag to select<span class="hint-band"> · Alt-drag on the spectrogram for a band</span></span
+            >Drag to select<span class="hint-band"> · B or Alt-drag on the spectrogram for a band</span></span
           >
           <span id="selection" class="chip" role="group" aria-label="Selection" hidden>
             <svg class="chip-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -137,6 +137,18 @@
           </form>
         </div>
         <span class="group" role="group" aria-label="View">
+          <button
+            id="band-mode"
+            class="seg icon toggle spec-only"
+            title="Pick a frequency band: drag on the spectrogram (B, or Alt-drag)"
+            aria-label="Pick a band"
+            aria-pressed="false"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M3 3h5v2H5v3H3zm13 0h5v5h-2V5h-3zM3 16h2v3h3v2H3zm16 3h-3v2h5v-5h-2zM7 9h10v2H7zm0 4h10v2H7z" />
+            </svg>
+          </button>
+          <span class="divider spec-only"></span>
           <select id="rate" class="seg" title="Playback speed" aria-label="Playback speed">
             <option value="0.5">0.5×</option>
             <option value="0.75">0.75×</option>

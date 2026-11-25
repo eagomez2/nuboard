@@ -770,8 +770,9 @@ remembered):
   band's controls sit next to them, and the note form opens in the same
   place. Players narrower than 1,000 pixels give these controls a row of
   their own, always there (with a hint while it is empty), and keep only
-  their icons; either way the player keeps its size whatever you click. In a narrow player
-  the chips keep only their icons (hover one for its name). Space plays and pauses once you have clicked the
+  their icons; either way the player keeps its size whatever you click.
+  With a selection, Play (and Space) plays just the selection, and a dot on
+  the play button says so; a ring instead of a dot means it loops. Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
@@ -791,14 +792,17 @@ remembered):
 - **Simple**: the browser's own audio controls, as in TensorBoard.
 
 **Playing a frequency band**: to hear only part of the spectrum, as with a
-spectral selection in an audio editor, hold Alt (Option on a Mac) and drag
-over a spectrogram. The box's width becomes the selection, and the playhead
+spectral selection in an audio editor, turn on the band button (first in the
+view's group, or press `B`) and drag over a spectrogram, or hold Alt (Option
+on a Mac) and drag without it. The box's width becomes the selection, and the playhead
 moves to its start; its height is the band. Playback goes through steep
 high-pass and low-pass filters at the band's edges (48 dB per octave), and the
 spectrogram greys out what is outside it. A drag straight up or down sets only
 the band, so the whole clip plays band-limited. The band shows in the toolbar
 with its bottom and top in Hz: type `300`, `2.5k` or `2,5 kHz` and Enter to
-refine either (a bottom typed above the top swaps them). Its first button
+refine either (a bottom typed above the top swaps them), or drag its top or
+bottom line on the spectrogram (the pointer turns into a resize arrow over
+it). Its first button
 (**Band**) plays every frequency again while keeping the band, and pressing it
 again goes back to the band; × or Esc clears it. The
 players of one key share the band, so every run's clip of that key plays

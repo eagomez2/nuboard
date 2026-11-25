@@ -2,11 +2,12 @@
 
 ## Unreleased
 
-- **Play only a frequency band.** In the Media page's audio player, Alt-drag
-  (Option-drag on a Mac) over the spectrogram to hear only part of the
-  spectrum: the box's width is the selection and its height a band that
+- **Play only a frequency band.** In the Media page's audio player, turn on
+  the band button (or press `B`) and drag over the spectrogram, or Alt-drag
+  (Option-drag on a Mac), to hear only part of the spectrum: the box's width is the selection and its height a band that
   playback goes through, with 48 dB/octave filters at its edges. The
-  spectrogram greys out the rest, the edges can be typed in Hz, a button plays
+  spectrogram greys out the rest, the edges can be typed in Hz or dragged on
+  the spectrogram, a button plays
   everything again while keeping the band, and the players of one key share
   it. The files are not changed. See
   [Audio](guide/viewer.md#audio).
@@ -16,7 +17,8 @@
   frequency band's controls, with icon buttons and a lighter ×, appear in the
   toolbar between them (in a row of their own on narrow players), and the
   note form opens there too, so the player never changes size when you
-  select, add a band or write a note.
+  select, add a band or write a note. A dot on the play button shows that it
+  plays the selection (a ring: looped).
   Narrow players keep only the icons. See [Audio](guide/viewer.md#audio).
 - **Select on the home page.** The docs home page has a Select tab next to
   Timeline, and its audio screenshot shows the new toolbar.

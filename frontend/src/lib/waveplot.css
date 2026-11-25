@@ -143,6 +143,31 @@
   color: var(--panel);
   cursor: pointer;
 }
+.nbwf-play {
+  position: relative;
+}
+.nbwf-play::after {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--panel);
+  border-radius: 50%;
+  background: var(--nbwf-accent);
+  content: '';
+}
+.nbwf[data-plays='selection'] .nbwf-play::after {
+  display: block;
+}
+.nbwf[data-plays='loop'] .nbwf-play::after {
+  display: block;
+  background: var(--panel);
+  border-color: var(--nbwf-accent);
+  box-shadow: inset 0 0 0 2px var(--nbwf-accent);
+}
 .nbwf-play svg {
   width: 16px;
   height: 16px;

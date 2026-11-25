@@ -1274,6 +1274,40 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await page.keyboard.up('Alt');
   await expect(band).toBeVisible();
   await expect(player.locator('#selection-text')).toHaveText(selected!);
+  // Play shows that it plays the selection, and that it loops it with Loop on
+  await expect(player.locator('#player')).toHaveAttribute('data-plays', 'selection');
+  await player.locator('#loop').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-plays', 'loop');
+  await player.locator('#loop').click();
+  // the band's top edge can be dragged; the band follows in every player of the key
+  const before = (await player.locator('#player').getAttribute('data-band'))!.split('-').map(Number);
+  const at = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  let grabY = -1;
+  for (let y = Math.ceil(at.y); y < at.y + at.height && grabY < 0; y++) {
+    await page.mouse.move(at.x + at.width * 0.8, y);
+    const cursor = await player.locator('#waveform').evaluate((w) => w.style.cursor);
+    if (cursor === 'ns-resize') grabY = y;
+  }
+  expect(grabY).toBeGreaterThan(0);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width * 0.8, grabY - 25, { steps: 5 });
+  await page.mouse.up();
+  const after = (await player.locator('#player').getAttribute('data-band'))!.split('-').map(Number);
+  expect(after[0]).toBe(before[0]);
+  expect(after[1]).toBeGreaterThan(before[1]);
+  await expect(other.locator('#player')).toHaveAttribute('data-band', `${after[0]}-${after[1]}`);
+  // the band button lets a plain drag pick a band, and B turns it off again
+  await player.locator('#band-clear').click();
+  await player.locator('#band-mode').click();
+  await expect(player.locator('#band-mode')).toHaveAttribute('aria-pressed', 'true');
+  const now = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  await page.mouse.move(now.x + now.width * 0.6, now.y + now.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(now.x + now.width * 0.6, now.y + now.height * 0.6, { steps: 6 });
+  await page.mouse.up();
+  await expect(band).toBeVisible();
+  await page.keyboard.press('b');
+  await expect(player.locator('#band-mode')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {

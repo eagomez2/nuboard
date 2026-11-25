@@ -399,6 +399,7 @@ export function mountWaveform(
   // the selection, drawn as uPlot's selection box, kept in seconds so it follows the zoom
   const showSelection = () => {
     selBox.hidden = !sel;
+    showPlays();
     if (!plot) return;
     if (!sel) {
       plot.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
@@ -411,6 +412,12 @@ export function mountWaveform(
     selSpan.textContent = `${(sel[1] - sel[0]).toFixed(3)} s`;
   };
 
+  // what Play (and Space) plays, shown on the button, as in the audio player: the selection, or the
+  // selection looped
+  const showPlays = () => {
+    if (sel) root.dataset.plays = looping ? 'loop' : 'selection';
+    else delete root.dataset.plays;
+  };
   const noteAtSelection = () =>
     sel ? notes.find((n) => Math.abs(sel![0] - n.start) < 1e-3 && Math.abs(sel![1] - n.end) < 1e-3) : undefined;
   const select = (a: number, b: number) => {
@@ -694,6 +701,7 @@ export function mountWaveform(
   const loopButton = iconButton(selBox, ICON.loop, 'Loop', 'Loop the selection', () => {
     looping = !looping;
     loopButton.classList.toggle('on', looping);
+    showPlays();
   });
   // as in the audio player: the selection's Zoom, next to − / + / Fit for the whole view
   const zoomSel = iconButton(selBox, ICON.zoom, 'Zoom', 'Zoom in to the selection', () => {

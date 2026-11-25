@@ -64,6 +64,7 @@
     context: $('context'),
     band: $('band'),
     bandToggle: $('band-toggle'),
+    bandMode: $('band-mode'),
     bandLo: $('band-lo'),
     bandHi: $('band-hi'),
     bandClear: $('band-clear'),
@@ -860,6 +861,10 @@
   let band = null; // [low, high] in Hz, or null
   let bandOn = true; // off: the band stays drawn but every frequency plays
   let bandDrag = null;
+  //: With it on, a drag on the spectrogram picks a band (as Alt-drag does)
+  let bandMode = false;
+  //: Which edge of the band is being dragged: 0 bottom, 1 top
+  let edgeDrag = null;
   let audioCtx = null;
   let source = null; // MediaElementAudioSourceNode of `sourceFor`
   let sourceFor = null;
@@ -1032,8 +1037,98 @@
     return { x: x, y: y, time: time, hz: rowFrequency(1 - inChannel / rows, nyquist()) };
   }
 
+  //: The edge of the band (0 bottom, 1 top) at a point on the spectrogram,
+  //: within a few pixels, or null
+  function bandEdgeAt(clientX, clientY) {
+    if (!band || !specBox) return null;
+
+    const rect = specBox.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+
+    const rows = rect.height / Math.max(1, args.channels || 1);
+    const y = clientY - rect.top;
+    const inChannel = y - Math.floor(y / rows) * rows;
+    const top = nyquist();
+
+    for (const i of [1, 0]) {
+      const edge = rows - frequencyRow(Math.min(top, Math.max(band[i], LOG_MIN_HZ)), top) * rows;
+      if (edge > 1 && edge < rows - 1 && Math.abs(inChannel - edge) <= 5) return i;
+    }
+
+    return null;
+  }
+
+  function setBandMode(on) {
+    bandMode = on;
+    el.bandMode.classList.toggle('on', on);
+    el.bandMode.setAttribute('aria-pressed', String(on));
+    if (specBox) specBox.style.cursor = on ? 'crosshair' : '';
+  }
+
+  //: Pointer cursor over the spectrogram: a resize arrow on a band's edge
+  function hoverBand(e) {
+    if (bandDrag || edgeDrag !== null || !specBox) return;
+
+    const edge = bandEdgeAt(e.clientX, e.clientY);
+    el.waveform.style.cursor = edge !== null ? 'ns-resize' : '';
+    specBox.style.cursor = edge !== null ? 'ns-resize' : bandMode ? 'crosshair' : '';
+  }
+
+  function startEdgeDrag(e, edge) {
+    e.preventDefault();
+    e.stopPropagation();
+    edgeDrag = edge;
+    window.addEventListener('pointermove', moveEdgeDrag, true);
+    window.addEventListener('pointerup', endEdgeDrag, true);
+  }
+
+  function moveEdgeDrag(e) {
+    if (edgeDrag === null) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const next = band.slice();
+    next[edgeDrag] = spectrogramPoint(e.clientX, e.clientY).hz;
+    // NOTE: Past the other edge, the two swap, and so does the one in hand
+    if (next[0] > next[1]) edgeDrag = 1 - edgeDrag;
+    setBand(next);
+  }
+
+  function endEdgeDrag(e) {
+    window.removeEventListener('pointermove', moveEdgeDrag, true);
+    window.removeEventListener('pointerup', endEdgeDrag, true);
+
+    if (edgeDrag === null) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    edgeDrag = null;
+    swallowClick();
+    el.waveform.style.cursor = '';
+    el.player.focus();
+  }
+
+  //: The click that follows a drag would seek to where it ended
+  function swallowClick() {
+    const swallow = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+  }
+
   function startBandDrag(e) {
-    if (!e.altKey || e.button !== 0 || !specBox || !ws || !ready) return;
+    if (e.button !== 0 || !specBox || !ws || !ready) return;
+
+    const edge = bandEdgeAt(e.clientX, e.clientY);
+
+    if (edge !== null && !e.altKey) {
+      startEdgeDrag(e, edge);
+      return;
+    }
+
+    if (!e.altKey && !bandMode) return;
     // NOTE: Hit-tested by position, not by target: the selection's region
     // lies over the spectrogram, so a drag that starts inside the selection
     // targets the region (in wavesurfer's shadow root), not the spectrogram
@@ -1085,13 +1180,7 @@
     const b = spectrogramPoint(e.clientX, e.clientY);
     bandDrag.box.remove();
     bandDrag = null;
-    // The click that follows would seek to where the drag ended
-    const swallow = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    window.addEventListener('click', swallow, { capture: true, once: true });
-    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+    swallowClick();
 
     // A click without a drag leaves everything as it was
     if (Math.abs(b.y - a.y) < 3) return;
@@ -1200,6 +1289,7 @@
     }
 
     markActiveNote();
+    showPlays();
 
     if (!fromRemote) {
       broadcast({
@@ -1210,6 +1300,17 @@
     }
 
     updateHeight();
+  }
+
+  //: What Play (and Space) plays, shown on the button: the selection, or
+  //: the selection looped, or (with no selection) the file from the cursor
+  function showPlays() {
+    if (selection) el.player.dataset.plays = looping ? 'loop' : 'selection';
+    else delete el.player.dataset.plays;
+
+    el.play.title = selection
+      ? `Play / pause the selection${looping ? ', looped' : ''} (Space)`
+      : 'Play / pause (Space)';
   }
 
   function applyRemoteSelection(start, end) {
@@ -1627,6 +1728,7 @@
   el.loop.addEventListener('click', () => {
     looping = !looping;
     el.loop.classList.toggle('on', looping);
+    showPlays();
 
     // Keep playing, now without the stop at the end of the selection
     if (ws && ws.isPlaying() && selection) {
@@ -1641,6 +1743,8 @@
   el.bandToggle.addEventListener('click', () => toggleBand());
   el.bandClear.addEventListener('click', () => setBand(null));
   el.waveform.addEventListener('pointerdown', startBandDrag, true);
+  el.waveform.addEventListener('pointermove', hoverBand);
+  el.bandMode.addEventListener('click', () => setBandMode(!bandMode));
 
   for (const [input, edge] of [
     [el.bandLo, 0],
@@ -1753,6 +1857,12 @@
       case 'z':
       case 'Z':
         if (selection) zoomToRange(selection.start, selection.end);
+        break;
+      case 'b':
+      case 'B':
+        if (e.ctrlKey || e.metaKey || e.altKey || !spec) return;
+
+        setBandMode(!bandMode);
         break;
       case 'n':
       case 'N':

@@ -127,6 +127,36 @@ body {
   display: block;
 }
 
+/* Play plays the selection when there is one, looped when Loop is on */
+.btn.primary {
+  position: relative;
+}
+
+.btn.primary::after {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
+
+.player[data-plays='selection'] .btn.primary::after {
+  display: block;
+}
+
+.player[data-plays='loop'] .btn.primary::after {
+  display: block;
+  background: var(--bg);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
 .btn.toggle.on {
   border-color: var(--primary);
   background: var(--primary);
@@ -251,6 +281,7 @@ select.seg {
 }
 
 .player:not([data-spectrogram]) .hint-band,
+.player:not([data-spectrogram]) .spec-only,
 .context:has(> .chip:not([hidden])) .context-hint,
 .context:has(> .note-form:not([hidden])) > :not(.note-form) {
   display: none;
