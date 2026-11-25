@@ -80,6 +80,8 @@ export function mountWaveform(
   let notes: WaveformNote[] = [];
   let view: [number, number] = [0, duration];
   let sel: [number, number] | null = null;
+  // where the pointer went down on the plot, to tell a click from a drag
+  let downX: number | null = null;
   let looping = false;
   let hoverT: number | null = null;
   let plot: uPlot | null = null;
@@ -548,10 +550,20 @@ export function mountWaveform(
               setView(0, duration);
               return null;
             },
+            mousedown: (_u, _target, handler) => (e: MouseEvent) => {
+              downX = e.clientX;
+              return handler(e);
+            },
             mouseup: (u, _target, handler) => (e: MouseEvent) => {
-              // a click (not a drag) sets the playhead
-              if (u.select.width === 0 && u.cursor.left !== undefined && u.cursor.left >= 0) {
-                audio.currentTime = u.posToVal(u.cursor.left, 'x');
+              // a click (not a drag) sets the playhead. NOTE: By the pointer's travel, as u.select
+              // still holds the last drag's selection until uPlot's own handler below runs
+              const click = downX !== null && Math.abs(e.clientX - downX) < 3;
+              downX = null;
+              if (click && u.cursor.left !== undefined && u.cursor.left >= 0) {
+                const t = u.posToVal(u.cursor.left, 'x');
+                // and a click outside the selection clears it, as in the audio player
+                if (sel && (t < sel[0] - 0.005 || t > sel[1] + 0.005)) clearSelection();
+                audio.currentTime = t;
                 showTime();
                 u.redraw(false, false);
               }

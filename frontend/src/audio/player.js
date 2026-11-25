@@ -1154,9 +1154,10 @@
   function drawBandBox(to) {
     const a = bandDrag.from;
     const s = bandDrag.box.style;
-    s.left = `${Math.min(a.x, to.x)}px`;
+    // NOTE: Spans the full width, as a band drag sets only the band
+    s.left = '0';
+    s.width = '100%';
     s.top = `${Math.min(a.y, to.y)}px`;
-    s.width = `${Math.abs(to.x - a.x)}px`;
     s.height = `${Math.abs(to.y - a.y)}px`;
   }
 
@@ -1184,13 +1185,6 @@
 
     // A click without a drag leaves everything as it was
     if (Math.abs(b.y - a.y) < 3) return;
-
-    // A drag straight up or down sets only the band, for the whole file
-    if (Math.abs(b.x - a.x) >= 4) {
-      const start = Math.min(a.time, b.time);
-      selectRange(start, Math.max(a.time, b.time));
-      ws.setTime(start);
-    }
 
     bandOn = true;
     setBand([a.hz, b.hz]);
@@ -1587,7 +1581,14 @@
     });
     ws.on('pause', () => el.player.classList.remove('playing'));
     ws.on('finish', () => el.player.classList.remove('playing'));
-    ws.on('interaction', (t) => broadcast({ type: 'seek', time: t }));
+    ws.on('interaction', (t) => {
+      // A click outside the selection clears it, as in audio editors
+      if (selection && (t < selection.start - 0.005 || t > selection.end + 0.005)) {
+        clearSelection();
+      }
+
+      broadcast({ type: 'seek', time: t });
+    });
     ws.on('scroll', (start) => {
       drawRuler();
       requestSpectrogram();

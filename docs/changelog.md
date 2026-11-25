@@ -4,8 +4,8 @@
 
 - **Play only a frequency band.** In the Media page's audio player, turn on
   the band button (or press `B`) and drag over the spectrogram, or Alt-drag
-  (Option-drag on a Mac), to hear only part of the spectrum: the box's width is the selection and its height a band that
-  playback goes through, with 48 dB/octave filters at its edges. The
+  (Option-drag on a Mac), to hear only part of the spectrum: the drag sets a
+  band (leaving the time selection as it was) that playback goes through, with 48 dB/octave filters at its edges. The
   spectrogram greys out the rest, the edges can be typed in Hz or dragged on
   the spectrogram, a button plays
   everything again while keeping the band, and the players of one key share
@@ -20,6 +20,10 @@
   select, add a band or write a note. A dot on the play button shows that it
   plays the selection (a ring: looped).
   Narrow players keep only the icons. See [Audio](guide/viewer.md#audio).
+- **A click outside the selection clears it.** In the audio player and in
+  waveform figures, a single click outside the selection clears it and moves
+  the playhead there, as in audio editors. A click on a waveform figure after
+  a selection now always moves the playhead.
 - **Select on the home page.** The docs home page has a Select tab next to
   Timeline, and its audio screenshot shows the new toolbar.
 

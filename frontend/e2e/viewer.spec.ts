@@ -536,6 +536,10 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await fig.getByLabel('Note text').fill('checked by ear');
   await page.keyboard.press('Enter');
   await expect(fig.locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible();
+  // a click outside the selection clears it
+  await expect(fig.locator('.nbwf-sel').first()).toBeVisible();
+  await over.click({ position: { x: box.width * 0.9, y: 40 } });
+  await expect(fig.locator('.nbwf-sel').first()).toBeHidden();
   await page.reload();
   await expect(page.locator('.nbwf').first().locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible({
     timeout: 15000,
@@ -1209,7 +1213,7 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
   await expect(other.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
   await scrollSettled(page);
-  const spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  let spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
   // a box from 20% to 50% of the width, between 30% and 70% of the height
   await page.keyboard.down('Alt');
   await page.mouse.move(spec.x + spec.width * 0.2, spec.y + spec.height * 0.3);
@@ -1219,8 +1223,8 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await page.keyboard.up('Alt');
   const band = player.locator('#band');
   await expect(band).toBeVisible();
-  // its width is the selection, and the playhead is at its start
-  await expect(player.locator('#selection')).toBeVisible();
+  // it sets only the band: no time is selected
+  await expect(player.locator('#selection')).toBeHidden();
   const lo = Number(
     await player
       .locator('#band-lo')
@@ -1264,7 +1268,15 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await player.locator('#band-clear').click();
   await expect(band).toBeHidden();
   await expect(other.locator('#band')).toBeHidden();
-  // a drag straight down inside the selection sets a band too, leaving the selection as it was
+  // a plain drag selects time only
+  spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  await page.mouse.move(spec.x + spec.width * 0.2, spec.y + spec.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.5, spec.y + spec.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect(player.locator('#selection')).toBeVisible();
+  await expect(band).toBeHidden();
+  // a drag straight down inside the selection sets a band, leaving the selection as it was
   const selected = await player.locator('#selection-text').textContent();
   await page.keyboard.down('Alt');
   await page.mouse.move(spec.x + spec.width * 0.35, spec.y + spec.height * 0.2);
@@ -1279,6 +1291,10 @@ test('Alt-drag on the spectrogram plays only a frequency band, shared by the pla
   await player.locator('#loop').click();
   await expect(player.locator('#player')).toHaveAttribute('data-plays', 'loop');
   await player.locator('#loop').click();
+  // a click outside the selection clears it, and the band stays
+  await page.mouse.click(spec.x + spec.width * 0.8, spec.y + spec.height * 0.9);
+  await expect(player.locator('#selection')).toBeHidden();
+  await expect(band).toBeVisible();
   // the band's top edge can be dragged; the band follows in every player of the key
   const before = (await player.locator('#player').getAttribute('data-band'))!.split('-').map(Number);
   const at = (await player.locator('[part="spectrogram"]').boundingBox())!;
