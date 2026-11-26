@@ -22,6 +22,7 @@ import HOVER_JS from './export-hover.js?raw';
 import { waveformKit } from './waveform';
 import { PR_BOX, prArea, prSvg, type PRData, type PRSeries } from './pr';
 import { renderMarkdown } from './markdown';
+import { bokehScripts } from './bokeh';
 import { app } from './state.svelte';
 import { ema, robustRange } from './smooth';
 import LOGO from '../../public/logo.svg?raw';
@@ -273,18 +274,6 @@ async function chartHtml(specText: string, caption: string, needs: Needs): Promi
     .map((x) => `<span><i style="background:var(--s${x.c + 1})"></i>${esc(x.label)}</span>`)
     .join('');
   return `<figure><div class="nbchart"><div class="nbchart-head"><b>${esc(spec.metric)}</b><span>${esc(sub)}</span></div><div class="nbplot"></div><script type="application/json">${json.replace(/</g, '\\u003c')}</script><div class="nblegend">${legend}</div></div>${caption ? `<figcaption><span>${esc(caption)}</span></figcaption>` : ''}</figure>`;
-}
-
-/** BokehJS must match the version that wrote the figure; it is fetched once, when exporting. */
-async function bokehScripts(version: string): Promise<string[] | null> {
-  const base = `https://cdn.bokeh.org/bokeh/release/bokeh-${version}.min.js`;
-  try {
-    const res = await fetch(base);
-    if (!res.ok) return null;
-    return [await res.text()];
-  } catch {
-    return null;
-  }
 }
 
 // Draws every figure for the page's theme, and again when a switchable page changes theme.

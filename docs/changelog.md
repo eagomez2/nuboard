@@ -26,6 +26,10 @@
   a selection now always moves the playhead.
 - **Select on the home page.** The docs home page has a Select tab next to
   Timeline, and its audio screenshot shows the new toolbar.
+- **Bokeh tables and widgets in HTML exports.** Exported reports and views now
+  inline BokehJS's widgets and tables files along with the core file, as the
+  viewer does, so Bokeh figures with data tables or widgets render in the
+  export too. BokehJS still comes from cdn.bokeh.org at export time.
 
 ## 0.32.1
 
