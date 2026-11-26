@@ -18,10 +18,10 @@ no server, no database.
 [:material-book-open-variant: Guides](guide/logging.md){ .md-button }
 
 <p class="nb-works" markdown>Works with
+[:simple-python: Python](quickstart.md){ .nb-pill }
+[:simple-jupyter: Jupyter](guide/integrations.md#jupyter){ .nb-pill }
 [:simple-lightning: PyTorch Lightning](guide/integrations.md#pytorch-lightning){ .nb-pill }
 [:simple-huggingface: Hugging Face](guide/integrations.md#hugging-face-trainer){ .nb-pill }
-[:simple-jupyter: Jupyter](guide/integrations.md#jupyter){ .nb-pill }
-[:simple-python: Plain Python, no framework needed](quickstart.md){ .nb-pill }
 </p>
 
 </div>
