@@ -136,10 +136,26 @@ export function defaultStat(metric: string): Extreme {
 }
 
 /** The metric to show first: a training loss if there is one. */
+const metricRank = (m: string) =>
+  m === 'loss' ? 0 : m === 'train/loss' ? 1 : /(^|\/)loss$/.test(m) ? 2 : /loss/.test(m) ? 3 : 4;
+
 export function defaultMetric(metrics: string[]): string {
-  const rank = (m: string) =>
-    m === 'loss' ? 0 : m === 'train/loss' ? 1 : /(^|\/)loss$/.test(m) ? 2 : /loss/.test(m) ? 3 : 4;
-  return [...metrics].sort((a, b) => rank(a) - rank(b))[0] ?? '';
+  return [...metrics].sort((a, b) => metricRank(a) - metricRank(b))[0] ?? '';
+}
+
+/**
+ * The scalar a chart of several runs opens on: one the newest run logged (when `newest` is given
+ * and shares any), so the latest runs are on it; among those a loss if possible, but only among
+ * scalars that at least half as many runs logged as the most logged one, so a name few runs used
+ * never hides the rest. Ties go to the scalar more runs logged, then to the order given.
+ */
+export function chartMetric(counts: { name: string; runs: number }[], newest?: Iterable<string>): string {
+  const mine = new Set(newest ?? []);
+  const pool = counts.some((c) => mine.has(c.name)) ? counts.filter((c) => mine.has(c.name)) : counts;
+  const most = Math.max(0, ...pool.map((c) => c.runs));
+  const common = pool.filter((c) => c.runs * 2 >= most);
+  common.sort((a, b) => metricRank(a.name) - metricRank(b.name) || b.runs - a.runs);
+  return common[0]?.name ?? '';
 }
 
 /** The text with its first letter capitalized, for showing a value such as a run status as a label. */
