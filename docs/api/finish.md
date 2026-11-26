@@ -18,6 +18,17 @@ installed. It is safe to call twice.
   viewer shows it as **lost** once its heartbeat is two minutes old.
 
 
+## `finished`
+
+```python
+run.finished  # True once finish() has run
+```
+
+A read-only property, also True for the no-op run that ranks other than 0 get
+when they cannot find rank 0's run. The [framework
+integrations](../guide/integrations.md) use it to resume a run that was
+finished, such as for a test after a fit.
+
 ## `flush`
 
 ```python

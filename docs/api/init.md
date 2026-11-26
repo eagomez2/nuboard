@@ -147,9 +147,33 @@ run = nb.init("api-tour", run_name="lower-lr", fork_from=("20261017T0930-c589c96
   earlier ones. When you restart from a checkpoint at step 5000, the points the
   earlier session logged at step 5000 or later are hidden in favor of the new
   ones, scalar by scalar.
+- A resumed run's summary (the last value, min and max the Runs table and
+  queries use) keeps the scalars that only earlier sessions logged.
 - A fork copies the parent's points up to the fork step into the new run's
   folder, so the new folder never refers to anything outside it. The viewer
   shows the fork's parent in the run details.
+
+## Adding to the config later: `update_config`
+
+```python
+run.update_config(values)
+```
+
+Merges more settings into the run's config after `init`, for values known only
+later, such as the hyperparameters a framework reports once training starts.
+`values` takes the same kinds as `init`'s `config` (a dict, dataclass,
+`argparse.Namespace`, OmegaConf config or an object with `to_dict()`).
+
+```python
+run = nb.init("api-tour", config={"optim": {"lr": 1e-3, "name": "adamw"}})
+run.update_config({"optim": {"lr": 3e-4}, "seed": 7})
+run.config  # {"optim": {"lr": 3e-4, "name": "adamw"}, "seed": 7}
+```
+
+- Nested dicts are merged key by key; other values replace the old ones.
+- `run.json` is rewritten at once, so the viewer, the query language and the
+  Sweeps page see the new keys.
+- On ranks other than 0, and after `finish`, only `run.config` changes.
 
 
 ## System scalars
