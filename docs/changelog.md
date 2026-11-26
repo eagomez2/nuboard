@@ -55,8 +55,11 @@ additions.
   waveform figures, a single click outside the selection clears it and moves
   the playhead there, as in audio editors. A click on a waveform figure after
   a selection now always moves the playhead.
-- **Select on the home page.** The docs home page has a Select tab next to
-  Timeline, and its audio screenshot shows the new toolbar.
+- **A leaner docs home page.** One tabbed quick start (plain Python,
+  Lightning, Hugging Face, Jupyter), a "Works with" row under the hero,
+  one-line feature cards and a short closing; about a third shorter. It also
+  has a Select tab next to Timeline, and its audio screenshot shows the new
+  toolbar. The README lists the integrations too.
 - **Bokeh tables and widgets in HTML exports.** Exported reports and views now
   inline BokehJS's widgets and tables files along with the core file, as the
   viewer does, so Bokeh figures with data tables or widgets render in the
