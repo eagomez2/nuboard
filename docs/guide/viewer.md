@@ -302,8 +302,8 @@ them to see all).
   logged, preferring a loss that most of the shown runs logged, so the latest
   runs are on the first chart even when older ones used other names.
 - **Runs without the scalar**: a run that never logged the focused scalar has
-  no line on it. The chart's header then says so ("4 of 10 runs don't log
-  this scalar"), and hovering that note names them.
+  no line on it. The chart's header then says so ("4 of 10 shown runs don't
+  log this scalar", or "selected runs" when you picked them), and hovering that note names them.
 - **Summary cards**: the best last value of the focused scalar, **Best**
   with a ↓ / ↑ button for whether lower or higher is better (`cstat` in the
   URL, starting as on the Runs page and remembered per scalar), running runs and last

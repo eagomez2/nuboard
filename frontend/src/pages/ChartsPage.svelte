@@ -860,7 +860,9 @@
         >
         {#if focusIndex >= 0}<span class="count faint">{focusIndex + 1} / {metrics.length}</span>{/if}
         {#if lacking.length}<span class="note lacking" title={lackingTitle}
-            >{lacking.length} of {runKeys.length} run{runKeys.length === 1 ? '' : 's'} don't log this scalar</span
+            >{lacking.length} of {runKeys.length}
+            {router.list('sel').length ? 'selected' : 'shown'} run{runKeys.length === 1 ? '' : 's'}
+            {lacking.length === 1 ? "doesn't" : "don't"} log this scalar</span
           >{:else}<span class="note"
             >{groupBy
               ? agg === 'std'
