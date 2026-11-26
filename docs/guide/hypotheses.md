@@ -120,4 +120,13 @@ Each board is a folder of plain JSON in the project,
 `<id>.json` per hypothesis. You can commit it to git with the project, or edit
 it by hand. See [File format](../reference/format.md#hypothesis-boards-hypothesesboard).
 
+Several tabs or people can work on one board. Each card is saved with the
+version you loaded, so a change someone made meanwhile to another field (or
+their moving the card) is kept, not overwritten. Moving, folding and resizing
+never conflict. Only when you both changed the same field, such as the note or
+the runs, the viewer asks on save whether to keep theirs or yours; a
+conclusion or reason you were typing that someone saved meanwhile asks the
+same when you press Save. Nothing changes while you type. See [Editing from
+several places](viewer.md#editing-from-several-places).
+
 `nuboard up --read-only-hypotheses` makes boards read-only (`--read-only-reports` does the same for reports).

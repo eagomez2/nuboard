@@ -231,6 +231,12 @@ class RunHandle:
 
         return pa.concat_tables(parts)
 
+    def _repr_html_(self) -> str:
+        """The run's summary, shown by Jupyter when a cell ends with the run."""
+        from .notebook import handle_html
+
+        return handle_html(self)
+
     def __repr__(self) -> str:
         """Return a short description with the run id and status."""
         return f"<RunHandle {self.id} status={self.record['status']}>"
@@ -430,6 +436,12 @@ class Project:
             rows.append(row)
 
         return pa.Table.from_pylist(rows)
+
+    def _repr_html_(self) -> str:
+        """The project's summary, shown by Jupyter when a cell ends with it."""
+        from .notebook import project_html
+
+        return project_html(self)
 
     def __repr__(self) -> str:
         """Return a short description with the root folder and run count."""

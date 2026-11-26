@@ -1,7 +1,8 @@
 <script module lang="ts">
   // Unsaved drafts outlive the field: switching to another run and back brings the draft back,
-  // and leaving the page with one asks first.
-  const drafts = new Map<string, string>();
+  // and leaving the page with one asks first. Each draft keeps the saved value it started from,
+  // so a save can tell when someone else saved the field meanwhile.
+  const drafts = new Map<string, { text: string; from: string }>();
   let guarded = false;
   function guard() {
     if (guarded || typeof window === 'undefined') return;
@@ -14,6 +15,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { resolveNotes } from '../lib/conflicts';
   // A text field that saves only on Save (or Ctrl/Cmd+Enter; Enter for one line) and goes back on
   // Cancel (or Esc). The buttons show once the text differs from what is saved.
   let {
@@ -44,7 +46,7 @@
     const saved = value;
     untrack(() => {
       const d = drafts.get(key);
-      if (d !== undefined && d !== saved) text = d;
+      if (d !== undefined && d.text !== saved) text = d.text;
       else {
         drafts.delete(key);
         text = saved;
@@ -56,12 +58,25 @@
   function input(v: string) {
     text = v;
     if (v !== value) {
-      drafts.set(id, v);
+      drafts.set(id, { text: v, from: drafts.get(id)?.from ?? value });
       guard();
     } else drafts.delete(id);
   }
-  function save() {
+  async function save() {
     if (!dirty) return;
+    const from = drafts.get(id)?.from ?? value;
+    if (from !== value) {
+      // saved elsewhere since this draft began: nothing changed on screen until now, and the
+      // choice is made here, on Save
+      const choice = await resolveNotes(value, 'text');
+      if (choice === null) return;
+      if (choice === 'theirs') return cancel();
+      if (choice === 'both') {
+        input(`${value.trimEnd()}\n\n${text.trim()}`);
+        drafts.set(id, { text, from: value }); // tidy up, then Save again
+        return;
+      }
+    }
     drafts.delete(id);
     onsave(text);
   }

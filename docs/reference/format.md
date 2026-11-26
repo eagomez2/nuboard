@@ -544,6 +544,12 @@ atomically by the viewer and is safe to commit to git.
   (folded above five runs); `card` overrides the board's number and `width`
   (`s`, `m`, `l`, `xl`, or `null` to follow the board) its `card_width`.
 
+`updated` also tells the viewer whether a card changed since it was loaded:
+a save carries the card as loaded and is merged field by field with the file
+on disk when their `updated` differ (see [Editing from several
+places](../guide/viewer.md#editing-from-several-places)). Nothing else is
+stored for this.
+
 Runs and reports that no longer exist show as "not found". A parent link that
 would make a loop is refused on save and drawn as a starting point if it is
 found on disk. Files that are not JSON objects are skipped, and unknown or
@@ -576,7 +582,9 @@ syntax and is at most 1000 characters. Written by the viewer; safe to commit.
 ## Reports: `reports/<name>.md`
 
 Plain Markdown, written atomically by the viewer and safe to edit by hand or
-commit. The first `# ` heading is the report's title. A logged item is embedded
+commit. To catch edits made meanwhile, the viewer compares a hash of the
+file's bytes when it saves (the first 16 hex digits of its SHA-256, computed,
+never stored), so a hand edit counts as a change too. The first `# ` heading is the report's title. A logged item is embedded
 with an image line whose target is a media reference:
 
 ```markdown

@@ -145,6 +145,21 @@ def report_path(project_dir: Path, name: str) -> Path:
     return project_dir / "reports" / (_fs.sanitize(name.removesuffix(".md"), "report") + ".md")
 
 
+def report_rev(path: Path) -> str | None:
+    """A short hash of a report's bytes, or None if it does not exist.
+
+    Editors send back the revision they started from, so a save over a report
+    changed meanwhile (by another tab, viewer or hand edit) can be refused.
+    """
+
+    try:
+        data = path.read_bytes()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
 def save_report(project_dir: Path, name: str, text: str) -> Path:
     """Write a report atomically, creating `reports/` if needed.
 

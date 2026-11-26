@@ -8,7 +8,7 @@ import json
 import os
 import secrets
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +144,7 @@ def create_app(
     max_image_bytes: int = MAX_IMAGE_BYTES,
     max_text_bytes: int = MAX_TEXT_BYTES,
     max_audio_bytes: int = MAX_AUDIO_BYTES,
+    frame_ancestors: Sequence[str] = (),
 ) -> Starlette:
     """Create the viewer's Starlette app for a folder of runs.
 
@@ -170,10 +171,14 @@ def create_app(
         max_image_bytes: Size limit of an image uploaded into a report.
         max_text_bytes: Size limit of a text file uploaded into a report.
         max_audio_bytes: Size limit of an audio file uploaded into a report.
+        frame_ancestors: Origins besides the viewer's own that may show its pages
+            in a frame, as CSP `frame-ancestors` sources (such as
+            `http://localhost:*` for a notebook). Empty, no other site can.
 
     Returns:
         The app. Its `state.store` holds the `Store` it reads runs through.
     """
+    framing = _framing(frame_ancestors)
     catalog = Catalog(root, cache=cache_dir)
     # names this server process in `hello`: the catalog version restarts from 0 with it
     server_id = secrets.token_hex(8)
@@ -257,18 +262,18 @@ def create_app(
                 f"<h1>{NAME}</h1><p>The frontend is not built. Run <code>pnpm install</code> and"
                 " <code>pnpm build</code> in <code>frontend/</code>, or install a wheel.</p>",
                 503,
-                headers=_NO_FRAMING,
+                headers=framing,
             )
 
-        return FileResponse(page, headers={"Cache-Control": "no-cache", **_NO_FRAMING})
+        return FileResponse(page, headers={"Cache-Control": "no-cache", **framing})
 
     async def static_file(request: Request) -> Response:
         """Return a built frontend file, or `index.html` for any other path (client routing)."""
         target = path_inside(STATIC, request.path_params["path"])
 
         if target is not None and target.is_file():
-            framing = _NO_FRAMING if target.suffix == ".html" else {}
-            return FileResponse(target, headers=framing)
+            frame_headers = framing if target.suffix == ".html" else {}
+            return FileResponse(target, headers=frame_headers)
 
         return await index(request)
 
@@ -333,6 +338,24 @@ def create_app(
 
 # Pages of the viewer can only be framed by the viewer, so another site cannot overlay them
 _NO_FRAMING = {"X-Frame-Options": "SAMEORIGIN", "Content-Security-Policy": "frame-ancestors 'self'"}
+
+
+def _framing(ancestors: Sequence[str]) -> dict[str, str]:
+    """The headers that say who may frame a page: the viewer, and `ancestors` if any.
+
+    Raises:
+        ValueError: If a source holds a character that would end the header's value.
+    """
+
+    if not ancestors:
+        return _NO_FRAMING
+
+    for source in ancestors:
+        if not source or any(c in source for c in " ;,'\"\r\n"):
+            raise ValueError(f"not a frame-ancestors source: {source!r}")
+
+    # X-Frame-Options cannot list origins, so it is left out; CSP takes precedence anyway
+    return {"Content-Security-Policy": "frame-ancestors 'self' " + " ".join(ancestors)}
 
 
 class _SharedAssets(StaticFiles):

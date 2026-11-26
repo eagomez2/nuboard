@@ -9,7 +9,7 @@ Example:
 from __future__ import annotations
 
 from importlib import metadata as _metadata
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ._meta import FORMAT_VERSION, NAME
 from .artifacts import Artifact
@@ -24,7 +24,11 @@ except _metadata.PackageNotFoundError:  # pragma: no cover - running from a sour
     __version__ = "0.0.0"
 
 if TYPE_CHECKING:
+    import os
+    from collections.abc import Sequence
+
     from .analysis import Project
+    from .notebook import Viewer
 
 
 def load(project: str, *, dir: str | None = None) -> Project:
@@ -49,6 +53,26 @@ def load(project: str, *, dir: str | None = None) -> Project:
     return Project.open(project, dir=dir)
 
 
+def show(
+    target: Any = None,
+    *,
+    page: str | None = None,
+    dir: str | os.PathLike[str] | None = None,
+    height: int = 720,
+    frame_ancestors: Sequence[str] = (),
+) -> Viewer:
+    """Show the viewer in a Jupyter cell; see `nuboard.notebook.show`.
+
+    Example:
+        >>> import nuboard as nb
+        >>> run = nb.init("mnist")
+        >>> nb.show(run)  # the run's charts, updating as it logs
+    """
+    from .notebook import show as _show
+
+    return _show(target, page=page, dir=dir, height=height, frame_ancestors=frame_ancestors)
+
+
 __all__ = [
     "FORMAT_VERSION",
     "NAME",
@@ -63,4 +87,5 @@ __all__ = [
     "get_artifact",
     "init",
     "load",
+    "show",
 ]

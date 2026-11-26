@@ -131,3 +131,39 @@ def test_values_must_fit_their_property():
 
     with pytest.raises(ValueError, match="yes/no"):
         check_field({"name": "ok", "type": "bool"}, "maybe")
+
+
+def test_report_saves_refuse_to_overwrite_a_change_made_elsewhere(tmp_path):
+    from starlette.testclient import TestClient
+
+    import nuboard as nb
+    from nuboard.server import create_app
+
+    with nb.init("rp", capture_env=False):
+        pass
+
+    client = TestClient(create_app(tmp_path / "exp", cache_dir=tmp_path / "cache"))
+    save = lambda **b: client.post("/api/reports", json={"project": "rp", "name": "n", **b})  # noqa: E731
+    first = save(text="# n\n", base_rev=None)  # a new report: nothing there yet
+    assert first.status_code == 200
+    rev = client.get("/api/reports/rp/n").json()["rev"]
+    assert rev == first.json()["rev"]
+
+    mine = save(text="# n\nmine\n", base_rev=rev)
+    assert mine.status_code == 200
+    # the Media page appends a block meanwhile
+    assert save(append="![x](media:r/k@1)").status_code == 200
+    stale = save(text="# n\nmine, more\n", base_rev=mine.json()["rev"])
+    assert stale.status_code == 409
+    body = stale.json()
+    assert body["conflict"] is True and body["deleted"] is False
+    assert body["text"].endswith("![x](media:r/k@1)\n")
+    assert client.get("/api/reports/rp/n").json()["text"] == body["text"]  # nothing written
+
+    ok = save(text="# n\nmine, more\n", base_rev=body["rev"])  # resolved: save over theirs
+    assert ok.status_code == 200
+    assert save(text="old client\n").status_code == 200  # no base_rev: written as before
+
+    save(delete=True)
+    gone = save(text="x", base_rev=ok.json()["rev"])
+    assert gone.status_code == 409 and gone.json()["deleted"] is True

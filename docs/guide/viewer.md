@@ -979,9 +979,6 @@ Some cases are not fully covered:
   per folder and let everyone use it.
 - **Other tools rewriting the file**, such as a hand edit, or a sync tool
   (Dropbox, rsync) restoring an older copy. The last writer wins.
-- **Hypothesis cards and reports.** Each is saved whole, so when two tabs or
-  viewers edit the same card or report, the last save wins and replaces the
-  other's changes, with no warning. Edit each one from one place at a time.
 
 If someone saves a run's notes or a property **after you started editing
 it**, your save is not applied over theirs. The viewer shows what they saved
@@ -992,6 +989,29 @@ and asks what to keep:
 - **A property** (in a run's Properties tab, a table cell, or set on several
   selected runs): *Theirs* shows their value; *Mine* saves yours over it. With
   several runs, the ones nobody changed are saved right away.
+
+- **A report**: the editor saves a moment after you stop typing, and each
+  save checks that the file is still the one it last read or wrote. If
+  someone saved it meanwhile (another tab or viewer, the Media page's bookmark
+  button, a hand edit), your text is not written over theirs: autosave
+  pauses and **Changed elsewhere** appears in the toolbar, in the place where
+  *Saved* is shown, so nothing on the page moves and your text and cursor
+  stay as they are. Click it when you are ready to choose: *Merged* keeps both
+  changes when they touch different lines; *Both* puts their text above yours
+  to tidy up; *Mine* saves yours over theirs; *Theirs* drops your edits since
+  the last save.
+- **A hypothesis card**: each save sends the card as you loaded it, and
+  changes made elsewhere meanwhile are merged field by field, so someone else
+  moving the card or editing another field never gets in the way. Moving,
+  folding and resizing a card never conflict (your layout is kept). When
+  someone changed the same field, such as the note or the runs, the viewer
+  asks on save: *Theirs* keeps what they saved; *Mine* saves yours over it. A
+  text field you are editing (a conclusion, a reason) that someone saved
+  meanwhile asks the same as notes when you press Save.
+
+Nothing is checked or reloaded while you type: live updates and heartbeats of
+running runs never change an editor's text, and the question only comes when
+you save (or, for a report, when you click the marker).
 
 Only the notes or properties you edit are compared, so changes others make to
 other properties, tags or stars never get in the way. Tags and stars are not

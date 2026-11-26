@@ -55,7 +55,10 @@ NuBoard.
 | `nb.init(capture_console=...)` | [what the script prints](init.md#console-output) | Run details › Console |
 | [`add_artifact`, `use_artifact`](add_artifact.md) | versioned datasets and checkpoints, copied or referenced, and which runs used them | Artifacts |
 | [`nb.add_artifact`, `nb.get_artifact`](add_artifact.md#nbadd_artifact) | the same without a run, such as a shared dataset | Artifacts |
-| [`finish`, `flush`, `summary`](finish.md) | the run's end and status | Runs |
+| [`finish`, `flush`, `summary`, `finished`](finish.md) | the run's end and status | Runs |
+| [`update_config`](init.md#adding-to-the-config-later-update_config) | settings known only after `init`, such as hyperparameters a framework reports later | Runs, Sweeps |
+| [`nb.show`](../guide/integrations.md#jupyter) | the viewer inside a Jupyter cell; runs and projects also show a summary at the end of a cell | Jupyter |
+| [`NuBoardLogger`, `NuBoardCallback`](../guide/integrations.md) | everything a PyTorch Lightning `Trainer` or a Hugging Face `Trainer` logs, with no code changes in the training loop | Charts, Runs |
 
 ## Conventions
 

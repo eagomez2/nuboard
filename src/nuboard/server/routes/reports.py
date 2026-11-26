@@ -21,6 +21,7 @@ from ...reports import (
     export_report,
     report_names,
     report_path,
+    report_rev,
     save_report,
     save_snapshot,
     save_upload,
@@ -75,7 +76,14 @@ def routes(ctx: Context) -> list[BaseRoute]:
             return JSON({"error": "no such report"}, status_code=404)
 
         text = path.read_text(encoding="utf-8", errors="replace")
-        return JSON({"project": request.path_params["project"], "name": path.stem, "text": text})
+        return JSON(
+            {
+                "project": request.path_params["project"],
+                "name": path.stem,
+                "text": text,
+                "rev": report_rev(path),
+            }
+        )
 
     def report_export(request: Request) -> Response:
         """Return a zip with the report's Markdown and the files it embeds."""
@@ -124,6 +132,13 @@ def routes(ctx: Context) -> list[BaseRoute]:
         The JSON body holds `project`, `name` and `text`; `append` adds a block
         at the end instead (creating the report if needed), `rename` moves the
         report to a new name and `delete: true` removes it.
+
+        With `base_rev`, the revision the editor started from (`rev` of the last
+        load or save; null for a report that did not exist), a save over a
+        report changed or deleted meanwhile is refused with a 409 holding the
+        current `text` and `rev` (`deleted: true` if it is gone), and nothing is
+        written. Without it the text is written as before. A save returns the
+        new `rev`.
         """
 
         if read_only_reports:
@@ -159,10 +174,27 @@ def routes(ctx: Context) -> list[BaseRoute]:
             text = f"{old.rstrip()}\n\n{str(body['append']).strip()}\n"
 
         if text is None and path.exists():
-            return JSON({"saved": path.stem})
+            return JSON({"saved": path.stem, "rev": report_rev(path)})
 
-        save_report(pdir, path.stem, str(text or ""))
-        return JSON({"saved": path.stem})
+        if "base_rev" in body and not body.get("append"):
+            current = report_rev(path)
+
+            if current != body["base_rev"]:
+                return JSON(
+                    {
+                        "error": "the report changed since it was opened",
+                        "conflict": True,
+                        "deleted": current is None,
+                        "text": path.read_text(encoding="utf-8", errors="replace")
+                        if current is not None
+                        else "",
+                        "rev": current,
+                    },
+                    status_code=409,
+                )
+
+        saved = save_report(pdir, path.stem, str(text or ""))
+        return JSON({"saved": saved.stem, "rev": report_rev(saved)})
 
     def report_asset(request: Request) -> Response:
         """Serve a report-local file, such as a chart snapshot in `reports/files/`."""
