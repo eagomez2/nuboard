@@ -1029,3 +1029,26 @@ def test_multi_gpu_run_is_compacted_when_only_rank_0_logged(monkeypatch):
     run.add_scalar("loss", 1.0, step=0)
     run.finish()
     assert (run.path / "data.parquet").exists()
+
+
+def test_resume_keeps_the_summary_of_scalars_from_earlier_sessions():
+    first = nb.init("p", capture_env=False)
+    first.add_scalar({"a": 1.0, "b": 1.0}, step=0)
+    first.finish()
+    again = nb.init("p", run_id=first.id, resume="must", capture_env=False)
+    again.add_scalar("b", 2.0, step=5)
+    again.finish()
+    summary = json.loads((again.path / "run.json").read_text("utf-8"))["summary"]
+    assert summary["a"]["last"] == 1.0
+    assert summary["b"]["last"] == 2.0 and summary["b"]["step"] == 5
+
+
+def test_update_config_merges_into_run_json():
+    run = nb.init("p", config={"optim": {"lr": 0.1, "name": "sgd"}}, capture_env=False)
+    run.update_config({"optim": {"lr": 0.01}, "seed": 3})
+    meta = json.loads((run.path / "run.json").read_text("utf-8"))
+    assert meta["config"] == {"optim": {"lr": 0.01, "name": "sgd"}, "seed": 3}
+    run.finish()
+    assert run.finished
+    run.update_config({"late": True})  # after finish: only Run.config changes
+    assert "late" not in json.loads((run.path / "run.json").read_text("utf-8"))["config"]

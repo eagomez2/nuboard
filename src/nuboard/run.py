@@ -579,6 +579,7 @@ class Run:
         self.session = self._next_session()
         self.config = _config_to_dict(config)
         self._meta: dict[str, Any] = {}
+        self._prior_summary: dict[str, Any] = {}
 
         if self.dist.is_main and self.job is None:
             self._write_initial_meta(name, tags, notes, group, resumed, fork_from, capture_env)
@@ -725,6 +726,8 @@ class Run:
         if not self.config:
             self.config = meta.get("config") or {}
 
+        # scalars of earlier sessions stay in the summary (a resume logs only some of them)
+        self._prior_summary = dict(meta.get("summary") or {}) if resumed else {}
         meta["status"] = "running"
         meta["started"] = self.started
         meta["ended"] = None
@@ -947,7 +950,7 @@ class Run:
 
         with self._meta_lock:
             if self._writer is not None:
-                self._meta["summary"] = self._writer.summary()
+                self._meta["summary"] = {**self._prior_summary, **self._writer.summary()}
 
             new, self._media_new = self._media_new, 0
             self._meta["media_count"] = int(self._meta.get("media_count") or 0) + new
@@ -1795,6 +1798,42 @@ class Run:
         """
         return self._writer.summary() if self._writer else {}
 
+    @property
+    def finished(self) -> bool:
+        """True once `finish` has been called (or the run was opened as a no-op)."""
+        return self._finished
+
+    def update_config(self, values: Any) -> None:
+        """Merge more settings into the run's config, after `init`.
+
+        For settings known only later, such as the hyperparameters a framework
+        reports once training starts. Keys in `values` replace the same keys in
+        the config (nested dicts are merged key by key), and `run.json` is
+        rewritten at once. On ranks other than 0, and after `finish`, the call
+        only updates `Run.config`.
+
+        Args:
+            values: A mapping, dataclass, OmegaConf config or namespace, as for
+                `init`'s `config`.
+        """
+        new = _config_to_dict(values)
+
+        def merge(into: dict[str, Any], more: Mapping[str, Any]) -> None:
+            for k, v in more.items():
+                if isinstance(v, Mapping) and isinstance(into.get(k), dict):
+                    merge(into[k], v)
+                else:
+                    into[k] = v
+
+        with self._meta_lock:
+            merge(self.config, new)
+
+            if self._finished or not self.dist.is_main or not self._meta:
+                return
+
+            self._meta["config"] = self.config
+            self._save_meta()
+
     # -- timers -----------------------------------------------------------------
     def timer(
         self,
@@ -2065,6 +2104,12 @@ class Run:
     def _atexit(self) -> None:
         """Finish the run when the interpreter exits."""
         self.finish()
+
+    def _repr_html_(self) -> str:
+        """The run's summary, shown by Jupyter when a cell ends with the run."""
+        from .notebook import live_run_html
+
+        return live_run_html(self)
 
     def __enter__(self) -> Run:
         """Return the run itself."""
