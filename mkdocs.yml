@@ -33,6 +33,7 @@ nav:
       - Coming from TensorBoard: api/tensorboard.md
   - Guides:
       - Logging from Python: guide/logging.md
+      - Frameworks and notebooks: guide/integrations.md
       - Using the viewer: guide/viewer.md
       - Reports: guide/reports.md
       - Hypotheses: guide/hypotheses.md
