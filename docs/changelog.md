@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.33.0
+## 0.33.1
 
 Framework integrations and notebooks, safer shared editing, and a selectable
 frequency band in the audio player. No breaking changes, and no new
@@ -55,8 +55,17 @@ additions.
   waveform figures, a single click outside the selection clears it and moves
   the playhead there, as in audio editors. A click on a waveform figure after
   a selection now always moves the playhead.
-- **Select on the home page.** The docs home page has a Select tab next to
-  Timeline, and its audio screenshot shows the new toolbar.
+- **A leaner docs home page.** One tabbed quick start (plain Python,
+  Lightning, Hugging Face, Jupyter), a "Works with" row under the hero,
+  one-line feature cards and a short closing; about a third shorter. It also
+  has a Select tab next to Timeline, and its audio screenshot shows the new
+  toolbar. The README lists the integrations too.
+- **Charts opens on a scalar your newest runs logged.** With nothing
+  selected, the focused chart used to open on `loss` whenever any shown run
+  had it, so after a switch to `train/loss` it showed only older runs. It now
+  opens on a scalar the newest run logged (a loss that most shown runs logged
+  when there is one), and when some shown runs don't log the focused scalar,
+  the chart's header says how many and names them on hover.
 - **Bokeh tables and widgets in HTML exports.** Exported reports and views now
   inline BokehJS's widgets and tables files along with the core file, as the
   viewer does, so Bokeh figures with data tables or widgets render in the

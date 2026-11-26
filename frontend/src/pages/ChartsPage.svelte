@@ -11,7 +11,7 @@
   import { api, type Alert, type ChartData } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { seriesColor } from '../lib/colors';
-  import { defaultMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtSeconds, fmtValue } from '../lib/format';
+  import { chartMetric, fmtAgo, fmtDuration, fmtTimeIn, fmtNum, fmtSeconds, fmtValue } from '../lib/format';
   import { defaultStat, rememberedStat, rememberStat, type Extreme } from '../lib/stat';
   import { reservedPrefixes, sectionOf } from '../lib/prefixes';
   import { EVERYTHING, onLive } from '../lib/live';
@@ -51,7 +51,8 @@
   const hasBaselines = $derived(runs.some((r) => r.baselines?.length));
   const runKeys = $derived(groupBy ? runs.map((r) => r.key) : runs.slice(0, MAX_LINES).map((r) => r.key));
 
-  let metrics = $state<string[]>([]);
+  let metricCounts = $state<{ name: string; runs: number }[]>([]);
+  const metrics = $derived(metricCounts.map((m) => m.name));
   let focusData = $state<ChartData | null>(null);
   // Offer the Ranges toggle only when something draws a range around a curve.
   const hasRanges = $derived(
@@ -80,17 +81,33 @@
   $effect(() => {
     const keys = runKeys;
     if (!keys.length) {
-      metrics = [];
+      metricCounts = [];
       return;
     }
-    api.metrics(keys).then((r) => (metrics = r.metrics.map((m) => m.name)));
+    api.metrics(keys).then((r) => (metricCounts = r.metrics));
   });
 
   const focus = $derived.by(() => {
     const m = router.get('metric');
     if (m && metrics.includes(m)) return m;
-    return defaultMetric(metrics.filter((m) => !isReserved(sectionOf(m)))) || defaultMetric(metrics);
+    // a scalar the newest shown run logged, and among those the one most shown runs logged (a
+    // loss when it can), so the first chart has the latest runs on it
+    const newest = Object.keys(app.runByKey(runKeys[0])?.summary ?? {});
+    const own = metricCounts.filter((m) => !isReserved(sectionOf(m.name)));
+    return chartMetric(own, newest) || chartMetric(metricCounts, newest);
   });
+  // shown runs with nothing to draw on this chart, said in its header rather than left out silently
+  const lacking = $derived(focus ? runKeys.map((k) => app.runByKey(k)).filter((r) => r && !(focus in r.summary)) : []);
+  const lackingTitle = $derived(
+    lacking.length
+      ? `No ${focus} logged by: ${lacking
+          .slice(0, 12)
+          .map((r) => r!.name || r!.id)
+          .join(
+            ', ',
+          )}${lacking.length > 12 ? ` and ${lacking.length - 12} more` : ''}. Pick another scalar to see them.`
+      : '',
+  );
   // Timers and system metrics are the run's own scalars: their sections come last and start
   // folded, and timer charts show durations (1.2 s, 3m 05s) with lower being better.
   const reserved = $derived(reservedPrefixes(runs));
@@ -842,13 +859,17 @@
           onclick={() => stepMetric(1)}><Icon name="chevron" size={14} /></button
         >
         {#if focusIndex >= 0}<span class="count faint">{focusIndex + 1} / {metrics.length}</span>{/if}
-        <span class="note"
-          >{groupBy
-            ? agg === 'std'
-              ? 'mean ± std'
-              : agg
-            : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
-        >
+        {#if lacking.length}<span class="note lacking" title={lackingTitle}
+            >{lacking.length} of {runKeys.length}
+            {router.list('sel').length ? 'selected' : 'shown'} run{runKeys.length === 1 ? '' : 's'}
+            {lacking.length === 1 ? "doesn't" : "don't"} log this scalar</span
+          >{:else}<span class="note"
+            >{groupBy
+              ? agg === 'std'
+                ? 'mean ± std'
+                : agg
+              : 'Drag or Ctrl+wheel to zoom · Shift+drag to pan · double-click to reset'}</span
+          >{/if}
         <!-- these take the hint's room in the fixed-height header, so neither the picker nor the plot move -->
         <span class="pills">
           {#if stale}<button
@@ -1400,6 +1421,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .note.lacking {
+    color: var(--muted);
+    cursor: help;
   }
   .acts {
     flex: none;
