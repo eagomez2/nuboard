@@ -292,12 +292,18 @@ shared.
 ![Charts page](../assets/charts-dark.png#only-dark){ .nb-shot }
 
 The Charts page plots the selected runs (from **Charts** in the selection
-bar) or, if none are selected, every run matching the query.
+bar) or, if none are selected, the newest 60 runs matching the query (group
+them to see all).
 
 - **Focused chart**: the menu at the top left shows the scalar it plots.
   Click it and type to search all the scalars (`/regex/` and `!exclude`
   work), or step through them with the ‹ › buttons next to it; the counter
-  shows where you are (`30 / 54`).
+  shows where you are (`30 / 54`). It opens on a scalar the newest run
+  logged, preferring a loss that most of the shown runs logged, so the latest
+  runs are on the first chart even when older ones used other names.
+- **Runs without the scalar**: a run that never logged the focused scalar has
+  no line on it. The chart's header then says so ("4 of 10 runs don't log
+  this scalar"), and hovering that note names them.
 - **Summary cards**: the best last value of the focused scalar, **Best**
   with a ↓ / ↑ button for whether lower or higher is better (`cstat` in the
   URL, starting as on the Runs page and remembered per scalar), running runs and last
