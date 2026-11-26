@@ -307,21 +307,49 @@
   width: 1em;
   height: 1em;
 }
-.md-typeset .nb-integrations {
-  margin: 1.8rem 0 1rem;
-  padding: 0.9rem 1.1rem 0.2rem;
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-left: 4px solid var(--md-primary-fg-color);
-  border-radius: 0.6rem;
-  background: color-mix(in srgb, var(--md-primary-fg-color) 5%, var(--md-default-bg-color));
+.md-typeset .nb-start .tabbed-set {
+  margin: 0 0 0.3rem;
 }
-.md-typeset .nb-integrations-head {
-  margin: 0 0 0.4rem;
-  font-size: 0.8rem;
+.md-typeset .nb-start-note {
+  margin: 0 0 1.5rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
 }
-.md-typeset .nb-integrations-head .nb-int-icon svg {
-  fill: var(--md-primary-fg-color);
+/* Compact feature cards: one line of bold title and text each */
+.md-typeset .nb-cards > ul > li {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
 }
-.md-typeset .nb-integrations .tabbed-set {
-  margin: 0.4rem 0 0.6rem;
+.md-typeset .nb-cards > ul > li .twemoji {
+  color: var(--md-primary-fg-color);
+  margin-right: 0.2em;
+}
+/* Landing page: the snippet as wide as the feature panel, and a quiet closing section */
+.md-typeset .nb-start {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+.md-typeset .nb-start .tabbed-labels {
+  justify-content: center;
+}
+.md-typeset .nb-start-note {
+  text-align: center;
+}
+.md-typeset .nb-about {
+  max-width: 44rem;
+  margin: 2.5rem auto 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  text-align: center;
+  font-size: 0.74rem;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .nb-about .nb-links {
+  margin-top: 0.8rem;
+  line-height: 1.9;
+}
+.md-typeset .nb-cards {
+  max-width: 52rem;
+  margin: 2rem auto 0;
 }
