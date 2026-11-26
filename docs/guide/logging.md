@@ -74,6 +74,17 @@ base name or the relative name you give, and returns the destination path.
 Only rank 0 copies. The viewer lists these files in the run details and diffs
 them between runs in Compare.
 
+Settings known only after `init`, such as hyperparameters a framework reports
+once training starts, can be added with `run.update_config`. Nested dicts are
+merged key by key and `run.json` is rewritten at once:
+
+```python
+run.update_config({"optim": {"lr": 1e-4}, "seed": 3})
+```
+
+For PyTorch Lightning, the Hugging Face `Trainer` and Jupyter, see
+[Frameworks and notebooks](integrations.md).
+
 ## `run.add_scalar`
 
 ```python
@@ -200,7 +211,7 @@ run = nb.init("project", run_name="lower-lr", fork_from=("20261013T0720-d9fe0e01
 ```
 
 A resumed run writes `events.r0.s1.log`, `s2`, … next to the earlier
-sessions. If you restart from a checkpoint at step 5000, points the old session
+sessions, and its summary keeps the scalars only earlier sessions logged. If you restart from a checkpoint at step 5000, points the old session
 logged at step ≥ 5000 are hidden in favour of the new session's points (per
 scalar). Each session records the UTC offset and host of the machine it ran
 on, so a run resumed on a machine in another time zone shows each part's zone

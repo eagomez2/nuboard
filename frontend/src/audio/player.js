@@ -35,10 +35,12 @@
     duration: $('duration'),
     selection: $('selection'),
     selectionText: $('selection-text'),
+    selectionSpan: $('selection-span'),
     loop: $('loop'),
     zoomSelection: $('zoom-selection'),
     clearSelection: $('clear-selection'),
     annotate: $('annotate'),
+    annotateLabel: document.querySelector('#annotate .lbl'),
     noteForm: $('note-form'),
     noteTime: $('note-time'),
     noteText: $('note-text'),
@@ -59,6 +61,13 @@
     fsHeader: $('fs-header'),
     fsTitle: $('fs-title'),
     fsClose: $('fs-close'),
+    context: $('context'),
+    band: $('band'),
+    bandToggle: $('band-toggle'),
+    bandMode: $('band-mode'),
+    bandLo: $('band-lo'),
+    bandHi: $('band-hi'),
+    bandClear: $('band-clear'),
   };
 
   //: Highest zoom level, in pixels per second
@@ -425,7 +434,9 @@
   // Highlights the note whose section is selected (without redrawing, so
   // a double-click lands on the same element as the click before it)
   function markActiveNote() {
-    el.annotate.textContent = noteAtSelection() ? 'Edit note' : 'Note';
+    const label = noteAtSelection() ? 'Edit note' : 'Note';
+    el.annotate.setAttribute('aria-label', label);
+    el.annotateLabel.textContent = label;
 
     for (const chip of el.notesLane.children) {
       const a = chip.note;
@@ -730,6 +741,7 @@
     }
 
     ctx.putImageData(image, 0, 0);
+    drawBandShade(ctx, rows, channels, width);
     if (args.freqAxis !== false) drawFrequencyLabels(ctx, rows, channels);
   }
 
@@ -836,6 +848,386 @@
   }
 
   // -------------------------------------------------------------------------
+  // Frequency band (a spectral selection): Alt-drag over the spectrogram
+  // draws a box whose width is the selection and whose height is a band that
+  // playback goes through, with steep high-pass and low-pass filters at its
+  // edges. Players of the same group share it. Nothing in the file changes,
+  // and with no band the audio goes straight to the output as before.
+  // -------------------------------------------------------------------------
+  //: Q of the four 2nd-order sections of an 8th-order Butterworth filter: a
+  //: band's edges fall off at 48 dB per octave, steep enough to hear it alone
+  const BAND_Q = [0.5098, 0.6013, 0.9, 2.5629];
+
+  let band = null; // [low, high] in Hz, or null
+  let bandOn = true; // off: the band stays drawn but every frequency plays
+  let bandDrag = null;
+  //: With it on, a drag on the spectrogram picks a band (as Alt-drag does)
+  let bandMode = false;
+  //: Which edge of the band is being dragged: 0 bottom, 1 top
+  let edgeDrag = null;
+  let audioCtx = null;
+  let source = null; // MediaElementAudioSourceNode of `sourceFor`
+  let sourceFor = null;
+  let hp = [];
+  let lp = [];
+
+  //: Highest frequency of the file (half its sample rate)
+  function nyquist() {
+    if (spec) return spec.fmax;
+
+    const data = ws && ws.getDecodedData();
+    return (data ? data.sampleRate : args.sampleRate || 44100) / 2;
+  }
+
+  //: The edges of a band that need a filter: an edge at the bottom of the
+  //: spectrum (under 10 Hz) or its top (within 2% of `top`) needs none, and a
+  //: band that needs neither is no band
+  function bandEdges(b, top) {
+    if (!b) return null;
+
+    const lo = b[0] > 10 ? b[0] : null;
+    const hi = b[1] < top * 0.98 ? b[1] : null;
+    return lo === null && hi === null ? null : { lo: lo, hi: hi };
+  }
+
+  //: A band edge as shown, to three figures: `195` or `2.14k`
+  function bandTick(hz) {
+    return hz >= 1000 ? `${(hz / 1000).toPrecision(3)}k` : String(Math.round(hz));
+  }
+
+  //: A band edge typed by hand: `1200`, `1200 Hz`, `1.2k` or `1,2 kHz`, kept
+  //: between 0 and `top`; anything else is null
+  function parseHz(text, top) {
+    const m = /^\s*(\d+(?:[.,]\d*)?|[.,]\d+)\s*(k)?\s*(?:hz)?\s*$/i.exec(text);
+
+    if (!m) return null;
+
+    const v = Number(m[1].replace(',', '.')) * (m[2] ? 1000 : 1);
+    return Number.isFinite(v) ? Math.min(top, Math.max(0, v)) : null;
+  }
+
+  function bandFilters(type) {
+    const have = type === 'highpass' ? hp : lp;
+
+    if (have.length) return have;
+
+    const made = BAND_Q.map((q) => {
+      const f = audioCtx.createBiquadFilter();
+      f.type = type;
+      f.Q.value = q;
+      return f;
+    });
+
+    if (type === 'highpass') hp = made;
+    else lp = made;
+
+    return made;
+  }
+
+  //: Wire the audio element to the output, through the band's filters when a
+  //: band is on. The audio graph is only made the first time a band needs it
+  function routeAudio() {
+    if (!ws) return;
+
+    const edges = bandOn ? bandEdges(band, nyquist()) : null;
+    const media = ws.getMediaElement();
+
+    if (!media || (!edges && sourceFor !== media)) return;
+
+    try {
+      if (!audioCtx) audioCtx = new AudioContext();
+
+      if (sourceFor !== media) {
+        source = audioCtx.createMediaElementSource(media);
+        sourceFor = media;
+      }
+    } catch (error) {
+      showMessage(`Could not filter the audio: ${error.message || error}`, true);
+      return;
+    }
+
+    source.disconnect();
+
+    for (const f of [...hp, ...lp]) f.disconnect();
+
+    let node = source;
+
+    for (const [type, hz] of [
+      ['highpass', edges && edges.lo],
+      ['lowpass', edges && edges.hi],
+    ]) {
+      if (hz == null) continue;
+
+      for (const f of bandFilters(type)) {
+        f.frequency.value = hz;
+        node.connect(f);
+        node = f;
+      }
+    }
+
+    node.connect(audioCtx.destination);
+
+    if (ws.isPlaying() && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function showBand() {
+    el.band.hidden = !band;
+    el.band.classList.toggle('off', !bandOn);
+    el.bandToggle.classList.toggle('on', bandOn);
+    el.bandToggle.setAttribute('aria-pressed', String(bandOn));
+
+    if (band) {
+      if (document.activeElement !== el.bandLo) el.bandLo.value = bandTick(band[0]);
+      if (document.activeElement !== el.bandHi) el.bandHi.value = bandTick(band[1]);
+    }
+
+    el.player.dataset.band = band ? `${Math.round(band[0])}-${Math.round(band[1])}${bandOn ? '' : ' off'}` : '';
+    if (!band) delete el.player.dataset.band;
+  }
+
+  //: Limit playback to a band, or play every frequency again (null)
+  function setBand(next, fromRemote) {
+    band = next ? [Math.min(next[0], next[1]), Math.max(next[0], next[1])] : null;
+
+    if (!band) bandOn = true;
+
+    routeAudio();
+    showBand();
+    requestSpectrogram();
+    updateHeight();
+
+    if (!fromRemote) broadcast({ type: 'band', band: band, on: bandOn });
+  }
+
+  function toggleBand(on, fromRemote) {
+    bandOn = on === undefined ? !bandOn : on;
+    routeAudio();
+    showBand();
+    requestSpectrogram();
+
+    if (!fromRemote) broadcast({ type: 'band', band: band, on: bandOn });
+  }
+
+  //: Apply a typed edge (0 = bottom, 1 = top); an edge typed past the other
+  //: one swaps them. Anything unreadable puts the field back
+  function typeEdge(edge) {
+    const input = edge ? el.bandHi : el.bandLo;
+    const hz = band ? parseHz(input.value, nyquist()) : null;
+
+    if (hz === null) {
+      input.blur();
+      showBand();
+      return;
+    }
+
+    const next = [band[0], band[1]];
+    next[edge] = hz;
+    input.blur();
+    setBand(next);
+  }
+
+  //: The time and frequency under a point of the spectrogram
+  function spectrogramPoint(clientX, clientY) {
+    const rect = specBox.getBoundingClientRect();
+    const rows = rect.height / Math.max(1, args.channels || 1);
+    const x = Math.min(Math.max(0, clientX - rect.left), rect.width);
+    const y = Math.min(Math.max(0, clientY - rect.top), rect.height - 0.01);
+    const inChannel = y - Math.floor(y / rows) * rows;
+    const time = Math.min(ws.getDuration(), (ws.getScroll() + x) / currentPxPerSec());
+    return { x: x, y: y, time: time, hz: rowFrequency(1 - inChannel / rows, nyquist()) };
+  }
+
+  //: The edge of the band (0 bottom, 1 top) at a point on the spectrogram,
+  //: within a few pixels, or null
+  function bandEdgeAt(clientX, clientY) {
+    if (!band || !specBox) return null;
+
+    const rect = specBox.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+
+    const rows = rect.height / Math.max(1, args.channels || 1);
+    const y = clientY - rect.top;
+    const inChannel = y - Math.floor(y / rows) * rows;
+    const top = nyquist();
+
+    for (const i of [1, 0]) {
+      const edge = rows - frequencyRow(Math.min(top, Math.max(band[i], LOG_MIN_HZ)), top) * rows;
+      if (edge > 1 && edge < rows - 1 && Math.abs(inChannel - edge) <= 5) return i;
+    }
+
+    return null;
+  }
+
+  function setBandMode(on) {
+    bandMode = on;
+    el.bandMode.classList.toggle('on', on);
+    el.bandMode.setAttribute('aria-pressed', String(on));
+    if (specBox) specBox.style.cursor = on ? 'crosshair' : '';
+  }
+
+  //: Pointer cursor over the spectrogram: a resize arrow on a band's edge
+  function hoverBand(e) {
+    if (bandDrag || edgeDrag !== null || !specBox) return;
+
+    const edge = bandEdgeAt(e.clientX, e.clientY);
+    el.waveform.style.cursor = edge !== null ? 'ns-resize' : '';
+    specBox.style.cursor = edge !== null ? 'ns-resize' : bandMode ? 'crosshair' : '';
+  }
+
+  function startEdgeDrag(e, edge) {
+    e.preventDefault();
+    e.stopPropagation();
+    edgeDrag = edge;
+    window.addEventListener('pointermove', moveEdgeDrag, true);
+    window.addEventListener('pointerup', endEdgeDrag, true);
+  }
+
+  function moveEdgeDrag(e) {
+    if (edgeDrag === null) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const next = band.slice();
+    next[edgeDrag] = spectrogramPoint(e.clientX, e.clientY).hz;
+    // NOTE: Past the other edge, the two swap, and so does the one in hand
+    if (next[0] > next[1]) edgeDrag = 1 - edgeDrag;
+    setBand(next);
+  }
+
+  function endEdgeDrag(e) {
+    window.removeEventListener('pointermove', moveEdgeDrag, true);
+    window.removeEventListener('pointerup', endEdgeDrag, true);
+
+    if (edgeDrag === null) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    edgeDrag = null;
+    swallowClick();
+    el.waveform.style.cursor = '';
+    el.player.focus();
+  }
+
+  //: The click that follows a drag would seek to where it ended
+  function swallowClick() {
+    const swallow = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+  }
+
+  function startBandDrag(e) {
+    if (e.button !== 0 || !specBox || !ws || !ready) return;
+
+    const edge = bandEdgeAt(e.clientX, e.clientY);
+
+    if (edge !== null && !e.altKey) {
+      startEdgeDrag(e, edge);
+      return;
+    }
+
+    if (!e.altKey && !bandMode) return;
+    // NOTE: Hit-tested by position, not by target: the selection's region
+    // lies over the spectrogram, so a drag that starts inside the selection
+    // targets the region (in wavesurfer's shadow root), not the spectrogram
+    const r = specBox.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+
+    // NOTE: Captured before wavesurfer sees it, so no plain selection starts
+    e.preventDefault();
+    e.stopPropagation();
+    // NOTE: Styled inline, as the page's styles do not reach the shadow root
+    const c = colors();
+    const box = document.createElement('div');
+    box.style.cssText =
+      `position: absolute; pointer-events: none; border: 1px solid ${c.accent};` +
+      `background: ${rgba(c.primary, c.dark ? 0.22 : 0.14)};`;
+    specBox.appendChild(box);
+    bandDrag = { from: spectrogramPoint(e.clientX, e.clientY), box: box };
+    drawBandBox(bandDrag.from);
+    window.addEventListener('pointermove', moveBandDrag, true);
+    window.addEventListener('pointerup', endBandDrag, true);
+  }
+
+  function drawBandBox(to) {
+    const a = bandDrag.from;
+    const s = bandDrag.box.style;
+    // NOTE: Spans the full width, as a band drag sets only the band
+    s.left = '0';
+    s.width = '100%';
+    s.top = `${Math.min(a.y, to.y)}px`;
+    s.height = `${Math.abs(to.y - a.y)}px`;
+  }
+
+  function moveBandDrag(e) {
+    if (!bandDrag) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    drawBandBox(spectrogramPoint(e.clientX, e.clientY));
+  }
+
+  function endBandDrag(e) {
+    window.removeEventListener('pointermove', moveBandDrag, true);
+    window.removeEventListener('pointerup', endBandDrag, true);
+
+    if (!bandDrag) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const a = bandDrag.from;
+    const b = spectrogramPoint(e.clientX, e.clientY);
+    bandDrag.box.remove();
+    bandDrag = null;
+    swallowClick();
+
+    // A click without a drag leaves everything as it was
+    if (Math.abs(b.y - a.y) < 3) return;
+
+    bandOn = true;
+    setBand([a.hz, b.hz]);
+    el.player.focus();
+  }
+
+  //: Grey out what is outside the band, with its edges marked
+  function drawBandShade(ctx, rows, channels, width) {
+    if (!band || !spec) return;
+
+    const c = colors();
+    const top = spec.fmax;
+    const yOf = (hz) => rows - frequencyRow(Math.min(top, Math.max(hz, LOG_MIN_HZ)), top) * rows;
+
+    for (let ch = 0; ch < channels; ch++) {
+      const y0 = ch * rows;
+      const hiY = band[1] >= top * 0.98 ? 0 : Math.max(0, yOf(band[1]));
+      const loY = band[0] <= 10 ? rows : Math.min(rows, yOf(band[0]));
+
+      if (bandOn) {
+        ctx.fillStyle = rgba(c.bg, 0.68);
+        ctx.fillRect(0, y0, width, hiY);
+        ctx.fillRect(0, y0 + loY, width, rows - loY);
+      }
+
+      ctx.strokeStyle = c.accent;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(bandOn ? [] : [4, 3]);
+
+      for (const y of [hiY, loY]) {
+        if (y <= 0 || y >= rows) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(0, y0 + Math.round(y) + 0.5);
+        ctx.lineTo(width, y0 + Math.round(y) + 0.5);
+        ctx.stroke();
+      }
+
+      ctx.setLineDash([]);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Zoom and scroll
   // -------------------------------------------------------------------------
   function setZoom(pps, anchorTime, fromRemote) {
@@ -881,8 +1273,9 @@
 
     if (region) {
       const span = region.end - region.start;
-      el.selectionText.textContent =
-        `${region.start.toFixed(3)} – ${region.end.toFixed(3)} s ` + `(${span.toFixed(3)} s)`;
+      el.selectionText.textContent = `${region.start.toFixed(3)} – ${region.end.toFixed(3)}`;
+      el.selectionText.insertAdjacentHTML('beforeend', '<span class="unit"> s</span>');
+      el.selectionSpan.textContent = `${span.toFixed(3)} s`;
     } else {
       looping = false;
       el.loop.classList.remove('on');
@@ -890,6 +1283,7 @@
     }
 
     markActiveNote();
+    showPlays();
 
     if (!fromRemote) {
       broadcast({
@@ -900,6 +1294,17 @@
     }
 
     updateHeight();
+  }
+
+  //: What Play (and Space) plays, shown on the button: the selection, or
+  //: the selection looped, or (with no selection) the file from the cursor
+  function showPlays() {
+    if (selection) el.player.dataset.plays = looping ? 'loop' : 'selection';
+    else delete el.player.dataset.plays;
+
+    el.play.title = selection
+      ? `Play / pause the selection${looping ? ', looped' : ''} (Space)`
+      : 'Play / pause (Space)';
   }
 
   function applyRemoteSelection(start, end) {
@@ -1144,12 +1549,15 @@
       el.zoom.value = 0;
       drawRuler();
       drawAmplitudeAxis();
+      routeAudio();
+      showBand();
 
       if (pending) {
         const p = pending;
         pending = null;
         applyRemote(p.view);
         applyRemote(p.select);
+        applyRemote(p.band);
       }
 
       updateHeight();
@@ -1167,12 +1575,20 @@
       }
     });
     ws.on('play', () => {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
       el.player.classList.add('playing');
       broadcast({ type: 'play' });
     });
     ws.on('pause', () => el.player.classList.remove('playing'));
     ws.on('finish', () => el.player.classList.remove('playing'));
-    ws.on('interaction', (t) => broadcast({ type: 'seek', time: t }));
+    ws.on('interaction', (t) => {
+      // A click outside the selection clears it, as in audio editors
+      if (selection && (t < selection.start - 0.005 || t > selection.end + 0.005)) {
+        clearSelection();
+      }
+
+      broadcast({ type: 'seek', time: t });
+    });
     ws.on('scroll', (start) => {
       drawRuler();
       requestSpectrogram();
@@ -1270,6 +1686,11 @@
       case 'seek':
         if (!ws.isPlaying()) ws.setTime(message.time);
         break;
+
+      case 'band':
+        bandOn = message.on !== false;
+        setBand(message.band, true);
+        break;
     }
   }
 
@@ -1286,7 +1707,7 @@
 
       if (!ready) {
         pending = pending || {};
-        pending[message.type === 'select' ? 'select' : 'view'] = message;
+        pending[message.type === 'select' || message.type === 'band' ? message.type : 'view'] = message;
         return;
       }
 
@@ -1308,6 +1729,7 @@
   el.loop.addEventListener('click', () => {
     looping = !looping;
     el.loop.classList.toggle('on', looping);
+    showPlays();
 
     // Keep playing, now without the stop at the end of the selection
     if (ws && ws.isPlaying() && selection) {
@@ -1319,6 +1741,30 @@
     if (selection) zoomToRange(selection.start, selection.end);
   });
   el.clearSelection.addEventListener('click', clearSelection);
+  el.bandToggle.addEventListener('click', () => toggleBand());
+  el.bandClear.addEventListener('click', () => setBand(null));
+  el.waveform.addEventListener('pointerdown', startBandDrag, true);
+  el.waveform.addEventListener('pointermove', hoverBand);
+  el.bandMode.addEventListener('click', () => setBandMode(!bandMode));
+
+  for (const [input, edge] of [
+    [el.bandLo, 0],
+    [el.bandHi, 1],
+  ]) {
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // Typing must not trigger the player shortcuts
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        typeEdge(edge);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        input.blur();
+        showBand();
+      }
+    });
+    input.addEventListener('blur', () => showBand());
+  }
   el.annotate.addEventListener('click', openNoteForm);
   el.fullscreen.addEventListener('click', toggleFullscreen);
   el.fsClose.addEventListener('click', exitFullscreen);
@@ -1413,6 +1859,12 @@
       case 'Z':
         if (selection) zoomToRange(selection.start, selection.end);
         break;
+      case 'b':
+      case 'B':
+        if (e.ctrlKey || e.metaKey || e.altKey || !spec) return;
+
+        setBandMode(!bandMode);
+        break;
       case 'n':
       case 'N':
         if (selection) {
@@ -1428,7 +1880,10 @@
         break;
       case 'Escape':
         if (fullscreen) exitFullscreen();
-        else clearSelection();
+        else {
+          clearSelection();
+          if (band) setBand(null);
+        }
 
         break;
     }

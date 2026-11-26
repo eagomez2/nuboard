@@ -10,9 +10,10 @@ const preview = (text: string) => {
 };
 
 /** Ask what to do with notes that changed meanwhile; null keeps the editor open as it is. */
-export async function resolveNotes(theirs: string): Promise<Resolution | null> {
+export async function resolveNotes(theirs: string, what: 'notes' | 'text' = 'notes'): Promise<Resolution | null> {
+  const notes = what === 'notes';
   const res = await ask(
-    'These notes changed since you started editing',
+    notes ? 'These notes changed since you started editing' : 'This text changed since you started editing',
     [
       {
         label: 'Keep',
@@ -26,7 +27,9 @@ export async function resolveNotes(theirs: string): Promise<Resolution | null> {
     ],
     {
       message:
-        `Someone saved this run's notes after you opened them. Theirs are now ${preview(theirs)}. ` +
+        (notes
+          ? `Someone saved this run's notes after you opened them. Theirs are now ${preview(theirs)}. `
+          : `Someone saved this text after you started editing it. Theirs is now ${preview(theirs)}. `) +
         'Both puts your text under theirs to tidy up before saving; Mine replaces theirs; Theirs drops your edit.',
       confirm: 'Continue',
     },

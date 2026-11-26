@@ -287,3 +287,59 @@ def test_api_read_only(tmp_path):
 
     with TestClient(app) as c:
         assert c.get("/api/hypotheses", params={"project": "proj"}).json()["read_only"] is False
+
+
+def test_a_save_merges_changes_made_elsewhere_in_other_fields(tmp_path):
+    base = save_hypothesis(tmp_path, {"id": "h", "title": "T", "note": "n", "runs": ["a"]})
+    # another tab changes the note, then this one moves the card and changes the verdict
+    save_hypothesis(tmp_path, {**base, "note": "theirs"}, base=base)
+    mine = {**base, "verdict": "supported", "position": {"dx": 10, "dy": 0}}
+    saved = save_hypothesis(tmp_path, mine, base=base)
+    assert saved["note"] == "theirs"
+    assert saved["verdict"] == "supported" and saved["position"]["dx"] == 10
+
+
+def test_a_save_over_the_same_field_is_refused_unless_forced(tmp_path):
+    from nuboard.hypotheses import HypothesisConflict
+
+    base = save_hypothesis(tmp_path, {"id": "h", "title": "T", "note": "n"})
+    save_hypothesis(tmp_path, {**base, "note": "theirs", "position": {"dx": 5}}, base=base)
+
+    with pytest.raises(HypothesisConflict) as info:
+        save_hypothesis(tmp_path, {**base, "note": "mine", "position": {"dx": 9}}, base=base)
+
+    assert info.value.fields == ["note"]  # moving the card is never a conflict
+    assert info.value.current["note"] == "theirs"
+    assert load_board(tmp_path)["hypotheses"][0]["note"] == "theirs"  # nothing written
+    forced = save_hypothesis(tmp_path, {**base, "note": "mine"}, base=base, force=True)
+    assert forced["note"] == "mine"
+
+
+def test_a_save_without_changes_elsewhere_is_written_as_sent(tmp_path):
+    base = save_hypothesis(tmp_path, {"id": "h", "title": "T"})
+    saved = save_hypothesis(tmp_path, {**base, "title": "New"}, base=base)
+    again = save_hypothesis(tmp_path, {**saved, "title": "Newer"}, base=saved)
+    assert again["title"] == "Newer"
+
+
+def test_a_save_of_a_hypothesis_deleted_elsewhere_is_refused(tmp_path):
+    from nuboard.hypotheses import HypothesisConflict
+
+    base = save_hypothesis(tmp_path, {"id": "h", "title": "T"})
+    delete_hypothesis(tmp_path, "h")
+
+    with pytest.raises(HypothesisConflict) as info:
+        save_hypothesis(tmp_path, {**base, "title": "x"}, base=base)
+
+    assert info.value.current is None
+
+
+def test_api_conflict_is_a_409(client):
+    post = lambda body: client.post("/api/hypotheses", json={"project": "proj", **body})  # noqa: E731
+    base = post({"hypothesis": {"id": "h", "title": "T"}}).json()["hypothesis"]
+    post({"hypothesis": {**base, "title": "theirs"}, "base": base})
+    res = post({"hypothesis": {**base, "title": "mine"}, "base": base})
+    assert res.status_code == 409
+    assert res.json()["conflict"] == ["title"] and res.json()["current"]["title"] == "theirs"
+    res = post({"hypothesis": {**base, "title": "mine"}, "base": base, "force": True})
+    assert res.status_code == 200 and res.json()["hypothesis"]["title"] == "mine"

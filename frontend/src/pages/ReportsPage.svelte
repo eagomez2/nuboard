@@ -13,6 +13,7 @@
     type ExportTheme,
   } from '../lib/exporthtml';
   import { fmtAgo } from '../lib/format';
+  import { merge3 } from '../lib/merge';
   import { prefs, router } from '../lib/router.svelte';
   import { app } from '../lib/state.svelte';
   import { Fold } from '../lib/fold.svelte';
@@ -39,6 +40,12 @@
   let loadedFor = $state('');
   let textProject = $state(''); // the project `text` belongs to, so embeds never mix reports
   let saving = $state(false);
+  // The revision `savedText` was read or written at, sent with each save: a report changed elsewhere
+  // meanwhile (another tab, the Media page, a hand edit) is then not overwritten. Instead `conflict`
+  // holds it as it is now, autosave pauses, and a marker in the toolbar offers to resolve it; the
+  // editor itself is never changed until you choose.
+  let savedRev = $state<string | null>(null);
+  let conflict = $state<{ text: string; rev: string | null; deleted: boolean } | null>(null);
   let atOpen = $state<'split' | 'preview'>('preview'); // Split for an empty report, as it was opened
   $effect(() => {
     const r = current;
@@ -46,10 +53,12 @@
     if (id === loadedFor) return;
     loadedFor = id;
     text = savedText = '';
+    conflict = null;
     if (r)
       api.report(r.project, r.name).then((res) => {
         if (loadedFor !== id) return;
         text = savedText = res.text;
+        savedRev = res.rev ?? null;
         textProject = r.project;
         atOpen = res.text.trim() ? 'preview' : 'split';
       });
@@ -67,18 +76,79 @@
 
   async function save() {
     const r = current;
-    if (!r || text === savedText) return;
+    if (!r || text === savedText || conflict || saving) return;
     saving = true;
     const body = text;
-    await api.saveReport({ project: r.project, name: r.name, text: body });
-    savedText = body;
-    saving = false;
+    const id = loadedFor;
+    try {
+      const res = await api.saveReport({ project: r.project, name: r.name, text: body, base_rev: savedRev });
+      if (loadedFor !== id) return;
+      if (res.conflict) conflict = { text: res.text ?? '', rev: res.rev ?? null, deleted: !!res.deleted };
+      else {
+        savedText = body;
+        savedRev = res.rev ?? null;
+      }
+    } finally {
+      saving = false;
+    }
   }
   $effect(() => {
-    if (text === savedText) return;
+    if (text === savedText || conflict || saving) return;
     const t = setTimeout(save, 700);
     return () => clearTimeout(t);
   });
+
+  /** Choose what to keep when the report changed elsewhere: asked only when the marker is clicked. */
+  async function resolve() {
+    const c = conflict;
+    if (!c) return;
+    const merged = c.deleted ? null : merge3(savedText, text, c.text);
+    const options = c.deleted
+      ? [
+          { value: 'mine', label: 'Mine (save it again)' },
+          { value: 'theirs', label: 'Deleted (drop my edits)' },
+        ]
+      : [
+          ...(merged !== null ? [{ value: 'merge', label: 'Merged' }] : []),
+          { value: 'both', label: 'Both' },
+          { value: 'mine', label: 'Mine' },
+          { value: 'theirs', label: 'Theirs' },
+        ];
+    const res = await ask(
+      c.deleted ? 'This report was deleted elsewhere' : 'This report changed elsewhere',
+      [{ label: 'Keep', value: options[0].value, options }],
+      {
+        message: c.deleted
+          ? 'Someone deleted it after you opened it. Your text is still here, unsaved.'
+          : 'Someone saved it after you opened it, so your latest edits are not saved yet. ' +
+            (merged !== null
+              ? 'Merged keeps both changes, as they touch different lines. '
+              : 'Both puts their text above yours to tidy up. ') +
+            'Mine replaces theirs; Theirs drops your edits since the last save.',
+        confirm: 'Continue',
+      },
+    );
+    const choice = res?.[0];
+    if (!choice || conflict !== c) return;
+    if (choice === 'theirs') {
+      if (c.deleted) {
+        conflict = null;
+        loadedFor = '';
+        router.set({ report: null, rproject: null });
+        await load();
+        return;
+      }
+      text = savedText = c.text;
+    } else if (choice === 'merge' && merged !== null) {
+      savedText = c.text;
+      text = merged;
+    } else if (choice === 'both') {
+      savedText = c.text;
+      text = `${c.text.trimEnd()}\n\n${text.trim()}\n`;
+    } else savedText = c.text; // mine: saved over theirs by the next autosave
+    savedRev = c.rev;
+    conflict = null;
+  }
 
   const projects = $derived(app.info?.projects.map((p) => p.name) ?? []);
   async function create() {
@@ -258,7 +328,18 @@
         <span class="faint small mono path tail" title="{current.project}/reports/{current.name}.md"
           ><span dir="ltr">{current.project}/reports/{current.name}.md</span></span
         >
-        <span class="faint small state">{saving ? 'Saving…' : text === savedText ? 'Saved' : 'Editing'}</span>
+        <span class="faint small state">
+          {#if conflict}
+            <button
+              class="changed"
+              onclick={resolve}
+              title="Saved elsewhere since you opened it; your edits are kept here, unsaved. Click to choose what to keep."
+              >Changed elsewhere</button
+            >
+          {:else}
+            {saving ? 'Saving…' : text === savedText ? 'Saved' : 'Editing'}
+          {/if}
+        </span>
         <div class="seg" role="group" aria-label="View">
           <button aria-pressed={view === 'write'} onclick={() => setView('write')}>Write</button>
           <button aria-pressed={view === 'split'} onclick={() => setView('split')}>Split</button>
@@ -440,6 +521,20 @@
   }
   .state {
     flex: none;
+    /* fixed width, so the marker never moves the toolbar */
+    width: 9.5em;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .changed {
+    all: unset;
+    cursor: pointer;
+    color: var(--warn);
+    text-decoration: underline dotted;
+  }
+  .changed:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .panes {
     display: grid;

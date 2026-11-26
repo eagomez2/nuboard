@@ -666,10 +666,12 @@ sample under it, recomputed as you zoom, so long files stay fast and single
 samples show when zoomed in. Hovering shows the time, sample index and exact
 values, and the label of each region track logged with the figure (drawn in
 lanes under the plot, a row per class where classes overlap). Drag to select a
-section, then loop it, zoom to it or add a **Note**; notes show in a lane above
-the plot and are saved like audio notes. − / + / **Fit**, Ctrl/⌘ + wheel and
+section, then loop it, zoom to it or add a **Note** from the controls that
+appear in the toolbar, as in the audio player (the figure keeps its size); a
+click outside the selection clears it. Notes show in a lane above
+the plot and are saved like audio notes. − / + / fit, Ctrl/⌘ + wheel and
 double-click zoom, Shift + wheel scrolls, and the overview below the plot moves
-the view. The full screen button (next to **Fit**) spreads the figure over the
+the view. The full screen button (last in the toolbar) spreads the figure over the
 window with a taller plot, in the viewer and in exported reports alike, and Esc
 puts it back. Space plays and pauses once you have clicked the plot or the
 overview, and in full screen. The play button plays the clip, or the selection, from where you
@@ -761,7 +763,19 @@ remembered):
 - **Waveform** (default): waveform and spectrogram of every channel, with a
   minimap, time ruler, zoom (buttons, slider, `+`/`-`, or Ctrl + wheel),
   drag-to-select with loop (`L`) and zoom-to-selection (`Z`), playback speed,
-  and full screen (`F`). Space plays and pauses once you have clicked the
+  and full screen (`F`). The toolbar keeps play and the time on the left and
+  the view's controls in one group on the right (speed, − / zoom slider / +,
+  fit, full screen). A selection's controls appear in the toolbar, between the
+  time and the view's group: its start, end and length and buttons to
+  **Loop**, **Zoom** to it, add a **Note** and × to clear it. A frequency
+  band's controls sit next to them, and the note form opens in the same
+  place. Players narrower than 1,000 pixels give these controls a row of
+  their own, always there (with a hint while it is empty), and keep only
+  their icons; either way the player keeps its size whatever you click.
+  A click outside the selection clears it (and moves the playhead there);
+  double-click inside it zooms to it.
+  With a selection, Play (and Space) plays just the selection, and a dot on
+  the play button says so; a ring instead of a dot means it loops. Space plays and pauses once you have clicked the
   player, and in full screen. The spectrogram is computed in the browser (Hann
   window of 1024 samples, levels in dB relative to a full-scale sine on a
   fixed scale, so clips can be compared by eye). The players of one key
@@ -779,6 +793,25 @@ remembered):
   shared link shows the
   same view.
 - **Simple**: the browser's own audio controls, as in TensorBoard.
+
+**Playing a frequency band**: to hear only part of the spectrum, as with a
+spectral selection in an audio editor, turn on the band button (first in the
+view's group, or press `B`) and drag over a spectrogram, or hold Alt (Option
+on a Mac) and drag without it. Such a drag sets only the band (the box spans
+the full width while you drag) and leaves the time selection as it was, so
+the band applies to the whole clip, or to the selection when there is one; a
+plain drag selects time only. Playback goes through steep
+high-pass and low-pass filters at the band's edges (48 dB per octave), and the
+spectrogram greys out what is outside it. The band shows in the toolbar
+with its bottom and top in Hz: type `300`, `2.5k` or `2,5 kHz` and Enter to
+refine either (a bottom typed above the top swaps them), or drag its top or
+bottom line on the spectrogram (the pointer turns into a resize arrow over
+it). Its first button
+(**Band**) plays every frequency again while keeping the band, and pressing it
+again goes back to the band; × or Esc clears it. The
+players of one key share the band, so every run's clip of that key plays
+through it. Only what you hear changes: the files are untouched, and with no
+band the audio plays as before.
 
 **Notes**: in the waveform player, select a section and press **Note** (or
 `N`), type, and press Enter. Notes show in a lane above the waveform; click
@@ -946,9 +979,6 @@ Some cases are not fully covered:
   per folder and let everyone use it.
 - **Other tools rewriting the file**, such as a hand edit, or a sync tool
   (Dropbox, rsync) restoring an older copy. The last writer wins.
-- **Hypothesis cards and reports.** Each is saved whole, so when two tabs or
-  viewers edit the same card or report, the last save wins and replaces the
-  other's changes, with no warning. Edit each one from one place at a time.
 
 If someone saves a run's notes or a property **after you started editing
 it**, your save is not applied over theirs. The viewer shows what they saved
@@ -959,6 +989,29 @@ and asks what to keep:
 - **A property** (in a run's Properties tab, a table cell, or set on several
   selected runs): *Theirs* shows their value; *Mine* saves yours over it. With
   several runs, the ones nobody changed are saved right away.
+
+- **A report**: the editor saves a moment after you stop typing, and each
+  save checks that the file is still the one it last read or wrote. If
+  someone saved it meanwhile (another tab or viewer, the Media page's bookmark
+  button, a hand edit), your text is not written over theirs: autosave
+  pauses and **Changed elsewhere** appears in the toolbar, in the place where
+  *Saved* is shown, so nothing on the page moves and your text and cursor
+  stay as they are. Click it when you are ready to choose: *Merged* keeps both
+  changes when they touch different lines; *Both* puts their text above yours
+  to tidy up; *Mine* saves yours over theirs; *Theirs* drops your edits since
+  the last save.
+- **A hypothesis card**: each save sends the card as you loaded it, and
+  changes made elsewhere meanwhile are merged field by field, so someone else
+  moving the card or editing another field never gets in the way. Moving,
+  folding and resizing a card never conflict (your layout is kept). When
+  someone changed the same field, such as the note or the runs, the viewer
+  asks on save: *Theirs* keeps what they saved; *Mine* saves yours over it. A
+  text field you are editing (a conclusion, a reason) that someone saved
+  meanwhile asks the same as notes when you press Save.
+
+Nothing is checked or reloaded while you type: live updates and heartbeats of
+running runs never change an editor's text, and the question only comes when
+you save (or, for a report, when you click the marker).
 
 Only the notes or properties you edit are compared, so changes others make to
 other properties, tags or stars never get in the way. Tags and stars are not

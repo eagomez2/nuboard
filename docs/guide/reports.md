@@ -91,6 +91,16 @@ a thin bar, also remembered. Changes are saved a moment after you stop typing
 (or with Ctrl+S / ⌘+S). Headings, lists, tables, links, code blocks and
 images all work; HTML in the Markdown is sanitized.
 
+If the report is saved somewhere else while you edit it (another tab or
+viewer, the bookmark button on the Media page, a hand edit), your text is not
+saved over it. The editor keeps your text and cursor exactly as they are,
+stops autosaving, and shows **Changed elsewhere** where *Saved* usually is;
+nothing on the page moves or reloads. Click it when you are ready: **Merged**
+(offered when the two changes touch different lines) keeps both, **Both** puts
+their text above yours to tidy up, **Mine** saves yours over theirs and
+**Theirs** drops your edits since the last save. See [Editing from several
+places](viewer.md#editing-from-several-places).
+
 ### Formatting toolbar
 
 The toolbar above the text box writes standard Markdown at the cursor or
@@ -176,12 +186,13 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   offline, with no NuBoard and no CDN: images, audio clips and snapshots are
   inlined, attached files are collapsible blocks with a download link, logged text and HTML are included, and Plotly and Vega-Lite
   figures stay interactive because their libraries are embedded in the file
-  (once each, only when used; Plotly adds about 5 MB). BokehJS is fetched from
-  cdn.bokeh.org once, while exporting, for the figure's exact version and
+  (once each, only when used; Plotly adds about 5 MB). BokehJS (its core, widgets and
+  tables files, so figures with data tables or widgets work too) is fetched
+  from cdn.bokeh.org once, while exporting, for the figure's exact version and
   embedded too; if it cannot be reached, the figure is left out with a note.
   Before exporting you pick the **Theme** (light, dark, or switchable: it
   follows the reader's system theme and has a button to flip it), edit the
-  **footer** (by default "Exported with NuBoard 0.32.1 from …", naming the
+  **footer** (by default "Exported with NuBoard 0.33.0 from …", naming the
   version that exported it; empty removes it), and choose whether the
   NuBoard **logo** is the browser tab icon. When the report has audio you also
   pick the **audio player**: **Waveform** (the default) embeds the viewer's

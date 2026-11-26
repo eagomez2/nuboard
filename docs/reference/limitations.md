@@ -20,5 +20,10 @@ What NuBoard does not do yet, or does with a trade-off.
   milliseconds can still lose one edit, and a sync tool restoring an older
   `annotations.json` wins. See
   [Editing from several places](../guide/viewer.md#editing-from-several-places).
-- Hypothesis cards and reports are saved whole: when two tabs or viewers edit
-  the same card or report, the last save wins, with no warning.
+- Reports and hypothesis cards are checked for changes made elsewhere when
+  saved (see [Editing from several places](../guide/viewer.md#editing-from-several-places)),
+  but two viewers saving the same one within the same few milliseconds can
+  still lose one edit, as can a sync tool restoring an older file.
+- `nb.show` in a notebook needs the notebook's browser to reach the kernel's
+  `127.0.0.1`; hosted notebooks served from another site, such as Colab, are
+  not supported yet.

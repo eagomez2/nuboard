@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.33.0
+
+Framework integrations and notebooks, safer shared editing, and a selectable
+frequency band in the audio player. No breaking changes, and no new
+dependencies: run folders and the Python API are unchanged apart from
+additions.
+
+- **PyTorch Lightning logger.** `nuboard.integrations.lightning.NuBoardLogger`
+  logs `self.log` metrics and the hyperparameters, writes from rank 0 only,
+  resumes the same run for a `test` after a `fit`, and with `log_model=True`
+  records the best checkpoint as an artifact. See
+  [Frameworks and notebooks](guide/integrations.md).
+- **Hugging Face Trainer callback.**
+  `nuboard.integrations.huggingface.NuBoardCallback` logs the trainer's
+  metrics under `train/`, `eval/` and `test/`, records the arguments and the
+  model's config, makes each search trial a run of its own, and resumes the
+  run for an `evaluate()` after `train()`.
+- **Jupyter.** Runs and projects show a summary when they end a cell, and
+  `nb.show(run)` opens the viewer inside the notebook, on loopback, updating
+  live. Neither imports IPython.
+- **Reports and hypothesis cards no longer overwrite edits made elsewhere.**
+  A report save checks the file is still the one the editor read; if not,
+  autosave pauses and a quiet *Changed elsewhere* marker takes the place of
+  *Saved*, with no reload and nothing moving on the page, until you click it
+  to merge, keep both, keep yours or keep theirs. Hypothesis cards merge
+  changes field by field, ask only when the same field changed, and never
+  for moving or resizing a card. See
+  [Editing from several places](guide/viewer.md#editing-from-several-places).
+- **`Run.update_config`** adds settings to a run's config after `init`, and
+  **`Run.finished`** tells whether a run has been finished.
+- **Fix: resuming a run kept only the new session's scalars in its summary.**
+  The runs table and queries now see scalars that only earlier sessions
+  logged.
+- **Play only a frequency band.** In the Media page's audio player, turn on
+  the band button (or press `B`) and drag over the spectrogram, or Alt-drag
+  (Option-drag on a Mac), to hear only part of the spectrum: the drag sets a
+  band (leaving the time selection as it was) that playback goes through, with 48 dB/octave filters at its edges. The
+  spectrogram greys out the rest, the edges can be typed in Hz or dragged on
+  the spectrogram, a button plays
+  everything again while keeping the band, and the players of one key share
+  it. The files are not changed. See
+  [Audio](guide/viewer.md#audio).
+- **A tidier audio toolbar.** The audio player and waveform figures share one
+  design: play and time on the left, the view's controls (speed, zoom, fit,
+  download, full screen) in one group on the right. The selection's and the
+  frequency band's controls, with icon buttons and a lighter ×, appear in the
+  toolbar between them (in a row of their own on narrow players), and the
+  note form opens there too, so the player never changes size when you
+  select, add a band or write a note. A dot on the play button shows that it
+  plays the selection (a ring: looped).
+  Narrow players keep only the icons. See [Audio](guide/viewer.md#audio).
+- **A click outside the selection clears it.** In the audio player and in
+  waveform figures, a single click outside the selection clears it and moves
+  the playhead there, as in audio editors. A click on a waveform figure after
+  a selection now always moves the playhead.
+- **Select on the home page.** The docs home page has a Select tab next to
+  Timeline, and its audio screenshot shows the new toolbar.
+- **Bokeh tables and widgets in HTML exports.** Exported reports and views now
+  inline BokehJS's widgets and tables files along with the core file, as the
+  viewer does, so Bokeh figures with data tables or widgets render in the
+  export too. BokehJS still comes from cdn.bokeh.org at export time.
+
 ## 0.32.1
 
 Small viewer fixes: clearer labels on the Select page, one style for the

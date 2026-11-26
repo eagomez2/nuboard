@@ -406,6 +406,19 @@ export interface StorageStatus {
   } | null;
 }
 
+/** A save refused because the hypothesis changed elsewhere in the same fields (or was deleted). */
+export class HypothesisConflict extends Error {
+  constructor(
+    message: string,
+    /** The fields changed both here and elsewhere. */
+    readonly fields: string[],
+    /** The hypothesis as saved now, or null if it was deleted. */
+    readonly current: Hypothesis | null,
+  ) {
+    super(message);
+  }
+}
+
 /** POST to `/api/hypotheses`; a refusal throws an Error with the server's message. */
 async function hypothesisPost<T>(body: Record<string, unknown>): Promise<T> {
   const res = await fetch('/api/hypotheses', {
@@ -414,9 +427,27 @@ async function hypothesisPost<T>(body: Record<string, unknown>): Promise<T> {
     body: JSON.stringify(body),
   });
   if (res.status === 401) location.reload();
-  const out = (await res.json().catch(() => ({}))) as T & { error?: string };
+  const out = (await res.json().catch(() => ({}))) as T & {
+    error?: string;
+    conflict?: string[];
+    current?: Hypothesis | null;
+  };
+  if (res.status === 409 && out.conflict)
+    throw new HypothesisConflict(out.error ?? 'changed elsewhere', out.conflict, out.current ?? null);
   if (!res.ok) throw new Error(out.error ?? `${res.status}`);
   return out;
+}
+
+/** What `/api/reports` answers to a save: the new revision, or the report as it is now. */
+export interface ReportSaved {
+  saved?: string;
+  deleted?: string | boolean;
+  error?: string;
+  rev?: string | null;
+  /** True when the report changed (or was deleted) since `base_rev`; nothing was written. */
+  conflict?: boolean;
+  /** With `conflict`: the report's text now. */
+  text?: string;
 }
 
 /** One column of rows from `/api/steps`: a run (index into `runs`) at a step, with its values. */
@@ -716,9 +747,13 @@ export const api = {
     json<{ boards: BoardListItem[] }>(`/api/hypothesis-boards?${qs({ project })}`),
   /** One hypothesis board of a project (the first one without `board`), with the runs and reports it refers to. */
   hypotheses: (project: string, board = '') => json<BoardData>(`/api/hypotheses?${qs({ project, board })}`),
-  /** Create or replace a hypothesis (a new one without `id`); errors carry the server's reason. */
-  saveHypothesis: (project: string, board: string, hypothesis: Hypothesis) =>
-    hypothesisPost<{ hypothesis: Hypothesis }>({ project, board, hypothesis }),
+  /**
+   * Create or replace a hypothesis (a new one without `id`); errors carry the server's reason. With
+   * `base` (the hypothesis as loaded), changes made elsewhere meanwhile are merged, and a change to
+   * the same field throws a `HypothesisConflict` unless `force` is set.
+   */
+  saveHypothesis: (project: string, board: string, hypothesis: Hypothesis, base?: Hypothesis, force = false) =>
+    hypothesisPost<{ hypothesis: Hypothesis }>({ project, board, hypothesis, base, force: force || undefined }),
   deleteHypothesis: (project: string, board: string, id: string) =>
     hypothesisPost<{ deleted: string }>({ project, board, delete: id }),
   /** Change a board's settings; a new board name creates the board. */
@@ -735,24 +770,32 @@ export const api = {
     json<{ run: string; run_name: string; item: MediaItem }>(`/api/media/ref?${qs({ project, ref })}`),
   reports: (project?: string | null) => json<{ reports: ReportInfo[] }>(`/api/reports?${qs({ project })}`),
   report: (project: string, name: string) =>
-    json<{ project: string; name: string; text: string }>(
+    json<{ project: string; name: string; text: string; rev: string | null }>(
       `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(name)}`,
     ),
   reportExportUrl: (project: string, name: string) =>
     `/api/reports/${project.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(name)}/export`,
-  saveReport: (body: {
+  /** Save, append to, rename or delete a report. A save with `base_rev` is refused (`conflict`) if
+   * the report changed since that revision; a 409 is answered, not thrown. */
+  saveReport: async (body: {
     project: string;
     name: string;
     text?: string;
     append?: string;
     rename?: string;
     delete?: boolean;
-  }) =>
-    json<{ saved?: string; deleted?: string; error?: string }>('/api/reports', {
+    base_rev?: string | null;
+  }): Promise<ReportSaved> => {
+    const res = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    }),
+    });
+    if (res.status === 401) location.reload();
+    if (res.status === 409) return (await res.json()) as ReportSaved;
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return (await res.json()) as ReportSaved;
+  },
   saveSnapshot: (project: string, report: string, png: string) =>
     json<{ path?: string; error?: string }>('/api/reports/snapshot', {
       method: 'POST',

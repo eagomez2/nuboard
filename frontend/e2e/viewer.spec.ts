@@ -507,7 +507,7 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await expect(readout).toContainText(/events\s*((blip|speech)(, (blip|speech))?|–)/);
 
   // dragging across a tenth of the plot selects it, and Zoom in shows just that; the zoom buttons
-  // stay where they were (the selection's controls have a place of their own)
+  // stay where they were (the selection's controls float over the top of the plot)
   const plus = fig.getByRole('button', { name: 'Zoom in', exact: true });
   const plusAt = (await plus.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.4, box.y + 40);
@@ -518,17 +518,17 @@ test('media page plots waveform figures, with exact values, region lanes, select
   expect(await plus.boundingBox()).toEqual(plusAt);
   await fig.getByRole('button', { name: 'Zoom in to the selection' }).click();
   // the middle of the plot is now the middle of 1.04 to 1.3 s, then of the whole clip again
-  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await over.hover({ position: { x: box.width / 2, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.1[5-9]/);
   // the demo's live run makes the page fetch its media again every few seconds: the figure keeps its
   // zoom and selection (it is not mounted again for an equal item)
   await fig.evaluate((el) => (el.dataset.kept = 'yes'));
   await page.waitForTimeout(5000);
   await expect(fig).toHaveAttribute('data-kept', 'yes');
-  await over.hover({ position: { x: box.width / 2, y: 20 } });
+  await over.hover({ position: { x: box.width / 2, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.1[5-9]/);
   await fig.getByRole('button', { name: 'Fit' }).click();
-  await over.hover({ position: { x: box.width / 2 + 1, y: 20 } });
+  await over.hover({ position: { x: box.width / 2 + 1, y: box.height * 0.7 } });
   await expect(readout).toContainText(/0:01\.(29|30)/);
 
   // a note on the selection is saved with the run, and is there after a reload
@@ -536,6 +536,10 @@ test('media page plots waveform figures, with exact values, region lanes, select
   await fig.getByLabel('Note text').fill('checked by ear');
   await page.keyboard.press('Enter');
   await expect(fig.locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible();
+  // a click outside the selection clears it
+  await expect(fig.locator('.nbwf-sel').first()).toBeVisible();
+  await over.click({ position: { x: box.width * 0.9, y: 40 } });
+  await expect(fig.locator('.nbwf-sel').first()).toBeHidden();
   await page.reload();
   await expect(page.locator('.nbwf').first().locator('.nbwf-note', { hasText: 'checked by ear' })).toBeVisible({
     timeout: 15000,
@@ -1199,6 +1203,127 @@ test('Space plays and pauses a waveform figure once clicked, and in full screen'
   await expect(fig).not.toHaveClass(/playing/);
   await page.keyboard.press('Escape');
   await expect(fig).not.toHaveClass(/nbwf-full/);
+});
+
+test('Alt-drag on the spectrogram plays only a frequency band, shared by the players of a key', async ({ page }) => {
+  await page.goto('/#/media?project=speech-denoise&mfind=%5Eaudio%2Fenhanced%24');
+  const frames = page.frameLocator('iframe[src="./audio.html"]');
+  const player = frames.first();
+  const other = frames.nth(1);
+  await expect(player.locator('#player[data-spectrogram]')).toBeAttached({ timeout: 15000 });
+  await expect(other.locator('#player[data-ready]')).toBeAttached({ timeout: 15000 });
+  await scrollSettled(page);
+  let spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  // a box from 20% to 50% of the width, between 30% and 70% of the height
+  await page.keyboard.down('Alt');
+  await page.mouse.move(spec.x + spec.width * 0.2, spec.y + spec.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.5, spec.y + spec.height * 0.7, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  const band = player.locator('#band');
+  await expect(band).toBeVisible();
+  // it sets only the band: no time is selected
+  await expect(player.locator('#selection')).toBeHidden();
+  const lo = Number(
+    await player
+      .locator('#band-lo')
+      .inputValue()
+      .then((v) => v.replace('k', 'e3')),
+  );
+  const hi = Number(
+    await player
+      .locator('#band-hi')
+      .inputValue()
+      .then((v) => v.replace('k', 'e3')),
+  );
+  expect(lo).toBeGreaterThan(0);
+  expect(hi).toBeGreaterThan(lo);
+  // the other run's player of the same key plays through the same band
+  await expect(other.locator('#band')).toBeVisible();
+  await expect(other.locator('#band-hi')).toHaveValue(await player.locator('#band-hi').inputValue());
+  // typed edges refine it; an edge typed past the other swaps them
+  await player.locator('#band-lo').fill('300');
+  await player.locator('#band-lo').press('Enter');
+  await player.locator('#band-hi').fill('2,5 kHz');
+  await player.locator('#band-hi').press('Enter');
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '300-2500');
+  await expect(other.locator('#player')).toHaveAttribute('data-band', '300-2500');
+  await player.locator('#band-lo').fill('4k');
+  await player.locator('#band-lo').press('Enter');
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000');
+  // something unreadable puts the field back
+  await player.locator('#band-hi').fill('loud');
+  await player.locator('#band-hi').press('Enter');
+  await expect(player.locator('#band-hi')).toHaveValue('4.00k');
+  // the toggle plays every frequency while keeping the band, and plays with it on
+  await player.locator('#band-toggle').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000 off');
+  await player.locator('#play').click();
+  await expect(player.locator('#player')).toHaveClass(/playing/);
+  await player.locator('#band-toggle').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-band', '2500-4000');
+  await player.locator('#play').click();
+  // × clears it, in every player of the key
+  await player.locator('#band-clear').click();
+  await expect(band).toBeHidden();
+  await expect(other.locator('#band')).toBeHidden();
+  // a plain drag selects time only
+  spec = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  await page.mouse.move(spec.x + spec.width * 0.2, spec.y + spec.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.5, spec.y + spec.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  await expect(player.locator('#selection')).toBeVisible();
+  await expect(band).toBeHidden();
+  // a drag straight down inside the selection sets a band, leaving the selection as it was
+  const selected = await player.locator('#selection-text').textContent();
+  await page.keyboard.down('Alt');
+  await page.mouse.move(spec.x + spec.width * 0.35, spec.y + spec.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(spec.x + spec.width * 0.35, spec.y + spec.height * 0.6, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect(band).toBeVisible();
+  await expect(player.locator('#selection-text')).toHaveText(selected!);
+  // Play shows that it plays the selection, and that it loops it with Loop on
+  await expect(player.locator('#player')).toHaveAttribute('data-plays', 'selection');
+  await player.locator('#loop').click();
+  await expect(player.locator('#player')).toHaveAttribute('data-plays', 'loop');
+  await player.locator('#loop').click();
+  // a click outside the selection clears it, and the band stays
+  await page.mouse.click(spec.x + spec.width * 0.8, spec.y + spec.height * 0.9);
+  await expect(player.locator('#selection')).toBeHidden();
+  await expect(band).toBeVisible();
+  // the band's top edge can be dragged; the band follows in every player of the key
+  const before = (await player.locator('#player').getAttribute('data-band'))!.split('-').map(Number);
+  const at = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  let grabY = -1;
+  for (let y = Math.ceil(at.y); y < at.y + at.height && grabY < 0; y++) {
+    await page.mouse.move(at.x + at.width * 0.8, y);
+    const cursor = await player.locator('#waveform').evaluate((w) => w.style.cursor);
+    if (cursor === 'ns-resize') grabY = y;
+  }
+  expect(grabY).toBeGreaterThan(0);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width * 0.8, grabY - 25, { steps: 5 });
+  await page.mouse.up();
+  const after = (await player.locator('#player').getAttribute('data-band'))!.split('-').map(Number);
+  expect(after[0]).toBe(before[0]);
+  expect(after[1]).toBeGreaterThan(before[1]);
+  await expect(other.locator('#player')).toHaveAttribute('data-band', `${after[0]}-${after[1]}`);
+  // the band button lets a plain drag pick a band, and B turns it off again
+  await player.locator('#band-clear').click();
+  await player.locator('#band-mode').click();
+  await expect(player.locator('#band-mode')).toHaveAttribute('aria-pressed', 'true');
+  const now = (await player.locator('[part="spectrogram"]').boundingBox())!;
+  await page.mouse.move(now.x + now.width * 0.6, now.y + now.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(now.x + now.width * 0.6, now.y + now.height * 0.6, { steps: 6 });
+  await page.mouse.up();
+  await expect(band).toBeVisible();
+  await page.keyboard.press('b');
+  await expect(player.locator('#band-mode')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('Space plays and pauses the audio player once clicked, and in full screen', async ({ page }) => {
