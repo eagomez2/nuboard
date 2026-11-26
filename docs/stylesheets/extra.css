@@ -279,3 +279,77 @@
     font-size: 0.74rem;
   }
 }
+
+/* Landing page: "Works with" pills in the hero, and the integrations card under the snippet */
+.md-typeset .nb-works {
+  margin-top: 1.1rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .nb-works .nb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin: 0.2rem 0.15rem;
+  padding: 0.2em 0.75em;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 999px;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  transition: border-color 0.15s, color 0.15s;
+}
+.md-typeset .nb-works .nb-pill:hover,
+.md-typeset .nb-works .nb-pill:focus {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-fg-color);
+}
+.md-typeset .nb-works .nb-pill .twemoji svg {
+  width: 1em;
+  height: 1em;
+}
+.md-typeset .nb-start .tabbed-set {
+  margin: 0 0 0.3rem;
+}
+.md-typeset .nb-start-note {
+  margin: 0 0 1.5rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+/* Compact feature cards: one line of bold title and text each */
+.md-typeset .nb-cards > ul > li {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+.md-typeset .nb-cards > ul > li .twemoji {
+  color: var(--md-primary-fg-color);
+  margin-right: 0.2em;
+}
+/* Landing page: the snippet as wide as the feature panel, and a quiet closing section */
+.md-typeset .nb-start {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+.md-typeset .nb-start .tabbed-labels {
+  justify-content: center;
+}
+.md-typeset .nb-start-note {
+  text-align: center;
+}
+.md-typeset .nb-about {
+  max-width: 44rem;
+  margin: 2.5rem auto 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  text-align: center;
+  font-size: 0.74rem;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .nb-about .nb-links {
+  margin-top: 0.8rem;
+  line-height: 1.9;
+}
+.md-typeset .nb-cards {
+  max-width: 52rem;
+  margin: 2rem auto 0;
+}
