@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.33.0
+## 0.33.1
 
 Framework integrations and notebooks, safer shared editing, and a selectable
 frequency band in the audio player. No breaking changes, and no new
