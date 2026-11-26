@@ -68,6 +68,60 @@ class HypothesisError(ValueError):
     """A hypothesis or board that cannot be saved as given (bad id, a loop, ...)."""
 
 
+class HypothesisConflict(HypothesisError):
+    """A hypothesis was changed elsewhere in the same fields as this save.
+
+    Attributes:
+        fields: The fields changed both here and elsewhere, to different values.
+        current: The hypothesis as it is on disk now, or None if it was deleted.
+    """
+
+    def __init__(self, fields: list[str], current: dict[str, Any] | None) -> None:
+        what = ", ".join(fields) if fields else "the card"
+        super().__init__(f"this hypothesis changed elsewhere since it was opened ({what})")
+        self.fields = fields
+        self.current = current
+
+
+# Where a card sits and how it looks: a save's own value always wins, with no conflict
+_LAYOUT = frozenset({"position", "folded", "width", "card"})
+# Kept from the file, never merged
+_STAMPS = frozenset({"id", "created", "updated"})
+
+
+def merge_hypothesis(
+    base: dict[str, Any], mine: dict[str, Any], theirs: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Merge a save into a hypothesis that changed since the editor opened it.
+
+    Field by field: what the save changed (from `base`) is taken from `mine`,
+    the rest from `theirs`. A field both changed to different values is a
+    conflict, except the layout fields (position, folding, width, card), where
+    the save wins. All three are cleaned hypotheses.
+
+    Args:
+        base: The hypothesis as the editor loaded it.
+        mine: The hypothesis being saved.
+        theirs: The hypothesis on disk now.
+
+    Returns:
+        The merged hypothesis and the conflicting field names (empty if none).
+    """
+    merged = dict(theirs)
+    conflicts = []
+
+    for key, value in mine.items():
+        if key in _STAMPS or value == base.get(key):
+            continue
+
+        if theirs.get(key) not in (base.get(key), value) and key not in _LAYOUT:
+            conflicts.append(key)
+
+        merged[key] = value
+
+    return merged, conflicts
+
+
 def _folder(project_dir: str | os.PathLike[str], board: str = DEFAULT_BOARD) -> Path:
     """Return the folder of one board of a project: `hypotheses/<board>/`."""
     return Path(project_dir) / FOLDER / check_board_name(board)
@@ -390,7 +444,12 @@ def _owner(hypotheses: Iterable[dict[str, Any]]) -> dict[str, str]:
 
 
 def save_hypothesis(
-    project_dir: str | os.PathLike[str], data: dict[str, Any], board: str = DEFAULT_BOARD
+    project_dir: str | os.PathLike[str],
+    data: dict[str, Any],
+    board: str = DEFAULT_BOARD,
+    *,
+    base: dict[str, Any] | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Create or replace a hypothesis on a board.
 
@@ -400,15 +459,24 @@ def save_hypothesis(
     would make a loop (this hypothesis, directly or through its descendants,
     leading to itself) is refused.
 
+    With `base`, the hypothesis as the editor loaded it, a save over a
+    hypothesis changed meanwhile (by another tab, viewer or a hand edit) is
+    merged field by field (see `merge_hypothesis`), and refused when both
+    changed the same field. `force` writes `data` as it is.
+
     Args:
         project_dir: The project folder.
         data: The hypothesis. Without an `id`, a new one is made.
         board: The board name; a new name creates the board.
+        base: The hypothesis the edit started from, or None to skip the check.
+        force: Write `data` even if it conflicts with a change made meanwhile.
 
     Returns:
         The hypothesis as written.
 
     Raises:
+        HypothesisConflict: If `base` is given, `force` is not, and the
+            hypothesis was deleted or changed in the same fields meanwhile.
         HypothesisError: If the id or board name is invalid, or the parent
             would make a loop.
     """
@@ -418,6 +486,19 @@ def save_hypothesis(
     item = clean_hypothesis(
         {**data, "created": (old or {}).get("created") if isinstance(old, dict) else None}, hid
     )
+
+    if base is not None and data.get("id") and not force:
+        if not isinstance(old, dict):
+            raise HypothesisConflict([], None)
+
+        theirs = clean_hypothesis(old, hid)
+
+        if theirs.get("updated") != clean_hypothesis(base, hid).get("updated"):
+            item, conflicts = merge_hypothesis(clean_hypothesis(base, hid), item, theirs)
+
+            if conflicts:
+                raise HypothesisConflict(conflicts, theirs)
+
     item["updated"] = time.time()
     others = [h for h in load_board(project_dir, board)["hypotheses"] if h["id"] != hid]
     owner = _owner(others)

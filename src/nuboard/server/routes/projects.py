@@ -16,6 +16,7 @@ from ...collection import delete_collection, list_collections, save_collection
 from ...directions import DirectionConflict, change_direction, read_directions
 from ...hypotheses import (
     DEFAULT_BOARD,
+    HypothesisConflict,
     HypothesisError,
     delete_board,
     delete_hypothesis,
@@ -215,6 +216,10 @@ def routes(ctx: Context) -> list[BaseRoute]:
         replace), `delete` (a hypothesis id to delete), `settings` (fields of
         the board to change; a new board name creates the board) or
         `delete_board: true`. Returns the saved item, or what was deleted.
+        A hypothesis can come with `base`, the hypothesis as the editor loaded
+        it: a change made meanwhile is merged field by field, and a save that
+        changes the same field is refused with a 409 holding `conflict` (the
+        fields) and `current` (null if it was deleted), unless `force` is true.
         Refused on a server started with `--read-only-hypotheses`.
         """
 
@@ -238,7 +243,11 @@ def routes(ctx: Context) -> list[BaseRoute]:
 
         try:
             if isinstance(body.get("hypothesis"), dict):
-                return JSON({"hypothesis": save_hypothesis(pdir, body["hypothesis"], board)})
+                base = body.get("base") if isinstance(body.get("base"), dict) else None
+                saved = save_hypothesis(
+                    pdir, body["hypothesis"], board, base=base, force=body.get("force") is True
+                )
+                return JSON({"hypothesis": saved})
 
             if body.get("delete"):
                 hid = str(body["delete"])
@@ -249,6 +258,11 @@ def routes(ctx: Context) -> list[BaseRoute]:
 
             if body.get("delete_board") is True:
                 return JSON({"deleted_board": board, "existed": delete_board(pdir, board)})
+        except HypothesisConflict as exc:
+            return JSON(
+                {"error": str(exc), "conflict": exc.fields, "current": exc.current},
+                status_code=409,
+            )
         except HypothesisError as exc:
             return JSON({"error": str(exc)}, status_code=400)
 

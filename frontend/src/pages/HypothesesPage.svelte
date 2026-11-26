@@ -8,7 +8,7 @@
   import VerdictIcon from '../components/VerdictIcon.svelte';
   import HypothesisPanel from '../components/HypothesisPanel.svelte';
   import HypothesisCategories from '../components/HypothesisCategories.svelte';
-  import { api, type RunBrief } from '../lib/api';
+  import { api, HypothesisConflict, type RunBrief } from '../lib/api';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { fmtDate, fmtNum } from '../lib/format';
   import { directionOf } from '../lib/directions.svelte';
@@ -77,6 +77,7 @@
   let loadError = $state('');
   let dragging = false;
 
+  let bases = new Map<string, Hypothesis>();
   async function load() {
     const p = project;
     const b = boardParam;
@@ -87,6 +88,9 @@
     try {
       const [board, list] = await Promise.all([api.hypotheses(p, b), api.runs('', p)]);
       if (p !== project || b !== boardParam || dragging) return;
+      // each card as loaded, sent with its next save so the server can merge or refuse changes
+      // made elsewhere meanwhile
+      bases = new Map(board.hypotheses.map((h) => [h.id, structuredClone(h)]));
       data = board;
       loadBoards();
       projectRuns = list.runs.filter((r) => r.project === p);
@@ -173,13 +177,52 @@
   // -- saving -----------------------------------------------------------------------------------
   async function save(h: Hypothesis) {
     if (!data || ro) return;
+    const card = $state.snapshot(h) as Hypothesis;
     try {
-      const res = await api.saveHypothesis(project, data.name, $state.snapshot(h) as Hypothesis);
+      const res = await api.saveHypothesis(project, data.name, card, h.id ? bases.get(h.id) : undefined);
       if (!h.id) select(res.hypothesis.id, null);
     } catch (e) {
-      await notice('Not saved', e instanceof Error ? e.message : String(e));
+      if (e instanceof HypothesisConflict) await resolveConflict(card, e);
+      else await notice('Not saved', e instanceof Error ? e.message : String(e));
     }
     await load();
+  }
+  // Someone changed the same fields of this card (or deleted it) since it was loaded: asked only
+  // now, on save. Mine writes this card as it is; Theirs keeps what is saved.
+  async function resolveConflict(card: Hypothesis, e: HypothesisConflict) {
+    if (!data) return;
+    const names: Record<string, string> = { note: 'note', title: 'title', runs: 'runs and conclusions' };
+    const what = e.fields.map((f) => names[f] ?? f.replace(/_/g, ' ')).join(', ');
+    const res = await ask(
+      e.current ? 'This hypothesis changed meanwhile' : 'This hypothesis was deleted meanwhile',
+      [
+        {
+          label: 'Keep',
+          value: 'theirs',
+          options: e.current
+            ? [
+                { value: 'theirs', label: 'Theirs' },
+                { value: 'mine', label: 'Mine' },
+              ]
+            : [
+                { value: 'theirs', label: 'Deleted' },
+                { value: 'mine', label: 'Mine (save it again)' },
+              ],
+        },
+      ],
+      {
+        message: e.current
+          ? `Someone saved "${e.current.title}" after you opened it, changing the same ${what}. Theirs keeps what they saved; Mine replaces it with yours.`
+          : 'Someone deleted it after you opened it. Mine saves your version again.',
+        confirm: 'Continue',
+      },
+    );
+    if (res?.[0] !== 'mine') return;
+    try {
+      await api.saveHypothesis(project, data.name, card, undefined, true);
+    } catch (err) {
+      await notice('Not saved', err instanceof Error ? err.message : String(err));
+    }
   }
   async function remove(h: Hypothesis) {
     if (!data || ro) return;
@@ -318,7 +361,7 @@
     const moved = data.hypotheses.filter((h) => h.position.dx || h.position.dy);
     for (const h of moved) {
       h.position = { dx: 0, dy: 0 };
-      await api.saveHypothesis(project, data.name, $state.snapshot(h) as Hypothesis).catch(() => null);
+      await api.saveHypothesis(project, data.name, $state.snapshot(h) as Hypothesis, bases.get(h.id)).catch(() => null);
     }
     await load();
   }
