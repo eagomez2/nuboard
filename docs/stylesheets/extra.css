@@ -345,6 +345,15 @@
   font-size: 0.74rem;
   color: var(--md-default-fg-color--light);
 }
+.md-typeset .nb-about > p:not(.nb-links) {
+  text-align: justify;
+  hyphens: auto;
+}
+@media screen and (max-width: 37.5em) {
+  .md-typeset .nb-about > p:not(.nb-links) {
+    text-align: left;
+  }
+}
 .md-typeset .nb-about .nb-links {
   margin-top: 0.8rem;
   line-height: 1.9;

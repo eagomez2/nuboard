@@ -21,6 +21,7 @@ no server, no database.
 [:simple-lightning: PyTorch Lightning](guide/integrations.md#pytorch-lightning){ .nb-pill }
 [:simple-huggingface: Hugging Face](guide/integrations.md#hugging-face-trainer){ .nb-pill }
 [:simple-jupyter: Jupyter](guide/integrations.md#jupyter){ .nb-pill }
+[:simple-python: Plain Python, no framework needed](quickstart.md){ .nb-pill }
 </p>
 
 </div>

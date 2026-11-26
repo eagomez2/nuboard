@@ -83,6 +83,8 @@ versions add.
 
 ## Jupyter
 
+![A run's summary and the viewer inside a JupyterLab notebook](../assets/jupyter-light.png){ .nb-shot }
+
 Runs and projects show a summary when they end a cell:
 
 ```python
