@@ -20,6 +20,15 @@ with nb.init("my-project", run_name="baseline", config={"lr": 3e-4}) as run:
 nuboard up experiments        # http://localhost:6070
 ```
 
+**Works with PyTorch Lightning, Hugging Face and Jupyter**, with no extra
+dependencies ([Frameworks and notebooks](https://eagomez2.github.io/nuboard/guide/integrations/)):
+
+```python
+from nuboard.integrations.lightning import NuBoardLogger      # L.Trainer(logger=NuBoardLogger("mnist"))
+from nuboard.integrations.huggingface import NuBoardCallback  # Trainer(..., callbacks=[NuBoardCallback("glue")])
+nb.show(run)                                                  # the viewer inside a Jupyter cell
+```
+
 ## Why
 
 - **No setup.** No account, no server, no database. `pip install nuboard` gives

@@ -18,6 +18,12 @@ and no database to back up.
 [:material-rocket-launch-outline: Quickstart :material-arrow-right:{ .nb-go }](quickstart.md){ .md-button .md-button--primary }
 [:material-book-open-variant: Guides](guide/logging.md){ .md-button }
 
+<p class="nb-works" markdown>Works with
+[:simple-lightning: PyTorch Lightning](guide/integrations.md#pytorch-lightning){ .nb-pill }
+[:simple-huggingface: Hugging Face](guide/integrations.md#hugging-face-trainer){ .nb-pill }
+[:simple-jupyter: Jupyter](guide/integrations.md#jupyter){ .nb-pill }
+</p>
+
 </div>
 
 === "pip"
@@ -45,6 +51,44 @@ with nb.init("llm-pretrain", run_name="baseline", config={"lr": 3e-4}) as run:
 $ nuboard up experiments
 nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+C to stop)
 ```
+
+<div class="nb-integrations" markdown>
+
+<p class="nb-integrations-head" markdown>:material-puzzle-outline:{ .nb-int-icon } **Already using a trainer?** One line plugs NuBoard into PyTorch Lightning or the Hugging Face `Trainer`, and `nb.show` puts the viewer in a Jupyter cell. No extra dependencies. [Frameworks and notebooks :material-arrow-right:](guide/integrations.md)</p>
+
+=== ":simple-lightning: PyTorch Lightning"
+
+    ```python
+    import lightning as L
+    from nuboard.integrations.lightning import NuBoardLogger
+
+    trainer = L.Trainer(logger=NuBoardLogger("mnist", run_name="baseline"))
+    trainer.fit(model, datamodule)  # self.log(...) and the hyperparameters, from rank 0
+    ```
+
+=== ":simple-huggingface: Hugging Face"
+
+    ```python
+    from transformers import Trainer, TrainingArguments
+    from nuboard.integrations.huggingface import NuBoardCallback
+
+    args = TrainingArguments("out", report_to="none", eval_strategy="epoch")
+    trainer = Trainer(model, args, train_dataset=train, eval_dataset=val,
+                      callbacks=[NuBoardCallback("glue-mrpc")])
+    trainer.train()  # train/loss, eval/loss, ... and the arguments as the config
+    ```
+
+=== ":simple-jupyter: Jupyter"
+
+    ```python
+    import nuboard as nb
+
+    run = nb.init("mnist", config={"lr": 3e-4})
+    run          # a summary: status, config and the last value of each scalar
+    nb.show(run) # the viewer in the cell, updating live as the run trains
+    ```
+
+</div>
 
 <div class="nb-features" markdown>
 
@@ -146,6 +190,14 @@ nuboard serving /home/me/experiments (31 runs) at http://localhost:6070/  (Ctrl+
     NaN and Inf values, loss and gradient spikes and throughput drops are
     found per run and rank and shown in the runs table and under charts.
 
+-   :material-puzzle-outline:{ .lg .middle } __Lightning, Hugging Face, Jupyter__
+
+    ---
+
+    A [Lightning logger, a `Trainer` callback](guide/integrations.md) and
+    the viewer inside a notebook cell, with no extra dependencies: each
+    uses the framework you already have.
+
 -   :material-graph-outline:{ .lg .middle } __Artifacts and lineage__
 
     ---
@@ -180,6 +232,8 @@ NuBoard is free software under the [MIT License](license.md).
 - [Installation](installation.md) covers `pip install nuboard` and building
   from source.
 - [Quickstart](quickstart.md) runs the demo and logs a first run.
+- [Frameworks and notebooks](guide/integrations.md) plugs NuBoard into
+  PyTorch Lightning, the Hugging Face `Trainer` and Jupyter.
 - [Logging from Python](guide/logging.md), [Using the viewer](guide/viewer.md),
   [Sweeps](guide/sweeps.md), [Choosing a step](guide/selecting.md),
   [Health alerts](guide/alerts.md) and [Artifacts](guide/artifacts.md) explain each part in depth, and
