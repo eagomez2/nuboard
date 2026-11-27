@@ -1,4 +1,4 @@
-// Helpers of the Select page: rows are a run at a step, scored on a few scalars (see
+// Helpers of the Best step page: rows are a run at a step, scored on a few scalars (see
 // `nuboard/selection.py`, which finds the shortlist). These stay free of Svelte so they can be tested.
 
 export type Dir = 'min' | 'max';

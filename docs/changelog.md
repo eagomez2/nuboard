@@ -66,12 +66,16 @@ additions.
   folded sections), then **Add N to report** adds them together in the order
   ticked, each drawn live with a PNG copy for exports, or **Download N as
   .zip** saves them as PNGs.
-- **Open Select and Timeline with the ticked runs.** The Runs selection bar,
-  the **⋮** menu of a run's details and the **Showing N selected runs**
-  banner now offer **Select** and **Timeline** next to **Charts**, **Media**
-  and **Sweeps**, so the best step can be chosen among a few runs instead of
-  the whole query. The banner, which already showed on Timeline, now has a
-  **Timeline** button too.
+- **The Select page is now Best step.** "Select" read like an action next to
+  the run checkboxes, so the page that chooses which run at which step to
+  take forward is named for what it answers. Links to `#/select` and saved
+  views keep working.
+- **Open Best step and Timeline with the ticked runs.** The Runs selection
+  bar, the **⋮** menu of a run's details and the **Showing N selected runs**
+  banner now offer **Best step** and **Timeline** next to **Charts**,
+  **Media** and **Sweeps**, so the best step can be chosen among a few runs
+  instead of the whole query. The banner, which already showed on Timeline,
+  now has a **Timeline** button too.
 - **Suggestions in the query bar.** As you type, the bar lists what can come
   next at the caret: field names (run fields, config keys, custom fields and
   scalars), then operators, then the values runs actually hold (statuses,

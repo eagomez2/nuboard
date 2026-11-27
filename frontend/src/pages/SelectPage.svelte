@@ -15,7 +15,7 @@
   import { svgToPng } from '../lib/snapshot';
   import { app } from '../lib/state.svelte';
 
-  // The Select page: which run at which step to take forward, when runs win on different scalars.
+  // The Best step page: which run at which step to take forward, when runs win on different scalars.
   // A row is a run at a step where every chosen scalar was logged; the shortlist holds the rows no
   // other row beats on every scalar (the server finds it, see nuboard/selection.py). Rows can be
   // compared side by side and picked with a note, saved in the project's picks.json.
@@ -488,7 +488,7 @@
 <svelte:window bind:innerHeight />
 
 <div class="toolbar">
-  <div class="seg" aria-label="Select page view">
+  <div class="seg" aria-label="Best step page view">
     <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ pane: null })}
       >Shortlist{#if data}<span class="count">{data.front_count}</span>{/if}</button
     >

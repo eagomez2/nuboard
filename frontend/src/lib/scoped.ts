@@ -8,7 +8,7 @@ export const SCOPED_PAGES: readonly { page: Page; label: string; icon: string }[
   { page: 'charts', label: 'Charts', icon: 'charts' },
   { page: 'media', label: 'Media', icon: 'media' },
   { page: 'sweeps', label: 'Sweeps', icon: 'sweep' },
-  { page: 'select', label: 'Select', icon: 'flag' },
+  { page: 'select', label: 'Best step', icon: 'flag' },
   { page: 'timeline', label: 'Timeline', icon: 'timeline' },
 ];
 

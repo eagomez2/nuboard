@@ -2,14 +2,14 @@
 
 After a round of experiments there are often several models that each win on
 something: one has the best accuracy, another the best calibration, a third
-is faster. The Select page helps decide which run, at which step, to take
+is faster. The Best step page helps decide which run, at which step, to take
 forward. It does not decide for you. It removes the steps that are simply
 worse, shows what each of the remaining choices costs, and keeps a note of
 what you picked and why.
 
-![Select page with the trade-off plot and the shortlist](../assets/select-light.png){ .nb-shot }
+![Best step page with the trade-off plot and the shortlist](../assets/select-light.png){ .nb-shot }
 
-Try it on the demo: `nuboard demo demo-runs --up --open`, open **Select** on
+Try it on the demo: `nuboard demo demo-runs --up --open`, open **Best step** on
 `vit-ablations` and add `val/acc` and `val/calibration_error` under **Better
 means**. The eight runs trade accuracy against calibration: CutMix is the
 most accurate, MixUp the best calibrated, and later epochs gain accuracy
