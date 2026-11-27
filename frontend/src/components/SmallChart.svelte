@@ -30,6 +30,9 @@
     pinX = null,
     fullName = false,
     timing = false,
+    selecting = false,
+    selected = false,
+    onPick,
   }: {
     metric: string;
     runs: string[];
@@ -59,6 +62,10 @@
     fullName?: boolean;
     /** A timer: durations on the y axis and in the tooltip, lower being better. */
     timing?: boolean;
+    /** Select items is on: a checkbox before the name picks the chart. */
+    selecting?: boolean;
+    selected?: boolean;
+    onPick?: (on: boolean) => void;
   } = $props();
 
   // A tooltip with each run's value under the cursor (or at the pinned step), largest first.
@@ -149,11 +156,20 @@
   );
 </script>
 
-<div class="card small" bind:this={el}>
-  <button class="title" onclick={onFocus} title="{metric}: click to bring into focus">
-    <span class="mono name tail"><span dir="ltr">{metric}</span></span>
-    <span class="note">{note}</span>
-  </button>
+<div class="card small" class:picked={selecting && selected} bind:this={el}>
+  <div class="head">
+    {#if selecting}<input
+        type="checkbox"
+        class="pick"
+        aria-label="Select the chart of {metric}"
+        checked={selected}
+        onchange={(e) => onPick?.(e.currentTarget.checked)}
+      />{/if}
+    <button class="title" onclick={onFocus} title="{metric}: click to bring into focus">
+      <span class="mono name tail"><span dir="ltr">{metric}</span></span>
+      <span class="note">{note}</span>
+    </button>
+  </div>
   {#if error}
     <p class="err">{error}</p>
   {:else if !data}
@@ -306,7 +322,23 @@
     padding: 10px 12px 6px;
     min-width: 0;
   }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .picked {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .pick {
+    margin: 0 0 4px;
+    accent-color: var(--accent);
+    flex: none;
+  }
   .title {
+    min-width: 0;
     display: flex;
     align-items: baseline;
     gap: 8px;

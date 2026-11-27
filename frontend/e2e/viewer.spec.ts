@@ -911,6 +911,61 @@ test('add the main chart to a report, where it is drawn live', async ({ page }) 
   await expect(page).toHaveURL(/#\/charts.*metric=val%2Facc/);
 });
 
+test('several small charts go to a report together, each drawn live', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc&cfind=%5Etrain%2F');
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected charts' });
+  await expect(bar).toContainText('Tick charts to add them to a report or download them');
+  const boxes = page.locator('.small').getByRole('checkbox');
+  await boxes.nth(1).check();
+  await boxes.nth(0).check(); // the report keeps the order they were picked in
+  await expect(page.locator('.small.picked')).toHaveCount(2);
+  await expect(bar).toContainText('2 selected');
+  const names = await page.locator('.small .name').allTextContents();
+  await bar.getByRole('button', { name: 'Add 2 to report' }).click();
+  const dlg = page.getByRole('dialog');
+  const report = `e2e-picked-${Date.now().toString(36)}`; // a new report each time
+  await dlg.getByLabel('Report').fill(report);
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(bar).toHaveCount(0); // done once they are added
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click();
+  const text = await page.getByRole('textbox', { name: 'Report text' }).inputValue();
+  const lines = text.split('\n\n').filter((l) => l.includes('"chart:'));
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toContain(`![${names[1]}](files/${report}-`);
+  expect(lines[1]).toContain(`![${names[0]}](files/${report}-`);
+  await expect(page.locator('.preview .nb-chart canvas')).toHaveCount(2);
+});
+
+test('Select all shown on Charts ticks every filtered chart, and Download saves PNGs in a .zip', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc&cfind=%5Etrain%2F&crows=1&ccols=1');
+  await expect(page.locator('.sect').filter({ hasText: 'train' })).toBeVisible();
+  const n = await page
+    .locator('.sect .nchart')
+    .evaluateAll((els) => els.reduce((t, el) => t + parseInt(el.textContent ?? '0'), 0));
+  expect(n).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected charts' });
+  // charts on other pages count too
+  await bar.getByRole('button', { name: `Select all shown (${n})` }).click();
+  await expect(bar).toContainText(`${n} selected`);
+  await expect(bar.getByRole('button', { name: /Select all shown/ })).toBeDisabled();
+  const download = page.waitForEvent('download');
+  await bar.getByRole('button', { name: `Download ${n} as .zip` }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`vit-ablations-charts-${n}.zip`);
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const zip = readFileSync(path);
+  expect(zip.subarray(0, 2).toString()).toBe('PK');
+  expect(zip.includes('train_loss.png')).toBe(true);
+  await bar.getByRole('button', { name: 'Clear' }).click();
+  await expect(bar).toContainText('Tick charts');
+  await bar.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.small').getByRole('checkbox')).toHaveCount(0);
+});
+
 test('the browser tab is titled NuBoard', async ({ page }) => {
   await page.goto('/#/runs');
   await expect(page).toHaveTitle('NuBoard');

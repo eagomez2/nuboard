@@ -60,6 +60,12 @@ additions.
   one-line feature cards and a short closing; about a third shorter. It also
   has a Select tab next to Timeline, and its audio screenshot shows the new
   toolbar. The README lists the integrations too.
+- **Several charts to a report at once.** The Charts page's All scalars grid
+  has **Select items**, as on the Media page: tick small charts (or **Select
+  all shown**, which takes every chart the filter leaves, on all pages and in
+  folded sections), then **Add N to report** adds them together in the order
+  ticked, each drawn live with a PNG copy for exports, or **Download N as
+  .zip** saves them as PNGs.
 - **Charts opens on a scalar your newest runs logged.** With nothing
   selected, the focused chart used to open on `loss` whenever any shown run
   had it, so after a switch to `train/loss` it showed only older runs. It now
