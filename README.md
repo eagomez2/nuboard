@@ -71,7 +71,7 @@ open the Charts page. The [quickstart](https://eagomez2.github.io/nuboard/quicks
 | Charts | grouped lines with bands, smoothing, zoom that loads finer data, a linked crosshair, live updates, any scalar as the x axis |
 | Timing | where a run's time went: each timer's calls, mean, p95, total and share, its duration per step, findings such as spikes and slow ranks, and a timeline of one step with a lane per rank |
 | Media | every logged kind with a step slider, side-by-side comparison across runs and steps, and interactive figures |
-| Select | choosing which run, at which step, to take forward when runs win on different scalars: a shortlist of the steps no other step beats, a trade-off plot, side-by-side comparison and picks saved with a note |
+| Shortlist | choosing which run, at which step, to take forward when runs win on different scalars: the candidate steps no other step beats, a trade-off plot, side-by-side comparison and picks saved with a note |
 | Hypotheses | boards that track what each run was testing and which result led to the next idea |
 | Reports | Markdown reports with logged items, live charts and snapshots; export as HTML or a zip |
 | Sweeps, Timeline, Artifacts | parallel coordinates and per-parameter scatters, runs over wall-clock time, artifact versions and lineage |

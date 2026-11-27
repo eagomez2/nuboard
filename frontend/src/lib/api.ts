@@ -1,5 +1,6 @@
 import type { Baseline } from './baselines';
 import type { SavedQuery } from './queries';
+import type { QueryField } from './querycomplete';
 import { tableFromIPC } from 'apache-arrow';
 import type { Board, BoardData, BoardListItem, Hypothesis } from './hypotheses';
 
@@ -673,6 +674,9 @@ export const api = {
   savePick: async (project: string, pick: Partial<SavedPick> & { run: string; step: number }) =>
     (await picksPost({ project, pick })).pick as SavedPick,
   deletePick: (project: string, id: string) => picksPost({ project, delete: id }),
+  /** Fields, config keys, custom fields and metrics for the query bar's suggestions (cached by the server). */
+  queryFields: (project: string | null) =>
+    json<{ version: number; fields: QueryField[] }>(`/api/query-fields?${qs({ project })}`),
   sweepKeys: (keys: string[]) =>
     json<{ keys: string[]; values: Record<string, Record<string, unknown>> }>(
       `/api/sweep-keys?runs=${keys.map(encodeURIComponent).join(',')}`,

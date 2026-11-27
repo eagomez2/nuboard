@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.34.0
+
+Suggestions in the query bar, several charts to a report at once, and the
+Select page renamed **Shortlist**, which the Runs selection bar can now open
+with only the ticked runs. No breaking changes and no new dependencies: run
+folders, the Python API and `#/select` links are unchanged.
+
+- **Several charts to a report at once.** The Charts page's All scalars grid
+  has **Select items**, as on the Media page: tick small charts (or **Select
+  all shown**, which takes every chart the filter leaves, on all pages and in
+  folded sections), then **Add N to report** adds them together in the order
+  ticked, each drawn live with a PNG copy for exports, or **Download N as
+  .zip** saves them as PNGs.
+- **The Select page is now Shortlist.** "Select" read like an action next to
+  the run checkboxes, so the page that chooses which run at which step to
+  take forward is named for what it produces. Its first tab, the steps no
+  other step beats, is now **Candidates**. Links to `#/select` and saved
+  views keep working.
+- **Open Shortlist and Timeline with the ticked runs.** The Runs selection
+  bar, the **⋮** menu of a run's details and the **Showing N selected runs**
+  banner now offer **Shortlist** and **Timeline** next to **Charts**,
+  **Media** and **Sweeps**, so the best step can be chosen among a few runs
+  instead of the whole query. The banner, which already showed on Timeline,
+  now has a **Timeline** button too.
+- **Suggestions in the query bar.** As you type, the bar lists what can come
+  next at the caret: field names (run fields, config keys, custom fields and
+  scalars), then operators, then the values runs actually hold (statuses,
+  tags, projects, config values), keywords such as `group by` and `order by`,
+  `agg` names, and a scalar's `.min`, `.max` and other statistics after its
+  name and a dot. <kbd>Tab</kbd> inserts the highlighted suggestion,
+  <kbd>↑</kbd>/<kbd>↓</kbd> choose one (then <kbd>Enter</kbd> inserts it),
+  <kbd>Enter</kbd> otherwise runs the query as before, and <kbd>Esc</kbd>
+  closes the list. The fields come from one request when the bar gains focus
+  (`/api/query-fields`, cached by the server), so typing makes no requests,
+  and live run updates never close the list, change it or move the caret.
+
 ## 0.33.1
 
 Framework integrations and notebooks, safer shared editing, and a selectable

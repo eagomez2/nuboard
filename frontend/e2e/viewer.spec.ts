@@ -911,6 +911,61 @@ test('add the main chart to a report, where it is drawn live', async ({ page }) 
   await expect(page).toHaveURL(/#\/charts.*metric=val%2Facc/);
 });
 
+test('several small charts go to a report together, each drawn live', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc&cfind=%5Etrain%2F');
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected charts' });
+  await expect(bar).toContainText('Tick charts to add them to a report or download them');
+  const boxes = page.locator('.small').getByRole('checkbox');
+  await boxes.nth(1).check();
+  await boxes.nth(0).check(); // the report keeps the order they were picked in
+  await expect(page.locator('.small.picked')).toHaveCount(2);
+  await expect(bar).toContainText('2 selected');
+  const names = await page.locator('.small .name').allTextContents();
+  await bar.getByRole('button', { name: 'Add 2 to report' }).click();
+  const dlg = page.getByRole('dialog');
+  const report = `e2e-picked-${Date.now().toString(36)}`; // a new report each time
+  await dlg.getByLabel('Report').fill(report);
+  await dlg.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(bar).toHaveCount(0); // done once they are added
+  await page.getByRole('button', { name: 'Open report' }).click();
+  await page.getByRole('button', { name: 'Split' }).click();
+  const text = await page.getByRole('textbox', { name: 'Report text' }).inputValue();
+  const lines = text.split('\n\n').filter((l) => l.includes('"chart:'));
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toContain(`![${names[1]}](files/${report}-`);
+  expect(lines[1]).toContain(`![${names[0]}](files/${report}-`);
+  await expect(page.locator('.preview .nb-chart canvas')).toHaveCount(2);
+});
+
+test('Select all shown on Charts ticks every filtered chart, and Download saves PNGs in a .zip', async ({ page }) => {
+  await page.goto('/#/charts?project=vit-ablations&metric=val%2Facc&cfind=%5Etrain%2F&crows=1&ccols=1');
+  await expect(page.locator('.sect').filter({ hasText: 'train' })).toBeVisible();
+  const n = await page
+    .locator('.sect .nchart')
+    .evaluateAll((els) => els.reduce((t, el) => t + parseInt(el.textContent ?? '0'), 0));
+  expect(n).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Select items' }).click();
+  const bar = page.getByRole('toolbar', { name: 'Selected charts' });
+  // charts on other pages count too
+  await bar.getByRole('button', { name: `Select all shown (${n})` }).click();
+  await expect(bar).toContainText(`${n} selected`);
+  await expect(bar.getByRole('button', { name: /Select all shown/ })).toBeDisabled();
+  const download = page.waitForEvent('download');
+  await bar.getByRole('button', { name: `Download ${n} as .zip` }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`vit-ablations-charts-${n}.zip`);
+  const path = test.info().outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const zip = readFileSync(path);
+  expect(zip.subarray(0, 2).toString()).toBe('PK');
+  expect(zip.includes('train_loss.png')).toBe(true);
+  await bar.getByRole('button', { name: 'Clear' }).click();
+  await expect(bar).toContainText('Tick charts');
+  await bar.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.small').getByRole('checkbox')).toHaveCount(0);
+});
+
 test('the browser tab is titled NuBoard', async ({ page }) => {
   await page.goto('/#/runs');
   await expect(page).toHaveTitle('NuBoard');
@@ -2255,7 +2310,9 @@ test('toolbar buttons use theme icons, and Media item is on when the project has
   await expect(media).toContainText('Opens Media');
 });
 
-test('selected runs open in Charts, Sweeps and Media, with a banner that shows all again', async ({ page }) => {
+test('selected runs open in Charts, Media, Sweeps, Shortlist and Timeline, with a banner that shows all again', async ({
+  page,
+}) => {
   await page.goto('/#/runs?project=vit-ablations');
   const boxes = page.locator('.body .row input[type=checkbox]');
   await boxes.nth(0).check();
@@ -2272,6 +2329,11 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect(banner).toContainText('Showing 2 selected runs');
   await banner.getByRole('button', { name: 'Sweeps' }).click();
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await banner.getByRole('button', { name: 'Timeline' }).click();
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(2);
+  await banner.getByRole('button', { name: 'Shortlist' }).click();
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
   await banner.getByRole('button', { name: 'Charts' }).click();
   await expect(page.locator('.legend-chip')).toHaveCount(2);
 
@@ -2281,7 +2343,9 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect.poll(() => page.locator('.legend-chip').count()).toBeGreaterThan(2);
 });
 
-test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {
+test('a run opened for inspection jumps to Charts, Media, Sweeps, Shortlist or Timeline with only that run', async ({
+  page,
+}) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.locator('.body .row input[type=checkbox]').nth(0).check();
   await page.getByRole('button', { name: 'Details' }).click();
@@ -2303,6 +2367,37 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await page.goBack();
   await jump('Sweeps');
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await page.goBack();
+  await jump('Shortlist');
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
+  await page.goBack();
+  await jump('Timeline');
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(1);
+});
+
+test('the Runs selection bar opens Shortlist and Timeline with only the ticked runs', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  await boxes.nth(2).check();
+  const bar = page.locator('.selbar');
+  await bar.getByRole('button', { name: 'Shortlist', exact: true }).click();
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
+  await expect(page.getByRole('status').filter({ hasText: 'selected run' })).toContainText('Showing 3 selected runs');
+  // the scalars the Shortlist page offers are counted over the selected runs only
+  await page.goto(`${page.url()}&m=val%2Facc`);
+  await expect(page.getByText('3 of 3 runs')).toBeVisible();
+
+  // back on Runs the ticks are kept; leave one
+  await page.goto('/#/runs?project=vit-ablations');
+  await boxes.nth(1).uncheck();
+  await boxes.nth(2).uncheck();
+  await expect(bar).toContainText('1 selected');
+  await page.locator('.selbar').getByRole('button', { name: 'Timeline', exact: true }).click();
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(1);
 });
 
 /**
@@ -2802,4 +2897,63 @@ test('a live update refetches only the live run on the small charts @live', asyn
   );
   expect(new URL(req.url()).searchParams.get('runs')).toBe(live[0]);
   await expect(small.locator('canvas')).toBeVisible();
+});
+
+test('the query bar suggests fields, operators and values as you type', async ({ page }) => {
+  let fetches = 0;
+  page.on('request', (r) => {
+    if (r.url().includes('/api/query-fields')) fetches++;
+  });
+  await page.goto('/#/runs');
+  const query = page.getByLabel('Run query');
+  const list = page.getByRole('listbox', { name: 'Query suggestions' });
+  await query.click();
+  await expect(list.getByRole('option').first()).toContainText('where status != crashed'); // examples first
+  await query.pressSequentially('where stat');
+  await expect(list.getByRole('option').first()).toContainText('status');
+  await query.press('Tab');
+  await expect(query).toHaveValue('where status ');
+  await expect(list.getByRole('option', { name: /^!=/ })).toBeVisible();
+  await query.pressSequentially('= cr');
+  await expect(list.getByRole('option')).toHaveText([/crashed/]);
+  await query.press('Tab');
+  await expect(query).toHaveValue('where status = crashed ');
+  await expect(list.getByRole('option', { name: /^and/ })).toBeVisible();
+  // Enter runs the query unless the arrows chose a suggestion
+  await query.press('Enter');
+  await expect(page.locator('.body .row')).toHaveCount(1);
+  await expect(page).toHaveURL(/q=where/);
+  expect(fetches).toBe(1); // one request on focus, none per keystroke
+
+  await query.press('End');
+  await query.pressSequentially('order by ');
+  await query.press('ArrowDown');
+  await query.press('Enter');
+  await expect(query).not.toHaveValue(/by $/);
+  await query.press('Escape');
+  await expect(list).toBeHidden();
+});
+
+test('live run updates leave the query suggestions and the caret alone @live', async ({ page }) => {
+  await page.goto('/#/runs');
+  const query = page.getByLabel('Run query');
+  await query.click();
+  await query.pressSequentially('where status = r');
+  const list = page.getByRole('listbox', { name: 'Query suggestions' });
+  await expect(list.getByRole('option').first()).toContainText('running');
+  await query.press('ArrowLeft');
+  await query.press('ArrowLeft');
+  await list.evaluate((el) => (el.dataset.kept = '1'));
+  const options = await list.getByRole('option').allTextContents();
+  // a live run sends heartbeats and new points: wait for a few run list reloads
+  let reloads = 0;
+  page.on('response', (r) => {
+    if (r.url().includes('/api/runs?')) reloads++;
+  });
+  await expect.poll(() => reloads, { timeout: 20_000 }).toBeGreaterThan(2);
+  expect(await list.evaluate((el) => el.dataset.kept)).toBe('1'); // never closed or rebuilt
+  expect(await list.getByRole('option').allTextContents()).toEqual(options);
+  await expect(query).toBeFocused();
+  expect(await query.evaluate((el: HTMLInputElement) => el.selectionStart)).toBe('where status = r'.length - 2);
+  await expect(query).toHaveValue('where status = r');
 });

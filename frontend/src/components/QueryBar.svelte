@@ -5,6 +5,9 @@
   import { api } from '../lib/api';
   import { ask, confirmAction, notice } from '../lib/dialog.svelte';
   import { forgetRecent, recentQueries, rememberQuery, type SavedQuery } from '../lib/queries';
+  import { applySuggestion, complete, type QueryField } from '../lib/querycomplete';
+  import { highlight } from '../lib/combo';
+  import { tick } from 'svelte';
 
   let text = $state(router.get('q'));
   let input: HTMLInputElement;
@@ -20,6 +23,7 @@
 
   function submit(e: Event) {
     e.preventDefault();
+    suggestOpen = false;
     router.set({ q: text.trim() || null });
   }
 
@@ -49,6 +53,7 @@
 
   async function openMenu() {
     menu = !menu;
+    suggestOpen = false;
     if (!menu) return;
     recent = recentQueries();
     menuError = '';
@@ -104,6 +109,81 @@
     'train/loss.min < 2.4 order by train/loss.min',
     'where project = "vit-ablations" group by config.augment',
   ];
+
+  // Suggestions as you type. The fields come from one request when the bar gains focus (the
+  // server caches them until a run changes), and stay as they are until the next focus, so
+  // live run updates never change the list under the caret and typing makes no requests.
+  let vocab = $state<QueryField[]>([]);
+  let vocabFor = ''; // catalog version and project of `vocab`
+  let caret = $state(0);
+  let suggestOpen = $state(false);
+  let active = $state(0);
+  let navigated = false; // Enter picks a suggestion only after the arrows chose one
+  let suggestList = $state<HTMLUListElement>();
+
+  async function loadVocab() {
+    const project = router.get('project') || null;
+    const want = `${app.runs?.version ?? ''}|${project ?? ''}`;
+    if (want === vocabFor) return;
+    vocabFor = want;
+    try {
+      vocab = (await api.queryFields(project)).fields;
+    } catch {
+      vocabFor = ''; // an older server: no suggestions, try again on the next focus
+    }
+  }
+
+  const completion = $derived(suggestOpen && !menu ? complete(text, caret, vocab, examples) : null);
+  const items = $derived(completion?.items ?? []);
+
+  function syncCaret() {
+    caret = input?.selectionStart ?? text.length;
+  }
+
+  function moved() {
+    syncCaret();
+    active = 0;
+    navigated = false;
+  }
+
+  async function pick(i: number) {
+    if (!completion || !items[i]) return;
+    const out = applySuggestion(text, completion, items[i]);
+    text = out.text;
+    caret = out.caret;
+    active = 0;
+    navigated = false;
+    if (items[i]?.kind === 'example') suggestOpen = false;
+    await tick();
+    input?.focus();
+    input?.setSelectionRange(out.caret, out.caret);
+  }
+
+  function onInputKey(e: KeyboardEvent) {
+    if (!completion || !items.length) {
+      if (e.key === 'ArrowDown' && !suggestOpen) {
+        e.preventDefault();
+        suggestOpen = true;
+        moved();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      navigated = true;
+      active = e.key === 'ArrowDown' ? (active + 1) % items.length : active <= 0 ? items.length - 1 : active - 1;
+      queueMicrotask(() => suggestList?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }));
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      pick(active);
+    } else if (e.key === 'Enter' && navigated) {
+      e.preventDefault(); // pick; a second Enter runs the query
+      pick(active);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      suggestOpen = false;
+    }
+  }
 </script>
 
 <svelte:window onkeydown={onKey} onpointerdown={outside} />
@@ -120,14 +200,60 @@
       autocomplete="off"
       placeholder="where status != crashed group by config.lr"
       aria-label="Run query"
-      onfocus={() => (focused = true)}
-      onblur={() => (focused = false)}
-      list="query-examples"
+      role="combobox"
+      aria-expanded={!!completion}
+      aria-controls="query-suggestions"
+      aria-autocomplete="list"
+      aria-activedescendant={completion ? `query-sug-${active}` : undefined}
+      onfocus={() => {
+        focused = true;
+        suggestOpen = true;
+        loadVocab();
+        queueMicrotask(moved);
+      }}
+      onblur={() => {
+        focused = false;
+        suggestOpen = false;
+      }}
+      oninput={() => {
+        suggestOpen = true;
+        moved();
+      }}
+      onkeydown={onInputKey}
+      onkeyup={(e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') moved();
+      }}
+      onclick={() => {
+        suggestOpen = true;
+        moved();
+      }}
     />
-    <datalist id="query-examples">
-      {#each examples as ex (ex)}<option value={ex}></option>{/each}
-    </datalist>
   </div>
+  {#if completion && items.length}
+    <ul class="sug card" id="query-suggestions" role="listbox" aria-label="Query suggestions" bind:this={suggestList}>
+      {#each items as s, i (s.kind + s.label)}
+        <!-- svelte-ignore a11y_click_events_have_key_events (the query box handles the keys) -->
+        <li
+          id="query-sug-{i}"
+          role="option"
+          class={s.kind}
+          aria-selected={i === active}
+          onmousedown={(e) => e.preventDefault()}
+          onclick={() => pick(i)}
+          onmousemove={() => (active = i)}
+        >
+          <span class="slabel mono">
+            {#each highlight(s.label, completion.word) as part, j (j)}{#if part.hit}<mark>{part.text}</mark
+                >{:else}{part.text}{/if}{/each}
+          </span>
+          {#if s.detail}<span class="sdetail">{s.detail}</span>{/if}
+        </li>
+      {/each}
+      <li class="shint" role="presentation">
+        <kbd>Tab</kbd> insert · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Esc</kbd> close
+      </li>
+    </ul>
+  {/if}
   {#if text}
     <button
       type="button"
@@ -432,6 +558,74 @@
     margin-top: 6px;
     padding: 8px 4px 2px;
     border-top: 1px solid var(--border);
+  }
+  .sug {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    max-height: min(360px, 60vh);
+    overflow-y: auto;
+    color: var(--text);
+    box-shadow: 0 12px 28px -8px rgba(16, 24, 40, 0.35);
+  }
+  .sug li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 0;
+  }
+  .sug li[aria-selected='true'] {
+    background: var(--accent-soft);
+  }
+  .slabel {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+  }
+  .sug .keyword .slabel,
+  .sug .operator .slabel {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .sdetail {
+    margin-left: auto;
+    flex: none;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--faint);
+    font-size: 11.5px;
+  }
+  .sug mark {
+    background: none;
+    color: var(--accent);
+    font-weight: 650;
+  }
+  .sug .shint {
+    cursor: default;
+    margin-top: 2px;
+    padding: 6px 8px 3px;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    color: var(--faint);
+    font-size: 11.5px;
+    gap: 4px;
+  }
+  .shint kbd {
+    padding: 0 4px;
+    font-size: 10.5px;
   }
   kbd {
     font: 11px var(--mono);

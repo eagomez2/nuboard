@@ -43,6 +43,11 @@ smoothing, zoom and hidden series. It writes a line such as
 ![val/acc by augmentation](files/findings-1a2b3c4d.png "chart:metric=val%2Facc&runs=...")
 ```
 
+To add several small charts at once, press **Select items** above **All
+scalars**, tick the charts you want (or **Select all shown**), and press **Add
+N to report**. Each goes in as a line like the one above, captioned with its
+scalar, in the order you ticked them.
+
 The image is a PNG snapshot of the chart, saved in
 `<project>/reports/files/`, so the report shows the chart in any Markdown
 viewer. In NuBoard the title after `chart:` describes the view, and the
@@ -192,7 +197,7 @@ run. The same `media:` lines also work in a run's [notes](viewer.md#run-details-
   embedded too; if it cannot be reached, the figure is left out with a note.
   Before exporting you pick the **Theme** (light, dark, or switchable: it
   follows the reader's system theme and has a button to flip it), edit the
-  **footer** (by default "Exported with NuBoard 0.33.1 from …", naming the
+  **footer** (by default "Exported with NuBoard 0.34.0 from …", naming the
   version that exported it; empty removes it), and choose whether the
   NuBoard **logo** is the browser tab icon. When the report has audio you also
   pick the **audio player**: **Waveform** (the default) embeds the viewer's

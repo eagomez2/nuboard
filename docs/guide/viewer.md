@@ -23,7 +23,14 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   path is shortened at its start, so the folder's own name stays visible.
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
-  [query language](../reference/query.md). The **▾** button at its end opens
+  [query language](../reference/query.md). As you type, a list suggests
+  what can come next at the caret: field names, operators, the values runs
+  hold (statuses, tags, config values), keywords and a scalar's statistics.
+  <kbd>Tab</kbd> inserts the highlighted one; <kbd>↑</kbd>/<kbd>↓</kbd>
+  choose one, and <kbd>Enter</kbd> then inserts it; otherwise <kbd>Enter</kbd>
+  runs the query. <kbd>Esc</kbd> closes the list. The suggestions are read
+  once when the bar gains focus, so live run updates never change the list
+  while you type. The **▾** button at its end opens
   **Saved** queries and the queries **Recent in this browser**; click one to
   apply it. **Save this query…** names the query in the bar and writes it to
   `queries.json` in the served folder, so every browser on the server sees it
@@ -50,7 +57,7 @@ means the same thing on every page:
 | Box | Matches | Also |
 | --- | --- | --- |
 | Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
-| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Select, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Shortlist, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
 | Charts **Filter scalars** | the scalar's name | each word is a regular expression |
 | Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
 | Media **Filter keys** | the media key | each word is a regular expression |
@@ -85,14 +92,15 @@ matches as plain text, so typing never empties the page.
   the URL as `find`).
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
   edit their **Tags**, **Properties** or **Collection**, open them in
-  **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
+  **Charts**, **Media**, **Sweeps**, **Shortlist** or **Timeline**, or
+  **Compare** up to eight of them
   (the button reads **Details** with one run ticked, and opens its details).
   These actions sit in a bar that floats at the bottom of the window once a
   run is ticked, so the table never moves; the first six are icons, named
-  when you hover them, and the × clears the selection. Charts, Sweeps, Media and
-  Timeline then show a **Showing N selected runs** banner with buttons to the
-  other pages, which keep the selection, and **Show all**, which goes back to
-  the query result; **Clear selection** ends it too.
+  when you hover them, and the × clears the selection. Those five pages then
+  show a **Showing N selected runs** banner with buttons to the other pages,
+  which keep the selection, and **Show all**, which goes back to the query
+  result; **Clear selection** ends it too.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
@@ -257,9 +265,9 @@ For a single run there are more tabs:
 
 The first five tabs show in the row; the rest are in the **⋮** menu at its
 end (the open tab always shows), so the row and the settings filter stay on
-one line on a laptop screen. The same menu has **Charts**, **Sweeps** and
-**Media**, which open those pages with only the run (or the compared runs), as
-the selection bar does, without ticking checkboxes.
+one line on a laptop screen. The same menu has **Charts**, **Media**,
+**Sweeps**, **Shortlist** and **Timeline**, which open those pages with only the
+run (or the compared runs), as the selection bar does, without ticking checkboxes.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run
@@ -388,6 +396,14 @@ them to see all).
   into a [report](reports.md), as it is shown: runs, grouping, smoothing,
   zoom and hidden series. The report draws it live and keeps a PNG copy for
   exports.
+- **Select items**: the button above All scalars adds a checkbox to every
+  small chart. The bar at the bottom then works on what you ticked, as on the
+  Media page: **Select all shown** ticks every chart the scalar filter leaves
+  (all pages, folded sections too), **Add N to report** adds them to a
+  [report](reports.md) in the order you ticked them, and **Download N as
+  .zip** saves each as a PNG named after its scalar (`train/loss` becomes
+  `train_loss.png`). Each chart is drawn as the grid shows it: runs,
+  grouping, x axis, smoothing and hidden series, without zoom or log y.
 - **All scalars**: a small chart per scalar, grouped by prefix (`train/`,
   `eval/`, `perf/`…). Small charts load as you scroll. Click a title to bring
   the scalar into focus. Hovering a small chart shows each run's value at the
@@ -474,12 +490,12 @@ axis).
 The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
 
-## Select page
+## Shortlist page
 
 Which run at which step to take forward, when runs win on different scalars.
 Choose the scalars that matter and which way is better for each; every run
-at every step where all of them were logged is scored, and the shortlist
-keeps the steps that no other step beats on every scalar. Compare a few side
+at every step where all of them were logged is scored, and the candidates
+are the steps that no other step beats on every scalar. Compare a few side
 by side and pick one with a note, saved in the project's `picks.json`. See
 [Choosing a step](selecting.md).
 
