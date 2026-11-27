@@ -66,6 +66,17 @@ additions.
   folded sections), then **Add N to report** adds them together in the order
   ticked, each drawn live with a PNG copy for exports, or **Download N as
   .zip** saves them as PNGs.
+- **Suggestions in the query bar.** As you type, the bar lists what can come
+  next at the caret: field names (run fields, config keys, custom fields and
+  scalars), then operators, then the values runs actually hold (statuses,
+  tags, projects, config values), keywords such as `group by` and `order by`,
+  `agg` names, and a scalar's `.min`, `.max` and other statistics after its
+  name and a dot. <kbd>Tab</kbd> inserts the highlighted suggestion,
+  <kbd>↑</kbd>/<kbd>↓</kbd> choose one (then <kbd>Enter</kbd> inserts it),
+  <kbd>Enter</kbd> otherwise runs the query as before, and <kbd>Esc</kbd>
+  closes the list. The fields come from one request when the bar gains focus
+  (`/api/query-fields`, cached by the server), so typing makes no requests,
+  and live run updates never close the list, change it or move the caret.
 - **Charts opens on a scalar your newest runs logged.** With nothing
   selected, the focused chart used to open on `loss` whenever any shown run
   had it, so after a switch to `train/loss` it showed only older runs. It now

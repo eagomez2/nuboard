@@ -595,3 +595,120 @@ def _order(op: str, a: Any, b: Any) -> bool:
         return a > b
 
     return a >= b
+
+
+# Fields of the query bar's suggestions with the values a run can hold.
+_VOCAB_TOP = ("status", "project", "tags", "host", "group", "collections", "name")
+_VOCAB_BOOL = ("starred", "archived", "reviewed")
+_VOCAB_PLAIN = (
+    "created",
+    "started",
+    "ended",
+    "duration",
+    "world_size",
+    "alerts",
+    "commit",
+    "notes",
+)
+
+
+def vocabulary(
+    runs: list[dict[str, Any]], max_values: int = 20, max_keys: int = 2000
+) -> list[dict[str, Any]]:
+    """Return the fields a query over `runs` can use, with their most common values.
+
+    This feeds the viewer's query bar suggestions. Each entry has `name` (as
+    written in a query), `kind` (`run`, `config`, `field` or `metric`), `runs`
+    (how many runs have it) and `values` (up to `max_values` distinct values,
+    most common first; strings over 80 characters, lists and dicts are left
+    out). Run fields come first in a fixed order, then config keys, custom
+    fields and metrics, each sorted by name and cut to `max_keys`.
+
+    Args:
+        runs: Catalog records.
+        max_values: Distinct values kept per field.
+        max_keys: Config keys, custom fields and metrics kept each.
+
+    Returns:
+        The fields, ready to send as JSON.
+    """
+    counts: dict[tuple[str, str], dict[tuple[bool, Any], int]] = {}
+    track = max(200, max_values * 10)
+    present: dict[tuple[str, str], int] = {}
+
+    def add(kind: str, name: str, value: Any) -> None:
+        slot = (kind, name)
+        present[slot] = present.get(slot, 0) + 1
+        vals = value if isinstance(value, (list, tuple)) and kind != "config" else [value]
+
+        for v in vals:
+            if isinstance(v, (dict, list, tuple)) or v is None:
+                continue
+
+            if isinstance(v, float) and not math.isfinite(v):
+                continue
+
+            if isinstance(v, str) and (len(v) > 80 or not v):
+                continue
+
+            seen = counts.get(slot)
+
+            if seen is None:
+                seen = counts[slot] = {}
+
+            tagged = (v.__class__ is bool, v)  # keeps True apart from 1
+
+            if tagged in seen:
+                seen[tagged] += 1
+            elif len(seen) < track:  # a key of floats (a seed, a random lr) stops growing here
+                seen[tagged] = 1
+
+    def leaves(obj: Any, prefix: str) -> Any:
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield from leaves(v, f"{prefix}{k}.")
+        else:
+            yield prefix[:-1], obj
+
+    for r in runs:
+        for name in _VOCAB_TOP:
+            if _is_set(r.get(name)) and r.get(name) != []:
+                add("run", name, r.get(name))
+
+        for name in _VOCAB_BOOL:
+            add("run", name, bool(r.get(name)))
+
+        for name in _VOCAB_PLAIN:
+            present[("run", name)] = present.get(("run", name), 0) + 1
+
+        for key, value in leaves(r.get("config") or {}, ""):
+            if key:
+                add("config", f"config.{key}", value)
+
+        for name, value in (r.get("fields") or {}).items():
+            add("field", f"fields.{name}", value)
+
+        for metric in r.get("summary") or {}:
+            present[("metric", metric)] = present.get(("metric", metric), 0) + 1
+
+    order = {"run": 0, "config": 1, "field": 2, "metric": 3}
+    top_rank = {n: i for i, n in enumerate((*_VOCAB_TOP, *_VOCAB_BOOL, *_VOCAB_PLAIN))}
+    slots = sorted(
+        present,
+        key=lambda s: (order[s[0]], top_rank.get(s[1], 0) if s[0] == "run" else 0, s[1]),
+    )
+    taken: dict[str, int] = {}
+    out: list[dict[str, Any]] = []
+
+    for kind, name in slots:
+        taken[kind] = taken.get(kind, 0) + 1
+
+        if kind != "run" and taken[kind] > max_keys:
+            continue
+
+        seen = counts.get((kind, name), {})
+        ranked = sorted(seen, key=lambda t: (-seen[t], _sort_key(t[1])))[:max_values]
+        values = [v for _, v in ranked]
+        out.append({"name": name, "kind": kind, "runs": present[(kind, name)], "values": values})
+
+    return out

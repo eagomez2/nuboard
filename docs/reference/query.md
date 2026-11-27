@@ -9,6 +9,9 @@ Python (`project.runs("…")`) and the command line (`nuboard ls -q "…"`).
 
 `where` is optional when the query starts with a condition.
 
+In the viewer, the bar suggests field names, operators, values, keywords and
+statistics as you type; see [the viewer guide](../guide/viewer.md#header).
+
 ## Examples
 
 ```text

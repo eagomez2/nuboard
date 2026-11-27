@@ -2858,3 +2858,62 @@ test('a live update refetches only the live run on the small charts @live', asyn
   expect(new URL(req.url()).searchParams.get('runs')).toBe(live[0]);
   await expect(small.locator('canvas')).toBeVisible();
 });
+
+test('the query bar suggests fields, operators and values as you type', async ({ page }) => {
+  let fetches = 0;
+  page.on('request', (r) => {
+    if (r.url().includes('/api/query-fields')) fetches++;
+  });
+  await page.goto('/#/runs');
+  const query = page.getByLabel('Run query');
+  const list = page.getByRole('listbox', { name: 'Query suggestions' });
+  await query.click();
+  await expect(list.getByRole('option').first()).toContainText('where status != crashed'); // examples first
+  await query.pressSequentially('where stat');
+  await expect(list.getByRole('option').first()).toContainText('status');
+  await query.press('Tab');
+  await expect(query).toHaveValue('where status ');
+  await expect(list.getByRole('option', { name: /^!=/ })).toBeVisible();
+  await query.pressSequentially('= cr');
+  await expect(list.getByRole('option')).toHaveText([/crashed/]);
+  await query.press('Tab');
+  await expect(query).toHaveValue('where status = crashed ');
+  await expect(list.getByRole('option', { name: /^and/ })).toBeVisible();
+  // Enter runs the query unless the arrows chose a suggestion
+  await query.press('Enter');
+  await expect(page.locator('.body .row')).toHaveCount(1);
+  await expect(page).toHaveURL(/q=where/);
+  expect(fetches).toBe(1); // one request on focus, none per keystroke
+
+  await query.press('End');
+  await query.pressSequentially('order by ');
+  await query.press('ArrowDown');
+  await query.press('Enter');
+  await expect(query).not.toHaveValue(/by $/);
+  await query.press('Escape');
+  await expect(list).toBeHidden();
+});
+
+test('live run updates leave the query suggestions and the caret alone @live', async ({ page }) => {
+  await page.goto('/#/runs');
+  const query = page.getByLabel('Run query');
+  await query.click();
+  await query.pressSequentially('where status = r');
+  const list = page.getByRole('listbox', { name: 'Query suggestions' });
+  await expect(list.getByRole('option').first()).toContainText('running');
+  await query.press('ArrowLeft');
+  await query.press('ArrowLeft');
+  await list.evaluate((el) => (el.dataset.kept = '1'));
+  const options = await list.getByRole('option').allTextContents();
+  // a live run sends heartbeats and new points: wait for a few run list reloads
+  let reloads = 0;
+  page.on('response', (r) => {
+    if (r.url().includes('/api/runs?')) reloads++;
+  });
+  await expect.poll(() => reloads, { timeout: 20_000 }).toBeGreaterThan(2);
+  expect(await list.evaluate((el) => el.dataset.kept)).toBe('1'); // never closed or rebuilt
+  expect(await list.getByRole('option').allTextContents()).toEqual(options);
+  await expect(query).toBeFocused();
+  expect(await query.evaluate((el: HTMLInputElement) => el.selectionStart)).toBe('where status = r'.length - 2);
+  await expect(query).toHaveValue('where status = r');
+});

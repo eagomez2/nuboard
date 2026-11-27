@@ -73,3 +73,41 @@ def test_group_is_also_a_field():
     q = parse('where group = "fit/run1" group by group')
     assert q.where == ("cmp", "=", "group", "fit/run1")
     assert q.group_by == "group"
+
+
+def test_vocabulary_lists_fields_with_their_common_values():
+    from nuboard.query import vocabulary
+
+    runs = [
+        *RUNS,
+        {"name": "d", "config": {"flag": True, "n": 1, "big": [1, 2]}, "fields": {"stage": "b"}},
+    ]
+    fields = {f["name"]: f for f in vocabulary(runs)}
+    assert fields["status"]["kind"] == "run"
+    assert set(fields["status"]["values"]) == {"finished", "crashed", "running"}
+    assert fields["tags"]["values"][0] == "sweep"  # most common first
+    assert fields["config.lr"]["values"] == [1e-3, 3e-4] and fields["config.lr"]["runs"] == 3
+    assert fields["config.opt.wd"]["kind"] == "config"
+    assert fields["config.flag"]["values"] == [True] and fields["config.n"]["values"] == [1]
+    assert fields["config.big"]["values"] == []  # lists are not offered as values
+    assert fields["fields.stage"] == {
+        "name": "fields.stage",
+        "kind": "field",
+        "runs": 1,
+        "values": ["b"],
+    }
+    assert fields["train/loss"]["kind"] == "metric" and fields["train/loss"]["runs"] == 2
+    assert fields["starred"]["values"] == [False]
+    kinds = [f["kind"] for f in vocabulary(runs)]
+    assert kinds == sorted(kinds, key=["run", "config", "field", "metric"].index)
+
+
+def test_vocabulary_caps_values_and_keys():
+    from nuboard.query import vocabulary
+
+    runs = [{"config": {f"k{i}": i, "s": "x" * 100}} for i in range(30)]
+    fields = vocabulary(runs, max_values=5, max_keys=10)
+    config = [f for f in fields if f["kind"] == "config"]
+    assert len(config) == 10
+    assert all(len(f["values"]) <= 5 for f in fields)
+    assert not [f for f in config if f["name"] == "config.s" and f["values"]]

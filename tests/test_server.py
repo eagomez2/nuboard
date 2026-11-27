@@ -1385,3 +1385,13 @@ def test_project_files_save_from_any_viewer_root(tmp_path, where):
     assert (project / "views" / "v.json").is_file()
     after = sorted(p for p in project.rglob("*") if p.is_dir() and p.parent != project)
     assert [p for p in after if p not in before] == []
+
+
+def test_query_fields_are_cached(client):
+    res = client.get("/api/query-fields").json()
+    names = {f["name"]: f for f in res["fields"]}
+    assert names["config.lr"]["values"] == [1e-4, 1e-3] and names["loss"]["kind"] == "metric"
+    assert names["tags"]["values"] == ["sweep"]
+    again = client.get("/api/query-fields").json()
+    assert again["version"] == res["version"] and again["fields"] == res["fields"]
+    assert client.get("/api/query-fields", params={"project": "nope"}).json()["fields"] == []

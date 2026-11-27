@@ -23,7 +23,14 @@ By default the viewer only answers on this machine (`127.0.0.1`). See
   path is shortened at its start, so the folder's own name stays visible.
 - **Query bar** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd>): filters,
   groups and orders runs everywhere in the app. See the
-  [query language](../reference/query.md). The **▾** button at its end opens
+  [query language](../reference/query.md). As you type, a list suggests
+  what can come next at the caret: field names, operators, the values runs
+  hold (statuses, tags, config values), keywords and a scalar's statistics.
+  <kbd>Tab</kbd> inserts the highlighted one; <kbd>↑</kbd>/<kbd>↓</kbd>
+  choose one, and <kbd>Enter</kbd> then inserts it; otherwise <kbd>Enter</kbd>
+  runs the query. <kbd>Esc</kbd> closes the list. The suggestions are read
+  once when the bar gains focus, so live run updates never change the list
+  while you type. The **▾** button at its end opens
   **Saved** queries and the queries **Recent in this browser**; click one to
   apply it. **Save this query…** names the query in the bar and writes it to
   `queries.json` in the served folder, so every browser on the server sees it
