@@ -22,6 +22,7 @@
   import { onLive } from './lib/live';
   import { router, type Page } from './lib/router.svelte';
   import { app } from './lib/state.svelte';
+  import { isScoped } from './lib/scoped';
 
   let about = $state(false);
   const nav: { page: Page; icon: string; label: string }[] = [
@@ -151,7 +152,7 @@
       <div class="card errbox">Could not reach the {NAME} server: {app.error}</div>
     {/if}
 
-    {#if ['charts', 'sweeps', 'select', 'media', 'timeline'].includes(router.page) && router.list('sel').length}
+    {#if isScoped(router.page) && router.list('sel').length}
       <SelectionBanner />
     {/if}
 

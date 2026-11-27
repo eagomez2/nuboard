@@ -92,14 +92,15 @@ matches as plain text, so typing never empties the page.
   the URL as `find`).
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
   edit their **Tags**, **Properties** or **Collection**, open them in
-  **Charts**, **Sweeps** or **Media**, or **Compare** up to eight of them
+  **Charts**, **Media**, **Sweeps**, **Select** or **Timeline**, or
+  **Compare** up to eight of them
   (the button reads **Details** with one run ticked, and opens its details).
   These actions sit in a bar that floats at the bottom of the window once a
   run is ticked, so the table never moves; the first six are icons, named
-  when you hover them, and the × clears the selection. Charts, Sweeps, Media and
-  Timeline then show a **Showing N selected runs** banner with buttons to the
-  other pages, which keep the selection, and **Show all**, which goes back to
-  the query result; **Clear selection** ends it too.
+  when you hover them, and the × clears the selection. Those five pages then
+  show a **Showing N selected runs** banner with buttons to the other pages,
+  which keep the selection, and **Show all**, which goes back to the query
+  result; **Clear selection** ends it too.
 - **Alerts**: a warning badge next to a run name counts its
   [health alerts](alerts.md). Hover it to read them; click it to open the
   run's chart.
@@ -264,9 +265,9 @@ For a single run there are more tabs:
 
 The first five tabs show in the row; the rest are in the **⋮** menu at its
 end (the open tab always shows), so the row and the settings filter stay on
-one line on a laptop screen. The same menu has **Charts**, **Sweeps** and
-**Media**, which open those pages with only the run (or the compared runs), as
-the selection bar does, without ticking checkboxes.
+one line on a laptop screen. The same menu has **Charts**, **Media**,
+**Sweeps**, **Select** and **Timeline**, which open those pages with only the
+run (or the compared runs), as the selection bar does, without ticking checkboxes.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
 **All settings** has a column per run and highlights rows where any run

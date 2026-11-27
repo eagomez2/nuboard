@@ -19,16 +19,11 @@
   import { pinMatches } from '../lib/pattern';
   import { pins } from '../lib/pins.svelte';
   import { router } from '../lib/router.svelte';
+  import { SCOPED_PAGES } from '../lib/scoped';
   import { app } from '../lib/state.svelte';
 
   let { keys }: { keys: string[] } = $props();
 
-  // Charts, Sweeps and Media limited to the runs shown here, as the Runs selection bar opens them
-  const JUMPS = [
-    { page: 'charts', label: 'Charts', icon: 'charts' },
-    { page: 'sweeps', label: 'Sweeps', icon: 'sweep' },
-    { page: 'media', label: 'Media', icon: 'media' },
-  ] as const;
   let details = $state<RunDetail[]>([]);
   let texts = $state<(string | null)[]>([]);
   let loadingFile = $state(false);
@@ -407,7 +402,7 @@
           {/each}
           {#if moreTabs.length}<hr />{/if}
           <span class="mlabel">Open {keys.length === 1 ? 'this run' : 'these runs'} in</span>
-          {#each JUMPS as j (j.page)}
+          {#each SCOPED_PAGES as j (j.page)}
             <button
               role="menuitem"
               title="{j.label} with only {keys.length === 1 ? 'this run' : 'these runs'}"
