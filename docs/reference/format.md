@@ -44,7 +44,7 @@ path.
     reports/files/<hash>.<ext>            images, audio and text files uploaded into reports
     fields.json                           typed property definitions of the project
     directions.json                            which way is better per scalar or table column
-    picks.json                            steps chosen on the Best step page, with a note each
+    picks.json                            steps chosen on the Shortlist page, with a note each
     hypotheses/<board>/board.json         a hypothesis board: title, categories, chip number, panel
     hypotheses/<board>/<id>.json          one hypothesis of that board
 ~/.cache/nuboard/<hash>.sqlite            disposable run catalog (see below)
@@ -690,7 +690,7 @@ changed since it was shown. `nuboard up --read-only-directions` refuses every ch
             "created": 1795079576.8}]}
 ```
 
-Steps chosen with **Pick this step** on the Best step page, oldest first. `run`
+Steps chosen with **Pick this step** on the Shortlist page, oldest first. `run`
 is the run id, `metrics` the chosen scalars' values at `step` when it was
 picked and `directions` which way was better for each, so the pick still says
 what it was chosen on after the runs are gone. `checkpoint` is the artifact

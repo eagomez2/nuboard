@@ -114,13 +114,13 @@ no server, no database.
     ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-light.png#only-light){ .nb-shot }
     ![The Timeline page: one bar per run of a project, colored by status, with artifact versions marked as diamonds](assets/about/timeline-dark.png#only-dark){ .nb-shot }
 
-=== ":material-flag-outline: Best step"
+=== ":material-flag-outline: Shortlist"
 
-    **Pick the step to ship.** <span>When runs win on different scalars, the shortlist keeps only the steps nothing beats on all of them, and shows what each choice costs.</span>
+    **Pick the step to ship.** <span>When runs win on different scalars, the candidates are only the steps nothing beats on all of them, and the page shows what each choice costs.</span>
     { .nb-feature-text }
 
-    ![The Best step page: accuracy against calibration error for every run at every step, with the shortlist of steps no other step beats on both](assets/about/select-light.png#only-light){ .nb-shot }
-    ![The Best step page: accuracy against calibration error for every run at every step, with the shortlist of steps no other step beats on both](assets/about/select-dark.png#only-dark){ .nb-shot }
+    ![The Shortlist page: accuracy against calibration error for every run at every step, with the candidates: the steps no other step beats on both](assets/about/select-light.png#only-light){ .nb-shot }
+    ![The Shortlist page: accuracy against calibration error for every run at every step, with the candidates: the steps no other step beats on both](assets/about/select-dark.png#only-dark){ .nb-shot }
 
 === ":material-source-branch: Hypotheses"
 

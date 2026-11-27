@@ -57,7 +57,7 @@ means the same thing on every page:
 | Box | Matches | Also |
 | --- | --- | --- |
 | Runs page filter, Hypotheses run pickers | a run's name, id, status, project, tags (`seeds` or `#seeds`) and notes | |
-| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Best step, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
+| Scalar pickers (the scalar menus on Runs, Sweeps, Media, Hypotheses, Shortlist, and the focused chart's scalar menu on Charts) | the scalar's name | ↑ ↓ and Enter pick, Esc closes |
 | Charts **Filter scalars** | the scalar's name | each word is a regular expression |
 | Charts legend filter | a series' label, its runs' names and their settings, such as `lr=3e-4` | |
 | Media **Filter keys** | the media key | each word is a regular expression |
@@ -92,7 +92,7 @@ matches as plain text, so typing never empties the page.
   the URL as `find`).
 - **Selection**: tick runs to **Star**, **Archive**, **Mark reviewed**,
   edit their **Tags**, **Properties** or **Collection**, open them in
-  **Charts**, **Media**, **Sweeps**, **Best step** or **Timeline**, or
+  **Charts**, **Media**, **Sweeps**, **Shortlist** or **Timeline**, or
   **Compare** up to eight of them
   (the button reads **Details** with one run ticked, and opens its details).
   These actions sit in a bar that floats at the bottom of the window once a
@@ -266,7 +266,7 @@ For a single run there are more tabs:
 The first five tabs show in the row; the rest are in the **⋮** menu at its
 end (the open tab always shows), so the row and the settings filter stay on
 one line on a laptop screen. The same menu has **Charts**, **Media**,
-**Sweeps**, **Best step** and **Timeline**, which open those pages with only the
+**Sweeps**, **Shortlist** and **Timeline**, which open those pages with only the
 run (or the compared runs), as the selection bar does, without ticking checkboxes.
 
 With two to eight runs selected, **Compare** shows the same tabs side by side:
@@ -490,12 +490,12 @@ axis).
 The main chart can go full screen, and any plot can be added to a report. See
 [Sweeps](sweeps.md).
 
-## Best step page
+## Shortlist page
 
 Which run at which step to take forward, when runs win on different scalars.
 Choose the scalars that matter and which way is better for each; every run
-at every step where all of them were logged is scored, and the shortlist
-keeps the steps that no other step beats on every scalar. Compare a few side
+at every step where all of them were logged is scored, and the candidates
+are the steps that no other step beats on every scalar. Compare a few side
 by side and pick one with a note, saved in the project's `picks.json`. See
 [Choosing a step](selecting.md).
 

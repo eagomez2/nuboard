@@ -15,7 +15,7 @@
   import { svgToPng } from '../lib/snapshot';
   import { app } from '../lib/state.svelte';
 
-  // The Best step page: which run at which step to take forward, when runs win on different scalars.
+  // The Shortlist page: which run at which step to take forward, when runs win on different scalars.
   // A row is a run at a step where every chosen scalar was logged; the shortlist holds the rows no
   // other row beats on every scalar (the server finds it, see nuboard/selection.py). Rows can be
   // compared side by side and picked with a note, saved in the project's picks.json.
@@ -488,9 +488,9 @@
 <svelte:window bind:innerHeight />
 
 <div class="toolbar">
-  <div class="seg" aria-label="Best step page view">
+  <div class="seg" aria-label="Shortlist page view">
     <button aria-pressed={tab === 'shortlist'} onclick={() => router.set({ pane: null })}
-      >Shortlist{#if data}<span class="count">{data.front_count}</span>{/if}</button
+      >Candidates{#if data}<span class="count">{data.front_count}</span>{/if}</button
     >
     <button aria-pressed={tab === 'compare'} onclick={() => router.set({ pane: 'compare' })}
       >Compare<span class="count">{compared.length}</span></button
@@ -505,7 +505,7 @@
 {#if tab === 'picks'}
   <div class="card list">
     {#if !shownPicks.length}
-      <div class="empty">No picks yet. Compare a few steps from the shortlist and choose <b>Pick this step</b>.</div>
+      <div class="empty">No picks yet. Compare a few of the candidates and choose <b>Pick this step</b>.</div>
     {:else}
       <table>
         <thead
@@ -637,8 +637,8 @@
           <h3>Choose what “best” means</h3>
           <p>
             Add the scalars you would judge a model by, and say which way is better for each. Every run at every step
-            where all of them were logged is scored, and the steps no other step beats on every scalar make the
-            shortlist. You then compare a few side by side and pick one, with a note saying why.
+            where all of them were logged is scored, and the steps no other step beats on every scalar are the
+            candidates. You then compare a few side by side and pick one, with a note saying why.
           </p>
         </div>
       {:else if error}
@@ -687,8 +687,8 @@
             >
           </div>
           <p class="muted small sub">
-            Each dot is a run at a step; big dots are on the shortlist. Click a dot to compare it, drag to zoom, Shift +
-            drag to pan, double-click to see it all.
+            Each dot is a run at a step; big dots are candidates. Click a dot to compare it, drag to zoom, Shift + drag
+            to pan, double-click to see it all.
           </p>
           {#if !data.complete}
             <div class="empty">
@@ -798,10 +798,12 @@
                     </div>
                   {/each}
                   {#if metrics.length > tipCols.length}
-                    <div class="faint small">+{metrics.length - tipCols.length} more scalars in the shortlist</div>
+                    <div class="faint small">
+                      +{metrics.length - tipCols.length} more scalars in the candidates table
+                    </div>
                   {/if}
                   <div class="foot faint">
-                    {hover.front ? 'On the shortlist' : 'Not on the shortlist'} · {chosen.includes(hover.id)
+                    {hover.front ? 'A candidate' : 'Not a candidate'} · {chosen.includes(hover.id)
                       ? 'click to stop comparing'
                       : 'click to compare'}
                   </div>
@@ -830,7 +832,7 @@
 
         <div class="card list">
           <div class="chead">
-            <h2>Shortlist</h2>
+            <h2>Candidates</h2>
             <span class="muted small"
               >{data.front_count.toLocaleString()} step{data.front_count === 1 ? '' : 's'} that no other step beats on
               {metrics.length === 1 ? 'this scalar' : `all ${metrics.length} scalars`}, out of {data.complete.toLocaleString()}.</span
@@ -899,11 +901,11 @@
                           >{/if}
                         {#if bestOn(r).length === 1}<span
                             class="badge best"
-                            title="Best {bestOn(r)[0]} on the shortlist"
+                            title="Best {bestOn(r)[0]} among the candidates"
                             >Best <span class="mono">{tailName(bestOn(r)[0], 26)}</span></span
                           >{:else if bestOn(r).length > 1}<span
                             class="badge best"
-                            title={`Best on the shortlist for:\n${bestOn(r).join('\n')}`}
+                            title={`Best among the candidates for:\n${bestOn(r).join('\n')}`}
                             >Best on {bestOn(r).length === metrics.length ? 'all' : bestOn(r).length} scalars</span
                           >{/if}
                       </td>
@@ -973,8 +975,8 @@
 {#if tab === 'compare'}
   {#if !compared.length}
     <div class="card empty">
-      Choose steps to compare on the shortlist: tick their boxes, or click their dots on the plot.
-      <button class="btn" onclick={() => router.set({ pane: null })}>Back to the shortlist</button>
+      Choose candidates to compare: tick their boxes, or click their dots on the plot.
+      <button class="btn" onclick={() => router.set({ pane: null })}>Back to the candidates</button>
     </div>
   {:else}
     <div class="card cmp" style="grid-template-columns: 230px repeat({compared.length}, minmax(180px, 1fr))">
@@ -993,7 +995,7 @@
           <div class="faint small">step {r.step.toLocaleString()} · {runOf(r).project}</div>
           <div class="tags">
             {#if pickedIds.has(r.id)}<span class="badge pick"><Icon name="flag" size={11} /> picked</span>{/if}
-            {#if !r.front}<span class="badge">not on the shortlist</span>{/if}
+            {#if !r.front}<span class="badge">not a candidate</span>{/if}
           </div>
         </div>
       {/each}

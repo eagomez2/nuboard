@@ -37,7 +37,7 @@ Versions are numbered automatically and created atomically.
   Artifacts page. The manifest also records who created the version, on
   which machine and with which command (`created_by`).
 - **step** (*int*, optional): the training step the version was made at,
-  such as a checkpoint's. The [Best step page](../guide/selecting.md) lists the
+  such as a checkpoint's. The [Shortlist page](../guide/selecting.md) lists the
   version next to that step; without it, the step is guessed from when the
   version was made.
 

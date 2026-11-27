@@ -66,13 +66,14 @@ additions.
   folded sections), then **Add N to report** adds them together in the order
   ticked, each drawn live with a PNG copy for exports, or **Download N as
   .zip** saves them as PNGs.
-- **The Select page is now Best step.** "Select" read like an action next to
+- **The Select page is now Shortlist.** "Select" read like an action next to
   the run checkboxes, so the page that chooses which run at which step to
-  take forward is named for what it answers. Links to `#/select` and saved
+  take forward is named for what it produces. Its first tab, the steps no
+  other step beats, is now **Candidates**. Links to `#/select` and saved
   views keep working.
-- **Open Best step and Timeline with the ticked runs.** The Runs selection
+- **Open Shortlist and Timeline with the ticked runs.** The Runs selection
   bar, the **⋮** menu of a run's details and the **Showing N selected runs**
-  banner now offer **Best step** and **Timeline** next to **Charts**,
+  banner now offer **Shortlist** and **Timeline** next to **Charts**,
   **Media** and **Sweeps**, so the best step can be chosen among a few runs
   instead of the whole query. The banner, which already showed on Timeline,
   now has a **Timeline** button too.
