@@ -1,17 +1,12 @@
 <script lang="ts">
-  import { router, type Page } from '../lib/router.svelte';
+  import { router } from '../lib/router.svelte';
+  import { SCOPED_PAGES } from '../lib/scoped';
   import { app } from '../lib/state.svelte';
 
-  // Shown on Charts, Sweeps, Select, Media and Timeline while they are limited to runs picked on the Runs
+  // Shown on the pages in SCOPED_PAGES while they are limited to runs picked on the Runs
   // page (`sel` in the URL): says so, switches page keeping them, and Show all goes back to the query.
   const keys = $derived(router.list('sel'));
   const found = $derived(keys.filter((k) => app.runByKey(k)).length);
-  const PAGES: { page: Page; label: string }[] = [
-    { page: 'charts', label: 'Charts' },
-    { page: 'sweeps', label: 'Sweeps' },
-    { page: 'select', label: 'Select' },
-    { page: 'media', label: 'Media' },
-  ];
 </script>
 
 <div class="card banner" role="status">
@@ -20,7 +15,7 @@
     {#if app.runs && found < keys.length}<span class="faint">({keys.length - found} no longer exist)</span>{/if}
   </span>
   <span class="grow"></span>
-  {#each PAGES.filter((p) => p.page !== router.page) as p (p.page)}
+  {#each SCOPED_PAGES.filter((p) => p.page !== router.page) as p (p.page)}
     <button class="btn btn-ghost sm" onclick={() => router.go(p.page)}>{p.label}</button>
   {/each}
   <button class="btn sm" onclick={() => router.set({ sel: null })}>Show all</button>

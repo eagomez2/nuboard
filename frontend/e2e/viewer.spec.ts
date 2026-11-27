@@ -2310,7 +2310,9 @@ test('toolbar buttons use theme icons, and Media item is on when the project has
   await expect(media).toContainText('Opens Media');
 });
 
-test('selected runs open in Charts, Sweeps and Media, with a banner that shows all again', async ({ page }) => {
+test('selected runs open in Charts, Media, Sweeps, Shortlist and Timeline, with a banner that shows all again', async ({
+  page,
+}) => {
   await page.goto('/#/runs?project=vit-ablations');
   const boxes = page.locator('.body .row input[type=checkbox]');
   await boxes.nth(0).check();
@@ -2327,6 +2329,11 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect(banner).toContainText('Showing 2 selected runs');
   await banner.getByRole('button', { name: 'Sweeps' }).click();
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await banner.getByRole('button', { name: 'Timeline' }).click();
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(2);
+  await banner.getByRole('button', { name: 'Shortlist' }).click();
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
   await banner.getByRole('button', { name: 'Charts' }).click();
   await expect(page.locator('.legend-chip')).toHaveCount(2);
 
@@ -2336,7 +2343,9 @@ test('selected runs open in Charts, Sweeps and Media, with a banner that shows a
   await expect.poll(() => page.locator('.legend-chip').count()).toBeGreaterThan(2);
 });
 
-test('a run opened for inspection jumps to Charts, Sweeps or Media with only that run', async ({ page }) => {
+test('a run opened for inspection jumps to Charts, Media, Sweeps, Shortlist or Timeline with only that run', async ({
+  page,
+}) => {
   await page.goto('/#/runs?project=vit-ablations');
   await page.locator('.body .row input[type=checkbox]').nth(0).check();
   await page.getByRole('button', { name: 'Details' }).click();
@@ -2358,6 +2367,37 @@ test('a run opened for inspection jumps to Charts, Sweeps or Media with only tha
   await page.goBack();
   await jump('Sweeps');
   await expect(page).toHaveURL(/#\/sweeps\?.*sel=/);
+  await page.goBack();
+  await jump('Shortlist');
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
+  await page.goBack();
+  await jump('Timeline');
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(1);
+});
+
+test('the Runs selection bar opens Shortlist and Timeline with only the ticked runs', async ({ page }) => {
+  await page.goto('/#/runs?project=vit-ablations');
+  const boxes = page.locator('.body .row input[type=checkbox]');
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  await boxes.nth(2).check();
+  const bar = page.locator('.selbar');
+  await bar.getByRole('button', { name: 'Shortlist', exact: true }).click();
+  await expect(page).toHaveURL(/#\/select\?.*sel=/);
+  await expect(page.getByRole('status').filter({ hasText: 'selected run' })).toContainText('Showing 3 selected runs');
+  // the scalars the Shortlist page offers are counted over the selected runs only
+  await page.goto(`${page.url()}&m=val%2Facc`);
+  await expect(page.getByText('3 of 3 runs')).toBeVisible();
+
+  // back on Runs the ticks are kept; leave one
+  await page.goto('/#/runs?project=vit-ablations');
+  await boxes.nth(1).uncheck();
+  await boxes.nth(2).uncheck();
+  await expect(bar).toContainText('1 selected');
+  await page.locator('.selbar').getByRole('button', { name: 'Timeline', exact: true }).click();
+  await expect(page).toHaveURL(/#\/timeline\?.*sel=/);
+  await expect(page.locator('.bar')).toHaveCount(1);
 });
 
 /**
