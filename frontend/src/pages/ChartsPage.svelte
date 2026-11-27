@@ -20,6 +20,10 @@
   import { encodeSpec } from '../lib/chartspec';
   import { baselineLines } from '../lib/baselines';
   import { appendToReport, askReport } from '../lib/reports.svelte';
+  import { chartPng, framePng } from '../lib/chartpng';
+  import { chartFileNames, pngBytes } from '../lib/chartfiles';
+  import { waveformKit } from '../lib/waveform';
+  import { NAME } from '../lib/brand';
 
   const MAX_LINES = 60;
 
@@ -316,35 +320,10 @@
   function snapshot(): string | null {
     const src = focusEl?.querySelector<HTMLCanvasElement>('.main canvas');
     if (!src) return null;
-    const css = getComputedStyle(focusEl!);
-    const dpr = src.width / Math.max(1, src.clientWidth);
-    const labels = (focusData?.series ?? []).filter((x) => !hidden.has(x.label));
-    const perRow = Math.max(1, Math.floor(src.clientWidth / 220));
-    const legendH = Math.ceil(labels.length / perRow) * 20 + 8;
-    const out = document.createElement('canvas');
-    out.width = src.width;
-    out.height = src.height + (36 + legendH) * dpr;
-    const ctx = out.getContext('2d')!;
-    ctx.fillStyle = css.getPropertyValue('--panel').trim() || '#fff';
-    ctx.fillRect(0, 0, out.width, out.height);
-    ctx.scale(dpr, dpr);
-    ctx.fillStyle = css.getPropertyValue('--text').trim() || '#111';
-    ctx.font = `600 14px ${css.getPropertyValue('--mono') || 'monospace'}`;
-    ctx.fillText(focus + (groupBy ? `  ·  grouped by ${groupBy}` : ''), 12, 22);
-    ctx.drawImage(src, 0, 36, src.clientWidth, src.clientHeight);
-    ctx.font = '12px system-ui, sans-serif';
-    labels.forEach((x, i) => {
-      const cx = 12 + (i % perRow) * 220;
-      const cy = 36 + src.clientHeight + 16 + Math.floor(i / perRow) * 20;
-      ctx.fillStyle = colorOf(x.label, i);
-      ctx.beginPath();
-      ctx.arc(cx + 4, cy - 4, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = css.getPropertyValue('--muted').trim() || '#555';
-      const name = x.label.length > 30 ? x.label.slice(0, 29) + '…' : x.label;
-      ctx.fillText(name, cx + 14, cy);
-    });
-    return out.toDataURL('image/png');
+    const legend = (focusData?.series ?? [])
+      .filter((x) => !hidden.has(x.label))
+      .map((x, i) => ({ label: x.label, color: colorOf(x.label, i) }));
+    return framePng(src, focusEl!, focus + (groupBy ? `  ·  grouped by ${groupBy}` : ''), legend);
   }
   let savingChart = $state(false);
   async function addChartToReport() {
@@ -539,6 +518,151 @@
   const legendMatching = $derived(seriesLabels.filter(legendMatch));
   const groupLabel = (g: string | null) => (g ? g.split('.').slice(-1)[0] : '');
   const seriesTitle = (label: string) => (groupBy ? `${groupLabel(groupBy)} ${label}` : label);
+
+  // ---- several small charts picked with Select items, as on the Media page ----
+  // They go to one report in the order picked, each drawn live with a PNG copy for exports, or
+  // download as PNGs in one .zip. Each is drawn off screen at one size, so a chart on another page
+  // or in a folded section comes out the same as one on screen.
+  let selecting = $state(false);
+  let picked = $state<string[]>([]);
+  const pickedSet = $derived(new Set(picked));
+  function pick(m: string, on: boolean) {
+    picked = on ? [...picked.filter((x) => x !== m), m] : picked.filter((x) => x !== m);
+  }
+  // in the order the grid shows them, folded sections and other pages too
+  const shownCharts = $derived(sections.flatMap(([, list]) => list));
+  const allShownPicked = $derived(shownCharts.every((m) => pickedSet.has(m)));
+  function selectShown() {
+    picked = [...picked, ...shownCharts.filter((m) => !pickedSet.has(m))];
+  }
+  let busy = $state<{ what: string; done: number; total: number } | null>(null);
+  let pickError = $state('');
+  let pickAbort: AbortController | null = null;
+  function stopSelecting() {
+    pickAbort?.abort();
+    selecting = false;
+    picked = [];
+    pickError = '';
+  }
+  $effect(() => {
+    if (!runKeys.length) stopSelecting();
+  });
+  const chartTitle = (m: string) => m + (groupBy ? `  ·  grouped by ${groupBy}` : '');
+  const chartSpec = (m: string) =>
+    encodeSpec({
+      metric: m,
+      runs: runKeys,
+      x: xKind,
+      group: groupBy,
+      agg,
+      smooth: smoothing,
+      raw: showRaw,
+      robust,
+      log: false, // as the small charts draw them
+      logx: logX,
+      base: showBase,
+      bands: showBands,
+      zoom: null,
+      hidden: [...hidden],
+    });
+  /** PNGs of `metrics`, four fetched at a time, in order; null where a chart has no data. */
+  async function pickedPngs(metrics: string[], what: string, signal: AbortSignal): Promise<(string | null)[]> {
+    const out: (string | null)[] = new Array(metrics.length).fill(null);
+    busy = { what, done: 0, total: metrics.length };
+    let next = 0;
+    const worker = async () => {
+      while (next < metrics.length && !signal.aborted) {
+        const i = next++;
+        const m = metrics[i];
+        const data = await api.chart({
+          runs: runKeys,
+          metric: m,
+          x: xKind,
+          group: groupBy,
+          agg,
+          points: 900,
+          logx: logX,
+          signal,
+        });
+        if (signal.aborted) return;
+        if (data.series.length)
+          out[i] = await chartPng(
+            data,
+            {
+              smoothing,
+              showRaw,
+              showBands,
+              robust,
+              logX,
+              baselines: showBase,
+              hidden,
+              colorOf,
+              themeVersion: app.themeVersion,
+              yFormat: isTiming(m) ? fmtSeconds : undefined,
+            },
+            chartTitle(m),
+          );
+        busy = { what, done: busy!.done + 1, total: metrics.length };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, metrics.length) }, worker));
+    return out;
+  }
+  async function runPicked(what: string, job: (metrics: string[], pngs: (string | null)[]) => Promise<void>) {
+    if (!picked.length || busy) return;
+    pickError = '';
+    const abort = (pickAbort = new AbortController());
+    const metrics = [...picked];
+    try {
+      const pngs = await pickedPngs(metrics, what, abort.signal);
+      if (abort.signal.aborted) return;
+      await job(metrics, pngs);
+    } catch (e) {
+      if (!abort.signal.aborted) pickError = `Could not ${what.toLowerCase()}: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      busy = null;
+      pickAbort = null;
+    }
+  }
+  const pickedProject = () => app.runByKey(runKeys[0])?.project ?? router.get('project');
+  async function savePicked() {
+    const project = pickedProject();
+    const n = picked.length;
+    if (!project || !n || busy) return;
+    const res = await askReport(
+      project,
+      null,
+      `Add ${n} chart${n === 1 ? '' : 's'} as shown in the grid, each captioned with its scalar. Reports draw them live and keep a PNG copy for exports.`,
+    );
+    if (!res) return;
+    await runPicked('Add to the report', async (metrics, pngs) => {
+      const lines: string[] = [];
+      for (const [i, m] of metrics.entries()) {
+        const png = pngs[i];
+        if (!png) continue;
+        const shot = await api.saveSnapshot(project, res.name, png);
+        if (!shot.path) throw new Error(shot.error ?? `no snapshot saved for ${m}`);
+        const caption = (m + (groupBy ? ` by ${groupBy}` : '')).replace(/[[\]\n]/g, ' ');
+        lines.push(`![${caption}](${shot.path} "chart:${chartSpec(m)}")`);
+      }
+      if (!lines.length) throw new Error('none of the charts has data');
+      await appendToReport(project, res.name, lines.join('\n\n'));
+      stopSelecting();
+    });
+  }
+  async function downloadPicked() {
+    await runPicked('Download', async (metrics, pngs) => {
+      const kept = metrics.flatMap((m, i) => (pngs[i] ? [{ m, png: pngs[i]! }] : []));
+      if (!kept.length) throw new Error('none of the charts has data');
+      const names = chartFileNames(kept.map((k) => k.m));
+      const zip = waveformKit().zipStored(kept.map((k, i) => [names[i], pngBytes(k.png)]));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+      a.download = `${pickedProject() ?? NAME}-charts-${kept.length}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    });
+  }
 </script>
 
 <svelte:window
@@ -1051,6 +1175,14 @@
           <option value="0">All</option>
         </select></label
       >
+      <button
+        class="btn btn-ghost sm toggle"
+        aria-pressed={selecting}
+        disabled={!shownCharts.length}
+        onclick={() => (selecting ? stopSelecting() : (selecting = true))}
+        title="Tick charts to add them to a report or download them"
+        ><Icon name="check" size={14} /> Select items</button
+      >
       {#if sections.length > 1}
         <button
           class="btn btn-ghost sm"
@@ -1125,6 +1257,9 @@
                 pinX={pinned ? cursorX : null}
                 fullName={showNames}
                 timing={isTiming(m)}
+                {selecting}
+                selected={pickedSet.has(m)}
+                onPick={(on) => pick(m, on)}
                 onFocus={() => {
                   router.set({ metric: m, zoom: null, cstat: null });
                   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1137,7 +1272,82 @@
   </section>
 {/if}
 
+{#if selecting}
+  <div class="selpad" aria-hidden="true"></div>
+  <div class="selbar" role="toolbar" aria-label="Selected charts">
+    {#if busy}
+      <span class="busynote">{busy.what}: drawing {busy.done} of {busy.total}</span>
+      <div
+        class="busybar"
+        role="progressbar"
+        aria-label="Progress"
+        aria-valuemin={0}
+        aria-valuemax={busy.total}
+        aria-valuenow={busy.done}
+      >
+        <span style="width:{(100 * busy.done) / busy.total}%"></span>
+      </div>
+      <button class="btn btn-ghost" onclick={() => pickAbort?.abort()}>Cancel</button>
+    {:else}
+      <span
+        class:selcount={!pickError && picked.length}
+        class:hint={!pickError && !picked.length}
+        class:err={!!pickError}
+        >{pickError ||
+          (picked.length ? `${picked.length} selected` : 'Tick charts to add them to a report or download them')}</span
+      >
+      <span class="sep" aria-hidden="true"></span>
+      <button
+        class="btn btn-ghost"
+        onclick={selectShown}
+        disabled={allShownPicked}
+        title="Tick every chart that matches the filter, in all sections and pages"
+        >Select all shown ({shownCharts.length})</button
+      >
+      <button class="btn btn-ghost" onclick={() => ((picked = []), (pickError = ''))} disabled={!picked.length}
+        >Clear</button
+      >
+      <button class="btn btn-ghost" disabled={!picked.length} onclick={downloadPicked}
+        ><Icon name="download" size={15} /> Download {picked.length || ''} as .zip</button
+      >
+      <button class="btn btn-primary" disabled={!picked.length} onclick={savePicked}
+        ><Icon name="bookmark" size={15} /> Add {picked.length || ''} to report</button
+      >
+      <button class="btn btn-ghost" onclick={stopSelecting}>Done</button>
+    {/if}
+  </div>
+{/if}
+
 <style>
+  .toggle[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .selbar .hint {
+    color: var(--muted);
+  }
+  .selbar .err {
+    color: var(--err);
+  }
+  .busybar {
+    width: 180px;
+    height: 6px;
+    margin: 0 10px;
+    border-radius: 3px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .busybar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
+  }
+  .busynote {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   /* Long names shrink with an ellipsis (full text in the title attribute); values never do.
      Metric names add the global `.tail`, so they lose their start instead of their end. */
   .trunc {

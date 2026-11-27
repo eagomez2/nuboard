@@ -43,6 +43,11 @@ smoothing, zoom and hidden series. It writes a line such as
 ![val/acc by augmentation](files/findings-1a2b3c4d.png "chart:metric=val%2Facc&runs=...")
 ```
 
+To add several small charts at once, press **Select items** above **All
+scalars**, tick the charts you want (or **Select all shown**), and press **Add
+N to report**. Each goes in as a line like the one above, captioned with its
+scalar, in the order you ticked them.
+
 The image is a PNG snapshot of the chart, saved in
 `<project>/reports/files/`, so the report shows the chart in any Markdown
 viewer. In NuBoard the title after `chart:` describes the view, and the

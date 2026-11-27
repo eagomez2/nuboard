@@ -388,6 +388,14 @@ them to see all).
   into a [report](reports.md), as it is shown: runs, grouping, smoothing,
   zoom and hidden series. The report draws it live and keeps a PNG copy for
   exports.
+- **Select items**: the button above All scalars adds a checkbox to every
+  small chart. The bar at the bottom then works on what you ticked, as on the
+  Media page: **Select all shown** ticks every chart the scalar filter leaves
+  (all pages, folded sections too), **Add N to report** adds them to a
+  [report](reports.md) in the order you ticked them, and **Download N as
+  .zip** saves each as a PNG named after its scalar (`train/loss` becomes
+  `train_loss.png`). Each chart is drawn as the grid shows it: runs,
+  grouping, x axis, smoothing and hidden series, without zoom or log y.
 - **All scalars**: a small chart per scalar, grouped by prefix (`train/`,
   `eval/`, `perf/`…). Small charts load as you scroll. Click a title to bring
   the scalar into focus. Hovering a small chart shows each run's value at the
