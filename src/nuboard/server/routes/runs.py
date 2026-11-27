@@ -21,7 +21,7 @@ from ...artifacts import (
     UNLINKED,
 )
 from ...jobs import read_meta
-from ...query import QueryError, parse
+from ...query import QueryError, parse, vocabulary
 from ...reports import (
     check_field,
     read_fields,
@@ -449,6 +449,44 @@ def routes(ctx: Context) -> list[BaseRoute]:
 
         return JSON({"metrics": [{"name": m, "runs": n} for m, n in sorted(counts.items())]})
 
+    # project -> (catalog version, time built, fields)
+    vocab_cache: dict[str, tuple[int, float, list[dict[str, Any]]]] = {}
+
+    def query_fields(request: Request) -> Response:
+        """Return the fields, config keys, custom fields and metrics a query can use.
+
+        The query bar fetches this when it gains focus and filters it as you
+        type, so no request is made per keystroke. The folder is not rescanned
+        (the run list does that), and the result is reused until the catalog
+        changes, or for up to 30 s while it keeps changing: a live run's
+        heartbeats bump the catalog version but rarely add a field.
+        `project` keeps that project's runs and its subprojects'.
+        """
+        project = request.query_params.get("project") or ""
+        version = catalog.version
+        hit = vocab_cache.get(project)
+
+        if hit and (hit[0] == version or time.monotonic() - hit[1] < 30):
+            fields = hit[2]
+        else:
+            rows = catalog.runs()
+
+            if project:
+                rows = [
+                    r
+                    for r in rows
+                    if r["project"] == project or r["project"].startswith(project + "/")
+                ]
+
+            fields = vocabulary(rows)
+
+            if len(vocab_cache) > 16:
+                vocab_cache.clear()
+
+            vocab_cache[project] = (version, time.monotonic(), fields)
+
+        return JSON({"version": version, "fields": fields})
+
     def sweep_keys(request: Request) -> Response:
         """Return the config keys whose value differs between runs, with each run's value.
 
@@ -539,5 +577,6 @@ def routes(ctx: Context) -> list[BaseRoute]:
         Route("/api/metrics", metrics),
         Route("/api/scalars", scalars),
         Route("/api/sweep-keys", sweep_keys),
+        Route("/api/query-fields", query_fields),
         Route("/api/alerts", alerts),
     ]
